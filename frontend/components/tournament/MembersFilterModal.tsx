@@ -2,14 +2,15 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { FilterOptionGroup, FilterOptionItem, MemberFilterOptions, membersApi } from "@/lib/api";
-import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
 import { PillMenu, PillTone } from "@/components/ui/PillMenu";
-import { Spinner } from "@/components/ui/Spinner";
 import { IconPlus } from "@/components/ui/Icons";
+import {
+  FilterModal, FilterSectionConfig, FilterState, SEARCHABLE_ABOVE, emptyFilterState,
+} from "@/components/ui/FilterModal";
 
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
@@ -18,15 +19,10 @@ export const MEMBERS_FILTER_KEYS = [
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
-export type MembersFilterState = Record<MembersFilterKey, Set<string>>;
-
-export function emptyMembersFilter(): MembersFilterState {
-  return Object.fromEntries(MEMBERS_FILTER_KEYS.map((k) => [k, new Set<string>()])) as MembersFilterState;
-}
-
-export function isMembersFilterActive(filters: MembersFilterState): boolean {
-  return Object.values(filters).some((values) => values.size > 0);
-}
+// The shared filter model — empty means "no narrowing" — under the roster's
+// own keys. Use emptyFilterState(MEMBERS_FILTER_KEYS) and isFilterActive from
+// FilterModal; this module no longer keeps copies of them.
+export type MembersFilterState = FilterState<MembersFilterKey>;
 
 // Filters whose values are "{group}:{option}" pairs. A stored value without
 // the pair is from an older release (availability used to persist bare shift
@@ -46,7 +42,7 @@ function usableValues(key: string, values: Set<string>): string[] {
 export function membersFilterFromStored(
   stored: Record<string, string[]> | null | undefined,
 ): MembersFilterState {
-  const state = emptyMembersFilter();
+  const state = emptyFilterState(MEMBERS_FILTER_KEYS);
   for (const key of MEMBERS_FILTER_KEYS) {
     const values = stored?.[key];
     if (Array.isArray(values)) {
@@ -107,9 +103,6 @@ const ASSIGNMENT_STATUS_OPTIONS: FilterOptionItem[] = [
   { value: "unassigned", label: "Unassigned" },
 ];
 
-// Above this many rows a picker is faster to type into than to scroll.
-const SEARCHABLE_ABOVE = 8;
-
 interface MembersFilterModalProps {
   tournamentId: number;
   /** From the page, which already holds the tournament's role list. */
@@ -148,92 +141,7 @@ function withGroup(selected: Set<string>, group: string, options: string[]): Set
   return next;
 }
 
-// ─── Section chrome ───────────────────────────────────────────────────────
-
-function FilterSection({ title, active, onClear, children }: {
-  title: string;
-  active: boolean;
-  onClear: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-          letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        }}>
-          {title}
-        </span>
-        {/* Only while there's something to clear — a permanent dead button
-            beside every heading reads as chrome, not as an action. */}
-        {active && (
-          <Button type="button" variant="ghost" size="xs" onClick={onClear} style={{ padding: "0 6px" }}>
-            Clear
-          </Button>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// ─── Filters ──────────────────────────────────────────────────────────────
-
-// A flat list of values (roles, experience) — chips plus a checklist picker.
-// Chips rather than a column of checkboxes: a tournament can offer a dozen
-// roles and thirty experience events, and a checkbox list per section would
-// be an unreadable modal. A chip row shows what's being filtered on, and
-// nothing else.
-function ChipFilter({ title, options, selected, onToggle, onClear, searchable }: {
-  title: string;
-  options: FilterOptionItem[];
-  selected: Set<string>;
-  onToggle: (value: string) => void;
-  onClear: () => void;
-  /** Defaults to "only once the list is long enough to be worth typing at". */
-  searchable?: boolean;
-}) {
-  if (options.length === 0) return null;
-  const labelFor = new Map(options.map((o) => [o.value, o.label]));
-
-  return (
-    <FilterSection title={title} active={selected.size > 0} onClear={onClear}>
-      <ChipInput
-        value={[...selected].map((value) => labelFor.get(value) ?? value)}
-        onChange={(labels) => {
-          const removed = [...selected].find((value) => !labels.includes(labelFor.get(value) ?? value));
-          if (removed) onToggle(removed);
-        }}
-        variant="transparent"
-        size="sm"
-        disableInput
-        fullWidth
-        placeholder="Any"
-        addButton={
-          <Popover
-            trigger={
-              <Button type="button" variant="secondary" size="sm" iconOnly title={`Filter by ${title.toLowerCase()}`} style={{ padding: 0, flexShrink: 0 }}>
-                <IconPlus size={13} />
-              </Button>
-            }
-            items={options}
-            getKey={(option) => option.value}
-            renderLabel={(option) => option.label}
-            getSearchText={(option) => option.label}
-            searchable={searchable ?? options.length > SEARCHABLE_ABOVE}
-            checklist
-            isSelected={(option) => selected.has(option.value)}
-            onSelect={(option) => onToggle(option.value)}
-            emptyMessage="Nothing to filter by"
-            width={300}
-            align="left"
-          />
-        }
-      />
-    </FilterSection>
-  );
-}
+// ─── Paired chips ─────────────────────────────────────────────────────────
 
 // A two-step filter: add the group first (a track, a lunch category,
 // an event-preference question), then narrow it from the chip's own pill.
@@ -242,8 +150,10 @@ function ChipFilter({ title, options, selected, onToggle, onClear, searchable }:
 // is the opposite of what was asked — but asking for the pair up front means
 // a picker holding every combination (tracks x 3, or every shift of every
 // day), which is exactly the list nobody can read.
-function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabel, emptyMessage, searchable, optionTones, answeredToggle }: {
-  title: string;
+//
+// Only the control — FilterModal draws the heading and Clear around it, the
+// same frame every other section gets.
+function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyMessage, searchable, optionTones, answeredToggle }: {
   groups: FilterOptionGroup[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
@@ -258,8 +168,6 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
   /** Lunch: offers answered/not-answered above the list. "Answered" ticks every box, "not answered" clears them — a free-text question has no boxes at all, and that is still the useful question to ask of it. */
   answeredToggle?: boolean;
 }) {
-  if (groups.length === 0) return null;
-
   // A group the options endpoint no longer offers (a deleted lunch question,
   // an archived track) still filters, so it keeps a chip under its raw key
   // rather than silently narrowing the roster from nowhere.
@@ -327,62 +235,60 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
   }
 
   return (
-    <FilterSection title={title} active={selected.size > 0} onClear={() => onChange(new Set())}>
-      <ChipInput
-        value={chipped.map((group) => group.label)}
-        onChange={(labels) => {
-          const removed = chipped.find((group) => !labels.includes(group.label));
-          if (removed) onChange(withGroup(selected, removed.value, []));
-        }}
-        variant="transparent"
-        size="sm"
-        disableInput
-        fullWidth
-        placeholder="Any"
-        renderChipTrailing={(label) => {
-          const group = groupByLabel.get(label);
-          // A free-text lunch question has no options, but answered/not
-          // answered is still worth asking — so the pill stays.
-          if (!group || (group.options.length === 0 && !answeredToggle)) return null;
-          return (
-            <PillMenu
-              label={summaryFor(group)}
-              tone={toneFor(group)}
-              items={group.options}
-              getKey={(option) => option.value}
-              renderLabel={(option) => option.label}
-              getSearchText={(option) => option.label}
-              searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
-              checklist
-              isSelected={(option) => chosenFor(group).includes(option.value)}
-              onSelect={(option) => toggleOption(group, option.value)}
-              header={answeredToggle ? answeredHeader(group) : undefined}
-              emptyMessage="Nothing to filter by"
-              width={260}
-              align="left"
-            />
-          );
-        }}
-        addButton={
-          <Popover
-            trigger={
-              <Button type="button" variant="secondary" size="sm" iconOnly title={addLabel} style={{ padding: 0, flexShrink: 0 }}>
-                <IconPlus size={13} />
-              </Button>
-            }
-            items={unchipped}
-            getKey={(group) => group.value}
-            renderLabel={(group) => group.label}
-            getSearchText={(group) => group.label}
-            searchable={groups.length > SEARCHABLE_ABOVE}
-            onSelect={(group) => onChange(withGroup(selected, group.value, [ANY]))}
-            emptyMessage={groups.length > 0 && unchipped.length === 0 ? "All added" : emptyMessage}
-            width={300}
+    <ChipInput
+      value={chipped.map((group) => group.label)}
+      onChange={(labels) => {
+        const removed = chipped.find((group) => !labels.includes(group.label));
+        if (removed) onChange(withGroup(selected, removed.value, []));
+      }}
+      variant="transparent"
+      size="sm"
+      disableInput
+      fullWidth
+      placeholder="Any"
+      renderChipTrailing={(label) => {
+        const group = groupByLabel.get(label);
+        // A free-text lunch question has no options, but answered/not
+        // answered is still worth asking — so the pill stays.
+        if (!group || (group.options.length === 0 && !answeredToggle)) return null;
+        return (
+          <PillMenu
+            label={summaryFor(group)}
+            tone={toneFor(group)}
+            items={group.options}
+            getKey={(option) => option.value}
+            renderLabel={(option) => option.label}
+            getSearchText={(option) => option.label}
+            searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
+            checklist
+            isSelected={(option) => chosenFor(group).includes(option.value)}
+            onSelect={(option) => toggleOption(group, option.value)}
+            header={answeredToggle ? answeredHeader(group) : undefined}
+            emptyMessage="Nothing to filter by"
+            width={260}
             align="left"
           />
-        }
-      />
-    </FilterSection>
+        );
+      }}
+      addButton={
+        <Popover
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconOnly title={addLabel} style={{ padding: 0, flexShrink: 0 }}>
+              <IconPlus size={13} />
+            </Button>
+          }
+          items={unchipped}
+          getKey={(group) => group.value}
+          renderLabel={(group) => group.label}
+          getSearchText={(group) => group.label}
+          searchable={groups.length > SEARCHABLE_ABOVE}
+          onSelect={(group) => onChange(withGroup(selected, group.value, [ANY]))}
+          emptyMessage={groups.length > 0 && unchipped.length === 0 ? "All added" : emptyMessage}
+          width={300}
+          align="left"
+        />
+      }
+    />
   );
 }
 
@@ -391,40 +297,25 @@ export function MembersFilterModal({
 }: MembersFilterModalProps) {
   const [fetched, setFetched] = useState<MemberFilterOptions | null>(null);
   const options = suppliedOptions ?? fetched;
-  // Draft until Apply, so closing with Cancel leaves the roster as it was.
-  //
-  // Seeded from the full key set and then overlaid, rather than copied from
-  // `filters` outright: every section below reads its key's `.size`
-  // unguarded, so a caller whose state predates a newly-added filter would
-  // crash the modal. That state is easy to come by — a config saved before
-  // the filter existed, a hand-built one (the assignments sketch), or a Fast
-  // Refresh that keeps the page's state across the edit adding it.
-  const [draft, setDraft] = useState<MembersFilterState>(() => {
-    const seeded = emptyMembersFilter();
-    for (const key of MEMBERS_FILTER_KEYS) {
-      const values = filters[key];
-      if (values) seeded[key] = new Set(values);
-    }
-    return seeded;
-  });
 
   useEffect(() => {
     if (suppliedOptions) return;
     membersApi.filterOptions(tournamentId).then(setFetched).catch(() => setFetched(null));
   }, [tournamentId, suppliedOptions]);
 
-  function set(key: MembersFilterKey, values: Set<string>) {
-    setDraft((prev) => ({ ...prev, [key]: values }));
-  }
-
-  function toggle(key: MembersFilterKey, value: string) {
-    setDraft((prev) => {
-      const next = new Set(prev[key]);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return { ...prev, [key]: next };
-    });
-  }
+  // Seeded from the full key set and then overlaid, rather than handed over
+  // as-is: a caller whose state predates a newly-added filter — a config
+  // saved before it existed, a hand-built one (the assignments sketch), a
+  // Fast Refresh keeping the page's state across the edit adding it — would
+  // otherwise Apply a draft still missing that key.
+  const [seeded] = useState<MembersFilterState>(() => {
+    const full = emptyFilterState(MEMBERS_FILTER_KEYS);
+    for (const key of MEMBERS_FILTER_KEYS) {
+      const values = filters[key];
+      if (values) full[key] = new Set(values);
+    }
+    return full;
+  });
 
   // Statuses are the same three for every track, so the groups are built
   // here rather than repeated in the options payload.
@@ -441,81 +332,62 @@ export function MembersFilterModal({
     ...(options?.collect_is_over_21 ? [{ value: "over_21", label: "21+" }] : []),
   ];
 
-  return (
-    <Modal title="Filter members" onClose={onClose} width={760}>
-      {options === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <Spinner size="lg" />
-        </div>
-      ) : (
-        <div style={{ maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: "4px" }}>
-          {/* Fills the viewport minus the title and footer, so it only scrolls on a short window. */}
-          <ChipFilter
-            title="Roles" options={roleOptions} selected={draft.role}
-            onToggle={(v) => toggle("role", v)} onClear={() => set("role", new Set())}
-          />
-          <PairedChipFilter
-            title="Assignments" groups={assignmentGroups} selected={draft.assigned}
-            onChange={(next) => set("assigned", next)}
-            anyLabel="Any" addLabel="Filter by track"
-            emptyMessage="No active tracks."
-          />
-          <PairedChipFilter
-            title="Track status" groups={trackGroups} selected={draft.track}
-            onChange={(next) => set("track", next)}
-            optionTones={TRACK_STATUS_TONES} anyLabel="Any status" addLabel="Filter by track"
-            emptyMessage="No active tracks."
-          />
-          {/* Two options at most, both fixed — a chip row with an add
-              popover is more machinery than picking between 18+ and 21+
-              deserves. */}
-          {ageOptions.length > 0 && (
-            <FilterSection title="Age" active={draft.age.size > 0} onClear={() => set("age", new Set())}>
-              <ButtonGroup
-                options={ageOptions.map((o) => ({ value: o.value, label: o.label }))}
-                value={[...draft.age]}
-                onChange={(value) => toggle("age", value)}
-              />
-            </FilterSection>
-          )}
-          <PairedChipFilter
-            title="Availability" groups={options.shift_days} selected={draft.shift}
-            onChange={(next) => set("shift", next)}
-            anyLabel="Any shift" addLabel="Filter by track"
-            emptyMessage="No shifts on this tournament yet."
-          />
-          <PairedChipFilter
-            title="Lunch" groups={options.lunch_categories} selected={draft.lunch}
-            onChange={(next) => set("lunch", next)}
-            answeredToggle anyLabel="Any answer" addLabel="Filter by lunch question"
-            emptyMessage="No lunch questions on this tournament yet."
-          />
-          <PairedChipFilter
-            title="Event preferences" groups={options.event_preferences} selected={draft.event_pref}
-            onChange={(next) => set("event_pref", next)}
-            searchable anyLabel="Any event" addLabel="Filter by event preference"
-            emptyMessage="No event preference questions on this tournament yet."
-          />
-          <ChipFilter
-            title="Competition experience" searchable options={options.competition_events} selected={draft.competition_event}
-            onToggle={(v) => toggle("competition_event", v)} onClear={() => set("competition_event", new Set())}
-          />
-          <ChipFilter
-            title="Volunteer experience" searchable options={options.volunteer_events} selected={draft.volunteer_event}
-            onToggle={(v) => toggle("volunteer_event", v)} onClear={() => set("volunteer_event", new Set())}
-          />
-        </div>
-      )}
+  /** A paired section — hidden when the tournament has no groups to offer. */
+  function paired(
+    key: MembersFilterKey, title: string, groups: FilterOptionGroup[],
+    body: Omit<Parameters<typeof PairedChipBody>[0], "groups" | "selected" | "onChange">,
+  ): FilterSectionConfig<MembersFilterKey> {
+    return {
+      key, title, control: "custom", hidden: groups.length === 0,
+      render: (selected, onChange) => (
+        <PairedChipBody groups={groups} selected={selected} onChange={onChange} {...body} />
+      ),
+    };
+  }
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "8px" }}>
-        <Button type="button" variant="ghost" onClick={() => setDraft(emptyMembersFilter())}>
-          Clear all
-        </Button>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={() => { onApply(draft); onClose(); }}>Apply</Button>
-        </div>
-      </div>
-    </Modal>
+  const sections: FilterSectionConfig<MembersFilterKey>[] = [
+    { key: "role", title: "Roles", control: "chips", options: roleOptions },
+    paired("assigned", "Assignments", assignmentGroups, {
+      anyLabel: "Any", addLabel: "Filter by track", emptyMessage: "No active tracks.",
+    }),
+    paired("track", "Track status", trackGroups, {
+      optionTones: TRACK_STATUS_TONES, anyLabel: "Any status", addLabel: "Filter by track",
+      emptyMessage: "No active tracks.",
+    }),
+    // Two options at most, both fixed — a chip row with an add popover is
+    // more machinery than picking between 18+ and 21+ deserves.
+    { key: "age", title: "Age", control: "buttons", options: ageOptions, hidden: ageOptions.length === 0 },
+    paired("shift", "Availability", options?.shift_days ?? [], {
+      anyLabel: "Any shift", addLabel: "Filter by track",
+      emptyMessage: "No shifts on this tournament yet.",
+    }),
+    paired("lunch", "Lunch", options?.lunch_categories ?? [], {
+      answeredToggle: true, anyLabel: "Any answer", addLabel: "Filter by lunch question",
+      emptyMessage: "No lunch questions on this tournament yet.",
+    }),
+    paired("event_pref", "Event preferences", options?.event_preferences ?? [], {
+      searchable: true, anyLabel: "Any event", addLabel: "Filter by event preference",
+      emptyMessage: "No event preference questions on this tournament yet.",
+    }),
+    {
+      key: "competition_event", title: "Competition experience", control: "chips",
+      options: options?.competition_events ?? [], searchable: true,
+    },
+    {
+      key: "volunteer_event", title: "Volunteer experience", control: "chips",
+      options: options?.volunteer_events ?? [], searchable: true,
+    },
+  ];
+
+  return (
+    <FilterModal
+      title="Filter members"
+      width={760}
+      loading={options === null}
+      sections={sections}
+      filters={seeded}
+      onApply={onApply}
+      onClose={onClose}
+    />
   );
 }

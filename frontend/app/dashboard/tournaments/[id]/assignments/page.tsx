@@ -36,7 +36,7 @@ import { RolePillMenu } from '@/components/assignments/RolePillMenu'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
-  MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
+  MembersFilterModal, MEMBERS_FILTER_KEYS,
   membersFilterFromStored, membersFilterToStored, membersFilterParams,
   type MembersFilterState,
 } from '@/components/tournament/MembersFilterModal'
@@ -46,7 +46,7 @@ import {
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, filterAllows } from '@/components/ui/FilterModal'
+import { emptyFilterState, filterAllows, isFilterActive } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
@@ -1183,7 +1183,7 @@ export default function AssignmentsPage() {
   const [showEventDisplayModal, setShowEventDisplayModal] = useState(false)
 
   const [memberQuery, setMemberQuery] = useState('')
-  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyMembersFilter())
+  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS))
   const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY)
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
@@ -1329,7 +1329,7 @@ export default function AssignmentsPage() {
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
   const eventFilterActive = isEventsFilterActive(eventFilters)
-  const memberFilterActive = isMembersFilterActive(memberFilters)
+  const memberFilterActive = isFilterActive(memberFilters)
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
@@ -1761,7 +1761,7 @@ export default function AssignmentsPage() {
                 size="sm" iconOnly label="Filter members"
                 active={memberFilterActive}
                 onOpen={() => setShowMemberFilterModal(true)}
-                onClear={() => applyMemberFilters(emptyMembersFilter())}
+                onClear={() => applyMemberFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
               />
             </>
           }
@@ -1791,7 +1791,7 @@ export default function AssignmentsPage() {
                   memberQuery || memberFilterActive ? (
                     <Button
                       size="sm" variant="secondary"
-                      onClick={() => { setMemberQuery(''); applyMemberFilters(emptyMembersFilter()) }}
+                      onClick={() => { setMemberQuery(''); applyMemberFilters(emptyFilterState(MEMBERS_FILTER_KEYS)) }}
                     >
                       Clear filters
                     </Button>

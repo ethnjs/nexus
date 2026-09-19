@@ -30,9 +30,10 @@ import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
-  MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
-  membersFilterFromStored, membersFilterToStored, emptyMembersFilter,
+  MembersFilterModal, MembersFilterState, MEMBERS_FILTER_KEYS, membersFilterParams,
+  membersFilterFromStored, membersFilterToStored,
 } from "@/components/tournament/MembersFilterModal";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
@@ -266,7 +267,7 @@ export default function MembersPage() {
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
   // so they arrive in the one GET below and are written back by persistView.
-  const [filters, setFilters] = useState<MembersFilterState>(() => emptyMembersFilter());
+  const [filters, setFilters] = useState<MembersFilterState>(() => emptyFilterState(MEMBERS_FILTER_KEYS));
   // The whole config as last read, so a write can lay this surface's view
   // state over the other surfaces instead of replacing them.
   const [viewReady, setViewReady] = useState(false);
@@ -647,9 +648,9 @@ export default function MembersPage() {
               />
             </div>
             <FilterButton
-              active={isMembersFilterActive(filters)}
+              active={isFilterActive(filters)}
               onOpen={() => setShowFilterModal(true)}
-              onClear={() => applyFilters(emptyMembersFilter())}
+              onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
             />
             <Button
               type="button" variant="secondary" size="md"
