@@ -5,13 +5,14 @@ import { TournamentEvent, TournamentDivision } from '@/lib/api'
 import { eventFirstDay, eventName, eventNameWithDivision } from '@/lib/eventDisplay'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { FilterButton } from '@/components/ui/FilterButton'
 import { Input } from '@/components/ui/Input'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { ButtonGroup } from '@/components/ui/ButtonGroup'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FilterModal, FilterOption, FilterSectionConfig, FilterState, emptyFilterState, filterAllows, isFilterActive } from '@/components/ui/FilterModal'
-import { IconSearch, IconArrowDown, IconFilter, IconX } from '@/components/ui/Icons'
+import { IconSearch, IconArrowDown } from '@/components/ui/Icons'
 import { EditableOption } from '@/components/forms/OptionsEditor'
 import {
   EVENT_FILTER_UNSET, eventCategoryKey, eventCategoryOptions,
@@ -216,14 +217,11 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
             fullWidth
           />
         </div>
-        <Button type="button" variant="secondary" size="md" onClick={() => setShowFilterModal(true)}>
-          <IconFilter size={16} /> Filter
-        </Button>
-        {isFilterActive(filters) && (
-          <Button type="button" variant="ghost" size="md" onClick={() => setFilters(emptyFilterState(PICKER_FILTER_KEYS))}>
-            <IconX size={16} /> Clear
-          </Button>
-        )}
+        <FilterButton
+          active={isFilterActive(filters)}
+          onOpen={() => setShowFilterModal(true)}
+          onClear={() => setFilters(emptyFilterState(PICKER_FILTER_KEYS))}
+        />
         <Dropdown
           value={sortField}
           onChange={(v) => setSortField(v as SortField)}
