@@ -9,9 +9,10 @@ import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
 // feature landing doesn't rearrange anyone's events page.
 export const DEFAULT_EVENT_COLUMNS = ["division", "type", "category", "tracks", "shifts"];
 
-// The day-of logistics, grouped apart in the config modal: blank through
-// most of planning, so they're opt-in rather than five empty columns.
-export const LOCATION_COLUMN_KEYS = new Set(["building", "room", "floor", "volunteers_needed"]);
+// No location or staffing columns: both are per track now (#81), and a table
+// row is per event — an event on two days holds two buildings, and there is
+// no single value to print. They live on the event panel and the buildings
+// page instead.
 
 // Grid track per kind of data, not per individual column — same rule as the
 // roster's WIDTHS. Fixed px where the content has a known maximum (a badge, a
@@ -55,25 +56,6 @@ export interface EventColumn {
   /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
   align?: "start";
   render: (event: TournamentEvent) => ReactNode;
-}
-
-function Dash() {
-  return <span style={TEXT_CELL}>—</span>;
-}
-
-function textColumn(
-  key: string, label: string, width: string,
-  value: (e: TournamentEvent) => string | null,
-  align?: "start",
-): EventColumn {
-  const cell = align === "start" ? LEFT_TEXT_CELL : TEXT_CELL;
-  return {
-    key, label, width, align,
-    render: (e: TournamentEvent) => {
-      const text = value(e);
-      return text ? <span style={cell} title={text}>{text}</span> : <Dash />;
-    },
-  };
 }
 
 // Every column an event can show. Unlike the roster's there are no
@@ -140,21 +122,6 @@ function eventColumn(key: string): EventColumn | null {
         key, label: "Shifts", width: WIDTHS.count,
         render: (e) => (
           <span style={{ ...TEXT_CELL, color: "var(--color-text-tertiary)" }}>{e.shifts.length}</span>
-        ),
-      };
-    case "building":
-      return textColumn(key, "Building", WIDTHS.text, (e) => e.building, "start");
-    case "room":
-      return textColumn(key, "Room", WIDTHS.shortText, (e) => e.room);
-    case "floor":
-      return textColumn(key, "Floor", WIDTHS.shortText, (e) => e.floor);
-    case "volunteers_needed":
-      return {
-        key, label: "Volunteers", width: WIDTHS.count,
-        render: (e) => (
-          e.volunteers_needed === null
-            ? <Dash />
-            : <span style={TEXT_CELL}>{e.volunteers_needed}</span>
         ),
       };
     default:
