@@ -10,3 +10,5 @@ CLAUDE_OUTPUT_BEHAVIOR.md
 password.txt
 CLAUDE.md
 TASK.md
+# Local-only notes, never committed
+docs/temp/
