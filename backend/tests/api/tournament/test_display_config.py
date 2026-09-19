@@ -299,6 +299,38 @@ def test_put_rejects_a_tab_on_a_flat_surface(client, td_user, td_tournament):
     assert response.status_code == 422
 
 
+def test_put_event_panel_hides_tracks(client, td_user, td_tournament):
+    """The event panel hides a track's location and staffing block."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"event_panel": {"hidden": ["track:3"]}},
+    )
+    assert response.status_code == 200
+    assert response.json()["event_panel"]["hidden"] == ["track:3"]
+
+
+def test_put_event_panel_rejects_non_track_hidden_items(client, td_user, td_tournament):
+    """Only tracks — the panel's other sections are fixed."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"event_panel": {"hidden": ["lunch:3:entree"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_event_panel_rejects_columns(client, td_user, td_tournament):
+    """A panel has sections, not columns — the events table's vocabulary does
+    not fall through to it."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"event_panel": {"hidden": [], "columns": ["division"]}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_assignment_card_rejects_unknown_field(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
