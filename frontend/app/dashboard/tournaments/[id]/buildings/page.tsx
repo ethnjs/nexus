@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   buildingsApi, tournamentEventsApi, ApiError,
   type TournamentBuilding, type TournamentEvent,
@@ -11,6 +11,8 @@ import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
+import { formatTrackDates, placeOf } from "@/lib/tournamentDisplay";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
 import { withTrackDetail, trackDetail } from "@/lib/eventTrackDetails";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -19,16 +21,18 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { IconBuilding, IconPlus, IconEdit, IconTrash } from "@/components/ui/Icons";
+import { IconBuilding, IconCalendar, IconLocation, IconPlus, IconEdit, IconTrash } from "@/components/ui/Icons";
 import { BuildingColumn, parseColumnDropId } from "@/components/tournament/buildings/BuildingColumn";
 import { EventChip, parseEventDragId } from "@/components/tournament/buildings/EventChip";
 import { BuildingFormModal } from "@/components/tournament/buildings/BuildingFormModal";
-
-/** The event's display name — a catalog-linked event takes it from the joined
- *  canonical row, a custom one carries its own. */
-function eventName(event: TournamentEvent): string {
-  return event.name ?? event.event?.name ?? "Untitled event";
-}
+import { UnplacedPanel, UNPLACED_PANEL_WIDTH } from "@/components/tournament/buildings/UnplacedPanel";
+import {
+  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
+  eventCategoryKey, eventCategoryOptions, isEventsFilterActive,
+  type EventsFilterState,
+} from "@/components/tournament/events/EventsFilterModal";
+import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 
 /**
  * Placing events into buildings, one track at a time.
@@ -58,7 +62,18 @@ export default function BuildingsPage() {
   // rather than synced in an effect: tracks arrive with the tournament, which
   // the shell fetches, so a state default would have to be corrected after the
   // fact — and a picked track that is later deleted falls back on its own.
-  const [pickedTrackId, setPickedTrackId] = useState<number | null>(null);
+  // Seeded from ?track= so a reload lands on the same tab; a stale id falls
+  // back through the same check below.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [pickedTrackId, setPickedTrackId] = useState<number | null>(
+    () => Number(searchParams.get("track")) || null,
+  );
+  function pickTrack(key: string) {
+    setPickedTrackId(Number(key));
+    router.replace(`${pathname}?track=${key}`, { scroll: false });
+  }
   const activeTrackId =
     (pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId) ? pickedTrackId : tracks[0]?.id) ?? null;
 
@@ -101,6 +116,75 @@ export default function BuildingsPage() {
     }
     return groups;
   }, [onTrack, activeTrackId]);
+
+  const unplaced = useMemo(() => byBuilding.get(null) ?? [], [byBuilding]);
+
+  // ── the unplaced panel's search and filter ─────────────────────────────
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS));
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const filterActive = isEventsFilterActive(filters);
+
+  // Options come from this track's events, not the whole tournament: a
+  // division nothing here uses would be a row that can only match nothing.
+  const divisionOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    for (const d of new Set(onTrack.map((e) => e.division))) {
+      if (d !== null) options.push({ value: d, label: `Division ${d}` });
+    }
+    return onTrack.some((e) => e.division === null)
+      ? [...options, { value: EVENT_FILTER_UNSET, label: "No division" }]
+      : options;
+  }, [onTrack]);
+  const categoryOptions = useMemo(() => eventCategoryOptions(onTrack), [onTrack]);
+
+  const visibleUnplaced = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return unplaced.filter((event) => (
+      (!text || eventNameWithDivision(event).toLowerCase().includes(text))
+      && filterAllows(filters.division, event.division ?? EVENT_FILTER_UNSET)
+      && filterAllows(filters.type, event.event_type)
+      && filterAllows(filters.category, eventCategoryKey(event))
+    ));
+  }, [unplaced, query, filters]);
+
+  const { setPanel, clearPanel } = useSetLayoutPanel();
+
+  // The panel lives in the shell's slot, outside this page's tree, so it
+  // is re-registered whenever anything it draws changes.
+  useEffect(() => {
+    if (!canManageEvents || events === null || activeTrackId === null) { clearPanel(); return }
+    setPanel(
+      <UnplacedPanel
+        query={query}
+        onQueryChange={setQuery}
+        filterActive={filterActive}
+        onOpenFilter={() => setShowFilterModal(true)}
+        onClearFilters={() => setFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+        shown={visibleUnplaced.length}
+        total={unplaced.length}
+        locked={isArchived}
+      >
+        {visibleUnplaced.map((event) => (
+          <EventChip
+            key={event.id}
+            event={{ id: event.id, name: eventNameWithDivision(event), detail: trackDetail(event, activeTrackId) }}
+            locked={isArchived}
+            placed={false}
+            onFloorChange={() => {}}
+            onRoomsChange={() => {}}
+          />
+        ))}
+      </UnplacedPanel>,
+      UNPLACED_PANEL_WIDTH,
+    );
+  }, [
+    canManageEvents, events, activeTrackId, query, filterActive, visibleUnplaced, unplaced.length,
+    isArchived, setPanel, clearPanel,
+  ]);
+
+  // Unmount only — leaving the page must not leave the panel behind.
+  useEffect(() => () => clearPanel(), [clearPanel]);
 
   /**
    * One event's arrangement on the active track.
@@ -166,7 +250,7 @@ export default function BuildingsPage() {
           boxShadow: "var(--shadow-lg)",
           fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
         }}>
-          {eventName(event)}
+          {eventNameWithDivision(event)}
         </div>
       );
     },
@@ -196,20 +280,31 @@ export default function BuildingsPage() {
     );
   }
 
-  const unplaced = byBuilding.get(null) ?? [];
-
-  function renderChips(list: TournamentEvent[], placed: boolean) {
+  function renderChips(list: TournamentEvent[]) {
     return list.map((event) => (
       <EventChip
         key={event.id}
-        event={{ id: event.id, name: eventName(event), detail: trackDetail(event, activeTrackId!) }}
+        event={{ id: event.id, name: eventNameWithDivision(event), detail: trackDetail(event, activeTrackId!) }}
         locked={isArchived}
-        placed={placed}
+        placed
+        onRemove={() => patchDetail(event.id, { building_id: null, floor: null, rooms: [] })}
         onFloorChange={(floor) => patchDetail(event.id, { floor: floor.trim() || null })}
         onRoomsChange={(rooms) => patchDetail(event.id, { rooms })}
       />
     ));
   }
+
+  // Where and when the active track runs. Dates only — a track has no time of
+  // its own, its shifts do.
+  const activeTrack = tracks.find((t) => t.id === activeTrackId);
+  const trackPlace = activeTrack ? placeOf(activeTrack) : null;
+  const trackDates = activeTrack ? formatTrackDates(activeTrack) : null;
+
+  const addButton = (
+    <Button type="button" variant="primary" size="md" disabled={isArchived} onClick={() => setFormTarget("new")} style={{ flexShrink: 0 }}>
+      <IconPlus size={14} /> Add building
+    </Button>
+  );
 
   return (
     <div>
@@ -221,21 +316,36 @@ export default function BuildingsPage() {
         <TabStrip
           tabs={tracks.map((t) => ({ key: String(t.id), label: t.name }))}
           activeKey={String(activeTrackId)}
-          onChange={(key) => setPickedTrackId(Number(key))}
+          onChange={pickTrack}
         />
       )}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0, maxWidth: "62ch", lineHeight: 1.55 }}>
-          Drag an event into a building to place it. Floors and rooms are free text — one building and one
-          floor per event, but as many rooms as it spreads across.
-        </p>
-        <Button type="button" variant="primary" size="md" disabled={isArchived} onClick={() => setFormTarget("new")} style={{ flexShrink: 0 }}>
-          <IconPlus size={14} /> Add building
-        </Button>
+        {/* Same 36px as the md button beside it, so the row reads as one line. */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: "14px", height: "36px", padding: "0 12px",
+          borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)",
+          background: "var(--color-surface)", minWidth: 0,
+          fontFamily: "var(--font-sans)", fontSize: "13px",
+        }}>
+          <span style={{
+            display: "flex", alignItems: "center", gap: "6px", minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            color: trackPlace ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
+          }}>
+            <IconLocation />{trackPlace ?? "No location"}
+          </span>
+          <span style={{
+            display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
+            color: trackDates ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
+          }}>
+            <IconCalendar />{trackDates ?? "No date"}
+          </span>
+        </div>
+        {addButton}
       </div>
 
-      {columns.length === 0 && unplaced.length === 0 ? (
+      {columns.length === 0 ? (
         <EmptyState
           icon={<IconBuilding size={28} />}
           title="No buildings yet"
@@ -243,17 +353,6 @@ export default function BuildingsPage() {
         />
       ) : (
         <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", overflowX: "auto", paddingBottom: "8px" }}>
-          <BuildingColumn
-            buildingId={null}
-            title="Unplaced"
-            subtitle={`${unplaced.length} event${unplaced.length === 1 ? "" : "s"} with no building`}
-            count={unplaced.length}
-            tone="muted"
-            emptyText="Everything on this track has a building."
-          >
-            {renderChips(unplaced, false)}
-          </BuildingColumn>
-
           {columns.map((building) => {
             const list = byBuilding.get(building.id) ?? [];
             return (
@@ -269,12 +368,12 @@ export default function BuildingsPage() {
                       <IconEdit />
                     </Button>
                     <Button type="button" variant="ghost" size="xs" onClick={() => setDeleteTarget(building)} aria-label={`Delete ${building.name}`}>
-                      <IconTrash />
+                      <IconTrash style={{ color: "var(--color-danger)" }} />
                     </Button>
                   </div>
                 )}
               >
-                {renderChips(list, true)}
+                {renderChips(list)}
               </BuildingColumn>
             );
           })}
@@ -291,6 +390,17 @@ export default function BuildingsPage() {
           // Reload rather than splice: untagging a track clears the event
           // locations that pointed here, and only a refetch knows which.
           onSaved={() => load()}
+        />
+      )}
+
+      {showFilterModal && (
+        <EventsFilterModal
+          divisionOptions={divisionOptions}
+          typeOptions={EVENT_TYPE_OPTIONS}
+          categoryOptions={categoryOptions}
+          filters={filters}
+          onApply={setFilters}
+          onClose={() => setShowFilterModal(false)}
         />
       )}
 
