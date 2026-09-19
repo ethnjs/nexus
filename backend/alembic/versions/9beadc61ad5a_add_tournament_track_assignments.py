@@ -94,6 +94,17 @@ def upgrade() -> None:
         ON CONFLICT (tournament_event_id, track_id) DO NOTHING
     """)
 
+    #    The same repair for staffing with no shift: an assignment names its own
+    #    track, and nothing on the old table required the event to be linked to
+    #    it. Left alone, the composite FK rejects the row in step 1 and the whole
+    #    upgrade aborts — safe, but it blocks the deploy over data that is right.
+    op.execute("""
+        INSERT INTO tournament_event_tracks (tournament_event_id, track_id)
+        SELECT DISTINCT tournament_event_id, tournament_track_id
+        FROM tournament_event_assignments
+        ON CONFLICT (tournament_event_id, track_id) DO NOTHING
+    """)
+
     # What each member can do *before* the move, so step 6 can prove it
     # unchanged. Read from the old table while it is still the truth.
     op.execute("""
@@ -264,11 +275,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # The three tables come back empty. Moving the rows home would mean
-    # splitting each track assignment back into a membership-role plus an
-    # event or zone row, and choosing which of several tracks a single
-    # tournament-wide role came from — a guess the upgrade deliberately
-    # replaced with a rule. Downgrading is a development operation here.
+    # The three tables come back *populated*: who holds which role, every event
+    # staffing row and every zone row move home before the new table goes.
+    # Emptying them here is what made a downgrade-then-upgrade cycle silently
+    # wipe roles, since the second upgrade then had nothing to move.
+    #
+    # What cannot come home is scope. The old model held a role on the
+    # tournament, not on a day, so a role's tracks and its tournament-wide flag
+    # are simply not representable and are dropped. Upgrading again re-derives
+    # them by the upgrade's rules (staffing decides the track, permission roles
+    # go wide, otherwise the earliest primary track), so a role granted on one
+    # track with no staffing behind it can come back on a different one.
     op.create_table('tournament_membership_roles',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('membership_id', sa.Integer(), nullable=False),
@@ -315,6 +332,33 @@ def downgrade() -> None:
     sa.UniqueConstraint('zone_id', 'membership_id', 'membership_role_id', name='uq_zone_assignment'),
     )
     op.create_index(op.f('ix_tournament_zone_assignments_id'), 'tournament_zone_assignments', ['id'], unique=False)
+
+    # Roles first: the two staffing tables point at them. A member's roles are
+    # the distinct roles across all their rows, wherever the scope was.
+    op.execute("""
+        INSERT INTO tournament_membership_roles (membership_id, role_id)
+        SELECT DISTINCT membership_id, role_id FROM tournament_track_assignments
+    """)
+    op.execute("""
+        INSERT INTO tournament_event_assignments
+          (tournament_event_id, membership_id, membership_role_id, tournament_shift_id,
+           tournament_track_id, created_at, updated_at)
+        SELECT ta.tournament_event_id, ta.membership_id, mr.id, ta.tournament_shift_id,
+               ta.tournament_track_id, ta.created_at, ta.updated_at
+        FROM tournament_track_assignments ta
+        JOIN tournament_membership_roles mr
+          ON mr.membership_id = ta.membership_id AND mr.role_id = ta.role_id
+        WHERE ta.tournament_event_id IS NOT NULL
+    """)
+    op.execute("""
+        INSERT INTO tournament_zone_assignments
+          (zone_id, membership_id, membership_role_id, created_at, updated_at)
+        SELECT ta.zone_id, ta.membership_id, mr.id, ta.created_at, ta.updated_at
+        FROM tournament_track_assignments ta
+        JOIN tournament_membership_roles mr
+          ON mr.membership_id = ta.membership_id AND mr.role_id = ta.role_id
+        WHERE ta.zone_id IS NOT NULL
+    """)
 
     op.drop_index('uq_track_assignment_zone', table_name='tournament_track_assignments', postgresql_where=sa.text('zone_id IS NOT NULL'))
     op.drop_index('uq_track_assignment_wide', table_name='tournament_track_assignments', postgresql_where=sa.text('is_tournament_wide'))
