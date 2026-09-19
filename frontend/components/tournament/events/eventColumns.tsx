@@ -1,8 +1,10 @@
 "use client";
 
 import { CSSProperties, ReactNode } from "react";
-import { TournamentEvent } from "@/lib/api";
+import { TournamentEvent, TournamentTrack } from "@/lib/api";
+import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — today's fixed table, so the
@@ -25,11 +27,8 @@ const WIDTHS = {
   category: "minmax(110px, 1.1fr)",
   // Holds a chip per track, and an event on three tracks is normal.
   tracks: "minmax(140px, 1.6fr)",
-  count: "80px",
-  // Free text with no known maximum — a building name can be anything.
-  text: "minmax(90px, 0.8fr)",
-  // Room and floor are short codes ("241", "2nd").
-  shortText: "76px",
+  // One track's shift labels — usually two or three short words.
+  shifts: "minmax(120px, 1.2fr)",
   actions: "70px",
 } as const;
 
@@ -58,10 +57,75 @@ export interface EventColumn {
   render: (event: TournamentEvent) => ReactNode;
 }
 
-// Every column an event can show. Unlike the roster's there are no
-// per-entity columns here: a tournament adding a track adds a chip to the
-// Tracks cell, not a column of its own.
-function eventColumn(key: string): EventColumn | null {
+// Mirrors EVENT_SHIFTS_NAMESPACE in core/tournament/display_config.py.
+const SHIFT_COLUMN_PREFIX = "shifts:";
+
+/**
+ * Replaces the bare "shifts" key with one column per competition track, in
+ * its place. The bare key is what the defaults and any config saved before
+ * the split hold, and it means "every track" — so it is also how a track
+ * added later gets a column without anyone re-saving. Duplicates collapse,
+ * so a list naming both the alias and a track doesn't render it twice.
+ */
+export function expandShiftColumns(keys: readonly string[], trackIds: readonly number[]): string[] {
+  const out: string[] = [];
+  for (const key of keys) {
+    const expanded = key === "shifts" ? trackIds.map((id) => `${SHIFT_COLUMN_PREFIX}${id}`) : [key];
+    for (const k of expanded) if (!out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+/** One competition track's shifts, as chips with their time on hover. */
+function shiftColumn(key: string, track: TournamentTrack, onlyTrack: boolean): EventColumn {
+  // A track running several days has same-time shifts on different dates,
+  // so the hover names the day too; on a one-day track that is noise.
+  const multiDay = !!track.start_date && !!track.end_date && track.start_date !== track.end_date;
+  return {
+    key,
+    // One competition track: its name is the tournament's, so "Shifts" says
+    // more than "Main" would.
+    label: onlyTrack ? "Shifts" : track.name,
+    width: WIDTHS.shifts,
+    align: "start",
+    render: (e) => {
+      const shifts = e.shifts
+        .filter((s) => s.track_id === track.id)
+        .sort((a, b) => a.start.localeCompare(b.start));
+      return (
+        <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
+          {shifts.length > 0
+            ? shifts.map((s) => {
+                const time = `${formatTime(s.start)} – ${formatTime(s.end)}`;
+                // Tooltip, not a native title: title waits a second or so and
+                // is easy to never see — the app's hover detail everywhere
+                // else is this component, and it escapes the cell's clipping.
+                return (
+                  <Tooltip
+                    key={s.id} variant="info" showIcon={false}
+                    message={multiDay ? `${formatDayLabel(toDateInput(s.start))} · ${time}` : time}
+                  >
+                    <Badge>{s.label}</Badge>
+                  </Tooltip>
+                );
+              })
+            : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
+        </span>
+      );
+    },
+  };
+}
+
+// Every column an event can show. The fixed ones are scalars on the event;
+// the one per-entity family is shifts, a column per competition track (see
+// expandShiftColumns).
+function eventColumn(key: string, competitionTracks: TournamentTrack[]): EventColumn | null {
+  if (key.startsWith(SHIFT_COLUMN_PREFIX)) {
+    const track = competitionTracks.find((t) => `${SHIFT_COLUMN_PREFIX}${t.id}` === key);
+    // A deleted or demoted track's saved column resolves to nothing rather
+    // than an empty column with a stale heading.
+    return track ? shiftColumn(key, track, competitionTracks.length === 1) : null;
+  }
   switch (key) {
     case "division":
       return {
@@ -117,13 +181,6 @@ function eventColumn(key: string): EventColumn | null {
           </span>
         ),
       };
-    case "shifts":
-      return {
-        key, label: "Shifts", width: WIDTHS.count,
-        render: (e) => (
-          <span style={{ ...TEXT_CELL, color: "var(--color-text-tertiary)" }}>{e.shifts.length}</span>
-        ),
-      };
     default:
       return null;
   }
@@ -134,9 +191,9 @@ function eventColumn(key: string): EventColumn | null {
  * longer resolve — a key saved before a column was removed must not blank out
  * the whole table.
  */
-export function resolveEventColumns(keys: string[]): EventColumn[] {
-  return keys
-    .map(eventColumn)
+export function resolveEventColumns(keys: string[], competitionTracks: TournamentTrack[]): EventColumn[] {
+  return expandShiftColumns(keys, competitionTracks.map((t) => t.id))
+    .map((key) => eventColumn(key, competitionTracks))
     .filter((column): column is EventColumn => column !== null);
 }
 

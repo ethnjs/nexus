@@ -168,6 +168,17 @@ EVENT_COLUMN_SHIFTS = "shifts"
 # track now (#81), and a table row is per event — there is no single value to
 # print. They live on the event panel and the buildings page instead.
 
+# One column per competition track, listing that track's shift labels:
+# "shifts:3". Per track rather than one Shifts cell, because a shift belongs
+# to a track and labels are only unique within one — a single cell mixing
+# Day 1's Morning with Day 2's would need a badge on every chip.
+#
+# The bare EVENT_COLUMN_SHIFTS key stays valid and means *every* competition
+# track's column. That keeps saved configs and the defaults working without a
+# migration, and it is also the only spelling under which a track added later
+# appears on its own — an explicit list only names the tracks that existed.
+EVENT_SHIFTS_NAMESPACE = "shifts:"
+
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
     (EVENT_COLUMN_TYPE, "Type"),
@@ -391,6 +402,10 @@ def is_known_column(surface: str, key: str) -> bool:
     """
     surface = surface_base(surface)
     if surface == EVENTS_TABLE:
+        if key.startswith(EVENT_SHIFTS_NAMESPACE):
+            # Not checked against the catalog — a deleted track's column is
+            # inert, the same leniency every other saved track id gets.
+            return key[len(EVENT_SHIFTS_NAMESPACE):].isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
@@ -598,7 +613,16 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         # the event, so nothing here depends on what this tournament holds.
         # Still served from the catalog rather than hardcoded in the client,
         # so the labels have one source.
-        "event_columns": [{"key": key, "label": label} for key, label in EVENT_COLUMNS],
+        # The per-track shift columns stand in for the bare "shifts" key,
+        # in its place — the alias is for saved state, not something to offer.
+        "event_columns": [
+            item
+            for key, label in EVENT_COLUMNS
+            for item in (
+                [{"key": f"{EVENT_SHIFTS_NAMESPACE}{t.id}", "label": t.name} for t in tracks if t.is_primary]
+                if key == EVENT_COLUMN_SHIFTS else [{"key": key, "label": label}]
+            )
+        ],
         "sections": section_items,
     }
 

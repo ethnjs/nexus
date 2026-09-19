@@ -802,6 +802,36 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
     assert saved["sort"] == {"field": "day", "direction": "asc"}
 
 
+def test_put_accepts_per_track_shift_columns(client, td_user, td_tournament):
+    """A column per competition track — and the bare key, which still means
+    every one of them, so a config saved before the split keeps working."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "columns": ["division", "shifts:7", "shifts"]}},
+    )
+    assert response.status_code == 200
+
+
+def test_put_rejects_a_non_numeric_shift_column(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "columns": ["shifts:day-one"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_shift_columns_are_events_table_only(client, td_user, td_tournament):
+    """The roster has no shifts column — the namespace doesn't leak across."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"hidden": [], "columns": ["shifts:7"]}},
+    )
+    assert response.status_code == 422
+
+
 def test_events_table_and_members_table_are_saved_independently(client, td_user, td_tournament):
     """One PUT carries both tables; neither validates against the other's
     vocabulary, and both survive the round trip."""
@@ -879,12 +909,14 @@ def test_put_keeps_unresolvable_events_filter_values(client, td_user, td_tournam
 
 
 def test_catalog_serves_event_columns(client, td_user, td_tournament):
-    """Static — an events column is a scalar on the event, so it doesn't vary
-    with what the tournament holds."""
+    """The fixed columns, with one shift column per competition track in the
+    place the bare "shifts" key used to hold."""
     login(client, "td@test.com", "tdpass")
     body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
+    primary = [t for t in td_tournament.tracks if t.is_primary and not t.is_archived]
     assert [c["key"] for c in body["event_columns"]] == [
-        "division", "type", "category", "tracks", "shifts",
+        "division", "type", "category", "tracks",
+        *[f"shifts:{t.id}" for t in sorted(primary, key=lambda t: t.name)],
     ]
     # Separate universes: no events column leaks into the roster's list.
     assert "division" not in [c["key"] for c in body["columns"]]

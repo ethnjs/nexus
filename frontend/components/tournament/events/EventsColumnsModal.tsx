@@ -2,7 +2,9 @@
 
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
-import { DEFAULT_EVENT_COLUMNS } from "@/components/tournament/events/eventColumns";
+import { DEFAULT_EVENT_COLUMNS, expandShiftColumns } from "@/components/tournament/events/eventColumns";
+
+const isShiftColumn = (key: string) => key.startsWith("shifts:");
 
 interface EventsColumnsModalProps {
   tournamentId: number;
@@ -10,9 +12,8 @@ interface EventsColumnsModalProps {
   onSaved?: () => void;
 }
 
-// Two groups rather than one flat list: the first five describe what the
-// event *is*, the rest are the day-of logistics that stay blank through most
-// of planning — a TD turning those on is doing a different job.
+// Two groups: what the event *is*, then one shift column per competition
+// track — a family that grows with the schedule rather than a fixed set.
 export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsColumnsModalProps) {
   return (
     <ColumnToggleModal
@@ -22,10 +23,15 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
       defaultColumns={DEFAULT_EVENT_COLUMNS}
       selectColumns={(catalog) => catalog.event_columns}
       buildGroups={(columns) => [
-        // One group again: the Logistics group held only the location and
-        // staffing columns, which are per track now and no longer columns.
-        { title: "Event", items: columns },
+        { title: "Event", items: columns.filter((c) => !isShiftColumn(c.key)) },
+        { title: "Shifts", items: columns.filter((c) => isShiftColumn(c.key)) },
       ]}
+      // The bare "shifts" in the defaults and older saved configs means every
+      // track's column; without expanding it they would all read as off.
+      expandKeys={(keys, columns) => expandShiftColumns(
+        keys,
+        columns.filter((c) => isShiftColumn(c.key)).map((c) => Number(c.key.slice("shifts:".length))),
+      )}
       onClose={onClose}
       onSaved={onSaved}
       width={560}

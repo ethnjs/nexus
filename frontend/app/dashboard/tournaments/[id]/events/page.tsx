@@ -339,8 +339,12 @@ export default function EventsPage() {
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
     // the defaults, which is why null and [] are kept apart.
-    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS),
-    [columnKeys],
+    () => resolveEventColumns(
+      columnKeys ?? DEFAULT_EVENT_COLUMNS,
+      // Live competition days only — the only tracks a shift can sit on.
+      tracks.filter((t) => t.is_primary && !t.is_archived),
+    ),
+    [columnKeys, tracks],
   );
 
   const divisionOptions = useMemo(() => {
