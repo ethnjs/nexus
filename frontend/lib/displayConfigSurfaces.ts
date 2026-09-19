@@ -19,3 +19,7 @@ export const EVENTS_TABLE = "events_table";
 // two are filtered by their own controls — narrowing the board to staff a
 // morning shouldn't rewrite how you last read the events page.
 export const ASSIGNMENTS_EVENTS = "assignments_events";
+// The event panel. Stores only which tracks' location and staffing blocks it
+// hides — a separate surface from EVENTS_TABLE, so trimming the panel down to
+// the day being placed doesn't touch how the table reads.
+export const EVENT_PANEL = "event_panel";
