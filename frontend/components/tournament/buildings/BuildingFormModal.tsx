@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { CheckboxList } from "@/components/ui/CheckboxList";
+import { isSimpleMode } from "@/lib/useTournament";
 
 /**
  * Create or rename a building, and pick the tracks it's available on.
@@ -35,20 +36,36 @@ export function BuildingFormModal({
     building?.track_ids ?? (defaultTrackId !== null ? [defaultTrackId] : []),
   );
   const [saving, setSaving] = useState(false);
+  // Field errors sit on the field; `error` is only for what no field owns.
+  const [nameError, setNameError] = useState<string | undefined>(undefined);
+  const [trackError, setTrackError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  // One track means "available on" has only one answer, so the question is
+  // skipped and the building simply goes on that track.
+  const simple = isSimpleMode(tracks);
+  const selectedTrackIds = simple ? [tracks[0].id] : trackIds;
+
   async function handleSave() {
-    if (!name.trim()) { setError("Name is required."); return; }
+    // Both checked before returning, so one click shows every problem.
+    const missingName = !name.trim();
+    // A building on no track can hold nothing, so it isn't worth creating.
+    const missingTrack = selectedTrackIds.length === 0;
+    setNameError(missingName ? "Name is required." : undefined);
+    setTrackError(missingTrack ? "Pick at least one track." : undefined);
+    if (missingName || missingTrack) return;
     setSaving(true);
     setError(undefined);
     try {
       const saved = building
-        ? await buildingsApi.update(tournamentId, building.id, { name: name.trim(), track_ids: trackIds })
-        : await buildingsApi.create(tournamentId, { name: name.trim(), track_ids: trackIds });
+        ? await buildingsApi.update(tournamentId, building.id, { name: name.trim(), track_ids: selectedTrackIds })
+        : await buildingsApi.create(tournamentId, { name: name.trim(), track_ids: selectedTrackIds });
       onSaved(saved);
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      // 409 is the unique-name rule, which is the name field's to show.
+      if (err instanceof ApiError && err.status === 409) setNameError(err.message);
+      else setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {
       setSaving(false);
     }
@@ -58,7 +75,7 @@ export function BuildingFormModal({
   // the composite FK makes that pairing impossible to keep, so the backend
   // clears it rather than refusing the write.
   const untagging = building
-    ? building.track_ids.filter((id) => !trackIds.includes(id))
+    ? building.track_ids.filter((id) => !selectedTrackIds.includes(id))
     : [];
 
   return (
@@ -67,32 +84,41 @@ export function BuildingFormModal({
         <Input
           label="Name" required fullWidth autoFocus
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => { setName(e.target.value); setNameError(undefined); }}
           placeholder="e.g. Rowland Hall"
+          error={nameError}
         />
 
-        <div>
-          <div style={{
-            fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-            textTransform: "uppercase", letterSpacing: "0.07em",
-            color: "var(--color-text-tertiary)", marginBottom: "8px",
-          }}>
-            Available on
+        {!simple && (
+          <div>
+            <div style={{
+              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+              textTransform: "uppercase", letterSpacing: "0.07em",
+              color: "var(--color-text-tertiary)", marginBottom: "8px",
+            }}>
+              Available on
+            </div>
+            <CheckboxList
+              options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
+              value={trackIds.map(String)}
+              onChange={(v) => {
+                const id = Number(v);
+                setTrackError(undefined);
+                setTrackIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+              }}
+            />
+            {tracks.length === 0 && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0 }}>
+                No tracks yet.
+              </p>
+            )}
+            {trackError && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", margin: "8px 0 0" }}>
+                {trackError}
+              </p>
+            )}
           </div>
-          <CheckboxList
-            options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
-            value={trackIds.map(String)}
-            onChange={(v) => {
-              const id = Number(v);
-              setTrackIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-            }}
-          />
-          {tracks.length === 0 && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0 }}>
-              No tracks yet.
-            </p>
-          )}
-        </div>
+        )}
 
         {untagging.length > 0 && (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-warning)", margin: 0 }}>
