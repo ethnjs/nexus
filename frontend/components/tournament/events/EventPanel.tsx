@@ -152,6 +152,17 @@ export function EventPanel({
   // the draft is untouched — a ref, since the response lands after render.
   const dirtyRef = useRef(isDirty);
   useEffect(() => { dirtyRef.current = isDirty; });
+  // The page's copy changing under an open panel (an edit made elsewhere on
+  // the page) flows in here too. `current` always follows; the draft only
+  // while untouched, so a half-typed edit is never overwritten.
+  const seenEventRef = useRef(event);
+  useEffect(() => {
+    if (seenEventRef.current === event) return;
+    seenEventRef.current = event;
+    if (!event) return;
+    setCurrent(event);
+    if (!dirtyRef.current) setDraft(draftFromEvent(event));
+  }, [event]);
   const eventId = event?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
