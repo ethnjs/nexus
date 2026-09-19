@@ -2,9 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, ApiError,
+  tournamentEventsApi, buildingsApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
+  EventTrackDetail, TournamentBuilding, Role,
 } from "@/lib/api";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import { EventTrackDetails, type DraftTrackDetail } from "@/components/tournament/events/EventTrackDetails";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -13,7 +16,6 @@ import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
@@ -36,14 +38,15 @@ interface EventDraft {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
-  building: string;
-  room: string;
-  floor: string;
-  volunteers_needed: string;
-  // The tracks this event runs on. Not derived from its shifts: a cosmetic
-  // track (Test Writing) has none by construction, so an event that belongs
-  // to one can only say so outright.
-  trackIds: number[];
+  // The tracks this event runs on, each with where it happens there and how
+  // many of each role it wants. Not derived from its shifts: a cosmetic track
+  // (Test Writing) has none by construction, so an event that belongs to one
+  // can only say so outright.
+  //
+  // This one field replaced the old trackIds *and* the flat building/room/
+  // floor/volunteers_needed, because on the wire it is one whole-set value —
+  // see lib/eventTrackDetails.
+  trackDetails: DraftTrackDetail[];
 }
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
@@ -53,11 +56,13 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     name: event?.name ?? null,
     division: event?.division ?? null,
     event_type: event?.event_type ?? "standard",
-    building: event?.building ?? "",
-    room: event?.room ?? "",
-    floor: event?.floor ?? "",
-    volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
-    trackIds: event?.tracks.map((t) => t.id) ?? [],
+    // Sorted on both levels so the isDirty JSON compare comes out stable —
+    // the server has no guaranteed order for either list, and an unsorted
+    // round trip would leave an untouched panel reading as dirty.
+    trackDetails: (event?.track_details ?? [])
+      .map(toTrackDetailInput)
+      .sort((a, b) => a.track_id - b.track_id)
+      .map((d) => ({ ...d, needs: [...(d.needs ?? [])].sort((x, y) => x.role_id - y.role_id) })),
   };
 }
 
@@ -74,8 +79,12 @@ interface EventPanelProps {
   canonicalEvents: CanonicalEvent[];
   allShifts: TournamentShift[] | null;
   tracks: TournamentTrack[];
+  buildings: TournamentBuilding[];
+  roles: Role[];
   /** A shift created from this panel, for the page's catalog. */
   onShiftCreated: (shift: TournamentShift) => void;
+  /** A building created or tagged from this panel, likewise. */
+  onBuildingSaved: (building: TournamentBuilding) => void;
   /** Lets the owning table block selection changes while this panel is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while creating a new event, or editing several at once). */
@@ -87,7 +96,7 @@ interface EventPanelProps {
 
 export function EventPanel({
   tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange, onPrev, onNext, hasPrev, hasNext,
-  canonicalEvents, allShifts, tracks, onShiftCreated,
+  canonicalEvents, allShifts, tracks, buildings, roles, onShiftCreated, onBuildingSaved,
 }: EventPanelProps) {
   const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
@@ -150,25 +159,55 @@ export function EventPanel({
     patch({ eventText: text, event_id: matched ? matched.id : null, name: matched ? null : text });
   }
 
-  function buildPayload(): TournamentEventInput {
+  function buildPayload(trackDetails: EventTrackDetail[]): TournamentEventInput {
     return {
       name: draft.event_id ? null : (draft.name?.trim() || null),
       division: draft.division,
       event_type: draft.event_type,
       event_id: draft.event_id,
-      building: draft.building.trim() || null,
-      room: draft.room.trim() || null,
-      floor: draft.floor.trim() || null,
-      volunteers_needed: draft.volunteers_needed.trim() ? Number(draft.volunteers_needed) : null,
-      track_ids: draft.trackIds,
+      track_details: trackDetails,
     };
+  }
+
+  /**
+   * Turns every typed-but-uncreated building name into a real building, and
+   * returns track details that point at them by id.
+   *
+   * An existing name is tagged onto the track rather than created again —
+   * names are unique per tournament, so a second "Rowland Hall" would 409,
+   * and the TD plainly means the same building. The same new name on two
+   * tracks is created once and tagged for the second, via `byName`.
+   */
+  async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
+    const byName = new Map(buildings.map((b) => [b.name.toLowerCase(), b]));
+    const resolved: EventTrackDetail[] = [];
+    for (const { new_building_name, ...detail } of details) {
+      const name = new_building_name?.trim();
+      if (!name) { resolved.push(detail); continue; }
+      let building = byName.get(name.toLowerCase());
+      if (!building) {
+        building = await buildingsApi.create(tournamentId, { name, track_ids: [detail.track_id] });
+      } else if (!building.track_ids.includes(detail.track_id)) {
+        building = await buildingsApi.update(tournamentId, building.id, {
+          track_ids: [...building.track_ids, detail.track_id],
+        });
+      }
+      byName.set(building.name.toLowerCase(), building);
+      onBuildingSaved(building);
+      resolved.push({ ...detail, building_id: building.id });
+    }
+    return resolved;
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const payload = buildPayload();
+      const trackDetails = await resolveNewBuildings(draft.trackDetails);
+      // Point the draft at the new rows before the event save, so if that
+      // save fails a retry reuses them instead of creating them again.
+      setDraft((d) => ({ ...d, trackDetails }));
+      const payload = buildPayload(trackDetails);
       const saved = isNew
         ? await tournamentEventsApi.create(tournamentId, { ...payload, tournament_id: tournamentId })
         : await tournamentEventsApi.update(tournamentId, current!.id, payload);
@@ -255,10 +294,26 @@ export function EventPanel({
   // The backend refuses a *new* link to a pending-delete track but allows an
   // existing one to round-trip, so the picker offers exactly that: live
   // tracks, plus any the event already holds.
-  const selectableTracks = useMemo(
-    () => tracks.filter((t) => !t.is_archived || draft.trackIds.includes(t.id)),
-    [tracks, draft.trackIds],
+  const trackIds = useMemo(
+    () => draft.trackDetails.map((d) => d.track_id),
+    [draft.trackDetails],
   );
+  const selectableTracks = useMemo(
+    () => tracks.filter((t) => !t.is_archived || trackIds.includes(t.id)),
+    [tracks, trackIds],
+  );
+
+  /** Adding a track starts it unplaced; removing one takes its location and
+   *  its staffing needs with it, which is the point — they described an
+   *  arrangement on a day this event no longer runs. */
+  function toggleTrack(trackId: number) {
+    patch({
+      trackDetails: trackIds.includes(trackId)
+        ? draft.trackDetails.filter((d) => d.track_id !== trackId)
+        : [...draft.trackDetails, { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] }]
+            .sort((a, b) => a.track_id - b.track_id),
+    });
+  }
 
   // The competition days a new shift could land on: this event's own tracks.
   // The form picks between them, so several is fine — but a cosmetic track
@@ -346,11 +401,13 @@ export function EventPanel({
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no
               shifts to infer it from. */}
-          <SettingsRow label="Tracks">
+          <SettingsRow label="Tracks" last>
             <ChipInput
-              value={draft.trackIds.map((id) => trackNames.get(id) ?? String(id))}
+              value={trackIds.map((id) => trackNames.get(id) ?? String(id))}
               onChange={(names) => patch({
-                trackIds: draft.trackIds.filter((id) => names.includes(trackNames.get(id) ?? String(id))),
+                trackDetails: draft.trackDetails.filter(
+                  (d) => names.includes(trackNames.get(d.track_id) ?? String(d.track_id)),
+                ),
               })}
               variant="transparent"
               size="sm"
@@ -373,12 +430,8 @@ export function EventPanel({
                   getKey={(t) => t.id}
                   renderLabel={(t) => t.name}
                   checklist
-                  isSelected={(t) => draft.trackIds.includes(t.id)}
-                  onSelect={(t) => patch({
-                    trackIds: draft.trackIds.includes(t.id)
-                      ? draft.trackIds.filter((x) => x !== t.id)
-                      : [...draft.trackIds, t.id],
-                  })}
+                  isSelected={(t) => trackIds.includes(t.id)}
+                  onSelect={(t) => toggleTrack(t.id)}
                   emptyMessage="No tracks yet."
                   width={280}
                 />
@@ -386,21 +439,18 @@ export function EventPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Building">
-            <Input fullWidth font="sans" locked={locked} value={draft.building} onChange={(e) => patch({ building: e.target.value })} />
-          </SettingsRow>
+        </SettingsSection>
 
-          <SettingsRow label="Room">
-            <Input fullWidth font="sans" locked={locked} value={draft.room} onChange={(e) => patch({ room: e.target.value })} />
-          </SettingsRow>
-
-          <SettingsRow label="Floor">
-            <Input fullWidth font="sans" locked={locked} value={draft.floor} onChange={(e) => patch({ floor: e.target.value })} />
-          </SettingsRow>
-
-          <SettingsRow label="Volunteers needed" last>
-            <Input fullWidth charset="numeric" locked={locked} value={draft.volunteers_needed} onChange={(e) => patch({ volunteers_needed: e.target.value })} />
-          </SettingsRow>
+        <SettingsSection title="Location & staffing">
+          <EventTrackDetails
+            details={draft.trackDetails}
+            tracks={tracks}
+            buildings={buildings}
+            roles={roles}
+            locked={locked}
+            simple={simple}
+            onChange={(trackDetails) => patch({ trackDetails })}
+          />
         </SettingsSection>
 
         {/* Attaching a shift needs a real event id, so this only shows up

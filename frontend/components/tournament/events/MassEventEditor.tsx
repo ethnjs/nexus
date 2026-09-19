@@ -6,6 +6,7 @@ import {
   TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift, TournamentTrack,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
@@ -199,9 +200,20 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
         const kept = current.shifts.map((s) => s.id).filter((id) => !shiftsToRemove.has(id));
         patch.shift_ids = [...new Set([...kept, ...shiftsToAdd])];
       }
+      // track_details replaced track_ids, and it is whole-set: every entry
+      // the event keeps has to be resent in full, needs included, or the
+      // PATCH clears them. A newly added track starts unplaced.
       if (tracksToAdd.size > 0 || tracksToRemove.size > 0) {
-        const kept = current.tracks.map((t) => t.id).filter((id) => !tracksToRemove.has(id));
-        patch.track_ids = [...new Set([...kept, ...tracksToAdd])];
+        const kept = current.track_details
+          .filter((d) => !tracksToRemove.has(d.track_id))
+          .map(toTrackDetailInput);
+        const keptIds = new Set(kept.map((d) => d.track_id));
+        patch.track_details = [
+          ...kept,
+          ...[...tracksToAdd]
+            .filter((id) => !keptIds.has(id))
+            .map((id) => ({ track_id: id, building_id: null, floor: null, rooms: [], needs: [] })),
+        ];
       }
 
       if (Object.keys(patch).length > 0) {

@@ -222,7 +222,10 @@ export function ChipInput({
             disabled={disabled}
             placeholder={value.length === 0 ? placeholder : undefined}
             style={{
-              flex: 1, minWidth: "120px", border: "none", outline: "none",
+              // 120px only while empty, to fit the placeholder. With chips in
+              // front of it, 120px was wider than the room left on the line,
+              // so the field wrapped to a line of its own beside empty space.
+              flex: 1, minWidth: value.length === 0 ? "120px" : "40px", border: "none", outline: "none",
               background: "transparent", fontFamily: "var(--font-sans)", fontSize: sizing.fontSize,
               color: "var(--color-text-primary)",
             }}

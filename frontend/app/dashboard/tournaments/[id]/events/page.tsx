@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
+  buildingsApi, rolesApi, TournamentBuilding, Role,
   displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
   TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
@@ -15,6 +16,7 @@ import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
 import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -123,9 +125,22 @@ export default function EventsPage() {
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // The panel's location and staffing editors pick from these: a building is
+  // a catalog row now, and every staffing line names a role.
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   // Bumped when the tab regains focus, so collaborators' changes show up.
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+  // Replace-or-append: tagging an existing building onto a track comes back
+  // as that same row with a longer track_ids.
+  const handleBuildingSaved = useCallback((building: TournamentBuilding) => {
+    setBuildings((cur) => (
+      cur.some((b) => b.id === building.id)
+        ? cur.map((b) => (b.id === building.id ? building : b))
+        : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
+    ));
+  }, []);
   const handleShiftCreated = useCallback(
     (shift: TournamentShift) => setAllShifts((prev) => [...(prev ?? []), shift]),
     [],
@@ -198,11 +213,10 @@ export default function EventsPage() {
       name: e.event_id ? null : `${e.name ?? "Event"} (copy)`,
       division: e.division,
       event_type: e.event_type,
-      building: e.building,
-      room: e.room,
-      floor: e.floor,
-      volunteers_needed: e.volunteers_needed,
-      track_ids: e.tracks.map((t) => t.id),
+      // Carries the copy's location and staffing needs across with it —
+      // track_details is whole-set, so this is also what keeps the copy on
+      // the same tracks.
+      track_details: e.track_details.map(toTrackDetailInput),
       shift_ids: e.shifts.map((s) => s.id),
     })));
     const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
@@ -249,6 +263,12 @@ export default function EventsPage() {
     tournamentTracksApi.list(tournamentId, { public: true })
       .then((next) => { if (current) setTracks(next); })
       .catch(() => { if (current) setTracks([]); });
+    buildingsApi.list(tournamentId)
+      .then((next) => { if (current) setBuildings(next); })
+      .catch(() => { if (current) setBuildings([]); });
+    rolesApi.list(tournamentId)
+      .then((next) => { if (current) setRoles(next); })
+      .catch(() => { if (current) setRoles([]); });
     return () => { current = false; };
   }, [tournamentId, canManageEvents, refreshKey]);
 
@@ -379,7 +399,10 @@ export default function EventsPage() {
     // when the render below is the no-access card, and that page has no
     // panel to dock.
     if (!canManageEvents) return;
-    const catalog = { canonicalEvents, allShifts, tracks, onShiftCreated: handleShiftCreated };
+    const catalog = {
+      canonicalEvents, allShifts, tracks, buildings, roles,
+      onShiftCreated: handleShiftCreated, onBuildingSaved: handleBuildingSaved,
+    };
     if (creatingNew) {
       setPanel(
         <EventPanel
@@ -470,7 +493,7 @@ export default function EventsPage() {
   }, [
     canManageEvents,
     creatingNew, createKey, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
-    canonicalEvents, allShifts, tracks, handleShiftCreated,
+    canonicalEvents, allShifts, tracks, buildings, roles, handleShiftCreated, handleBuildingSaved,
     prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);

@@ -983,7 +983,14 @@ function EventRow({
     [rowAssignments, hasShifts],
   )
 
-  const location = [event.building, event.room].filter(Boolean).join(' ')
+  // One line per track the event is placed on. Location is per track now, so
+  // an event running both days genuinely has two answers — joining them is
+  // honest where picking one would not be. Step 14's track tabs will narrow
+  // this to the tab's own track.
+  const location = event.track_details
+    .filter((d) => d.building_name)
+    .map((d) => [d.building_name, d.floor, d.rooms.join(', ')].filter(Boolean).join(' '))
+    .join(' · ')
   // The event's window: earliest shift start to latest shift end. Derived,
   // not stored — an event has no times of its own, only the union of the
   // shifts attached to it (see TournamentEvent in models.py).
