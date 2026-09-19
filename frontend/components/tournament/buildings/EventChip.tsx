@@ -34,8 +34,13 @@ export interface EventChipData {
  * never receives focus because dnd-kit has already claimed the event.
  */
 export function EventChip({
-  event, locked, placed, onFloorChange, onRoomsChange, onRemove,
+  event, locked, placed, onFloorChange, onRoomsChange, onRemove, onOpen, selected,
 }: {
+  /** Click on the header opens the event's edit panel. A drag never fires it:
+   *  the sensor's 4px threshold separates the two. */
+  onOpen?: () => void;
+  /** This chip's event is the one open in the panel. */
+  selected?: boolean;
   /** Placed chips only: clears the building and sends the event back to the
    *  unplaced panel — the click twin of dragging it there. */
   onRemove?: () => void;
@@ -56,9 +61,10 @@ export function EventChip({
     <div
       ref={setNodeRef}
       style={{
-        border: "1px solid var(--color-border)",
+        border: `1px solid ${selected ? "var(--color-border-strong)" : "var(--color-border)"}`,
         borderRadius: "var(--radius-md)",
         background: "var(--color-surface)",
+        boxShadow: selected ? "0 0 0 3px var(--color-accent-subtle)" : "none",
         // Left in place at low opacity rather than removed: the columns would
         // otherwise reflow mid-drag and the drop target move out from under
         // the cursor.
@@ -68,9 +74,10 @@ export function EventChip({
       <div
         {...attributes}
         {...listeners}
+        onClick={onOpen}
         style={{
           display: "flex", alignItems: "center", gap: "6px", padding: "8px 10px",
-          cursor: locked ? "default" : "grab",
+          cursor: locked ? "pointer" : "grab",
           fontFamily: "var(--font-sans)", fontSize: "13px",
           color: "var(--color-text-primary)",
         }}
@@ -84,8 +91,13 @@ export function EventChip({
           {event.name}
         </span>
         {placed && onRemove && !locked && (
-          // stopPropagation so pressing it doesn't start a drag of the chip.
-          <span onPointerDown={(e) => e.stopPropagation()} style={{ marginLeft: "auto", display: "flex" }}>
+          // Both stops: pointerdown so it doesn't start a drag, click so it
+          // doesn't also open the panel.
+          <span
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            style={{ marginLeft: "auto", display: "flex" }}
+          >
             <Button
               type="button" variant="ghost" size="xs" iconOnly
               onClick={onRemove}

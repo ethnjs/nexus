@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  buildingsApi, tournamentEventsApi, ApiError,
-  type TournamentBuilding, type TournamentEvent,
+  buildingsApi, tournamentEventsApi, tournamentShiftsApi, canonicalEventsApi, rolesApi, ApiError,
+  type TournamentBuilding, type TournamentEvent, type TournamentShift, type CanonicalEvent, type Role,
 } from "@/lib/api";
+import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
@@ -150,11 +151,65 @@ export default function BuildingsPage() {
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
+  // ── the event edit panel, docked beside the unplaced one ───────────────
+  const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
+  const [panelDirty, setPanelDirty] = useState(false);
+  // Catalogs the panel picks from. Fetched on first open, not on load — most
+  // visits to this page never open it.
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
+  const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const catalogRequested = useRef(false);
+
+  const openEvent = useCallback((id: number) => {
+    if (id === focusedEventId) return;
+    // Frozen while dirty, like the events page: switching would drop a draft.
+    if (panelDirty) { show("Save or discard your changes first", "error"); return }
+    setFocusedEventId(id);
+    // The board's list omits most groups (shifts among them), which the panel
+    // reads unguarded — so it opens on the full row, and only once that's here.
+    tournamentEventsApi.get(tournamentId, id)
+      .then((full) => setEvents((cur) => (cur ?? []).map((e) => (e.id === full.id ? full : e))))
+      .catch(() => {});
+    if (catalogRequested.current) return;
+    catalogRequested.current = true;
+    tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
+    rolesApi.list(tournamentId).then(setRoles).catch(() => {});
+    canonicalEventsApi.list().then(setCanonicalEvents).catch(() => {});
+  }, [focusedEventId, panelDirty, tournamentId, show]);
+
+  const closeEventPanel = useCallback(() => {
+    setFocusedEventId(null);
+    setPanelDirty(false);
+  }, []);
+
+  // Replace-or-append: tagging an existing building onto a track comes back
+  // as that same row with a longer track_ids. Also what makes a building
+  // created in the panel appear as a column here.
+  const handleBuildingSaved = useCallback((building: TournamentBuilding) => {
+    setBuildings((cur) => {
+      const list = cur ?? [];
+      return list.some((b) => b.id === building.id)
+        ? list.map((b) => (b.id === building.id ? building : b))
+        : [...list, building].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, []);
+  const handleShiftCreated = useCallback(
+    (shift: TournamentShift) => setAllShifts((prev) => [...(prev ?? []), shift]),
+    [],
+  );
+
   // The panel lives in the shell's slot, outside this page's tree, so it
   // is re-registered whenever anything it draws changes.
   useEffect(() => {
     if (!canManageEvents || events === null || activeTrackId === null) { clearPanel(); return }
+    const focused = focusedEventId === null ? null : events.find((e) => e.id === focusedEventId) ?? null;
+    // Deleted elsewhere while open.
+    if (focusedEventId !== null && !focused) { closeEventPanel(); return }
+    const panelReady = focused !== null && Array.isArray(focused.shifts);
+
     setPanel(
+      <div style={{ display: "flex", height: "100%" }}>
       <UnplacedPanel
         query={query}
         onQueryChange={setQuery}
@@ -171,16 +226,40 @@ export default function BuildingsPage() {
             event={{ id: event.id, name: eventNameWithDivision(event), detail: trackDetail(event, activeTrackId) }}
             locked={isArchived}
             placed={false}
+            selected={event.id === focusedEventId}
+            onOpen={() => openEvent(event.id)}
             onFloorChange={() => {}}
             onRoomsChange={() => {}}
           />
         ))}
-      </UnplacedPanel>,
-      UNPLACED_PANEL_WIDTH,
+      </UnplacedPanel>
+
+      {panelReady && (
+        <EventPanel
+          key={focused.id}
+          tournamentId={tournamentId}
+          event={focused}
+          locked={isArchived}
+          canonicalEvents={canonicalEvents}
+          allShifts={allShifts}
+          tracks={tracks}
+          buildings={buildings ?? []}
+          roles={roles}
+          onShiftCreated={handleShiftCreated}
+          onBuildingSaved={handleBuildingSaved}
+          onDirtyChange={setPanelDirty}
+          onClose={closeEventPanel}
+          onSaved={(saved) => setEvents((cur) => (cur ?? []).map((e) => (e.id === saved.id ? saved : e)))}
+          onDeleted={(id) => setEvents((cur) => (cur ?? []).filter((e) => e.id !== id))}
+        />
+      )}
+      </div>,
+      UNPLACED_PANEL_WIDTH + (panelReady ? EVENT_PANEL_WIDTH : 0),
     );
   }, [
     canManageEvents, events, activeTrackId, query, filterActive, visibleUnplaced, unplaced.length,
-    isArchived, setPanel, clearPanel,
+    isArchived, focusedEventId, openEvent, closeEventPanel, canonicalEvents, allShifts, tracks,
+    buildings, roles, handleShiftCreated, handleBuildingSaved, setPanel, clearPanel,
   ]);
 
   // Unmount only — leaving the page must not leave the panel behind.
@@ -287,6 +366,8 @@ export default function BuildingsPage() {
         event={{ id: event.id, name: eventNameWithDivision(event), detail: trackDetail(event, activeTrackId!) }}
         locked={isArchived}
         placed
+        selected={event.id === focusedEventId}
+        onOpen={() => openEvent(event.id)}
         onRemove={() => patchDetail(event.id, { building_id: null, floor: null, rooms: [] })}
         onFloorChange={(floor) => patchDetail(event.id, { floor: floor.trim() || null })}
         onRoomsChange={(rooms) => patchDetail(event.id, { rooms })}
