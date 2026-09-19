@@ -3,10 +3,20 @@
 import { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 
+/** Something about a row worth saying besides saved/failed. `danger` for a
+ *  change that could not apply to this row (a role it did not have to
+ *  remove); `muted` for one deliberately not applied (a track it is not on). */
+export interface MassNote {
+  text: string;
+  tone: "danger" | "muted";
+}
+
 export interface MassResult {
   key: string | number;
   label: ReactNode;
   error?: string;
+  /** Shown after "saved" — a row can save and still have parts that didn't. */
+  notes?: MassNote[];
 }
 
 /** Per-row outcome of a mass edit — shared by the events and shifts editors. */
@@ -31,6 +41,14 @@ export function MassResultsCard({ results }: { results: MassResult[] }) {
             ) : (
               <span style={{ color: "var(--color-success)" }}>— saved</span>
             )}
+            {!r.error && (r.notes ?? []).map((note, i) => (
+              <span
+                key={i}
+                style={{ color: note.tone === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)" }}
+              >
+                {" · "}{note.text}
+              </span>
+            ))}
           </p>
         ))}
       </div>

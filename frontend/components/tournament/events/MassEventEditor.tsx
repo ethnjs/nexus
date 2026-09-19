@@ -2,8 +2,8 @@
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, ApiError,
-  TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift, TournamentTrack,
+  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, rolesApi, ApiError,
+  TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift, TournamentTrack, Role,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
@@ -16,8 +16,12 @@ import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow"
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
+import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { MassResultsCard } from "@/components/ui/MassResultsCard";
+import { MassResultsCard, type MassNote } from "@/components/ui/MassResultsCard";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { Input } from "@/components/ui/Input";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
@@ -39,7 +43,19 @@ interface MassEventDraft {
 interface EventResult {
   event: TournamentEvent;
   error?: string;
+  notes?: MassNote[];
 }
+
+/** A pending staffing change on one track. Keyed by `${trackId}:${roleId}`,
+ *  so setting the same role on the same track twice keeps only the last. */
+interface NeedChange {
+  trackId: number;
+  roleId: number;
+  /** Only on a set. */
+  count?: number;
+}
+
+const needKey = (trackId: number, roleId: number) => `${trackId}:${roleId}`;
 
 // A pending add/remove, shown git-diff style before Save is pressed —
 // undoing just drops it back out of the pending set, nothing hits the
@@ -111,6 +127,8 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   const [shiftsToRemove, setShiftsToRemove] = useState<Set<number>>(new Set());
   const [tracksToAdd, setTracksToAdd] = useState<Set<number>>(new Set());
   const [tracksToRemove, setTracksToRemove] = useState<Set<number>>(new Set());
+  const [needsToSet, setNeedsToSet] = useState<Map<string, NeedChange>>(new Map());
+  const [needsToRemove, setNeedsToRemove] = useState<Map<string, NeedChange>>(new Map());
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<EventResult[] | null>(null);
 
@@ -118,11 +136,15 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   // Every live track, cosmetic ones included — an event belonging to Test
   // Writing is exactly what the event/track bridge exists for.
   const [allTracks, setAllTracks] = useState<TournamentTrack[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
 
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
     tournamentTracksApi.list(tournamentId, { public: true }).then(setAllTracks).catch(() => setAllTracks([]));
+    rolesApi.list(tournamentId).then(setRoles).catch(() => setRoles([]));
   }, [tournamentId]);
+
+  const roleNames = useMemo(() => new Map(roles.map((r) => [r.id, r.label])), [roles]);
 
   // Every shift currently attached to at least one selected event — the
   // only ones "Remove shift" makes sense for.
@@ -149,7 +171,18 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
 
   const isDirty = draft.division !== undefined || draft.event_type !== undefined
     || shiftsToAdd.size > 0 || shiftsToRemove.size > 0
-    || tracksToAdd.size > 0 || tracksToRemove.size > 0;
+    || tracksToAdd.size > 0 || tracksToRemove.size > 0
+    || needsToSet.size > 0 || needsToRemove.size > 0;
+
+  // A diff row names its track only when there is more than one to confuse
+  // it with — same rule as the event panel's shift badges.
+  const showTrackInDiff = addableTracks.length > 1;
+  function needLabel(change: NeedChange): string {
+    const role = roleNames.get(change.roleId) ?? "Role";
+    const count = change.count !== undefined ? ` × ${change.count}` : "";
+    const track = showTrackInDiff ? ` (${trackNames.get(change.trackId) ?? "track"})` : "";
+    return `${role}${count}${track}`;
+  }
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
@@ -173,6 +206,20 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     setTracksToAdd((prev) => (prev.has(track.id) ? new Set([...prev].filter((id) => id !== track.id)) : prev));
   }
 
+  // Staging the same role on the same track again replaces the earlier
+  // change, and a set and a remove for it cancel each other out.
+  function setNeed(change: NeedChange) {
+    const key = needKey(change.trackId, change.roleId);
+    setNeedsToSet((prev) => new Map(prev).set(key, change));
+    setNeedsToRemove((prev) => { const next = new Map(prev); next.delete(key); return next; });
+  }
+
+  function removeNeed(change: NeedChange) {
+    const key = needKey(change.trackId, change.roleId);
+    setNeedsToRemove((prev) => new Map(prev).set(key, { trackId: change.trackId, roleId: change.roleId }));
+    setNeedsToSet((prev) => { const next = new Map(prev); next.delete(key); return next; });
+  }
+
   // Discards the pending changes only — the panel stays open.
   function handleCancel() {
     setDraft({});
@@ -180,6 +227,8 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     setShiftsToRemove(new Set());
     setTracksToAdd(new Set());
     setTracksToRemove(new Set());
+    setNeedsToSet(new Map());
+    setNeedsToRemove(new Map());
   }
 
   async function handleSave() {
@@ -202,33 +251,71 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
       }
       // track_details replaced track_ids, and it is whole-set: every entry
       // the event keeps has to be resent in full, needs included, or the
-      // PATCH clears them. A newly added track starts unplaced.
+      // PATCH clears them. Tracks and staffing both edit this one list, so
+      // it is built once — track changes first, so staffing a track added in
+      // this same save counts that track as one the event is on.
+      let details = current.track_details.map(toTrackDetailInput);
+      let detailsChanged = false;
       if (tracksToAdd.size > 0 || tracksToRemove.size > 0) {
-        const kept = current.track_details
-          .filter((d) => !tracksToRemove.has(d.track_id))
-          .map(toTrackDetailInput);
-        const keptIds = new Set(kept.map((d) => d.track_id));
-        patch.track_details = [
-          ...kept,
+        details = details.filter((d) => !tracksToRemove.has(d.track_id));
+        const keptIds = new Set(details.map((d) => d.track_id));
+        details = [
+          ...details,
           ...[...tracksToAdd]
             .filter((id) => !keptIds.has(id))
             .map((id) => ({ track_id: id, building_id: null, floor: null, rooms: [], needs: [] })),
         ];
+        detailsChanged = true;
       }
+
+      const notes: MassNote[] = [];
+      const staffTracks = new Set(
+        [...needsToSet.values(), ...needsToRemove.values()].map((c) => c.trackId),
+      );
+      for (const trackId of staffTracks) {
+        const trackName = trackNames.get(trackId) ?? "that track";
+        const detail = details.find((d) => d.track_id === trackId);
+        // Skipped, not joined to the track: staffing a day an event doesn't
+        // run is almost always a mis-selection, and adding the track is one
+        // click in the Tracks section above.
+        if (!detail) {
+          notes.push({ text: `staffing skipped — not on ${trackName}`, tone: "muted" });
+          continue;
+        }
+        let needs = [...(detail.needs ?? [])];
+        for (const change of needsToSet.values()) {
+          if (change.trackId !== trackId || change.count === undefined) continue;
+          // Upsert: the new count wins whatever the event had before.
+          const at = needs.findIndex((n) => n.role_id === change.roleId);
+          if (at >= 0) needs[at] = { ...needs[at], count: change.count };
+          else needs.push({ role_id: change.roleId, count: change.count });
+        }
+        for (const change of needsToRemove.values()) {
+          if (change.trackId !== trackId) continue;
+          if (needs.some((n) => n.role_id === change.roleId)) {
+            needs = needs.filter((n) => n.role_id !== change.roleId);
+          } else {
+            notes.push({ text: `no ${roleNames.get(change.roleId) ?? "role"} on ${trackName} to remove`, tone: "danger" });
+          }
+        }
+        details = details.map((d) => (d.track_id === trackId ? { ...d, needs } : d));
+        detailsChanged = true;
+      }
+      if (detailsChanged) patch.track_details = details;
 
       if (Object.keys(patch).length > 0) {
         current = await tournamentEventsApi.update(tournamentId, event.id, patch);
       }
 
-      return current;
+      return { event: current, notes };
     }));
 
     const nextResults: EventResult[] = [];
     outcomes.forEach((outcome, i) => {
       const event = events[i];
       if (outcome.status === "fulfilled") {
-        onSaved(outcome.value);
-        nextResults.push({ event: outcome.value });
+        onSaved(outcome.value.event);
+        nextResults.push({ event: outcome.value.event, notes: outcome.value.notes });
       } else {
         const err = outcome.reason;
         nextResults.push({ event, error: err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to save." });
@@ -240,6 +327,8 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     setShiftsToRemove(new Set());
     setTracksToAdd(new Set());
     setTracksToRemove(new Set());
+    setNeedsToSet(new Map());
+    setNeedsToRemove(new Map());
     setSaving(false);
   }
 
@@ -380,12 +469,144 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
           </div>
         </SettingsSection>
 
+        <SettingsSection title="Staffing">
+          <div style={{ padding: "20px 0" }}>
+            {/* Popover forms, like the Add/Remove buttons above: the track,
+                role and count only say what to stage, so they live inside
+                the step that stages it rather than as loose fields that look
+                like edits but mark nothing as changed. */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <FormPopover
+                align="left"
+                width={300}
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    <IconPlus size={12} /> Set role
+                  </Button>
+                }
+              >
+                {(close) => (
+                  <NeedForm
+                    mode="set"
+                    tracks={addableTracks}
+                    roles={roles}
+                    onSubmit={(change) => { setNeed(change); close(); }}
+                    onCancel={close}
+                  />
+                )}
+              </FormPopover>
+              <FormPopover
+                width={300}
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    <IconMinus size={12} /> Remove role
+                  </Button>
+                }
+              >
+                {(close) => (
+                  <NeedForm
+                    mode="remove"
+                    tracks={addableTracks}
+                    roles={roles}
+                    onSubmit={(change) => { removeNeed(change); close(); }}
+                    onCancel={close}
+                  />
+                )}
+              </FormPopover>
+            </div>
+
+            {(needsToSet.size > 0 || needsToRemove.size > 0) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+                {[...needsToSet.entries()].map(([key, change]) => (
+                  <DiffRow
+                    key={key}
+                    label={<DiffBadge sign="+">{needLabel(change)}</DiffBadge>}
+                    onUndo={() => setNeedsToSet((prev) => { const next = new Map(prev); next.delete(key); return next; })}
+                  />
+                ))}
+                {[...needsToRemove.entries()].map(([key, change]) => (
+                  <DiffRow
+                    key={key}
+                    label={<DiffBadge sign="-">{needLabel(change)}</DiffBadge>}
+                    onUndo={() => setNeedsToRemove((prev) => { const next = new Map(prev); next.delete(key); return next; })}
+                  />
+                ))}
+              </div>
+            )}
+
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+              Set adds the role or overwrites its count. Events not on the track are skipped.
+            </p>
+          </div>
+        </SettingsSection>
+
         {results && (
           <MassResultsCard
-            results={results.map((r) => ({ key: r.event.id, label: eventNameWithDivision(r.event), error: r.error }))}
+            results={results.map((r) => ({
+              key: r.event.id, label: eventNameWithDivision(r.event), error: r.error, notes: r.notes,
+            }))}
           />
         )}
       </div>
     </DockedPanel>
+  );
+}
+
+
+/**
+ * One staffing change, staged from a popover: which track, which role, and
+ * (for a set) how many. Holds its own state, so every open starts clean and
+ * nothing here counts as a change until the TD confirms it.
+ */
+function NeedForm({ mode, tracks, roles, onSubmit, onCancel }: {
+  mode: "set" | "remove";
+  tracks: TournamentTrack[];
+  roles: Role[];
+  onSubmit: (change: NeedChange) => void;
+  onCancel: () => void;
+}) {
+  const [trackId, setTrackId] = useState<number | null>(null);
+  const [roleId, setRoleId] = useState<number | null>(null);
+  const [count, setCount] = useState("1");
+  const valid = trackId !== null && roleId !== null && (mode === "remove" || Number(count) >= 1);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {/* Fills itself in and locks when there is one track to pick. */}
+      <TrackPicker label="Track" size="sm" fullWidth value={trackId} onChange={setTrackId} tracks={tracks} />
+      <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Dropdown
+            label="Role"
+            value={roleId !== null ? String(roleId) : ""}
+            onChange={(v) => setRoleId(Number(v))}
+            options={roles.map((r) => ({ value: String(r.id), label: r.label }))}
+            placeholder="Select a role"
+            size="sm"
+            fullWidth
+          />
+        </div>
+        {mode === "set" && (
+          <Input
+            label="Count" size="sm" charset="numeric"
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            style={{ width: "64px" }}
+          />
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
+        <Button type="button" variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button
+          type="button" variant="primary" size="sm" disabled={!valid}
+          onClick={() => valid && onSubmit({
+            trackId: trackId!, roleId: roleId!,
+            ...(mode === "set" ? { count: Number(count) } : {}),
+          })}
+        >
+          {mode === "set" ? "Set" : "Remove"}
+        </Button>
+      </div>
+    </div>
   );
 }
