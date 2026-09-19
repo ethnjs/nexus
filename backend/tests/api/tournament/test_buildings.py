@@ -6,6 +6,10 @@ from app.models.models import TournamentEventTrack, TournamentTrack
 
 def _make_building(client, tournament_id, **overrides):
     payload = {"name": "Rowland Hall"}
+    # A building must be on a track, so default to the primary one.
+    if "track_ids" not in overrides:
+        tracks = client.get(f"/tournaments/{tournament_id}/tracks/").json()
+        payload["track_ids"] = [t["id"] for t in tracks if t["is_primary"]][:1]
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/buildings/", json=payload)
 
@@ -27,7 +31,7 @@ def test_create_building(client, td_user, td_tournament):
     data = response.json()
     assert data["name"] == "Rowland Hall"
     assert data["tournament_id"] == td_tournament.id
-    assert data["track_ids"] == []
+    assert len(data["track_ids"]) == 1
 
 
 def test_create_building_with_tracks(client, db, td_user, td_tournament):
@@ -112,18 +116,26 @@ def test_track_ids_are_whole_set(client, db, td_user, td_tournament):
     assert response.json()["track_ids"] == [cosmetic]
 
 
-def test_track_ids_can_be_cleared(client, db, td_user, td_tournament):
+def test_a_building_must_be_on_at_least_one_track(client, db, td_user, td_tournament):
+    """It could hold nothing, so it can't be created that way, left out, or
+    edited into it."""
     login(client, "td@test.com", "tdpass")
-    track_id = primary_track_id(db, td_tournament.id)
-    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"track_ids": []},
-    )
-    assert response.json()["track_ids"] == []
+    base = f"/tournaments/{td_tournament.id}/buildings/"
+
+    empty = client.post(base, json={"name": "Rowland Hall", "track_ids": []})
+    assert empty.status_code == 422
+    assert "at least one track" in empty.text
+    assert client.post(base, json={"name": "Rowland Hall"}).status_code == 422
+
+    building = _make_building(client, td_tournament.id).json()
+    cleared = client.patch(f"{base}{building['id']}/", json={"track_ids": []})
+    assert cleared.status_code == 422
+    assert "at least one track" in cleared.text
+    assert client.get(base).json()[0]["track_ids"] == building["track_ids"]
 
 
 def test_omitting_track_ids_leaves_them_alone(client, db, td_user, td_tournament):
-    """None means "not sent"; [] means "clear". A rename must not drop tags."""
+    """None means "not sent". A rename must not drop tags."""
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
@@ -200,7 +212,7 @@ def test_buildings_require_manage_events(client, db, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{other_tournament.id}/buildings/"
     assert client.get(base).status_code == 403
-    assert client.post(base, json={"name": "Sneaky"}).status_code == 403
+    assert client.post(base, json={"name": "Sneaky", "track_ids": [1]}).status_code == 403
     assert client.patch(f"{base}1/", json={"name": "Nope"}).status_code == 403
     assert client.delete(f"{base}1/").status_code == 403
 
@@ -217,7 +229,7 @@ def test_archived_tournament_blocks_writes(client, db, td_user, td_tournament):
     db.commit()
     base = f"/tournaments/{td_tournament.id}/buildings/"
     assert client.get(base).status_code == 200
-    assert client.post(base, json={"name": "Later"}).status_code == 403
+    assert client.post(base, json={"name": "Later", "track_ids": building["track_ids"]}).status_code == 403
     assert client.patch(f"{base}{building['id']}/", json={"name": "Nope"}).status_code == 403
     assert client.delete(f"{base}{building['id']}/").status_code == 403
 
@@ -283,12 +295,14 @@ def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tourn
     """Unlike a delete, untagging is not a request to wipe rooms."""
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
+    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    building = _make_building(client, td_tournament.id, track_ids=[track_id, cosmetic]).json()
     event = _make_event(client, td_tournament.id, [track_id])
     _place(db, event["id"], track_id, building["id"])
 
+    # Keep only the other track, dropping the one the event is placed on.
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"track_ids": []},
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"track_ids": [cosmetic]},
     )
     assert response.status_code == 409
     assert "move those events first" in response.json()["detail"]

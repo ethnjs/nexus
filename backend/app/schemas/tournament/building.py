@@ -19,15 +19,21 @@ def _dedupe_track_ids(value: list[int]) -> list[int]:
     return sorted(set(value))
 
 
+def _validate_track_ids(value: list[int]) -> list[int]:
+    """A building on no track can hold nothing, so it may not exist — neither
+    created that way nor edited into it. Delete it instead."""
+    if not value:
+        raise ValueError("a building must be available on at least one track")
+    return _dedupe_track_ids(value)
+
+
 class TournamentBuildingCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(max_length=255)
-    # Which tracks this building is in use on. Whole-set, like an event's
-    # shift_ids: sending it replaces the tags rather than adding to them.
-    # Empty is legal — a building entered before the schedule is settled is
-    # simply not available anywhere yet.
-    track_ids: list[int] = []
+    # Which tracks this building is in use on — at least one. Whole-set, like
+    # an event's shift_ids: sending it replaces the tags rather than adding.
+    track_ids: list[int]
 
     @field_validator("name")
     @classmethod
@@ -37,12 +43,12 @@ class TournamentBuildingCreate(BaseModel):
     @field_validator("track_ids")
     @classmethod
     def _check_track_ids(cls, value: list[int]) -> list[int]:
-        return _dedupe_track_ids(value)
+        return _validate_track_ids(value)
 
 
 class TournamentBuildingUpdate(BaseModel):
-    """Partial update. None means "not sent"; [] on track_ids means "clear",
-    matching how an event's shift_ids and track_details already behave."""
+    """Partial update. None means "not sent". When sent, track_ids replaces the
+    tags whole-set and must still name at least one track."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -57,7 +63,7 @@ class TournamentBuildingUpdate(BaseModel):
     @field_validator("track_ids")
     @classmethod
     def _check_track_ids(cls, value: list[int] | None) -> list[int] | None:
-        return _dedupe_track_ids(value) if value is not None else value
+        return _validate_track_ids(value) if value is not None else value
 
 
 class TournamentBuildingRead(BaseModel):
