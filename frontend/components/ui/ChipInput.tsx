@@ -57,6 +57,17 @@ const SIZE_MAP: Record<ChipInputSize, { minHeight: string; paddingX: string; fon
   lg: { minHeight: "48px", paddingX: "10px", fontSize: "14px" },
 };
 
+// Chips sized to fit inside a bordered field of that size without it growing.
+// Only xs/sm need it — a normal 24px chip already fits md/lg — and only for a
+// bordered field: a transparent row has no box, so there is no height for its
+// chips to fit inside and they keep their natural size.
+//   chip  = 16px line + 2 * chipPadY + 2px border
+//   field = chip + 2 * fieldPadY + 2px border  (= minHeight)
+const COMPACT_CHIPS: Partial<Record<ChipInputSize, { fieldPadY: number; chipPadY: number }>> = {
+  xs: { fieldPadY: 2, chipPadY: 1 },  // 20px chip in a 26px field
+  sm: { fieldPadY: 2, chipPadY: 2 },  // 22px chip in a 28px field
+};
+
 // Splits on comma or newline — covers both typed Enter and pasted
 // comma/newline-separated lists (e.g. copied from a spreadsheet column).
 const SPLIT_PATTERN = /[,\n]+/;
@@ -77,7 +88,7 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
         display: "flex", alignItems: "center", justifyContent: "center",
         border: "none", borderRadius: "var(--radius-sm)", background: "transparent",
         padding: "2px", color: "inherit",
-        cursor: disabled ? "default" : "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.4 : 1,
         // An inset box-shadow acts as a darkening film regardless of which
         // status color the chip itself is using as background (default/
@@ -102,6 +113,7 @@ export function ChipInput({
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
+  const compact = variant === "transparent" ? undefined : COMPACT_CHIPS[size];
   // Both stop every write; they differ only in what stays on screen.
   const readOnly = locked || disabled;
 
@@ -158,8 +170,13 @@ export function ChipInput({
 
       <div style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px",
-        padding: variant === "transparent" ? "0" : `4px ${sizing.paddingX}`, minHeight: sizing.minHeight, boxSizing: "border-box",
-        background: VARIANT_BACKGROUND[variant],
+        padding: variant === "transparent" ? "0" : `${compact?.fieldPadY ?? 4}px ${sizing.paddingX}`,
+        minHeight: sizing.minHeight, boxSizing: "border-box",
+        // Disabled darkens to the same fill as a locked Input, so a paused
+        // ChipInput beside one reads as the same state. Not for transparent:
+        // it has no field to darken, only chips.
+        background: disabled && variant !== "transparent" ? "var(--color-accent-subtle)" : VARIANT_BACKGROUND[variant],
+        cursor: disabled ? "not-allowed" : undefined,
         border: error
           ? "1px solid var(--color-danger)"
           : variant === "transparent" ? "none" : "1px solid var(--color-border)",
@@ -180,11 +197,15 @@ export function ChipInput({
               key={chip}
               style={{
                 display: "inline-flex", alignItems: "center", gap: "5px",
-                padding: hasTrailing ? "3px 6px 3px 9px" : "3px 9px",
+                padding: compact
+                  ? (hasTrailing ? `${compact.chipPadY}px 6px ${compact.chipPadY}px 8px` : `${compact.chipPadY}px 8px`)
+                  : (hasTrailing ? "3px 6px 3px 9px" : "3px 9px"),
                 borderRadius: "var(--radius-sm)",
                 background: styles.background, color: styles.color,
                 border: `1px solid ${styles.border}`,
                 fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
+                // Pinned only where the height math depends on it.
+                lineHeight: compact ? "16px" : undefined,
               }}
             >
               {chipTooltip ? (
@@ -226,6 +247,9 @@ export function ChipInput({
               // front of it, 120px was wider than the room left on the line,
               // so the field wrapped to a line of its own beside empty space.
               flex: 1, minWidth: value.length === 0 ? "120px" : "40px", border: "none", outline: "none",
+              // The native disabled input resets to the default cursor on its
+              // own, which would punch a hole in the field's not-allowed one.
+              cursor: disabled ? "not-allowed" : undefined,
               background: "transparent", fontFamily: "var(--font-sans)", fontSize: sizing.fontSize,
               color: "var(--color-text-primary)",
             }}
