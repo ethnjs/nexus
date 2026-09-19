@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -45,6 +45,7 @@ import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournamen
 import { eventFirstDay, eventName } from "@/lib/eventDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { FilterButton } from "@/components/ui/FilterButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 // Always present as a grid track (never conditionally added/removed) so its
@@ -601,8 +602,12 @@ export default function EventsPage() {
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap" }}>
-              <div style={{ width: "300px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+              {/* Grows into whatever the toolbar leaves over, and is the first
+                  thing to give that room back: a small basis with grow means
+                  the search narrows before anything else has to wrap, and
+                  the other controls stay their natural size. */}
+              <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
                 <Input
                   label="Search"
                   value={search}
@@ -616,20 +621,11 @@ export default function EventsPage() {
                   fullWidth
                 />
               </div>
-              <Button
-                type="button" variant="secondary" size="md"
-                onClick={() => setShowFilterModal(true)}
-              >
-                <IconFilter size={16} /> Filter
-              </Button>
-              {isEventsFilterActive(filters) && (
-                <Button
-                  type="button" variant="ghost" size="md"
-                  onClick={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
-                >
-                  <IconX size={16} /> Clear filters
-                </Button>
-              )}
+              <FilterButton
+                active={isEventsFilterActive(filters)}
+                onOpen={() => setShowFilterModal(true)}
+                onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+              />
               <Button
                 type="button" variant="secondary" size="md"
                 onClick={() => setShowColumnsModal(true)}
