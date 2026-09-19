@@ -99,27 +99,34 @@ export function EventChip({
       </div>
 
       {placed && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "0 10px 10px" }}>
-          <Input
-            size="xs"
-            fullWidth
-            font="mono"
-            locked={locked}
-            placeholder="Floor"
-            value={event.detail?.floor ?? ""}
-            onChange={(e) => onFloorChange(e.target.value)}
-          />
+        // Side by side like the events panel: flex-wrap with a basis and grow
+        // per field, so a narrow column wraps them instead of squeezing.
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: "8px", padding: "0 10px 10px" }}>
+          <div style={{ flex: "0.5 1 56px", minWidth: 0 }}>
+            <Input
+              size="xs"
+              fullWidth
+              font="mono"
+              locked={locked}
+              label="Floor"
+              placeholder="e.g. 2"
+              value={event.detail?.floor ?? ""}
+              onChange={(e) => onFloorChange(e.target.value)}
+            />
+          </div>
           {/* Many rooms, one building and one floor — an event routinely
               spreads across 210, 212 and 214. */}
-          <ChipInput
-            size="xs"
-            variant="transparent"
-            fullWidth
-            locked={locked}
-            placeholder="Add a room"
-            value={event.detail?.rooms ?? []}
-            onChange={onRoomsChange}
-          />
+          <div style={{ flex: "1.6 1 110px", minWidth: 0 }}>
+            <ChipInput
+              size="xs"
+              fullWidth
+              locked={locked}
+              label="Rooms"
+              placeholder="Add a room"
+              value={event.detail?.rooms ?? []}
+              onChange={onRoomsChange}
+            />
+          </div>
         </div>
       )}
     </div>
