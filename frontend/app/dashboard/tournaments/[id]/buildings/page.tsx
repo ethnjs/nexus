@@ -34,6 +34,7 @@ import {
 } from "@/components/tournament/events/EventsFilterModal";
 import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 
 /**
  * Placing events into buildings, one track at a time.
@@ -73,7 +74,10 @@ export default function BuildingsPage() {
   );
   function pickTrack(key: string) {
     setPickedTrackId(Number(key));
-    router.replace(`${pathname}?track=${key}`, { scroll: false });
+    // Merged into the current query so an open ?event= survives the tab change.
+    const params = new URLSearchParams(window.location.search);
+    params.set("track", key);
+    router.replace(`${pathname}?${params}`, { scroll: false });
   }
   const activeTrackId =
     (pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId) ? pickedTrackId : tracks[0]?.id) ?? null;
@@ -89,7 +93,15 @@ export default function BuildingsPage() {
       // event reads as unplaced.
       tournamentEventsApi.list(tournamentId, ["tracks", "location"]),
     ])
-      .then(([b, e]) => { setBuildings(b); setEvents(e) })
+      .then(([b, e]) => {
+        setBuildings(b);
+        // Keep the groups this list omits for an event already loaded in
+        // full: replacing it would blank the open edit panel mid-edit.
+        setEvents((cur) => e.map((fresh) => {
+          const old = (cur ?? []).find((o) => o.id === fresh.id);
+          return old && Array.isArray(old.shifts) && !Array.isArray(fresh.shifts) ? { ...old, ...fresh } : fresh;
+        }));
+      })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Failed to load buildings."));
   }, [tournamentId, canManageEvents]);
 
@@ -152,7 +164,10 @@ export default function BuildingsPage() {
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // ── the event edit panel, docked beside the unplaced one ───────────────
-  const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
+  // Seeded from ?event= and mirrored back to it, so a reload reopens the panel.
+  const initialEventId = useInitialPanelId("event");
+  const [focusedEventId, setFocusedEventId] = useState<number | null>(initialEventId);
+  usePanelUrlSync("event", focusedEventId);
   const [panelDirty, setPanelDirty] = useState(false);
   // Catalogs the panel picks from. Fetched on first open, not on load — most
   // visits to this page never open it.
@@ -166,17 +181,30 @@ export default function BuildingsPage() {
     // Frozen while dirty, like the events page: switching would drop a draft.
     if (panelDirty) { show("Save or discard your changes first", "error"); return }
     setFocusedEventId(id);
-    // The board's list omits most groups (shifts among them), which the panel
-    // reads unguarded — so it opens on the full row, and only once that's here.
-    tournamentEventsApi.get(tournamentId, id)
-      .then((full) => setEvents((cur) => (cur ?? []).map((e) => (e.id === full.id ? full : e))))
-      .catch(() => {});
-    if (catalogRequested.current) return;
+  }, [focusedEventId, panelDirty, show]);
+
+  // Whatever opens the panel — a click or the URL — the data it needs loads
+  // here, once the board's own list is in.
+  const eventsLoaded = events !== null;
+  useEffect(() => {
+    if (focusedEventId === null || !eventsLoaded || catalogRequested.current) return;
     catalogRequested.current = true;
     tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
     rolesApi.list(tournamentId).then(setRoles).catch(() => {});
     canonicalEventsApi.list().then(setCanonicalEvents).catch(() => {});
-  }, [focusedEventId, panelDirty, tournamentId, show]);
+  }, [focusedEventId, eventsLoaded, tournamentId]);
+
+  // The board's list omits most groups (shifts among them), which the panel
+  // reads unguarded — so it opens on the full row, and only once that's here.
+  // Re-runs if a list refresh hands back a partial row for the open event.
+  const needsFullEvent = focusedEventId !== null
+    && (events ?? []).some((e) => e.id === focusedEventId && !Array.isArray(e.shifts));
+  useEffect(() => {
+    if (!needsFullEvent || focusedEventId === null) return;
+    tournamentEventsApi.get(tournamentId, focusedEventId)
+      .then((full) => setEvents((cur) => (cur ?? []).map((e) => (e.id === full.id ? full : e))))
+      .catch(() => {});
+  }, [needsFullEvent, focusedEventId, tournamentId]);
 
   const closeEventPanel = useCallback(() => {
     setFocusedEventId(null);
