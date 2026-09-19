@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, buildingsApi, ApiError,
+  tournamentEventsApi, buildingsApi, displayConfigApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
   EventTrackDetail, TournamentBuilding, Role,
 } from "@/lib/api";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { EventTrackDetails, type DraftTrackDetail } from "@/components/tournament/events/EventTrackDetails";
+import { EventPanelConfigModal } from "@/components/tournament/events/EventPanelConfigModal";
+import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -26,7 +28,7 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
-import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconCalendar, IconX, IconEye } from "@/components/ui/Icons";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -114,6 +116,25 @@ export function EventPanel({
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
+
+  // This viewer's hidden tracks for the location and staffing section, read
+  // the way MemberPanel reads its own surface. Bumped on save so the open
+  // panel picks up the change without closing.
+  const [hiddenItems, setHiddenItems] = useState<string[]>([]);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configKey, setConfigKey] = useState(0);
+  useEffect(() => {
+    displayConfigApi.get(tournamentId)
+      .then((config) => startTransition(() => setHiddenItems(config?.[EVENT_PANEL]?.hidden ?? [])))
+      .catch(() => {});
+  }, [tournamentId, configKey]);
+  // "track:3" is the surface's own vocabulary — the keys the modal writes.
+  const hiddenTrackIds = useMemo(() => new Set(
+    hiddenItems
+      .filter((item) => item.startsWith("track:"))
+      .map((item) => Number(item.slice("track:".length)))
+      .filter((id) => Number.isInteger(id)),
+  ), [hiddenItems]);
 
   const isNew = current === null;
   // For a new event this compares against the blank default draft, so an
@@ -338,6 +359,16 @@ export function EventPanel({
       onNext={onNext}
       prevDisabled={!hasPrev}
       nextDisabled={!hasNext}
+      // Nothing to configure with one track — its block is the whole section.
+      headerActions={!simple && (
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Configure panel"
+          onClick={() => setShowConfigModal(true)}
+        >
+          <IconEye size={14} />
+        </Button>
+      )}
       footer={!locked && (
         <FloatingSaveBar
           visible={isDirty}
@@ -444,6 +475,7 @@ export function EventPanel({
         <SettingsSection title="Location & staffing">
           <EventTrackDetails
             details={draft.trackDetails}
+            hiddenTrackIds={hiddenTrackIds}
             tracks={tracks}
             buildings={buildings}
             roles={roles}
@@ -595,6 +627,13 @@ export function EventPanel({
           events={[current]}
           onClose={() => setShowDelete(false)}
           onDeleted={() => { onDeleted(current.id); onClose(); }}
+        />
+      )}
+      {showConfigModal && (
+        <EventPanelConfigModal
+          tournamentId={tournamentId}
+          onSaved={() => setConfigKey((key) => key + 1)}
+          onClose={() => setShowConfigModal(false)}
         />
       )}
     </DockedPanel>

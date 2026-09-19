@@ -18,9 +18,14 @@ EVENTS_TABLE = "events_table"
 # card beside them) because the two are configured by their own controls and
 # share no vocabulary — one describes an event, the other a person.
 ASSIGNMENTS_EVENTS = "assignments_events"
+# The event panel. Its own surface rather than a reuse of EVENTS_TABLE: the
+# table configures columns, the panel which tracks' location and staffing
+# blocks it shows — and hiding Test Writing's block while placing Day 1 events
+# must not drop Tracks from how you read the table.
+EVENT_PANEL = "event_panel"
 
 FLAT_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE,
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL,
 })
 
 # ---------------------------------------------------------------------------
@@ -356,6 +361,11 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     # drops its shifts from the timeline, or its column from the no-shift
     # area. Its own metadata is `columns`, not `hidden`.
     if surface == ASSIGNMENTS_EVENTS:
+        return item.startswith(TRACK_NAMESPACE)
+    # Likewise only tracks: the panel's other sections are fixed, and hiding
+    # a track here hides only its location and staffing block — the event
+    # still runs on it, and its Tracks chips and shifts still show.
+    if surface == EVENT_PANEL:
         return item.startswith(TRACK_NAMESPACE)
     return is_known_namespace(item)
 

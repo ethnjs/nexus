@@ -29,9 +29,13 @@ import { IconPlus, IconTrash } from "@/components/ui/Icons";
 export type DraftTrackDetail = EventTrackDetail & { new_building_name?: string | null };
 
 export function EventTrackDetails({
-  details, tracks, buildings, roles, locked, simple, onChange,
+  details, hiddenTrackIds, tracks, buildings, roles, locked, simple, onChange,
 }: {
   details: DraftTrackDetail[];
+  /** Tracks this viewer hid from the section (the event_panel display
+   *  config). Their details are still in `details` and still saved — only
+   *  the block is dropped from view. */
+  hiddenTrackIds: Set<number>;
   /** The full track catalog — used for names and to order the blocks. */
   tracks: TournamentTrack[];
   buildings: TournamentBuilding[];
@@ -51,6 +55,7 @@ export function EventTrackDetails({
   const ordered = tracks
     .map((track) => ({ track, detail: details.find((d) => d.track_id === track.id) }))
     .filter((entry): entry is { track: TournamentTrack; detail: DraftTrackDetail } => !!entry.detail);
+  const visible = ordered.filter(({ track }) => !hiddenTrackIds.has(track.id));
 
   if (ordered.length === 0) {
     return (
@@ -62,7 +67,7 @@ export function EventTrackDetails({
 
   return (
     <div style={{ padding: "4px 0 8px" }}>
-      {ordered.map(({ track, detail }, index) => {
+      {visible.map(({ track, detail }, index) => {
         const needs = detail.needs ?? [];
         const hasBuilding = detail.building_id != null || !!detail.new_building_name?.trim();
         const usedRoleIds = new Set(needs.map((n) => n.role_id));
