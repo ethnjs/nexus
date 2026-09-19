@@ -2,7 +2,7 @@
 
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
-import { DEFAULT_EVENT_COLUMNS, LOCATION_COLUMN_KEYS } from "@/components/tournament/events/eventColumns";
+import { DEFAULT_EVENT_COLUMNS } from "@/components/tournament/events/eventColumns";
 
 interface EventsColumnsModalProps {
   tournamentId: number;
@@ -22,8 +22,9 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
       defaultColumns={DEFAULT_EVENT_COLUMNS}
       selectColumns={(catalog) => catalog.event_columns}
       buildGroups={(columns) => [
-        { title: "Event", items: columns.filter((c) => !LOCATION_COLUMN_KEYS.has(c.key)) },
-        { title: "Logistics", items: columns.filter((c) => LOCATION_COLUMN_KEYS.has(c.key)) },
+        // One group again: the Logistics group held only the location and
+        // staffing columns, which are per track now and no longer columns.
+        { title: "Event", items: columns },
       ]}
       onClose={onClose}
       onSaved={onSaved}
