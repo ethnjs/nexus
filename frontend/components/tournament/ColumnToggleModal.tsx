@@ -23,6 +23,10 @@ interface ColumnToggleModalProps {
   selectColumns: (catalog: DisplayConfigCatalog) => DisplayConfigCatalogItem[];
   /** How to group those columns under headings. One group is fine. */
   buildGroups: (columns: DisplayConfigCatalogItem[]) => ColumnGroup[];
+  /** Rewrites saved or default keys before they are read as toggles — for a
+   *  surface with an alias that stands for several catalog columns, which
+   *  would otherwise show every one of them as off. */
+  expandKeys?: (keys: readonly string[], columns: DisplayConfigCatalogItem[]) => string[];
   onClose: () => void;
   onSaved?: () => void;
   width?: number;
@@ -38,7 +42,7 @@ interface ColumnToggleModalProps {
  * their catalog slice and how it groups, so those are the props.
  */
 export function ColumnToggleModal({
-  tournamentId, surface, title, defaultColumns, selectColumns, buildGroups,
+  tournamentId, surface, title, defaultColumns, selectColumns, buildGroups, expandKeys,
   onClose, onSaved, width = 640,
 }: ColumnToggleModalProps) {
   const { catalog, draft, setDraft, saving, error, save, loading } =
@@ -48,7 +52,8 @@ export function ColumnToggleModal({
 
   // null means "nothing saved" — start from the defaults. An empty array is a
   // real answer ("no data columns") and is left alone.
-  const active = new Set(draft?.columns ?? defaultColumns);
+  const saved = draft?.columns ?? defaultColumns;
+  const active = new Set(expandKeys ? expandKeys(saved, columns) : saved);
 
   function toggle(key: string) {
     const next = new Set(active);
