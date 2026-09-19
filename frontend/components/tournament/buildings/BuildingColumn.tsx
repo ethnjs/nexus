@@ -46,7 +46,7 @@ export function BuildingColumn({
         display: "flex", flexDirection: "column", gap: "8px",
         flex: "0 0 260px", minWidth: 0, padding: "12px",
         borderRadius: "var(--radius-lg)",
-        border: `1px solid ${isOver ? "var(--color-accent)" : "var(--color-border)"}`,
+        border: `1px solid ${isOver ? "var(--color-border-strong)" : "var(--color-border)"}`,
         background: tone === "muted" ? "var(--color-bg)" : "var(--color-surface)",
         // The whole column lifts on hover-over, not just the gap between
         // chips: the drop lands on the column wherever inside it you release.
