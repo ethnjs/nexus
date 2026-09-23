@@ -13,7 +13,8 @@ import {
 import { ChipInput } from "@/components/ui/ChipInput";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Button } from "@/components/ui/Button";
-import { IconPlus } from "@/components/ui/Icons";
+import { IconLock, IconPlus } from "@/components/ui/Icons";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { RolePickerPopover } from "@/components/tournament/roles/RolePickerPopover";
 import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
 
@@ -31,6 +32,10 @@ interface RolesCellProps {
    * docked panel, so the same roles aren't editable in two places at once.
    */
   readOnly?: boolean;
+  /** Why `locked` is set, when it is something the viewer could act on — the
+      add control then stays put as a lock with this as its tooltip, instead of
+      vanishing and leaving nothing to explain itself. */
+  lockedReason?: string;
   /** What to render instead of an empty chip row when the cell is inert — a
       panel field wants to say "None", a table cell would rather stay blank. */
   emptyLabel?: string;
@@ -45,10 +50,13 @@ interface RolesCellProps {
 // always granting tournament-wide. With several, each chip says where it is
 // held, and a role is added in two steps: which role, then where.
 export function RolesCell({
-  tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, emptyLabel, onUpdated,
+  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason, readOnly = false, emptyLabel, onUpdated,
 }: RolesCellProps) {
   // Two different reasons the chips go inert; ChipInput only has the one knob.
   const inert = locked || readOnly;
+  // Locked for a reason worth showing: the controls stay, wearing a lock. The
+  // panel's readOnly isn't one — the same roles are editable a few pixels away.
+  const explained = locked && !readOnly && !!lockedReason;
   const { show } = useToast();
   const { tracks, isSimple } = useTournament();
   const memberName = userName(membership.user);
@@ -59,7 +67,7 @@ export function RolesCell({
 
   // Inert with no chips and no add button is a blank cell, which reads as
   // "still loading" rather than "holds no roles".
-  if (inert && held.length === 0 && emptyLabel) {
+  if (inert && !explained && held.length === 0 && emptyLabel) {
     return <FieldValue muted>{emptyLabel}</FieldValue>;
   }
 
@@ -109,8 +117,11 @@ export function RolesCell({
       variant="transparent"
       size="sm"
       disableInput
-      locked={inert}
+      // Explained locks stay unlocked *to ChipInput*: a locked field drops
+      // every affordance, and the lock icons below are the affordance.
+      locked={inert && !explained}
       chipLockReason={(label: string) => {
+        if (explained) return lockedReason;
         const role = roleByLabel.get(label);
         return role ? rankLockReason(role) : undefined;
       }}
@@ -135,7 +146,13 @@ export function RolesCell({
       // ticked. Ticking grants tournament-wide; on a multi-track tournament
       // the chip's scope pill narrows it afterwards. Rank locks show as a
       // lock icon in place of the checkbox, same rule either way.
-      addButton={(
+      addButton={explained ? (
+        <Tooltip variant="info" message={lockedReason!} showIcon={false}>
+          <Button type="button" variant="secondary" size="sm" iconOnly disabled title={lockedReason} style={{ padding: 0, flexShrink: 0 }}>
+            <IconLock size={12} />
+          </Button>
+        </Tooltip>
+      ) : (
         <RolePickerPopover
           trigger={addButton}
           roles={allRoles}
