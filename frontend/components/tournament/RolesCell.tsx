@@ -14,6 +14,7 @@ import {
 import { ChipInput } from "@/components/ui/ChipInput";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Popover } from "@/components/ui/Popover";
+import { Pill, PillMenu } from "@/components/ui/PillMenu";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Button } from "@/components/ui/Button";
 import { IconLock, IconPlus } from "@/components/ui/Icons";
@@ -127,7 +128,7 @@ export function RolesCell({
         const role = roleByLabel.get(label);
         if (!role) return null;
         return (
-          <ScopePill
+          <ScopePillMenu
             role={role}
             tracks={tracks}
             editable={!inert && canTouchRole(role)}
@@ -173,9 +174,9 @@ export function RolesCell({
   );
 }
 
-/** Where a role is held, on its chip. Opens the scope picker when the viewer
- *  can change it; plain text when they can't. */
-function ScopePill({ role, tracks, editable, onApply }: {
+/** Where a role is held, on its chip: a checklist of "Whole tournament" plus
+ *  every track, saved per click. Plain text when the viewer can't change it. */
+function ScopePillMenu({ role, tracks, editable, onApply }: {
   role: MemberRole;
   tracks: TournamentTrack[];
   editable: boolean;
@@ -183,36 +184,47 @@ function ScopePill({ role, tracks, editable, onApply }: {
 }) {
   const scope = scopeOf(role);
   const label = scopeLabel(scope, tracks);
-  const pillStyle = {
-    fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-    letterSpacing: "0.03em", textTransform: "uppercase" as const,
-    padding: "0 5px", borderRadius: "var(--radius-sm)",
-    background: "var(--color-surface)", color: "var(--color-text-secondary)",
-    border: "1px solid var(--color-border)", lineHeight: "14px", whiteSpace: "nowrap" as const,
-  };
-  if (!editable) return <span style={pillStyle}>{label}</span>;
+  if (!editable) return <Pill label={label} title="Where this role applies" />;
+
+  const options: ScopeOption[] = [WIDE_OPTION, ...tracks.map((t) => ({ kind: "track" as const, track: t }))];
 
   return (
-    <FormPopover
-      width={260}
+    <PillMenu
+      label={label}
+      items={options}
+      getKey={(o) => (o.kind === "wide" ? "wide" : o.track.id)}
+      renderLabel={(o) => (o.kind === "wide" ? "Whole tournament" : o.track.name)}
+      checklist
+      isSelected={(o) => (o.kind === "wide" ? scope.wide : scope.trackIds.includes(o.track.id))}
+      // Unticking the only thing ticked would leave an empty scope, which is
+      // how the role gets removed — not something a menu about *where* should do.
+      isDisabled={(o) => (o.kind === "wide"
+        ? scope.wide
+        : !scope.wide && scope.trackIds.length === 1 && scope.trackIds[0] === o.track.id)}
+      disabledReason={() => "Pick somewhere else first"}
+      onSelect={(o) => onApply(nextScope(scope, o))}
+      width={200}
       align="left"
-      trigger={
-        <button type="button" title="Where this role applies" style={{ ...pillStyle, cursor: "pointer" }}>
-          {label}
-        </button>
-      }
-    >
-      {(close) => (
-        <RoleScopeForm
-          tracks={tracks}
-          initial={scope}
-          applyLabel="Save"
-          onApply={async (next) => { await onApply(next); close(); }}
-          onCancel={close}
-        />
-      )}
-    </FormPopover>
+    />
   );
+}
+
+type ScopeOption = { kind: "wide" } | { kind: "track"; track: TournamentTrack };
+const WIDE_OPTION: ScopeOption = { kind: "wide" };
+
+/** Clicking "Whole tournament" replaces any tracks with it; clicking a track
+ *  while tournament-wide narrows to just that track (the two can't coexist —
+ *  a ticked track beside "whole tournament" reads as the narrower claim). */
+function nextScope(scope: RoleScope, option: ScopeOption): RoleScope {
+  if (option.kind === "wide") return WIDE_SCOPE;
+  const id = option.track.id;
+  if (scope.wide) return { wide: false, trackIds: [id] };
+  return {
+    wide: false,
+    trackIds: scope.trackIds.includes(id)
+      ? scope.trackIds.filter((x) => x !== id)
+      : [...scope.trackIds, id].sort((a, b) => a - b),
+  };
 }
 
 /** The add flow's two steps: pick a role, then say where it applies. */
