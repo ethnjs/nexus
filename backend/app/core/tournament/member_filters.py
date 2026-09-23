@@ -122,12 +122,39 @@ def apply_member_filters(
     ("every shift on Feb 13") into shift ids — a shift's day depends on the
     tournament's timezone, not on UTC."""
     if roles:
-        role_ids = [int(value) for value in roles if value != NO_ROLES]
+        # "roleId" or "roleId:trackId" — the role, optionally narrowed to the
+        # tracks it is held on. A tournament-wide grant counts on every track
+        # (the rule roles_on_track already states), so narrowing to Day 1 keeps
+        # a member who holds the role across the whole tournament.
+        any_scope: set[int] = set()
+        by_role: dict[int, set[int]] = {}
+        for value in roles:
+            if value == NO_ROLES:
+                continue
+            role_part, _, track_part = value.partition(":")
+            if not role_part.isdigit():
+                continue
+            role_id = int(role_part)
+            if track_part and track_part != ANY and track_part.isdigit():
+                by_role.setdefault(role_id, set()).add(int(track_part))
+            else:
+                any_scope.add(role_id)
+
         clauses = []
-        if role_ids:
+        if any_scope:
             clauses.append(exists().where(
                 (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                & TournamentTrackAssignment.role_id.in_(role_ids)
+                & TournamentTrackAssignment.role_id.in_(any_scope)
+            ))
+        for role_id, track_ids in by_role.items():
+            # An unnarrowed chip for the same role already covers every track.
+            if role_id in any_scope:
+                continue
+            clauses.append(exists().where(
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & (TournamentTrackAssignment.role_id == role_id)
+                & (TournamentTrackAssignment.tournament_track_id.in_(track_ids)
+                   | TournamentTrackAssignment.is_tournament_wide)
             ))
         if NO_ROLES in roles:
             clauses.append(~exists().where(
