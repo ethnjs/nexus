@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   ApiError, MembershipFull, MembershipView, MemberRole, Role, TournamentTrack,
 } from "@/lib/api";
@@ -15,10 +14,9 @@ import { ChipInput } from "@/components/ui/ChipInput";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Popover } from "@/components/ui/Popover";
 import { Pill, PillMenu } from "@/components/ui/PillMenu";
-import { FormPopover } from "@/components/ui/FormPopover";
 import { Button } from "@/components/ui/Button";
-import { IconLock, IconPlus } from "@/components/ui/Icons";
-import { RoleScopeForm } from "@/components/tournament/RoleScopePicker";
+import { IconPlus } from "@/components/ui/Icons";
+import { SEARCHABLE_ABOVE } from "@/components/ui/FilterModal";
 
 interface RolesCellProps {
   tournamentId: number;
@@ -140,12 +138,18 @@ export function RolesCell({
         );
       }}
       fullWidth
-      addButton={isSimple ? (
+      // One list for both kinds of tournament: every role, the held ones
+      // ticked. Ticking grants tournament-wide; on a multi-track tournament
+      // the chip's scope pill narrows it afterwards. Rank locks show as a
+      // lock icon in place of the checkbox, same rule either way.
+      addButton={(
         <Popover
           trigger={addButton}
           items={allRoles}
           getKey={(role) => role.id}
           renderLabel={(role) => role.label}
+          getSearchText={(role) => role.label}
+          searchable={allRoles.length > SEARCHABLE_ABOVE}
           checklist
           isSelected={(role) => heldIds.has(role.id)}
           isDisabled={(role) => !canTouchRole(role)}
@@ -155,20 +159,9 @@ export function RolesCell({
             return current ? handleRemove(current) : handleAdd(role, WIDE_SCOPE);
           }}
           emptyMessage="No roles yet"
+          width={220}
+          align="left"
         />
-      ) : (
-        <FormPopover trigger={addButton} width={260}>
-          {(close) => (
-            <AddRoleSteps
-              roles={allRoles.filter((r) => !heldIds.has(r.id))}
-              tracks={tracks}
-              canTouchRole={canTouchRole}
-              rankLockReason={rankLockReason}
-              onAdd={async (role, scope) => { await handleAdd(role, scope); close(); }}
-              onCancel={close}
-            />
-          )}
-        </FormPopover>
       )}
     />
   );
@@ -225,68 +218,4 @@ function nextScope(scope: RoleScope, option: ScopeOption): RoleScope {
       ? scope.trackIds.filter((x) => x !== id)
       : [...scope.trackIds, id].sort((a, b) => a - b),
   };
-}
-
-/** The add flow's two steps: pick a role, then say where it applies. */
-function AddRoleSteps({ roles, tracks, canTouchRole, rankLockReason, onAdd, onCancel }: {
-  roles: Role[];
-  tracks: TournamentTrack[];
-  canTouchRole: (role: Role) => boolean;
-  rankLockReason: (role: Role) => string | undefined;
-  onAdd: (role: Role, scope: RoleScope) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [role, setRole] = useState<Role | null>(null);
-
-  if (role) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <div style={{
-          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-          textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)",
-        }}>
-          {role.label} applies to
-        </div>
-        <RoleScopeForm
-          tracks={tracks}
-          initial={NO_SCOPE}
-          applyLabel="Add role"
-          onApply={(scope) => onAdd(role, scope)}
-          onCancel={() => setRole(null)}
-        />
-      </div>
-    );
-  }
-
-  if (roles.length === 0) {
-    return (
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", margin: 0 }}>
-        No more roles to add.
-      </p>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-      {roles.map((r) => {
-        const allowed = canTouchRole(r);
-        return (
-          <Button
-            key={r.id}
-            type="button" variant="ghost" size="sm" fullWidth
-            disabled={!allowed}
-            title={allowed ? undefined : rankLockReason(r)}
-            onClick={() => setRole(r)}
-            style={{ justifyContent: "space-between" }}
-          >
-            {r.label}
-            {!allowed && <IconLock size={11} />}
-          </Button>
-        );
-      })}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
-        <Button type="button" variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  );
 }
