@@ -45,6 +45,8 @@ export interface MemberSectionsProps {
       viewing their own page passes canEditMember but still can't hand
       themselves a role. */
   rolesLocked: boolean;
+  /** Why, when it is something the viewer could act on. */
+  rolesLockedReason?: string;
   collectIsOver18: boolean;
   collectIsOver21: boolean;
   onRolesUpdated: (updated: MembershipFull) => void;
@@ -106,6 +108,7 @@ const RENDERERS: Record<
       allRoles={p.allRoles}
       canTouchRole={p.canTouchRole}
       locked={p.rolesLocked}
+      lockedReason={p.rolesLockedReason}
       collectIsOver18={p.collectIsOver18}
       collectIsOver21={p.collectIsOver21}
       onRolesUpdated={p.onRolesUpdated}

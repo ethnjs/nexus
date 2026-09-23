@@ -17,6 +17,8 @@ interface MembershipSectionProps {
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   locked: boolean;
+  /** Why, for the roles cell's locked add control. */
+  lockedReason?: string;
   collectIsOver18: boolean;
   collectIsOver21: boolean;
   onRolesUpdated: (updated: MembershipFull) => void;
@@ -32,7 +34,7 @@ interface MembershipSectionProps {
 // signed up for, and what they can do. Split out of MemberPanel so the panel
 // can order it against the other sections and hide its fields individually.
 export function MembershipSection({
-  tournamentId, membership, allRoles, canTouchRole, locked,
+  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason,
   collectIsOver18, collectIsOver21, onRolesUpdated, hiddenFields,
 }: MembershipSectionProps) {
   const shows = (field: string) => !hiddenFields.has(field);
@@ -108,6 +110,7 @@ export function MembershipSection({
                     allRoles={allRoles}
                     canTouchRole={canTouchRole}
                     locked={locked}
+                    lockedReason={lockedReason}
                     emptyLabel="None"
                     onUpdated={onRolesUpdated}
                   />
