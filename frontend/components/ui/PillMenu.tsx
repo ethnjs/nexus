@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { CSSProperties, useState } from "react";
 import { Popover, PopoverProps } from "@/components/ui/Popover";
 import { IconChevronDown } from "@/components/ui/Icons";
 
@@ -18,6 +18,23 @@ const TONE_STYLE: Record<PillTone, { background: string; color: string; border: 
   danger:  { background: "var(--color-danger-subtle)",  color: "var(--color-danger)",      border: "var(--color-danger)" },
 };
 
+function pillStyle(tone: PillTone): CSSProperties {
+  const t = TONE_STYLE[tone];
+  return {
+    display: "inline-flex", alignItems: "center", gap: "2px", boxSizing: "border-box",
+    padding: "1px 6px", borderRadius: "999px",
+    border: `1px solid ${t.border}`, background: t.background, color: t.color,
+    fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
+    whiteSpace: "nowrap",
+  };
+}
+
+/** The pill on its own, with no menu behind it — for a viewer who can see the
+ *  value but isn't allowed to change it. */
+export function Pill({ label, tone = "default", title }: { label: string; tone?: PillTone; title?: string }) {
+  return <span title={title} style={pillStyle(tone)}>{label}</span>;
+}
+
 type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
   /** The pill's own text — what's currently chosen, or a prompt to choose. */
   label: string;
@@ -32,7 +49,6 @@ type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
 // full-size Dropdown's chrome.
 export function PillMenu<T>({ label, tone = "default", onOpenChange, ...popover }: PillMenuProps<T>) {
   const [open, setOpen] = useState(false);
-  const pill = TONE_STYLE[tone];
 
   return (
     <Popover
@@ -40,13 +56,7 @@ export function PillMenu<T>({ label, tone = "default", onOpenChange, ...popover 
       // Chained, not replaced: the chevron needs it too.
       onOpenChange={(next) => { setOpen(next); onOpenChange?.(next); }}
       trigger={
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: "2px", boxSizing: "border-box",
-          padding: "1px 6px", borderRadius: "999px",
-          border: `1px solid ${pill.border}`, background: pill.background, color: pill.color,
-          fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-          cursor: "pointer", whiteSpace: "nowrap",
-        }}>
+        <span style={{ ...pillStyle(tone), cursor: "pointer" }}>
           {label}
           <IconChevronDown size={9} style={{ transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
         </span>
