@@ -112,7 +112,7 @@ function sortValue(m: MembershipFull, field: SortField): string | number {
 // callback props below are id-based and reference-stable in the parent, which
 // is what makes the memo actually hold.
 const MemberRow = memo(function MemberRow({
-  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove,
+  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove,
   selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly, panelOpen,
   columns,
 }: {
@@ -122,6 +122,8 @@ const MemberRow = memo(function MemberRow({
   canTouchRole: (role: Role) => boolean;
   /** Shared gate for both role editing and removal — mirrors the backend's validate_member_target: archived, target is the tournament owner, or target outranks the actor. */
   locked: boolean;
+  /** Which of those it was, for the roles cell's locked add control. */
+  lockedReason?: string;
   /** This row is the current user's own membership — removal always redirects to the General Settings leave flow instead of using this gate. */
   isSelf: boolean;
   /** Archived tournaments hide the remove control entirely rather than showing it disabled. */
@@ -209,6 +211,7 @@ const MemberRow = memo(function MemberRow({
           allRoles={allRoles}
           canTouchRole={canTouchRole}
           locked={locked}
+          lockedReason={lockedReason}
           readOnly={rolesReadOnly || panelOpen}
           onUpdated={onUpdated}
         />
@@ -251,7 +254,7 @@ export default function MembersPage() {
 
   const { user: currentUser } = useAuth();
   const { selectedTournament } = useTournament();
-  const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
+  const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember, memberLockReason } = useMemberRoleLock();
 
   const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -736,6 +739,7 @@ export default function MembersPage() {
                   allRoles={allRoles}
                   canTouchRole={canTouchRoleStable}
                   locked={!canEditMember(m)}
+                  lockedReason={memberLockReason(m)}
                   isSelf={currentUser?.id === m.user.id}
                   isArchived={isArchived}
                   onUpdated={handleMemberUpdated}

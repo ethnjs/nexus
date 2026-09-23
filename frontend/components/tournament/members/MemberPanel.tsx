@@ -16,6 +16,7 @@ import { MemberPanelConfigModal } from "@/components/tournament/members/MemberPa
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -63,6 +64,10 @@ export function MemberPanel({
   isArchived, isSelf, onRemove, onSelfRemove,
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
+  // Read here rather than taken as a prop: every caller already builds its
+  // canEditMember from this same hook, so the reason would be the same value
+  // passed down a second time.
+  const { memberLockReason } = useMemberRoleLock();
   const [full, setFull] = useState<MembershipFull | null>(null);
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
@@ -201,6 +206,7 @@ export function MemberPanel({
               allRoles={allRoles}
               canTouchRole={canTouchRole}
               rolesLocked={!canEditMember(full)}
+              rolesLockedReason={memberLockReason(full)}
               collectIsOver18={collectIsOver18}
               collectIsOver21={collectIsOver21}
               onRolesUpdated={handleRolesUpdated}
