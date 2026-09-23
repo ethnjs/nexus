@@ -28,11 +28,13 @@ export type MembersFilterState = FilterState<MembersFilterKey>;
 // the pair is from an older release (availability used to persist bare shift
 // ids) — the server ignores it, so the modal has to as well, or a chip would
 // sit there claiming to narrow a roster it isn't touching.
-const PAIRED_KEYS: readonly MembersFilterKey[] = ["track", "lunch", "event_pref", "shift", "assigned"];
+const PAIRED_KEYS: readonly MembersFilterKey[] = ["role", "track", "lunch", "event_pref", "shift", "assigned"];
 
 function usableValues(key: string, values: Set<string>): string[] {
   const list = [...values];
-  return PAIRED_KEYS.includes(key as MembersFilterKey) ? list.filter((v) => v.includes(":")) : list;
+  if (!PAIRED_KEYS.includes(key as MembersFilterKey)) return list;
+  // "none" is the roles filter's own sentinel ("holds no roles"), not a pair.
+  return list.filter((v) => v.includes(":") || (key === "role" && v === "none"));
 }
 
 /** The saved wire shape (arrays, keyed by filter) back into filter state.
@@ -46,7 +48,12 @@ export function membersFilterFromStored(
   for (const key of MEMBERS_FILTER_KEYS) {
     const values = stored?.[key];
     if (Array.isArray(values)) {
-      state[key] = new Set(values.filter((v): v is string => typeof v === "string"));
+      const strings = values.filter((v): v is string => typeof v === "string");
+      // A role id saved before roles could be narrowed to tracks means "any
+      // track", which is what an unnarrowed chip already is.
+      state[key] = new Set(key === "role"
+        ? strings.map((v) => (v.includes(":") || v === "none" ? v : `${v}:${ANY}`))
+        : strings);
     }
   }
   return state;
@@ -317,6 +324,11 @@ export function MembersFilterModal({
     return full;
   });
 
+  const simpleTournament = (options?.tracks ?? []).length <= 1;
+  const roleGroups: FilterOptionGroup[] = roleOptions.map((role) => ({
+    ...role, options: options?.tracks ?? [],
+  }));
+
   // Statuses are the same three for every track, so the groups are built
   // here rather than repeated in the options payload.
   const trackGroups: FilterOptionGroup[] = (options?.tracks ?? []).map((track) => ({
@@ -346,7 +358,13 @@ export function MembersFilterModal({
   }
 
   const sections: FilterSectionConfig<MembersFilterKey>[] = [
-    { key: "role", title: "Roles", control: "chips", options: roleOptions },
+    // One track makes "on which track" a question with one answer, so a
+    // simple tournament keeps the plain chips.
+    simpleTournament
+      ? { key: "role", title: "Roles", control: "chips", options: roleOptions }
+      : paired("role", "Roles", roleGroups, {
+          anyLabel: "Any track", addLabel: "Filter by role", emptyMessage: "No roles yet.",
+        }),
     paired("assigned", "Assignments", assignmentGroups, {
       anyLabel: "Any", addLabel: "Filter by track", emptyMessage: "No active tracks.",
     }),

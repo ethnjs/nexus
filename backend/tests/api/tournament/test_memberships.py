@@ -521,6 +521,38 @@ class TestRosterFilters:
         assert "bob@example.com" in self._roster(client, td_tournament.id, "?role=none")
         assert "alice@example.com" not in self._roster(client, td_tournament.id, "?role=none")
 
+    def test_role_filter_narrows_to_tracks(self, client, db, td_user, td_tournament):
+        """"roleId:trackId" asks who holds that role that day. A tournament-wide
+        grant is held on every track, so it answers too."""
+        from app.models.models import TournamentTrack
+        from tests.conftest import grant_role
+
+        writing = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        db.add(writing)
+        db.flush()
+        day_one = td_tournament.tracks[0]
+
+        alice = grant_role(db, td_tournament, _db_user_for_filter(db, "alice@example.com"),
+                           "Volunteer", track_id=day_one.id)
+        grant_role(db, td_tournament, _db_user_for_filter(db, "bob@example.com"),
+                   "Volunteer", track_id=writing.id)
+        grant_role(db, td_tournament, _db_user_for_filter(db, "carol@example.com"), "Volunteer")
+        db.commit()
+        role_id = alice.roles[0].id
+
+        login(client, "td@test.com", "tdpass")
+        everyone = {"alice@example.com", "bob@example.com", "carol@example.com"}
+        assert self._roster(client, td_tournament.id, f"?role={role_id}") == everyone
+        assert self._roster(client, td_tournament.id, f"?role={role_id}:__any__") == everyone
+        assert self._roster(client, td_tournament.id, f"?role={role_id}:{day_one.id}") == {
+            "alice@example.com", "carol@example.com",
+        }
+        # Several tracks on one role OR together, the way every other filter's
+        # values do.
+        assert self._roster(
+            client, td_tournament.id, f"?role={role_id}:{day_one.id}&role={role_id}:{writing.id}",
+        ) == everyone
+
     def test_track_filter_pairs_track_with_status(self, client, db, td_user, td_tournament):
         """A member confirmed on one track and declined on another must not
         match "declined on the first" — which is why the pair travels together."""
