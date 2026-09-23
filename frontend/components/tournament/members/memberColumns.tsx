@@ -7,9 +7,9 @@ import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
-import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
-import { OnboardingProgress } from "@/components/tournament/OnboardingProgress";
+import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
+import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
+import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
 
 // Namespaces shared with the backend's display_config — a column key means
 // the same thing here as it does on the panel.

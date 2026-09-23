@@ -33,13 +33,13 @@ import { DockedPanel } from '@/components/layout/DockedPanel'
 
 import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
 import { RolePillMenu } from '@/components/assignments/RolePillMenu'
-import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
+import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members/MemberPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
   MembersFilterModal, MEMBERS_FILTER_KEYS,
   membersFilterFromStored, membersFilterToStored, membersFilterParams,
   type MembersFilterState,
-} from '@/components/tournament/MembersFilterModal'
+} from '@/components/tournament/members/MembersFilterModal'
 import {
   EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
   eventCategoryKey, eventCategoryOptions, eventsFilterFromStored,

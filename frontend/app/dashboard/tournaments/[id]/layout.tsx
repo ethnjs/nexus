@@ -5,7 +5,7 @@ import { use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
-import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
+import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
