@@ -1,7 +1,7 @@
 "use client";
 
 import type { TournamentTrack } from "@/lib/api";
-import { Pill, PillMenu } from "@/components/ui/PillMenu";
+import { Pill, PillMenu, type PillSize } from "@/components/ui/PillMenu";
 import { WIDE_SCOPE, type RoleScope } from "@/lib/roles/roleScope";
 
 /** "All", a track's name, or a count once names would crowd the chip. */
@@ -36,21 +36,24 @@ function nextScope(scope: RoleScope, option: ScopeOption): RoleScope {
  * Shared by the roster's role chips (where a pick saves at once) and the mass
  * editor's pending rows (where it edits a draft until Save).
  */
-export function RoleScopePill({ scope, tracks, editable = true, title, onChange }: {
+export function RoleScopePill({ scope, tracks, editable = true, size = "sm", title, onChange }: {
   scope: RoleScope;
   tracks: TournamentTrack[];
   editable?: boolean;
+  /** "sm" inside a chip or badge, "md" on its own in a list row. */
+  size?: PillSize;
   title?: string;
   onChange: (scope: RoleScope) => void | Promise<void>;
 }) {
   const label = scopeLabel(scope, tracks);
-  if (!editable) return <Pill label={label} title={title} />;
+  if (!editable) return <Pill label={label} size={size} title={title} />;
 
   const options: ScopeOption[] = [WIDE_OPTION, ...tracks.map((t) => ({ kind: "track" as const, track: t }))];
 
   return (
     <PillMenu
       label={label}
+      size={size}
       items={options}
       getKey={(o) => (o.kind === "wide" ? "wide" : o.track.id)}
       renderLabel={(o) => (o.kind === "wide" ? "Whole tournament" : o.track.name)}
