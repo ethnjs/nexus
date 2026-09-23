@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { ApiError, MembershipFull, membersApi } from "@/lib/api";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
+import { useTournament } from "@/lib/useTournament";
+import { NO_SCOPE, WIDE_SCOPE, changeRoleScope, type RoleScope } from "@/lib/roles/roleScope";
+import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -22,11 +25,14 @@ interface AddRoleMembersModalProps {
 export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, onAdded }: AddRoleMembersModalProps) {
   const [search, setSearch] = useState("");
   const [candidates, setCandidates] = useState<MembershipFull[] | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Map<number, RoleScope>>(new Map());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const { ownRank, bypassRankBound } = useRoleLock();
+  // One track leaves nothing to choose — the grant is tournament-wide either
+  // way, so simple tournaments keep the plain checklist.
+  const { tracks, isSimple } = useTournament();
 
   // Debounced so typing doesn't hit the server on every keystroke — only
   // members who don't already hold this role are ever returned. Also drops
@@ -48,11 +54,17 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
 
   function toggle(membershipId: number) {
     setSelected((cur) => {
-      const next = new Set(cur);
+      const next = new Map(cur);
+      // Picked at "All" — the scope a simple tournament always grants, and
+      // the one to narrow down from on a multi-track tournament.
       if (next.has(membershipId)) next.delete(membershipId);
-      else next.add(membershipId);
+      else next.set(membershipId, WIDE_SCOPE);
       return next;
     });
+  }
+
+  function setScope(membershipId: number, scope: RoleScope) {
+    setSelected((cur) => new Map(cur).set(membershipId, scope));
   }
 
   async function handleAdd() {
@@ -60,9 +72,11 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
     setSaving(true);
     setError(undefined);
     try {
-      await Promise.all(
-        [...selected].map((membershipId) => membersApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
-      );
+      await Promise.all([...selected].map(([membershipId, scope]) => (
+        // Candidates already exclude anyone holding the role, so every one of
+        // these starts from nothing.
+        changeRoleScope(tournamentId, membershipId, roleId, NO_SCOPE, scope)
+      )));
       onAdded();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Failed to add members.");
@@ -113,7 +127,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
               >
                 <Checkbox checked={checked} onChange={() => toggle(m.id)} />
                 <AvatarCircle user={m.user} size={28} />
-                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {name}
                   </span>
@@ -121,6 +135,22 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
                     {m.user.email}
                   </span>
                 </div>
+                {/* Only once picked: a pill on every row would offer a where
+                    for members who are not being added at all. */}
+                {!isSimple && checked && (
+                  <span
+                    style={{ flexShrink: 0, paddingRight: "8px" }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  >
+                    <RoleScopePill
+                      scope={selected.get(m.id) ?? WIDE_SCOPE}
+                      tracks={tracks}
+                      size="md"
+                      title="Where this member will hold the role"
+                      onChange={(scope) => setScope(m.id, scope)}
+                    />
+                  </span>
+                )}
               </label>
             );
           })}

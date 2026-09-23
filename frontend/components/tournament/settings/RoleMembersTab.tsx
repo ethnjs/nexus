@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { ApiError, MembershipFull, Role, membersApi } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
+import { useTournament } from "@/lib/useTournament";
+import { NO_SCOPE, changeRoleScope, scopeOf, type RoleScope } from "@/lib/roles/roleScope";
+import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
@@ -30,6 +33,9 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
 
   const { user: currentUser } = useAuth();
   const { ownRank, bypassRankBound } = useRoleLock();
+  // One track means "held here" and "held everywhere" are the same, so the
+  // scope pill only earns its place on a multi-track tournament.
+  const { tracks, isSimple } = useTournament();
 
   // Same rank-authority check the backend enforces (validate_role_action
   // check 2) — a member who strictly outranks the actor would just 403 on
@@ -56,18 +62,28 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
     onChanged?.();
   }
 
-  async function handleRemove(membershipId: number) {
-    setRemovingId(membershipId);
+  /** Where this member holds the role. Every row here holds it somewhere —
+   *  the list is filtered by it — so an empty scope only means a stale row. */
+  function scopeFor(m: MembershipFull): RoleScope {
+    const held = (m.roles ?? []).find((r) => r.id === role.id);
+    return held ? scopeOf(held) : NO_SCOPE;
+  }
+
+  async function moveScope(m: MembershipFull, to: RoleScope) {
+    setRemovingId(m.id);
     setError(undefined);
     try {
-      await membersApi.updateRoles(tournamentId, membershipId, { remove: [role.id] });
+      await changeRoleScope(tournamentId, m.id, role.id, scopeFor(m), to);
       refetch();
     } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Failed to remove member.");
+      setError(err instanceof ApiError ? err.message : "Failed to update member.");
     } finally {
       setRemovingId(null);
     }
   }
+
+  /** The "x" drops the role wherever it is held, not just tournament-wide. */
+  const handleRemove = (m: MembershipFull) => moveScope(m, NO_SCOPE);
 
   return (
     <div>
@@ -131,6 +147,18 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
                     {m.user.email}
                   </span>
                 </div>
+                {!isSimple && (
+                  <span style={{ flexShrink: 0 }}>
+                    <RoleScopePill
+                      scope={scopeFor(m)}
+                      tracks={tracks}
+                      editable={!locked && !memberLocked}
+                      size="md"
+                      title="Where this member holds the role"
+                      onChange={(scope) => moveScope(m, scope)}
+                    />
+                  </span>
+                )}
                 {!locked && (
                   memberLocked ? (
                     <span
@@ -147,7 +175,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
                     <Button
                       type="button" variant="secondary" size="sm"
                       loading={removingId === m.id}
-                      onClick={() => handleRemove(m.id)}
+                      onClick={() => handleRemove(m)}
                       title="Remove from role"
                       style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
                     >
