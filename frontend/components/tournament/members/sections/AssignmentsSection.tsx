@@ -19,7 +19,7 @@ import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
 import { RolePillMenu } from "@/components/assignments/RolePillMenu";
 import {
   AVAILABILITY_GREEN, AVAILABILITY_RED,
-} from "@/components/tournament/AvailabilityTimeline";
+} from "@/components/tournament/members/AvailabilityTimeline";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { FieldValue } from "@/components/profile/PanelField";

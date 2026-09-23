@@ -2,7 +2,7 @@
 
 import {
   AVAILABILITY_TRACK_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
-} from "@/components/tournament/memberColumns";
+} from "@/components/tournament/members/memberColumns";
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 

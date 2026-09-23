@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { PanelField, FieldValue, FieldList, FieldGrid } from "@/components/profile/PanelField";
-import { RolesCell } from "@/components/tournament/RolesCell";
-import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
-import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
-import { OnboardingProgress } from "@/components/tournament/OnboardingProgress";
+import { RolesCell } from "@/components/tournament/roles/RolesCell";
+import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
+import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
+import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
 
 interface MembershipSectionProps {
   tournamentId: number;

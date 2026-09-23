@@ -12,8 +12,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelField";
-import { LunchCategoryRows } from "@/components/tournament/sections/LunchSection";
-import { AvailabilityDays } from "@/components/tournament/sections/AvailabilitySection";
+import { LunchCategoryRows } from "@/components/tournament/members/sections/LunchSection";
+import { AvailabilityDays } from "@/components/tournament/members/sections/AvailabilitySection";
 
 // Its own getMe rather than widening useMyMembership's: that provider loads
 // on every page, and only this card needs availability and lunch.

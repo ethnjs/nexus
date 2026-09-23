@@ -14,8 +14,8 @@ import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
 import { NO_SCOPE, WIDE_SCOPE, changeRoleScope, scopeOf, type RoleScope } from "@/lib/roles/roleScope";
 import { useTournament } from "@/lib/useTournament";
 import { Badge } from "@/components/ui/Badge";
-import { RoleScopePill } from "@/components/tournament/RoleScopePill";
-import { RolePickerPopover } from "@/components/tournament/RolePickerPopover";
+import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
+import { RolePickerPopover } from "@/components/tournament/roles/RolePickerPopover";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.

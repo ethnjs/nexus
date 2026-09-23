@@ -23,20 +23,20 @@ import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { RolesCell } from "@/components/tournament/RolesCell";
-import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/MemberPanel";
-import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/MassRoleEditor";
-import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
-import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
+import { RolesCell } from "@/components/tournament/roles/RolesCell";
+import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/members/MemberPanel";
+import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/roles/MassRoleEditor";
+import { RemoveMemberModal } from "@/components/tournament/members/RemoveMemberModal";
+import { SelfRemoveRedirectModal } from "@/components/tournament/members/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
   MembersFilterModal, MembersFilterState, MEMBERS_FILTER_KEYS, membersFilterParams,
   membersFilterFromStored, membersFilterToStored,
-} from "@/components/tournament/MembersFilterModal";
+} from "@/components/tournament/members/MembersFilterModal";
 import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
-import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
-import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
-import styles from "@/components/tournament/MembersTable.module.css";
+import { TableColumnsModal } from "@/components/tournament/members/TableColumnsModal";
+import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/members/memberColumns";
+import styles from "@/components/tournament/members/MembersTable.module.css";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconEye } from "@/components/ui/Icons";

@@ -9,10 +9,10 @@ import {
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { MemberSections } from "@/components/tournament/sections/MemberSections";
+import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { MemberPanelConfigModal } from "@/components/tournament/MemberPanelConfigModal";
+import { MemberPanelConfigModal } from "@/components/tournament/members/MemberPanelConfigModal";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";

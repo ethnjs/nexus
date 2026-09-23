@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { MemberSections } from "@/components/tournament/sections/MemberSections";
+import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 
