@@ -20,8 +20,8 @@
 import { memo, useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 
-import { AvailabilityTimeline, type TimelineShift } from '@/components/tournament/AvailabilityTimeline'
-import { AgeFlagsBadges } from '@/components/tournament/sections/AgeFlagsBadges'
+import { AvailabilityTimeline, type TimelineShift } from '@/components/tournament/members/AvailabilityTimeline'
+import { AgeFlagsBadges } from '@/components/tournament/members/sections/AgeFlagsBadges'
 import { Badge } from '@/components/ui/Badge'
 import type {
   MembershipAvailability, MembershipEventPreference, MembershipEventPreferenceOption,

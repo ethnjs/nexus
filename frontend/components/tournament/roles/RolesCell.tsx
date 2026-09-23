@@ -14,8 +14,8 @@ import { ChipInput } from "@/components/ui/ChipInput";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
-import { RolePickerPopover } from "@/components/tournament/RolePickerPopover";
-import { RoleScopePill } from "@/components/tournament/RoleScopePill";
+import { RolePickerPopover } from "@/components/tournament/roles/RolePickerPopover";
+import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
 
 interface RolesCellProps {
   tournamentId: number;

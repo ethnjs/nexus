@@ -10,12 +10,12 @@ import { EducationCareerSection } from "@/components/profile/sections/EducationC
 import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
-import { AssignmentsSection } from "@/components/tournament/sections/AssignmentsSection";
-import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
-import { LunchSection } from "@/components/tournament/sections/LunchSection";
-import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
-import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
-import { MembershipSection } from "@/components/tournament/sections/MembershipSection";
+import { AssignmentsSection } from "@/components/tournament/members/sections/AssignmentsSection";
+import { AvailabilitySection } from "@/components/tournament/members/sections/AvailabilitySection";
+import { LunchSection } from "@/components/tournament/members/sections/LunchSection";
+import { EventPreferencesSection } from "@/components/tournament/members/sections/EventPreferencesSection";
+import { CustomResponsesSection } from "@/components/tournament/members/sections/CustomResponsesSection";
+import { MembershipSection } from "@/components/tournament/members/sections/MembershipSection";
 import {
   hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
 } from "@/lib/panelSections";

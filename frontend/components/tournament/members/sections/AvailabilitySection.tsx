@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { PanelField, FieldValue } from "@/components/profile/PanelField";
-import { AvailabilityTimeline, TimelineShift } from "@/components/tournament/AvailabilityTimeline";
+import { AvailabilityTimeline, TimelineShift } from "@/components/tournament/members/AvailabilityTimeline";
 
 interface AvailabilitySectionProps {
   availability: MembershipAvailability[];
