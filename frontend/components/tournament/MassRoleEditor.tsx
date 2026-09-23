@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { membersApi, ApiError, MembershipFull, Role } from "@/lib/api";
+import { ApiError, MembershipFull, Role, TournamentTrack } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection } from "@/components/settings/SettingsRow";
 import { Button } from "@/components/ui/Button";
-import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
+import { NO_SCOPE, WIDE_SCOPE, changeRoleScope, scopeOf, type RoleScope } from "@/lib/roles/roleScope";
+import { useTournament } from "@/lib/useTournament";
+import { Badge } from "@/components/ui/Badge";
+import { RoleScopePill } from "@/components/tournament/RoleScopePill";
+import { RolePickerPopover } from "@/components/tournament/RolePickerPopover";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -52,19 +56,50 @@ function ResultsCard({ results }: { results: MemberResult[] }) {
 
 // A pending role add/remove, shown git-diff style before Save is pressed —
 // undoing just drops it back out of the pending set, nothing hits the
-// backend until Save.
-function RoleDiffRow({ role, sign, onUndo }: { role: Role; sign: "+" | "-"; onUndo: () => void }) {
+// backend until Save. The scope pill edits that draft the same way it edits a
+// real grant on the roster, so "where" is decided before the write, not after.
+function RoleDiffRow({ role, sign, scope, tracks, onScopeChange, onUndo }: {
+  role: Role;
+  sign: "+" | "-";
+  scope: RoleScope;
+  /** Empty in a simple tournament — one track means there is no "where". */
+  tracks: TournamentTrack[];
+  onScopeChange: (scope: RoleScope) => void;
+  onUndo: () => void;
+}) {
   const color = sign === "+" ? "var(--color-success)" : "var(--color-danger)";
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color }}>
-        {sign} {role.label}
+      <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color }}>{sign}</span>
+        <Badge variant={sign === "+" ? "confirmed" : "declined"} className={tracks.length > 0 ? "gap-1.5 pr-1" : ""}>
+          {role.label}
+          {/* Inside the badge, the way the roster's pill sits inside its chip.
+              The badge uppercases its own text; the pill keeps its casing. */}
+          {tracks.length > 0 && (
+            <span style={{ textTransform: "none", letterSpacing: "normal" }}>
+              <RoleScopePill
+                scope={scope}
+                tracks={tracks}
+                title={sign === "+" ? "Where this role applies" : "Where it is removed from"}
+                onChange={onScopeChange}
+              />
+            </span>
+          )}
+        </Badge>
       </span>
       <Button type="button" variant="ghost" size="xs" iconOnly title="Undo" onClick={onUndo}>
         <IconX size={11} />
       </Button>
     </div>
   );
+}
+
+/** Adding to what a member already holds, never replacing it: a member on Day 2
+ *  who is granted Day 1 ends up on both. Tournament-wide swallows the rest. */
+function withScope(current: RoleScope, added: RoleScope): RoleScope {
+  if (current.wide || added.wide) return WIDE_SCOPE;
+  return { wide: false, trackIds: [...new Set([...current.trackIds, ...added.trackIds])].sort((a, b) => a - b) };
 }
 
 interface MassRoleEditorProps {
@@ -83,8 +118,10 @@ interface MassRoleEditorProps {
 export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRole, onClose, onUpdated, onDirtyChange }: MassRoleEditorProps) {
   const { guard } = useUnsavedChanges();
 
-  const [rolesToAdd, setRolesToAdd] = useState<Set<number>>(new Set());
-  const [rolesToRemove, setRolesToRemove] = useState<Set<number>>(new Set());
+  // Keyed by role, valued by where it applies. "All" on a removal means every
+  // scope the member holds it in; on an addition it means tournament-wide.
+  const [rolesToAdd, setRolesToAdd] = useState<Map<number, RoleScope>>(new Map());
+  const [rolesToRemove, setRolesToRemove] = useState<Map<number, RoleScope>>(new Map());
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<MemberResult[] | null>(null);
 
@@ -102,6 +139,11 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
     return RANK_LOCK_REASON;
   }
 
+  // One track makes "where" a question with one answer, so the pill is left
+  // off and every grant is tournament-wide — the roster's own rule.
+  const { tracks, isSimple } = useTournament();
+  const scopeTracks = isSimple ? [] : tracks;
+
   const pendingAddRoles = allRoles.filter((r) => rolesToAdd.has(r.id));
   const pendingRemoveRoles = heldRoles.filter((r) => rolesToRemove.has(r.id));
 
@@ -112,29 +154,50 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
   // Checklist popovers stay open across picks, so toggling has to handle
   // both directions (pick to stage, pick again to un-stage) rather than
   // just the one-way "select to add" a plain list would need.
-  function toggleAddRole(role: Role) {
-    setRolesToAdd((prev) => {
-      const next = new Set(prev);
-      if (next.has(role.id)) next.delete(role.id); else next.add(role.id);
+  function toggle(
+    set: typeof setRolesToAdd, other: typeof setRolesToAdd, roleId: number,
+  ) {
+    set((prev) => {
+      const next = new Map(prev);
+      // Staged at "All" — the safe default to narrow down from, and the only
+      // scope a simple tournament has.
+      if (next.has(roleId)) next.delete(roleId); else next.set(roleId, WIDE_SCOPE);
       return next;
     });
-    setRolesToRemove((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
+    other((prev) => {
+      if (!prev.has(roleId)) return prev;
+      const next = new Map(prev);
+      next.delete(roleId);
+      return next;
+    });
   }
 
-  function toggleRemoveRole(role: Role) {
-    setRolesToRemove((prev) => {
-      const next = new Set(prev);
-      if (next.has(role.id)) next.delete(role.id); else next.add(role.id);
+  const toggleAddRole = (role: Role) => toggle(setRolesToAdd, setRolesToRemove, role.id);
+  const toggleRemoveRole = (role: Role) => toggle(setRolesToRemove, setRolesToAdd, role.id);
+
+  function setScope(set: typeof setRolesToAdd, roleId: number, scope: RoleScope) {
+    set((prev) => new Map(prev).set(roleId, scope));
+  }
+
+  function unstage(set: typeof setRolesToAdd, roleId: number) {
+    set((prev) => {
+      const next = new Map(prev);
+      next.delete(roleId);
       return next;
     });
-    setRolesToAdd((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
   }
 
   // Discards the pending changes only — the panel stays open, matching
   // EventPanel/MassEventEditor rather than treating Cancel as a second Close.
   function handleCancel() {
-    setRolesToAdd(new Set());
-    setRolesToRemove(new Set());
+    setRolesToAdd(new Map());
+    setRolesToRemove(new Map());
+  }
+
+  /** This member's hold on `roleId` right now. */
+  function scopeHeld(m: MembershipFull, roleId: number): RoleScope {
+    const role = (m.roles ?? []).find((r) => r.id === roleId);
+    return role ? scopeOf(role) : NO_SCOPE;
   }
 
   async function handleSave() {
@@ -142,14 +205,24 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
     setResults(null);
 
     const outcomes = await Promise.allSettled(memberships.map(async (m) => {
-      const heldIds = new Set((m.roles ?? []).map((r) => r.id));
-      const add = [...rolesToAdd].filter((id) => !heldIds.has(id));
-      const remove = [...rolesToRemove].filter((id) => heldIds.has(id));
-      if (add.length === 0 && remove.length === 0) return m;
-      return membersApi.updateRoles(tournamentId, m.id, {
-        add: add.length > 0 ? add : undefined,
-        remove: remove.length > 0 ? remove : undefined,
-      });
+      let latest = m;
+      const apply = async (roleId: number, to: RoleScope) => {
+        const from = scopeHeld(latest, roleId);
+        const saved = await changeRoleScope(tournamentId, m.id, roleId, from, to);
+        if (saved) latest = saved;
+      };
+
+      for (const [roleId, scope] of rolesToAdd) {
+        await apply(roleId, withScope(scopeHeld(latest, roleId), scope));
+      }
+      for (const [roleId, scope] of rolesToRemove) {
+        const from = scopeHeld(latest, roleId);
+        if (from.wide && !scope.wide) continue;  // see the note under the rows
+        await apply(roleId, scope.wide
+          ? NO_SCOPE
+          : { wide: false, trackIds: from.trackIds.filter((id) => !scope.trackIds.includes(id)) });
+      }
+      return latest;
     }));
 
     const nextResults: MemberResult[] = [];
@@ -164,8 +237,8 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
       }
     });
     setResults(nextResults);
-    setRolesToAdd(new Set());
-    setRolesToRemove(new Set());
+    setRolesToAdd(new Map());
+    setRolesToRemove(new Map());
     setSaving(false);
   }
 
@@ -195,55 +268,60 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
         <SettingsSection title="Roles">
           <div style={{ padding: "20px 0" }}>
             <div style={{ display: "flex", gap: "8px" }}>
-              <Popover
+              <RolePickerPopover
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
                     <IconPlus size={12} /> Add role
                   </Button>
                 }
-                items={allRoles}
-                getKey={(r) => r.id}
-                renderLabel={(r) => r.label}
-                emptyMessage="No roles yet."
-                onSelect={toggleAddRole}
-                checklist
+                roles={allRoles}
                 isSelected={(r) => rolesToAdd.has(r.id)}
                 isDisabled={(r) => !canTouchRole(r)}
                 disabledReason={rankLockReason}
-                width={240}
+                onSelect={toggleAddRole}
+                emptyMessage="No roles yet."
               />
-              <Popover
+              <RolePickerPopover
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
                     <IconMinus size={12} /> Remove role
                   </Button>
                 }
-                items={heldRoles}
-                getKey={(r) => r.id}
-                renderLabel={(r) => r.label}
-                emptyMessage="None of the selected members have a role."
-                onSelect={toggleRemoveRole}
-                checklist
+                roles={heldRoles}
+                isSelected={(r) => rolesToRemove.has(r.id)}
                 isDisabled={(r) => !canTouchRole(r)}
                 disabledReason={rankLockReason}
-                isSelected={(r) => rolesToRemove.has(r.id)}
-                width={240}
+                onSelect={toggleRemoveRole}
+                emptyMessage="None of the selected members have a role."
               />
             </div>
 
             {(pendingAddRoles.length > 0 || pendingRemoveRoles.length > 0) && (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
                 {pendingAddRoles.map((r) => (
-                  <RoleDiffRow key={r.id} role={r} sign="+" onUndo={() => setRolesToAdd((prev) => new Set([...prev].filter((id) => id !== r.id)))} />
+                  <RoleDiffRow
+                    key={r.id} role={r} sign="+"
+                    scope={rolesToAdd.get(r.id) ?? WIDE_SCOPE}
+                    tracks={scopeTracks}
+                    onScopeChange={(scope) => setScope(setRolesToAdd, r.id, scope)}
+                    onUndo={() => unstage(setRolesToAdd, r.id)}
+                  />
                 ))}
                 {pendingRemoveRoles.map((r) => (
-                  <RoleDiffRow key={r.id} role={r} sign="-" onUndo={() => setRolesToRemove((prev) => new Set([...prev].filter((id) => id !== r.id)))} />
+                  <RoleDiffRow
+                    key={r.id} role={r} sign="-"
+                    scope={rolesToRemove.get(r.id) ?? WIDE_SCOPE}
+                    tracks={scopeTracks}
+                    onScopeChange={(scope) => setScope(setRolesToRemove, r.id, scope)}
+                    onUndo={() => unstage(setRolesToRemove, r.id)}
+                  />
                 ))}
               </div>
             )}
 
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
               Changes above apply when you press Save — each member is updated independently, so one failing doesn&rsquo;t block the rest.
+              {scopeTracks.length > 0 && " Removing from named tracks leaves a member who holds the role across the whole tournament untouched."}
             </p>
           </div>
         </SettingsSection>
