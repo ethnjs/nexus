@@ -72,6 +72,26 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
   hiddenTracks: [],
 };
 
+/**
+ * The starting card for one tab, before anything is saved for it.
+ *
+ * All starts with every track: it is the tab for reading across the whole
+ * tournament, so a card that hid days would be answering a narrower question
+ * than the tab asks. A track tab starts with exactly its own. Either way the
+ * three per-track fields are on — they are what a day is staffed from.
+ */
+export function defaultMemberDisplayForTab(
+  trackIds: number[], activeTrackId: number | null,
+): MemberDisplayState {
+  const perTrack = new Set<MemberFieldId>(TRACK_SCOPED_FIELDS.map((f) => f.id));
+  return {
+    hiddenFields: DEFAULT_MEMBER_DISPLAY.hiddenFields.filter((id) => !perTrack.has(id)),
+    hiddenTracks: activeTrackId === null ? [] : trackIds
+      .filter((id) => id !== activeTrackId)
+      .flatMap((id) => TRACK_SCOPED_FIELDS.map((field) => `${field.id}:${id}`)),
+  };
+}
+
 // Mirrors CARD_FIELD_NAMESPACE / CARD_TRACK_NAMESPACE in
 // core/tournament/display_config.py — one flat `hidden` list per surface is
 // the storage shape every surface uses, so the two kinds of entry are told
@@ -234,6 +254,13 @@ export function MemberDisplayModal({
           size="sm"
           disableInput
           fullWidth
+          onClear={() => setDraft((d) => ({
+            ...d,
+            hiddenTracks: [
+              ...d.hiddenTracks.filter((key) => !key.startsWith(`${id}:`)),
+              ...tracks.map((t) => `${id}:${t.id}`),
+            ],
+          }))}
           addButton={
             <Popover
               trigger={
