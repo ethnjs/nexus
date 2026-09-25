@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import {
   IconGripVertical, IconCopy, IconTrash,
 } from "@/components/ui/Icons";
@@ -353,7 +353,7 @@ export function FieldCard({
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
                   Required
                 </span>
-                <Toggle
+                <Switch
                   checked={!!field.config?.required}
                   onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
                   locked={presetKind === "track_status"}

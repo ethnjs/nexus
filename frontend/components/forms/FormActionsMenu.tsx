@@ -5,7 +5,7 @@ import { formsApi, ApiError } from "@/lib/api";
 import { useToast } from "@/lib/useToast";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { IconCopy, IconDotsVertical, IconEdit, IconEye, IconMembers } from "@/components/ui/Icons";
 
 export type FormMenuKey = "edit" | "preview" | "responses" | "allow-edits" | "copy-json";
@@ -86,7 +86,7 @@ export function FormActionsMenu({ form, items, onAllowEditsChange, lockedReason,
             {key === "allow-edits" && (
               // Display only — selecting the row is what toggles it.
               <span style={{ pointerEvents: "none", display: "flex" }}>
-                <Toggle checked={form.allow_response_edits} onChange={() => {}} />
+                <Switch checked={form.allow_response_edits} onChange={() => {}} />
               </span>
             )}
           </span>

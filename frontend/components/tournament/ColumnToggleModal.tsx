@@ -2,7 +2,7 @@
 
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { Spinner } from "@/components/ui/Spinner";
 import { DisplayConfigCatalog, DisplayConfigCatalogItem } from "@/lib/api";
 import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
@@ -101,7 +101,7 @@ export function ColumnToggleModal({
                     }} title={item.label}>
                       {item.label}
                     </span>
-                    <Toggle checked={active.has(item.key)} onChange={() => toggle(item.key)} />
+                    <Switch checked={active.has(item.key)} onChange={() => toggle(item.key)} />
                   </div>
                 ))}
               </div>
