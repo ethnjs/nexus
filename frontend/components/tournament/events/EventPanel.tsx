@@ -23,7 +23,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
@@ -462,7 +462,7 @@ export function EventPanel({
               getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
               getChipTooltip={(name) => (pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined)}
               addButton={
-                <Popover
+                <ChecklistPopover
                   trigger={
                     <Button type="button" variant="secondary" size="sm" iconOnly title="Add track" style={{ padding: 0, flexShrink: 0 }}>
                       <IconPlus size={14} />
@@ -471,9 +471,8 @@ export function EventPanel({
                   items={selectableTracks}
                   getKey={(t) => t.id}
                   renderLabel={(t) => t.name}
-                  checklist
                   isSelected={(t) => trackIds.includes(t.id)}
-                  onSelect={(t) => toggleTrack(t.id)}
+                  onToggle={(t) => toggleTrack(t.id)}
                   emptyMessage="No tracks yet."
                   width={280}
                 />
@@ -552,7 +551,7 @@ export function EventPanel({
               {!locked && (
                   <div>
                     {(eligibleShifts.length > 0 || newShiftTracks.length > 0) && (
-                      <Popover
+                      <ChecklistPopover
                         trigger={
                           <Button type="button" variant="secondary" size="sm" fullWidth>
                             <IconPlus size={12} /> Add shift
@@ -568,8 +567,7 @@ export function EventPanel({
                             {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(s.track_id) ?? ""}</Badge>}
                           </span>
                         )}
-                        onSelect={handleAttachShift}
-                        checklist
+                        onToggle={handleAttachShift}
                         isSelected={() => false}
                         width={280}
                         emptyMessage="No shifts left on this event's tracks — create one above."

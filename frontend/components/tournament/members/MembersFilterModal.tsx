@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
-import { PillMenu, PillTone } from "@/components/ui/PillMenu";
+import { PillTone, PillTrigger } from "@/components/ui/PillMenu";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
 import {
   FilterModal, FilterSectionConfig, FilterState, SEARCHABLE_ABOVE, emptyFilterState,
@@ -259,17 +260,17 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
         // answered is still worth asking — so the pill stays.
         if (!group || (group.options.length === 0 && !answeredToggle)) return null;
         return (
-          <PillMenu
-            label={summaryFor(group)}
-            tone={toneFor(group)}
+          <ChecklistPopover
+            trigger={(open) => (
+              <PillTrigger label={summaryFor(group)} tone={toneFor(group)} open={open} />
+            )}
             items={group.options}
             getKey={(option) => option.value}
             renderLabel={(option) => option.label}
             getSearchText={(option) => option.label}
             searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
-            checklist
             isSelected={(option) => chosenFor(group).includes(option.value)}
-            onSelect={(option) => toggleOption(group, option.value)}
+            onToggle={(option) => toggleOption(group, option.value)}
             header={answeredToggle ? answeredHeader(group) : undefined}
             emptyMessage="Nothing to filter by"
             width={260}

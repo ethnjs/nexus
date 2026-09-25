@@ -13,7 +13,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconGripVertical, IconTrash, IconPlus, IconChevronDown, IconChevronRight } from "@/components/ui/Icons";
 import { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
@@ -346,7 +346,7 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                                 disableInput
                                 fullWidth
                                 addButton={
-                                  <Popover
+                                  <ChecklistPopover
                                     trigger={
                                       <Button type="button" variant="secondary" size="sm" iconOnly title="Edit visible items" style={{ padding: 0, flexShrink: 0 }}>
                                         <IconPlus size={13} />
@@ -355,9 +355,8 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                                     items={entityFields}
                                     getKey={(field) => field.key}
                                     renderLabel={(field) => field.label}
-                                    checklist
                                     isSelected={(field) => fieldIsShown(section, field.key)}
-                                    onSelect={(field) => toggleField(section, field.key)}
+                                    onToggle={(field) => toggleField(section, field.key)}
                                     emptyMessage="Nothing to configure"
                                   />
                                 }

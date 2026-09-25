@@ -278,7 +278,7 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
                 isSelected={(r) => rolesToAdd.has(r.id)}
                 isDisabled={(r) => !canTouchRole(r)}
                 disabledReason={rankLockReason}
-                onSelect={toggleAddRole}
+                onToggle={toggleAddRole}
                 emptyMessage="No roles yet."
               />
               <RolePickerPopover
@@ -291,7 +291,7 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
                 isSelected={(r) => rolesToRemove.has(r.id)}
                 isDisabled={(r) => !canTouchRole(r)}
                 disabledReason={rankLockReason}
-                onSelect={toggleRemoveRole}
+                onToggle={toggleRemoveRole}
                 emptyMessage="None of the selected members have a role."
               />
             </div>

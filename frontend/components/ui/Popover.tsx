@@ -1,12 +1,14 @@
 "use client";
 
 import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { CheckboxRow } from "@/components/ui/CheckboxRow";
 import { IconLock } from "@/components/ui/Icons";
 
 export interface PopoverProps<T> {
-  /** The element that toggles the panel — an icon button, a chip, whatever. */
-  trigger: ReactNode;
+  /** The element that toggles the panel — an icon button, a chip, whatever.
+   *  A function form receives the open state, for a trigger that has to
+   *  reflect it (a chevron that flips) without keeping its own copy. */
+  trigger: ReactNode | ((open: boolean) => ReactNode);
   items: T[];
   getKey: (item: T) => string | number;
   renderLabel: (item: T) => ReactNode;
@@ -94,9 +96,11 @@ export function Popover<T>({
     const spaceBelow = window.innerHeight - r.bottom;
     const spaceAbove = r.top;
     const flip = spaceBelow < PANEL_MAX_HEIGHT + PANEL_GAP && spaceAbove > spaceBelow;
+    // Rounded: an unrounded rect puts the whole panel on a subpixel, and
+    // every row's checkbox then rasterises at that same offset phase.
     setPanelPos(flip
-      ? { bottom: window.innerHeight - r.top + PANEL_GAP, left }
-      : { top: r.bottom + PANEL_GAP, left });
+      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left) }
+      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left) });
   }
 
   // Positioned once per opening, not on scroll: a chip input's add button
@@ -143,7 +147,9 @@ export function Popover<T>({
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>{trigger}</div>
+      <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>
+        {typeof trigger === "function" ? trigger(open) : trigger}
+      </div>
 
       {open && panelPos && (
         <div style={{
@@ -193,27 +199,25 @@ export function Popover<T>({
               const disabled = isDisabled?.(item) ?? false;
               const reason = disabled ? disabledReason?.(item) : undefined;
               return (
-                <label
+                <CheckboxRow
                   key={key}
+                  checked={checked}
+                  locked={busy}
+                  onChange={() => handleSelect(item)}
+                  label={renderLabel(item)}
+                  labelColor="var(--color-text-primary)"
+                  control={disabled
+                    ? <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
+                    : undefined}
                   onMouseEnter={reason ? (e) => showHoverTip(e, reason) : undefined}
                   onMouseLeave={reason ? () => setHoverTip(null) : undefined}
                   style={{
-                    display: "flex", alignItems: "center", gap: "8px",
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
                     cursor: disabled || busy ? "not-allowed" : "pointer",
                     background: checked ? "var(--color-accent-subtle)" : "transparent",
                     opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                   }}
-                >
-                  {disabled ? (
-                    <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
-                  ) : (
-                    <Checkbox checked={checked} locked={busy} onChange={() => handleSelect(item)} />
-                  )}
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-                    {renderLabel(item)}
-                  </span>
-                </label>
+                />
               );
             })
           ) : (

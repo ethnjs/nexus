@@ -5,7 +5,7 @@ import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ChipInput } from "@/components/ui/ChipInput";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconPlus } from "@/components/ui/Icons";
 
@@ -67,7 +67,7 @@ export function EventPanelConfigModal({ tournamentId, onClose, onSaved }: EventP
             disableInput
             fullWidth
             addButton={
-              <Popover
+              <ChecklistPopover
                 trigger={
                   <Button type="button" variant="secondary" size="sm" iconOnly title="Edit visible tracks" style={{ padding: 0, flexShrink: 0 }}>
                     <IconPlus size={13} />
@@ -76,9 +76,8 @@ export function EventPanelConfigModal({ tournamentId, onClose, onSaved }: EventP
                 items={tracks}
                 getKey={(t) => t.key}
                 renderLabel={(t) => t.label}
-                checklist
                 isSelected={(t) => isShown(t.key)}
-                onSelect={(t) => toggle(t.key)}
+                onToggle={(t) => toggle(t.key)}
                 emptyMessage="No tracks yet."
               />
             }

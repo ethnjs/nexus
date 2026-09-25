@@ -279,7 +279,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
                 }}
               >
                 <Checkbox checked={checked.has(row.key)} onChange={() => toggleRow(row.key)} />
-                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', lineHeight: '20px', color: 'var(--color-text-primary)' }}>
                   {row.label}
                 </span>
               </label>
