@@ -72,12 +72,18 @@ export function BuildingColumn({
 
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", minHeight: "48px" }}>
         {count === 0 ? (
+          // The dashed box is the whole column's content when it is empty, so
+          // it answers the drag too — an outline that stayed grey read as the
+          // one part of the column refusing the drop.
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             padding: "16px 8px", borderRadius: "var(--radius-md)",
-            border: "1px dashed var(--color-border)",
+            border: `1px dashed ${isOver ? "var(--color-border-strong)" : "var(--color-border)"}`,
+            background: isOver ? "var(--color-accent-subtle)" : "transparent",
             fontFamily: "var(--font-sans)", fontSize: "12px",
-            color: "var(--color-text-tertiary)", textAlign: "center",
+            color: isOver ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
+            textAlign: "center",
+            transition: "border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast)",
           }}>
             {emptyText}
           </div>
