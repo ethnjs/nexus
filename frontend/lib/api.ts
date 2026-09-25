@@ -8,6 +8,9 @@ interface RequestOptions {
   method?:  HttpMethod
   body?:    unknown
   headers?: Record<string, string>
+  /** Lets the request outlive the page — for a last write fired as the tab
+   *  closes, which the browser would otherwise cancel mid-flight. */
+  keepalive?: boolean
 }
 
 export class ApiError extends Error {
@@ -21,11 +24,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers = {} } = options
+  const { method = 'GET', body, headers = {}, keepalive } = options
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     credentials: 'include',
+    keepalive,
     headers: {
       'Content-Type': 'application/json',
       ...headers,
@@ -60,7 +64,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
-  patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
+  patch:  <T>(path: string, body: unknown, options?: Pick<RequestOptions, 'keepalive'>) =>
+    request<T>(path, { method: 'PATCH', body, ...options }),
   put:    <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',   body }),
   delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
 }
@@ -752,8 +757,10 @@ export const tournamentEventsApi = {
   },
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
     api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
-  update: (tournamentId: number, id: number, body: Partial<TournamentEventInput>) =>
-    api.patch<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`, body),
+  update: (
+    tournamentId: number, id: number, body: Partial<TournamentEventInput>,
+    options?: { keepalive?: boolean },
+  ) => api.patch<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`, body, options),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
   // Bulk-creates events from every active SeasonEvent whose division the

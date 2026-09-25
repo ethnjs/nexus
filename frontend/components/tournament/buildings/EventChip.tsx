@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { EventTrackDetailRead } from "@/lib/api";
 import { Input } from "@/components/ui/Input";
@@ -49,6 +50,8 @@ export function EventChip({
   /** Unplaced chips show the name only — there is no building for a floor or
    *  a room to be a floor or room *of*. */
   placed: boolean;
+  /** Called once the floor is settled — on blur, Enter, or the page going
+   *  away — never per keystroke. */
   onFloorChange: (floor: string) => void;
   onRoomsChange: (rooms: string[]) => void;
 }) {
@@ -115,15 +118,10 @@ export function EventChip({
         // per field, so a narrow column wraps them instead of squeezing.
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: "8px", padding: "0 10px 10px" }}>
           <div style={{ flex: "0.5 1 56px", minWidth: 0 }}>
-            <Input
-              size="xs"
-              fullWidth
-              font="mono"
-              locked={locked}
-              label="Floor"
-              placeholder="e.g. 2"
+            <FloorField
               value={event.detail?.floor ?? ""}
-              onChange={(e) => onFloorChange(e.target.value)}
+              locked={locked}
+              onCommit={onFloorChange}
             />
           </div>
           {/* Many rooms, one building and one floor — an event routinely
@@ -143,5 +141,60 @@ export function EventChip({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The floor, typed locally and saved once it is settled.
+ *
+ * Every keystroke used to be its own PATCH — three requests to type "210",
+ * which can also land out of order and have a stale response overwrite newer
+ * typing. This commits on blur and on Enter instead, plus on the way out:
+ * leaving the page unmounts the chip, and a closing tab fires pagehide, both
+ * of which would otherwise drop what was typed.
+ */
+function FloorField({ value, locked, onCommit }: {
+  value: string;
+  locked: boolean;
+  onCommit: (floor: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  // The saved value wins whenever it changes underneath — a drag clears the
+  // floor, and another tab may have edited it.
+  useEffect(() => { setDraft(value) }, [value]);
+
+  // Read by the exit paths below, which run outside React's render.
+  const pending = useRef({ draft, value, onCommit });
+  useEffect(() => { pending.current = { draft, value, onCommit } });
+
+  useEffect(() => {
+    function flush() {
+      const { draft: typed, value: saved, onCommit: commit } = pending.current;
+      if (typed !== saved) commit(typed);
+    }
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
+  function commit() {
+    if (draft !== value) onCommit(draft);
+  }
+
+  return (
+    <Input
+      size="xs"
+      fullWidth
+      font="mono"
+      locked={locked}
+      label="Floor"
+      placeholder="e.g. 2"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
+    />
   );
 }
