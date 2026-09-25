@@ -320,7 +320,11 @@ export default function BuildingsPage() {
     )));
 
     try {
-      const saved = await tournamentEventsApi.update(tournamentId, eventId, { track_details: next });
+      // keepalive so a write fired as the tab closes (the floor field flushes
+      // what was typed on pagehide) isn't cancelled with the page.
+      const saved = await tournamentEventsApi.update(
+        tournamentId, eventId, { track_details: next }, { keepalive: true },
+      );
       setEvents((cur) => (cur ?? []).map((e) => (e.id === eventId ? saved : e)));
     } catch (err) {
       setEvents(before);
