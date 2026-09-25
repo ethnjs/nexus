@@ -24,7 +24,7 @@ import {
   memo, useCallback, useEffect, useMemo, useRef, useState,
   type PointerEvent as ReactPointerEvent, type ReactNode,
 } from 'react'
-import { useParams } from 'next/navigation'
+import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   useDraggable, useDroppable, type DragEndEvent,
 } from '@dnd-kit/core'
@@ -64,12 +64,14 @@ import {
 } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { TabStrip } from '@/components/ui/TabStrip'
 import { Spinner } from '@/components/ui/Spinner'
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
-  ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tournamentEventsApi,
+  ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
+  ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tabSurface, tournamentEventsApi,
   tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type MembershipFull, type Role, type TournamentEvent,
+  type Assignment, type DisplayConfig, type MembershipFull, type Role, type TournamentEvent,
   type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
@@ -83,7 +85,6 @@ import {
   type AssignmentRole, type Lane,
 } from '@/lib/assignments/lanes'
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
-import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces'
 import { eventName } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
@@ -1188,58 +1189,95 @@ export default function AssignmentsPage() {
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
 
-  // This viewer's saved view of the board — the event rows' filters and
-  // metadata under one surface, the belt's under another. Read once: unlike
-  // the roster's, nothing here gates a fetch (both halves filter client-side),
-  // so the board renders on its defaults and settles onto the saved view when
-  // this lands, rather than holding the page on a request.
+  // Which track tab is showing; null is All. Mirrored into ?track= so a
+  // reload comes back to the day being staffed, the way the buildings board
+  // does. A stale id simply falls back to All below.
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [pickedTrackId, setPickedTrackId] = useState<number | null>(
+    () => Number(searchParams.get('track')) || null,
+  )
+  const simple = tracks.length <= 1
+  const activeTrackId = !simple && pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId)
+    ? pickedTrackId
+    : null
+
+  function pickTab(key: string) {
+    const next = key === 'all' ? null : Number(key)
+    setPickedTrackId(next)
+    // Merged, so an open ?member= panel survives the tab change.
+    const params = new URLSearchParams(window.location.search)
+    if (next === null) params.delete('track')
+    else params.set('track', String(next))
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
+
+  // Each tab keeps its own filters, columns and card fields, stored under its
+  // own surface key ("assignments_events:track:3"). The whole config is read
+  // once and the tab's slice derived from it, rather than a fetch per tab.
+  const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId)
+  const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId)
+  const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null)
+
+  // Read once: unlike the roster's, nothing here gates a fetch (both halves
+  // filter client-side), so the board renders on its defaults and settles onto
+  // the saved view when this lands, rather than holding the page on a request.
   useEffect(() => {
     if (!canView) return
     let current = true
     displayConfigApi.get(tournamentId)
-      .then((config) => {
-        if (!current) return
-        const events = config[ASSIGNMENTS_EVENTS]
-        setEventFilters(eventsFilterFromStored(events?.filters))
-        setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
-        const card = config[ASSIGNMENT_CARD]
-        setMemberFilters(membersFilterFromStored(card?.filters))
-        setMemberDisplay(memberDisplayFromHidden(card?.hidden))
-      })
+      .then((config) => { if (current) setSavedConfig(config) })
       // No saved view (or no permission to read one) is not an error — the
       // board's defaults are a perfectly good board.
-      .catch(() => {})
+      .catch(() => { if (current) setSavedConfig({}) })
     return () => { current = false }
   }, [tournamentId, canView])
 
+  // Re-derived per tab, so switching tabs swaps the whole view with it.
+  useEffect(() => {
+    if (savedConfig === null) return
+    const events = savedConfig[eventsSurface]
+    setEventFilters(eventsFilterFromStored(events?.filters))
+    setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
+    const card = savedConfig[cardSurface]
+    setMemberFilters(membersFilterFromStored(card?.filters))
+    setMemberDisplay(memberDisplayFromHidden(card?.hidden))
+  }, [savedConfig, eventsSurface, cardSurface])
+
+  /** Persists one surface and keeps the local copy in step, so switching away
+   *  and back shows what was just set rather than what was last fetched. */
+  const persistSurface = useCallback((surface: string, patch: Record<string, unknown>) => {
+    setSavedConfig((cur) => ({
+      ...(cur ?? {}),
+      [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
+    }))
+    persistDisplayConfigSurface(tournamentId, surface, patch)
+  }, [tournamentId])
+
   const applyEventFilters = useCallback((next: EventsFilterState) => {
     setEventFilters(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
-      filters: eventsFilterToStored(next),
-    })
-  }, [tournamentId])
+    persistSurface(eventsSurface, { filters: eventsFilterToStored(next) })
+  }, [persistSurface, eventsSurface])
 
   const applyEventDisplay = useCallback((next: EventDisplayState) => {
     setEventDisplay(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
+    persistSurface(eventsSurface, {
       columns: eventDisplayToColumns(next),
       hidden: eventDisplayToHidden(next),
     })
-  }, [tournamentId])
+  }, [persistSurface, eventsSurface])
 
   const applyMemberFilters = useCallback((next: MembersFilterState) => {
     setMemberFilters(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
-      filters: membersFilterToStored(next),
-    })
-  }, [tournamentId])
+    persistSurface(cardSurface, { filters: membersFilterToStored(next) })
+  }, [persistSurface, cardSurface])
 
   const applyMemberDisplay = useCallback((next: MemberDisplayState) => {
     setMemberDisplay(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
-      hidden: memberDisplayToHidden(next),
-    })
-  }, [tournamentId])
+    persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) })
+  }, [persistSurface, cardSurface])
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
@@ -1291,15 +1329,23 @@ export default function AssignmentsPage() {
   // alike: the timeline indexes bars by position in `shifts`, and a resize
   // slices that same array, so a handler working from the unfiltered event
   // while the row draws a filtered one would move the wrong bar.
+  // On a track tab every other track is hidden, whatever the tab's own
+  // Display settings say — the tab *is* the narrowing, and the modal's track
+  // toggles are hidden there rather than fighting it.
+  const hiddenTrackIds = useMemo(() => (activeTrackId === null
+    ? eventDisplay.hiddenTracks
+    : tracks.filter((t) => t.id !== activeTrackId).map((t) => t.id)
+  ), [activeTrackId, eventDisplay.hiddenTracks, tracks])
+
   const boardEvents = useMemo(() => {
-    const hidden = new Set(eventDisplay.hiddenTracks)
+    const hidden = new Set(hiddenTrackIds)
     if (hidden.size === 0) return events
     return (events ?? []).map((event) => ({
       ...event,
       shifts: event.shifts.filter((s) => !hidden.has(s.track_id)),
       tracks: event.tracks.filter((t) => !hidden.has(t.id)),
     }))
-  }, [events, eventDisplay.hiddenTracks])
+  }, [events, hiddenTrackIds])
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -1308,7 +1354,7 @@ export default function AssignmentsPage() {
   // the conflict flags and for every write path — hiding a day must not make
   // a double-booking on it invisible to the day that is showing.
   const visibleRows = useMemo(() => {
-    const hidden = new Set(eventDisplay.hiddenTracks)
+    const hidden = new Set(hiddenTrackIds)
     if (hidden.size === 0) return rows
     // An unpinned row names no track, so it goes by the same role match that
     // buckets it into a column (see bucketByTrack) — otherwise hiding Test
@@ -1324,7 +1370,7 @@ export default function AssignmentsPage() {
     return rows.filter((row) => (row.shift === null
       ? !hiddenRoles.has(row.role.id)
       : !hidden.has(row.shift.track_id)))
-  }, [rows, tracks, eventDisplay.hiddenTracks])
+  }, [rows, tracks, hiddenTrackIds])
 
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
@@ -1349,10 +1395,6 @@ export default function AssignmentsPage() {
       ? [...options, { value: EVENT_FILTER_UNSET, label: 'No division' }]
       : options
   }, [boardEvents])
-  const trackOptions = useMemo(
-    () => tracks.map((t) => ({ value: String(t.id), label: t.name })),
-    [tracks],
-  )
   const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
 
   const visibleEvents = useMemo(() => {
@@ -1365,15 +1407,20 @@ export default function AssignmentsPage() {
       // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
       // of its tracks is picked — filtering to Day 1 shouldn't hide an event
       // that runs on both Day 1 and Day 2.
-      if (eventFilters.track.size > 0) {
+      // A track tab narrows to its own track; the All tab honours whatever
+      // the saved filter says.
+      const wantedTracks = activeTrackId === null
+        ? eventFilters.track
+        : new Set([String(activeTrackId)])
+      if (wantedTracks.size > 0) {
         const ids = (eventTrackIds.get(event.id) ?? []).map(String)
-        if (!ids.some((id) => eventFilters.track.has(id))) return false
+        if (!ids.some((id) => wantedTracks.has(id))) return false
       }
       const staffed = (byEvent.get(event.id)?.length ?? 0) > 0
       if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
       return true
     })
-  }, [boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
 
 
   // Members matching the filters, from the same server filter the members
@@ -2090,6 +2137,16 @@ export default function AssignmentsPage() {
         heading="Assignments"
       />
 
+      {/* Hidden in simple mode: with one track, All is the only tab there
+          could be. */}
+      {!simple && (
+        <TabStrip
+          tabs={[{ key: 'all', label: 'All' }, ...tracks.map((t) => ({ key: String(t.id), label: t.name }))]}
+          activeKey={activeTrackId === null ? 'all' : String(activeTrackId)}
+          onChange={pickTab}
+        />
+      )}
+
       {loadError && (
         <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginBottom: '10px' }}>
           {loadError}
@@ -2163,7 +2220,6 @@ export default function AssignmentsPage() {
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
-          trackOptions={trackOptions}
           showStaffing
           filters={eventFilters}
           onApply={applyEventFilters}
@@ -2173,7 +2229,7 @@ export default function AssignmentsPage() {
       {showEventDisplayModal && (
         <EventDisplayModal
           display={eventDisplay}
-          tracks={tracks}
+          tracks={activeTrackId === null ? tracks : []}
           onApply={applyEventDisplay}
           onClose={() => setShowEventDisplayModal(false)}
         />
