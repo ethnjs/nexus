@@ -159,7 +159,7 @@ export function RolesCell({
           isSelected={(role) => heldIds.has(role.id)}
           isDisabled={(role) => !canTouchRole(role)}
           disabledReason={rankLockReason}
-          onSelect={(role) => {
+          onToggle={(role) => {
             const current = held.find((r) => r.id === role.id);
             return current ? handleRemove(current) : handleAdd(role, WIDE_SCOPE);
           }}

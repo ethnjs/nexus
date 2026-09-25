@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useState } from "react";
+import { CSSProperties } from "react";
 import { Popover, PopoverProps } from "@/components/ui/Popover";
 import { IconChevronDown } from "@/components/ui/Icons";
 
@@ -46,12 +46,26 @@ export function Pill({ label, tone = "default", size = "sm", title }: {
   return <span title={title} style={pillStyle(tone, size)}>{label}</span>;
 }
 
-type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
+export type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
   /** The pill's own text — what's currently chosen, or a prompt to choose. */
   label: string;
   tone?: PillTone;
   size?: PillSize;
 };
+
+/** The pill as a popover trigger: the label plus a chevron that flips while
+ *  the panel is open. Pass it from a `trigger` render function, which is
+ *  where the open state comes from. */
+export function PillTrigger({ label, tone = "default", size = "sm", open }: {
+  label: string; tone?: PillTone; size?: PillSize; open: boolean;
+}) {
+  return (
+    <span style={{ ...pillStyle(tone, size), cursor: "pointer" }}>
+      {label}
+      <IconChevronDown size={SIZE_STYLE[size].chevron} style={{ transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
+    </span>
+  );
+}
 
 // A Popover whose trigger is a small pill + chevron, for a menu that lives
 // *inside* another control — the status on a track chip, the shift on a day
@@ -59,20 +73,6 @@ type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
 // the chip instead of a boxed control embedded in one, and so the chip keeps
 // one fixed height matching its neighbours instead of growing to fit a
 // full-size Dropdown's chrome.
-export function PillMenu<T>({ label, tone = "default", size = "sm", onOpenChange, ...popover }: PillMenuProps<T>) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover
-      {...popover}
-      // Chained, not replaced: the chevron needs it too.
-      onOpenChange={(next) => { setOpen(next); onOpenChange?.(next); }}
-      trigger={
-        <span style={{ ...pillStyle(tone, size), cursor: "pointer" }}>
-          {label}
-          <IconChevronDown size={SIZE_STYLE[size].chevron} style={{ transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
-        </span>
-      }
-    />
-  );
+export function PillMenu<T>({ label, tone, size, ...popover }: PillMenuProps<T>) {
+  return <Popover {...popover} trigger={(open) => <PillTrigger label={label} tone={tone} size={size} open={open} />} />;
 }

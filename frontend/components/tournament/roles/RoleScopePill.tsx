@@ -1,7 +1,8 @@
 "use client";
 
 import type { TournamentTrack } from "@/lib/api";
-import { Pill, PillMenu, type PillSize } from "@/components/ui/PillMenu";
+import { Pill, PillTrigger, type PillSize } from "@/components/ui/PillMenu";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { WIDE_SCOPE, type RoleScope } from "@/lib/roles/roleScope";
 
 /** "All", a track's name, or a count once names would crowd the chip. */
@@ -51,13 +52,11 @@ export function RoleScopePill({ scope, tracks, editable = true, size = "sm", tit
   const options: ScopeOption[] = [WIDE_OPTION, ...tracks.map((t) => ({ kind: "track" as const, track: t }))];
 
   return (
-    <PillMenu
-      label={label}
-      size={size}
+    <ChecklistPopover
+      trigger={(open) => <PillTrigger label={label} size={size} open={open} />}
       items={options}
       getKey={(o) => (o.kind === "wide" ? "wide" : o.track.id)}
       renderLabel={(o) => (o.kind === "wide" ? "Whole tournament" : o.track.name)}
-      checklist
       isSelected={(o) => (o.kind === "wide" ? scope.wide : scope.trackIds.includes(o.track.id))}
       // Unticking the only thing ticked would leave an empty scope, which is
       // how a role gets removed — not something a menu about *where* should do.
@@ -65,7 +64,7 @@ export function RoleScopePill({ scope, tracks, editable = true, size = "sm", tit
         ? scope.wide
         : !scope.wide && scope.trackIds.length === 1 && scope.trackIds[0] === o.track.id)}
       disabledReason={() => "Pick somewhere else first"}
-      onSelect={(o) => onChange(nextScope(scope, o))}
+      onToggle={(o) => onChange(nextScope(scope, o))}
       width={200}
       align="left"
     />
