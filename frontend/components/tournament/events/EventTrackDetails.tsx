@@ -149,7 +149,8 @@ export function EventTrackDetails({
                   locked={locked}
                   size="sm"
                   fullWidth
-                  placeholder={hasBuilding ? "Type a room, then Enter" : undefined}
+                  font="mono"
+                  placeholder={hasBuilding ? "e.g. 210" : undefined}
                 />
               </StackedField>
             </div>

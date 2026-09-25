@@ -29,6 +29,10 @@ interface ChipInputProps {
   getChipTooltip?: (chip: string) => string | undefined;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
+  /** The chips' and the field's own typeface — "mono" for values that are data
+   *  (room numbers, codes), matching Input's prop of the same name. The label
+   *  and any error stay sans either way: those are UI text, not values. */
+  font?: "sans" | "mono";
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
   addButton?: ReactNode;
   /** Optional control rendered inside each chip, e.g. a status dropdown. */
@@ -110,7 +114,7 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, disabled, chipLockReason,
-  getChipTooltip, variant = "primary", size = "md", addButton,
+  getChipTooltip, variant = "primary", size = "md", font = "sans", addButton,
   renderChipTrailing,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
@@ -205,7 +209,7 @@ export function ChipInput({
                 borderRadius: "var(--radius-sm)",
                 background: styles.background, color: styles.color,
                 border: `1px solid ${styles.border}`,
-                fontFamily: "var(--font-sans)", fontSize: compact ? "11px" : "12px", fontWeight: 500,
+                fontFamily: `var(--font-${font})`, fontSize: compact ? "11px" : "12px", fontWeight: 500,
                 // Pinned only where the height math depends on it.
                 lineHeight: compact ? "14px" : undefined,
               }}
@@ -252,7 +256,7 @@ export function ChipInput({
               // The native disabled input resets to the default cursor on its
               // own, which would punch a hole in the field's not-allowed one.
               cursor: disabled ? "not-allowed" : undefined,
-              background: "transparent", fontFamily: "var(--font-sans)", fontSize: sizing.fontSize,
+              background: "transparent", fontFamily: `var(--font-${font})`, fontSize: sizing.fontSize,
               color: "var(--color-text-primary)",
             }}
           />

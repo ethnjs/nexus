@@ -134,7 +134,8 @@ export function EventChip({
               fullWidth
               locked={locked}
               label="Rooms"
-              placeholder="Add a room"
+              font="mono"
+              placeholder="e.g. 210"
               value={event.detail?.rooms ?? []}
               onChange={onRoomsChange}
             />
