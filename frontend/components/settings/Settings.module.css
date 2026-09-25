@@ -105,6 +105,9 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding-top: 20px;
+  /* Even whole px: 11px x 1.5 is 16.5px, which would put every row below
+     this heading on a half pixel. */
+  line-height: 18px;
 }
 
 .row {
@@ -130,6 +133,10 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-primary);
+  /* 20px, not 1.5: 13px x 1.5 is a 19.5px line box, which makes the row
+     100.5px tall, so every other row starts on a half pixel and the switch
+     knob inside it rounds to a different device pixel. */
+  line-height: 20px;
 }
 
 .rowHelper {

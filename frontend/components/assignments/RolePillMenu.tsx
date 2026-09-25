@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { PillMenu } from "@/components/ui/PillMenu";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { Role } from "@/lib/api";
 import { roleSummary, sameRole, type AssignmentRole } from "@/lib/assignments/lanes";
 
@@ -51,7 +51,7 @@ export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
           }}>
             Select multiple
           </span>
-          <Toggle checked={multi} onChange={setMulti} />
+          <Switch checked={multi} onChange={setMulti} />
         </label>
       }
       checklist={multi}

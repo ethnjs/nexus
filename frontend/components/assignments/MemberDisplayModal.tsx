@@ -27,7 +27,7 @@ import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 
 export type MemberFieldId =
   | "roles"
@@ -226,7 +226,7 @@ export function MemberDisplayModal({
       key={id}
       label={label}
       action={
-        <Toggle checked={fieldShown(draft, id)} onChange={() => toggleField(id)} />
+        <Switch checked={fieldShown(draft, id)} onChange={() => toggleField(id)} />
       }
     >
       {/* `disabled`, not `locked`: the group is switched off by its own

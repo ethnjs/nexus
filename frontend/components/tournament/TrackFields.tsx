@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Input } from "@/components/ui/Input";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 // Dropdown's value is a string; a track's default_role_id is nullable, so
@@ -51,7 +51,7 @@ export function TrackFields({
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       {showPrimaryToggle && (
         <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
-          <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
+          <Switch checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
         </FieldRow>
       )}
 
@@ -145,7 +145,7 @@ export function TrackFields({
         label="Members can confirm"
         helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
       >
-        <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
+        <Switch checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
       </FieldRow>
 
       <FieldRow

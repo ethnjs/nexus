@@ -9,7 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { EditableText } from "@/components/ui/EditableText";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
@@ -295,7 +295,7 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                             </Button>
                           )}
                           <span onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>
-                            <Toggle
+                            <Switch
                               checked={!section.hidden}
                               onChange={() => patch(section.id, { hidden: !section.hidden })}
                             />

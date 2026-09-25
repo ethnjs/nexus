@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { ButtonGroup } from '@/components/ui/ButtonGroup'
-import { Toggle } from '@/components/ui/Toggle'
+import { Switch } from '@/components/ui/Switch'
 import { RankedList } from '@/components/ui/RankedList'
 import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
@@ -511,7 +511,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
                 <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
                   Allow duplicate ranks
                 </span>
-                <Toggle
+                <Switch
                   checked={!!field.config?.allow_duplicates}
                   onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
                 />

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { IconPresets, IconX } from "@/components/ui/Icons";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
@@ -244,7 +244,7 @@ export function PresetPopover({
               <AvailabilityParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
-                <Toggle
+                <Switch
                   checked={!!field.config?.track_status_enabled}
                   onChange={(checked) => onFieldChange({
                     config: {

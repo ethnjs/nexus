@@ -18,7 +18,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Badge } from "@/components/ui/Badge";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
@@ -347,7 +347,7 @@ export default function GeneralSettingsPage() {
             label="Collect 18+ status"
             helper="Members consent before this is shared — their date of birth is never sent."
           >
-            <Toggle
+            <Switch
               checked={selectedTournament.collect_is_over_18}
               onChange={(v) => handleAgeToggleChange("collect_is_over_18", v)}
               locked={isArchived}
@@ -358,7 +358,7 @@ export default function GeneralSettingsPage() {
             helper="Members consent before this is shared — their date of birth is never sent."
             last
           >
-            <Toggle
+            <Switch
               checked={selectedTournament.collect_is_over_21}
               onChange={(v) => handleAgeToggleChange("collect_is_over_21", v)}
               locked={isArchived}
