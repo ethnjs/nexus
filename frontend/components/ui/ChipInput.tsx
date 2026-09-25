@@ -1,6 +1,7 @@
 "use client";
 
 import { ClipboardEvent, KeyboardEvent, ReactNode, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { IconLock, IconX } from "@/components/ui/Icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 
@@ -35,6 +36,10 @@ interface ChipInputProps {
   font?: "sans" | "mono";
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
   addButton?: ReactNode;
+  /** Given, a "clear" button sits after `addButton` while there is at least
+   *  one chip — for a picker whose chips are unticked one at a time, where
+   *  starting over otherwise means as many clicks as there are chips. */
+  onClear?: () => void;
   /** Optional control rendered inside each chip, e.g. a status dropdown. */
   renderChipTrailing?: (chip: string) => ReactNode;
 }
@@ -114,7 +119,7 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, disabled, chipLockReason,
-  getChipTooltip, variant = "primary", size = "md", font = "sans", addButton,
+  getChipTooltip, variant = "primary", size = "md", font = "sans", addButton, onClear,
   renderChipTrailing,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
@@ -268,6 +273,18 @@ export function ChipInput({
           disabled
             ? <span aria-disabled style={{ display: "flex", opacity: 0.4, pointerEvents: "none" }}>{addButton}</span>
             : addButton
+        )}
+        {!locked && onClear && value.length > 0 && (
+          <Button
+            type="button" variant="ghost" size="xs" iconOnly
+            onClick={onClear}
+            disabled={disabled}
+            title="Clear all"
+            aria-label="Clear all"
+            style={{ flexShrink: 0 }}
+          >
+            <IconX size={11} />
+          </Button>
         )}
       </div>
 
