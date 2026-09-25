@@ -96,8 +96,8 @@ import {
   eventDisplayToColumns, eventDisplayToHidden, type EventDisplayState,
 } from '@/components/assignments/EventDisplayModal'
 import {
-  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, memberDisplayFromHidden,
-  memberDisplayToHidden, type MemberDisplayState,
+  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
+  memberDisplayFromHidden, memberDisplayToHidden, type MemberDisplayState,
 } from '@/components/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/assignments/MemberCard'
 
@@ -1247,8 +1247,12 @@ export default function AssignmentsPage() {
     setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
     const card = savedConfig[cardSurface]
     setMemberFilters(membersFilterFromStored(card?.filters))
-    setMemberDisplay(memberDisplayFromHidden(card?.hidden))
-  }, [savedConfig, eventsSurface, cardSurface])
+    // Nothing saved for this tab yet: the tab decides which tracks the card
+    // starts with, rather than every tab starting with all of them.
+    setMemberDisplay(Array.isArray(card?.hidden)
+      ? memberDisplayFromHidden(card.hidden)
+      : defaultMemberDisplayForTab(tracks.map((t) => t.id), activeTrackId))
+  }, [savedConfig, eventsSurface, cardSurface, tracks, activeTrackId])
 
   /** Persists one surface and keeps the local copy in step, so switching away
    *  and back shows what was just set rather than what was last fetched. */
