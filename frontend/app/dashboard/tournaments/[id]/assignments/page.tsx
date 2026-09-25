@@ -949,13 +949,18 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
 // Event row
 // ---------------------------------------------------------------------------
 function EventRow({
-  event, rowAssignments, roleCatalog, flagsFor, display, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
+  event, rowAssignments, roleCatalog, flagsFor, display, trackNames,
+  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   display: EventDisplayState
+  /** Every track the event runs on, tab or no tab — `event.tracks` is sliced
+   *  to what is on screen, and "which days is this event on" is a question
+   *  about the event rather than about the tab. */
+  trackNames: string[]
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
@@ -1001,7 +1006,6 @@ function EventRow({
   const span = event.shifts.length > 0
     ? `${formatTime(starts[0])} – ${formatTime(ends[ends.length - 1])}`
     : null
-  const trackNames = event.tracks.map((t) => t.name)
 
   return (
     <div
@@ -1329,23 +1333,34 @@ export default function AssignmentsPage() {
   // alike: the timeline indexes bars by position in `shifts`, and a resize
   // slices that same array, so a handler working from the unfiltered event
   // while the row draws a filtered one would move the wrong bar.
-  // On a track tab every other track is hidden, whatever the tab's own
-  // Display settings say — the tab *is* the narrowing, and the modal's track
-  // toggles are hidden there rather than fighting it.
-  const hiddenTrackIds = useMemo(() => (activeTrackId === null
-    ? eventDisplay.hiddenTracks
-    : tracks.filter((t) => t.id !== activeTrackId).map((t) => t.id)
-  ), [activeTrackId, eventDisplay.hiddenTracks, tracks])
+  // Whether a track is on screen: the tab decides on a track tab, the
+  // Display modal's hidden set on All. Asked per id rather than built as a
+  // list of hidden ones, because an event can carry a track the catalog no
+  // longer lists (an archived one pending delete) — listing the others would
+  // let that one through the tab.
+  const hiddenTracks = useMemo(() => new Set(eventDisplay.hiddenTracks), [eventDisplay.hiddenTracks])
+  const showsTrack = useCallback((id: number) => (activeTrackId === null
+    ? !hiddenTracks.has(id)
+    : id === activeTrackId
+  ), [activeTrackId, hiddenTracks])
 
-  const boardEvents = useMemo(() => {
-    const hidden = new Set(hiddenTrackIds)
-    if (hidden.size === 0) return events
-    return (events ?? []).map((event) => ({
-      ...event,
-      shifts: event.shifts.filter((s) => !hidden.has(s.track_id)),
-      tracks: event.tracks.filter((t) => !hidden.has(t.id)),
-    }))
-  }, [events, hiddenTrackIds])
+  // The catalog's hidden ids, for the row-level rules below that reason about
+  // tracks rather than about one event's copy of them.
+  const hiddenTrackIds = useMemo(
+    () => tracks.filter((t) => !showsTrack(t.id)).map((t) => t.id),
+    [tracks, showsTrack],
+  )
+
+  const boardEvents = useMemo(() => (events ?? []).map((event) => ({
+    ...event,
+    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
+    tracks: event.tracks.filter((t) => showsTrack(t.id)),
+  })), [events, showsTrack])
+
+  const allTrackNames = useMemo(
+    () => new Map((events ?? []).map((e) => [e.id, e.tracks.map((t) => t.name)])),
+    [events],
+  )
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -2203,6 +2218,7 @@ export default function AssignmentsPage() {
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
                 display={eventDisplay}
+                trackNames={allTrackNames.get(event.id) ?? []}
                 onResize={handleResize}
                 onResizeCommit={handleResizeCommit}
                 onToggleRole={handleToggleRole}
