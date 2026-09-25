@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import {
   IconCalendar, IconChevronDown, IconChevronRight, IconLocation, IconLock, IconPlus, IconRestore, IconTrash,
 } from "@/components/ui/Icons";
@@ -273,7 +273,7 @@ export function TracksSection({ editor, locked, autoExpandKey }: {
           helper="Closes every track to member edits at once. Forms still take responses."
           last
         >
-          <Toggle checked={allLocked} onChange={editor.setAllLocked} locked={locked} />
+          <Switch checked={allLocked} onChange={editor.setAllLocked} locked={locked} />
         </SettingsRow>
       )}
 

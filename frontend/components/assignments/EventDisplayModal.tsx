@@ -8,7 +8,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 
 /** The metadata toggles. Split out from EventDisplayState because these are
  *  the part stored as `columns` — a flat list of what is on — while the
@@ -117,7 +117,7 @@ export function EventDisplayModal({
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
             }}>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{label}</span>
-              <Toggle
+              <Switch
                 checked={draft[key]}
                 onChange={(checked) => setDraft((d) => ({ ...d, [key]: checked }))}
               />
@@ -153,7 +153,7 @@ export function EventDisplayModal({
                   }}>
                     {track.name}
                   </span>
-                  <Toggle
+                  <Switch
                     checked={!draft.hiddenTracks.includes(track.id)}
                     onChange={(checked) => setDraft((d) => ({
                       ...d,
