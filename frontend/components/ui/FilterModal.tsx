@@ -7,7 +7,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { Spinner } from "@/components/ui/Spinner";
 
 export interface FilterOption {
@@ -179,7 +179,7 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
       fullWidth
       placeholder="Any"
       addButton={
-        <Popover
+        <ChecklistPopover
           trigger={
             <Button
               type="button" variant="secondary" size="sm" iconOnly
@@ -194,9 +194,8 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
           renderLabel={(option) => option.label}
           getSearchText={(option) => option.label}
           searchable={searchable ?? options.length > SEARCHABLE_ABOVE}
-          checklist
           isSelected={(option) => selected.has(option.value)}
-          onSelect={(option) => onChange(toggled(selected, option.value))}
+          onToggle={(option) => onChange(toggled(selected, option.value))}
           emptyMessage="Nothing to filter by"
           width={300}
           align="left"

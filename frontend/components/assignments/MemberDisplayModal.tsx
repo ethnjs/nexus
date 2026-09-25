@@ -22,11 +22,11 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { CheckboxRow } from "@/components/ui/CheckboxRow";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { Toggle } from "@/components/ui/Toggle";
 
 export type MemberFieldId =
@@ -180,12 +180,7 @@ function FieldCheck({ label, checked, onChange }: {
   checked: boolean;
   onChange: () => void;
 }) {
-  return (
-    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-      <Checkbox checked={checked} onChange={onChange} />
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{label}</span>
-    </label>
-  );
+  return <CheckboxRow label={label} checked={checked} onChange={onChange} />;
 }
 
 export function MemberDisplayModal({
@@ -262,7 +257,7 @@ export function MemberDisplayModal({
             ],
           }))}
           addButton={
-            <Popover
+            <ChecklistPopover
               trigger={
                 <Button
                   type="button" variant="secondary" size="sm" iconOnly
@@ -274,9 +269,8 @@ export function MemberDisplayModal({
               items={tracks}
               getKey={(track) => track.id}
               renderLabel={(track) => track.label}
-              checklist
               isSelected={(track) => trackShown(draft, id, track.id)}
-              onSelect={(track) => toggleTrack(`${id}:${track.id}`)}
+              onToggle={(track) => toggleTrack(`${id}:${track.id}`)}
               emptyMessage="Nothing to configure"
             />
           }

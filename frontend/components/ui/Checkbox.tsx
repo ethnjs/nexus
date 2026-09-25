@@ -15,7 +15,9 @@ interface CheckboxProps {
 
 // Checkmark is hardcoded white rather than var(--color-text-inverse) —
 // CSS custom properties don't resolve inside a data: URI.
-const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 6l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`
+// Vertices sit half a unit above the viewBox's midline: with the round caps
+// and 2.25 stroke, that puts the drawn ink's centre on 6,6, not the path's.
+const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 5.5l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`
 
 export function Checkbox({ checked, onChange, locked = false, size = 16 }: CheckboxProps) {
   const color = locked ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)'
@@ -45,7 +47,10 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         border: `2px solid ${color}`,
         backgroundColor: checked ? color : 'var(--color-surface)',
         backgroundImage: checked ? `url("data:image/svg+xml,${encodeURIComponent(CHECK_SVG)}")` : 'none',
-        backgroundSize: '85%',
+        // Whole px, not 85%: a fractional image inside a fractional-height
+        // row rasterises at a different subpixel phase per row, which reads
+        // as the tick sitting higher on some rows than others.
+        backgroundSize: `${Math.round((size - 4) * 0.85)}px`,
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         cursor: locked ? 'not-allowed' : 'pointer',
