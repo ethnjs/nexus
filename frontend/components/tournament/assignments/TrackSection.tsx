@@ -144,8 +144,11 @@ export function TrackSection({
   })
 
   const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
+  // Building and room only. The floor is stored and edited per track, but a
+  // room number already implies it to anyone reading the board, and spelling
+  // it out made the commonest line on the row a third longer.
   const location = detail?.building_name
-    ? [detail.building_name, detail.floor, detail.rooms.join(', ')].filter(Boolean).join(' ')
+    ? [detail.building_name, detail.rooms.join(', ')].filter(Boolean).join(' ')
     : null
   // The track's window: its first shift's start to its last one's end.
   // Derived, not stored — an event has no times of its own, only the union of
