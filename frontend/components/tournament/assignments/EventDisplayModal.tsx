@@ -30,6 +30,16 @@ export interface EventDisplayState extends EventMetaDisplay {
   hiddenTracks: number[];
 }
 
+/** Whether two board views show the same things — the meta toggles plus the
+ *  hidden-track list, which order does not belong to. */
+export function sameEventDisplay(a: EventDisplayState, b: EventDisplayState): boolean {
+  const meta = (["division", "type", "room", "time", "tracks"] as const)
+    .every((key) => a[key] === b[key]);
+  if (!meta || a.hiddenTracks.length !== b.hiddenTracks.length) return false;
+  const seen = new Set(b.hiddenTracks);
+  return a.hiddenTracks.every((id) => seen.has(id));
+}
+
 export const DEFAULT_EVENT_DISPLAY: EventDisplayState = {
   division: true,
   type: true,

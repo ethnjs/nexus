@@ -34,6 +34,24 @@ export function isFilterActive(filters: FilterState<string>): boolean {
   return Object.values(filters).some((selected) => selected.size > 0);
 }
 
+/**
+ * Whether two filter states narrow the same way.
+ *
+ * Key by key over the union of both, since a key present in one and absent
+ * in the other is equal when the present one is empty — an untouched surface
+ * and a cleared one filter identically, and a caller comparing against its
+ * defaults must not see a difference there.
+ */
+export function sameFilterState(a: FilterState<string>, b: FilterState<string>): boolean {
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const left = a[key] ?? new Set<string>();
+    const right = b[key] ?? new Set<string>();
+    if (left.size !== right.size) return false;
+    for (const value of left) if (!right.has(value)) return false;
+  }
+  return true;
+}
+
 /** Whether `value` passes one field's filter. Empty selection = no narrowing,
  *  which is the rule every caller's predicate needs and none should re-derive. */
 export function filterAllows(selected: Set<string>, value: string): boolean {
@@ -224,6 +242,9 @@ interface FilterModalProps<K extends string> {
   sections: FilterSectionConfig<K>[];
   /** Currently-applied filters — seeds the draft when the modal mounts. */
   filters: FilterState<K>;
+  /** This surface's own unfiltered state, if it isn't "nothing selected".
+   *  Given, the footer's clear button becomes Reset and returns here. */
+  defaults?: FilterState<K>;
   /** Fired only on Apply; the modal closes itself afterwards. */
   onApply: (filters: FilterState<K>) => void;
   /** X / overlay / Escape / Cancel — the draft is thrown away. */
@@ -238,7 +259,7 @@ interface FilterModalProps<K extends string> {
 // so the draft is re-seeded from the applied filters on every open rather than
 // resuming a stale one.
 export function FilterModal<K extends string>({
-  title, sections, filters, onApply, onClose, loading = false, width = 380,
+  title, sections, filters, defaults, onApply, onClose, loading = false, width = 380,
 }: FilterModalProps<K>) {
   const [draft, setDraft] = useState<FilterState<K>>(filters);
 
@@ -248,10 +269,17 @@ export function FilterModal<K extends string>({
 
   // Every section's key, not just the draft's: a key the caller's state
   // predates is still one this modal shows, and so one Clear all must clear.
+  //
+  // Given defaults, it clears *to* them rather than to nothing — a surface
+  // whose unfiltered state is a choice of its own (the board's belt, scoped
+  // to the day being staffed) has no use for a button that undoes it and no
+  // way back to it once pressed.
   function clearAll() {
     setDraft((prev) => {
       const next = { ...prev };
-      for (const section of sections) next[section.key] = new Set<string>();
+      for (const section of sections) {
+        next[section.key] = new Set(defaults?.[section.key] ?? []);
+      }
       return next;
     });
   }
@@ -303,7 +331,9 @@ export function FilterModal<K extends string>({
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "4px" }}>
-        <Button type="button" variant="ghost" onClick={clearAll}>Clear all</Button>
+        <Button type="button" variant="ghost" onClick={clearAll}>
+          {defaults ? "Reset" : "Clear all"}
+        </Button>
         <div style={{ display: "flex", gap: "8px" }}>
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="button" variant="primary" onClick={() => { onApply(draft); onClose(); }}>Apply</Button>

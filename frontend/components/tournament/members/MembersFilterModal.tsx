@@ -105,6 +105,26 @@ const TRACK_STATUS_OPTIONS: FilterOptionItem[] = [
 // "2 selected" has no single colour to be.
 const TRACK_STATUS_TONES: Record<string, PillTone> = { confirmed: "success", declined: "danger" };
 
+/**
+ * The belt's starting filters for one track tab: people who could work this
+ * day and are not yet on it.
+ *
+ * Both keys OR their values (see member_filters.py), so on All — where the
+ * scope is every track — these read "interested or confirmed on some track"
+ * and "unassigned on some track", which is the widest form of the same
+ * question. A default, not a rule: every chip is removable.
+ */
+export function defaultMemberFiltersForTab(
+  trackIds: number[], activeTrackId: number | null,
+): MembersFilterState {
+  const scope = activeTrackId === null ? trackIds : [activeTrackId];
+  return {
+    ...emptyFilterState(MEMBERS_FILTER_KEYS),
+    assigned: new Set(scope.map((id) => `${id}:unassigned`)),
+    track: new Set(scope.flatMap((id) => [`${id}:interested`, `${id}:confirmed`])),
+  };
+}
+
 // Per track, like track status: "who's unassigned for Day 1".
 const ASSIGNMENT_STATUS_OPTIONS: FilterOptionItem[] = [
   { value: "assigned", label: "Assigned" },
@@ -116,6 +136,10 @@ interface MembersFilterModalProps {
   /** From the page, which already holds the tournament's role list. */
   roleOptions: FilterOptionItem[];
   filters: MembersFilterState;
+  /** This surface's unfiltered state, when it isn't "nothing selected" — see
+   *  FilterModal. The roster passes none; the board scopes its belt to the
+   *  day being staffed. */
+  defaults?: MembersFilterState;
   /** Pre-resolved options, for a caller that already holds them or isn't
       backed by a real tournament (the assignments sketch). Given, the modal
       skips its own fetch — so it never sits on a spinner waiting for a
@@ -301,7 +325,7 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
 }
 
 export function MembersFilterModal({
-  tournamentId, roleOptions, filters, options: suppliedOptions, onApply, onClose,
+  tournamentId, roleOptions, filters, defaults, options: suppliedOptions, onApply, onClose,
 }: MembersFilterModalProps) {
   const [fetched, setFetched] = useState<MemberFilterOptions | null>(null);
   const options = suppliedOptions ?? fetched;
@@ -405,6 +429,7 @@ export function MembersFilterModal({
       loading={options === null}
       sections={sections}
       filters={seeded}
+      defaults={defaults}
       onApply={onApply}
       onClose={onClose}
     />

@@ -130,6 +130,20 @@ export function memberDisplayToHidden(display: MemberDisplayState): string[] {
   ];
 }
 
+/** Whether two card views hide the same things. Order is not part of the
+ *  state — the lists are built by toggling, so the same view reached two
+ *  ways can hold its entries in either order. */
+export function sameMemberDisplay(a: MemberDisplayState, b: MemberDisplayState): boolean {
+  return sameEntries(a.hiddenFields, b.hiddenFields)
+    && sameEntries(a.hiddenTracks, b.hiddenTracks);
+}
+
+function sameEntries(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const seen = new Set(b);
+  return a.every((entry) => seen.has(entry));
+}
+
 export function fieldShown(display: MemberDisplayState, id: MemberFieldId): boolean {
   return !display.hiddenFields.includes(id);
 }
@@ -185,6 +199,7 @@ function FieldCheck({ label, checked, onChange }: {
 
 export function MemberDisplayModal({
   display,
+  defaults,
   /** The tournament's tracks, for the per-track chip editors — caller-supplied
    *  rather than fetched here, same reasoning as MembersFilterModal's options. */
   tracks,
@@ -192,6 +207,12 @@ export function MemberDisplayModal({
   onClose,
 }: {
   display: MemberDisplayState;
+  /** What this tab starts with — defaultMemberDisplayForTab. Reset returns
+   *  here rather than to DEFAULT_MEMBER_DISPLAY, which is the baseline the
+   *  tab defaults are *built from* and a state no tab is ever actually in:
+   *  on Day 2 it hides availability outright and un-hides every other day's
+   *  track status and preferences. */
+  defaults?: MemberDisplayState;
   tracks: { id: number; label: string }[];
   onApply: (next: MemberDisplayState) => void;
   onClose: () => void;
@@ -311,7 +332,7 @@ export function MemberDisplayModal({
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "16px" }}>
-        <Button type="button" variant="ghost" onClick={() => setDraft(DEFAULT_MEMBER_DISPLAY)}>
+        <Button type="button" variant="ghost" onClick={() => setDraft(defaults ?? DEFAULT_MEMBER_DISPLAY)}>
           Reset
         </Button>
         <div style={{ display: "flex", gap: "8px" }}>
