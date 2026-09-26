@@ -7,8 +7,38 @@
  * bar: a handler rebuilding a lane and the chip drawing it must key it the
  * same way or the write lands on a different bar than the one you dragged.
  */
-import { buildLanes as buildAssignmentLanes } from "@/lib/assignments/lanes";
-import type { Assignment, TournamentEvent } from "@/lib/api";
+import { buildLanes as buildAssignmentLanes, type AssignmentRole } from "@/lib/assignments/lanes";
+import type { Assignment, Role, TournamentEvent, TournamentTrack } from "@/lib/api";
+
+/**
+ * What a chip can do to the bar it draws.
+ *
+ * Bundled rather than passed one prop at a time because every one of them is
+ * the page's to perform — a chip knows which lane it is, not how to write it
+ * — so they travel together from the board down to the chip and were being
+ * restated at each of the four layers in between.
+ */
+export interface ChipHandlers {
+  /** Adds or removes one role, leaving the rest — the multi-select path. */
+  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void;
+  /** Replaces every role this person holds here with the one picked. */
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void;
+  /** Drops the whole bar — every shift, every role. */
+  onRemove: (laneKey: string, eventId: number) => void;
+}
+
+/** Every write an event row can start, chip-level ones included. */
+export interface BoardHandlers extends ChipHandlers {
+  onResize: (laneKey: string, eventId: number, edge: "start" | "end", index: number) => void;
+  /** Fires once, on release — syncs the whole gesture's net change rather
+   *  than one write per pointermove. `beforeRows` is the lane's rows as of
+   *  pointerdown. */
+  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void;
+  /** Repoints a track's default role, migrating whoever still holds the old
+   *  one on that track. The page owns it: only it holds every track's and
+   *  every assignment's state. */
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>;
+}
 
 export function fullName(member: { first_name: string | null; last_name: string | null }) {
   return [member.first_name, member.last_name].filter(Boolean).join(" ");
