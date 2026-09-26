@@ -30,7 +30,7 @@ import type {
 import { formatDayLabel, toDateInput } from '@/lib/timeFormat'
 import { eventNameWithDivision } from '@/lib/eventDisplay'
 
-import { fieldShown, trackShown, type MemberDisplayState } from '@/components/assignments/MemberDisplayModal'
+import { fieldShown, trackShown, type MemberDisplayState } from '@/components/tournament/assignments/MemberDisplayModal'
 
 const HOUR_MS = 3600000
 

@@ -15,8 +15,8 @@ import {
 } from "react";
 import { useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
-import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
-import { RolePillMenu } from "@/components/assignments/RolePillMenu";
+import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
+import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
 import {
   AVAILABILITY_GREEN, AVAILABILITY_RED,
 } from "@/components/tournament/members/AvailabilityTimeline";
