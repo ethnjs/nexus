@@ -13,7 +13,8 @@ import type {
   Assignment, EventStaffingNeedRead, Role, TournamentEvent, TournamentShift, TournamentTrack,
 } from '@/lib/api'
 import type { Flag } from '@/lib/assignments/flags'
-import type { AssignmentRole, Lane } from '@/lib/assignments/lanes'
+import type { Lane } from '@/lib/assignments/lanes'
+import type { BoardHandlers } from '@/lib/assignments/board'
 import { formatTime } from '@/lib/timeFormat'
 
 import type { EventDisplayState } from '@/components/tournament/assignments/EventDisplayModal'
@@ -113,7 +114,7 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
 export function TrackSection({
   event, track, shifts, pinnedLanes, unpinnedLanes, rowAssignments, roleCatalog, flagsFor,
   display, showLabel, overAllShifts,
-  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+  handlers,
 }: {
   event: TournamentEvent
   track: TournamentTrack
@@ -131,12 +132,7 @@ export function TrackSection({
    *  track, so the pill, time, location and staffing stand on their own. */
   showLabel: boolean
   overAllShifts: boolean
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+  handlers: BoardHandlers
 }) {
   const hasShifts = shifts.length > 0
   // A track with columns is aimed at through them; a shiftless one is aimed
@@ -191,7 +187,11 @@ export function TrackSection({
             {track.name}
           </span>
         )}
-        <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
+        <DefaultRolePillMenu
+          track={track}
+          roleCatalog={roleCatalog}
+          onPickDefaultRole={handlers.onPickDefaultRole}
+        />
         {display.time && span && (
           <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
         )}
@@ -223,11 +223,7 @@ export function TrackSection({
             lanes={pinnedLanes}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
-            onResize={onResize}
-            onResizeCommit={onResizeCommit}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
+            handlers={handlers}
             overAllShifts={overAllShifts}
           />
           {/* Detaching a shift unpins its people without dropping them (see
@@ -254,9 +250,7 @@ export function TrackSection({
                   eventId={event.id}
                   roleCatalog={roleCatalog}
                   flagsFor={flagsFor}
-                  onToggleRole={onToggleRole}
-                  onPickRole={onPickRole}
-                  onRemove={onRemove}
+                  handlers={handlers}
                 />
               ))}
             </div>
@@ -276,9 +270,7 @@ export function TrackSection({
               eventId={event.id}
               roleCatalog={roleCatalog}
               flagsFor={flagsFor}
-              onToggleRole={onToggleRole}
-              onPickRole={onPickRole}
-              onRemove={onRemove}
+              handlers={handlers}
             />
           ))}
         </div>

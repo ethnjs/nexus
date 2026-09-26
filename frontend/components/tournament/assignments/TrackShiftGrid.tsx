@@ -7,25 +7,19 @@ import { MemberChip } from '@/components/tournament/assignments/MemberChip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Assignment, Role, TournamentShift } from '@/lib/api'
 import type { Flag } from '@/lib/assignments/flags'
-import type { AssignmentRole, Lane } from '@/lib/assignments/lanes'
+import type { Lane } from '@/lib/assignments/lanes'
+import type { BoardHandlers } from '@/lib/assignments/board'
 import { formatTime } from '@/lib/timeFormat'
 
 function TimelineBar({
-  lane, eventId, columns, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
+  lane, eventId, columns, roleCatalog, flagsFor, handlers,
 }: {
   lane: Lane
   eventId: number
   columns: number
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  /** Fires once, on release — syncs the whole gesture's net change to the
-   *  server rather than one write per pointermove. `beforeRows` is the
-   *  lane's rows as of pointerdown (see the closure note on startResize). */
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
+  handlers: BoardHandlers
 }) {
   const first = Math.min(...lane.covered)
   const last = Math.max(...lane.covered)
@@ -67,7 +61,7 @@ function TimelineBar({
       // same span and rebuilds the whole rows array for nothing.
       if (index === lastIndex) return
       lastIndex = index
-      onResize(lane.key, eventId, edge, index)
+      handlers.onResize(lane.key, eventId, edge, index)
     }
     function up() {
       handle.removeEventListener('pointermove', move)
@@ -79,7 +73,7 @@ function TimelineBar({
       // `lane.assignments` is exactly what the lane held before this
       // gesture's first pointermove — startResize closed over it once, at
       // pointerdown, and nothing since has changed which object it names.
-      onResizeCommit(lane.key, eventId, lane.assignments)
+      handlers.onResizeCommit(lane.key, eventId, lane.assignments)
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', up)
@@ -93,9 +87,7 @@ function TimelineBar({
         eventId={eventId}
         roleCatalog={roleCatalog}
         flagsFor={flagsFor}
-        onToggleRole={onToggleRole}
-        onPickRole={onPickRole}
-        onRemove={onRemove}
+        handlers={handlers}
         onResizeStart={startResize}
         resizingEdge={resizingEdge}
       />
@@ -134,18 +126,14 @@ function ShiftColumn({
  * whose columns silently jump from one track's day to another's.
  */
 export function TrackShiftGrid({
-  eventId, shifts, lanes, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts,
+  eventId, shifts, lanes, roleCatalog, flagsFor, handlers, overAllShifts,
 }: {
   eventId: number
   shifts: TournamentShift[]
   lanes: Lane[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
+  handlers: BoardHandlers
   /** The row's all-shifts target is being hovered. */
   overAllShifts: boolean
 }) {
@@ -253,11 +241,7 @@ export function TrackShiftGrid({
             columns={columns}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
-            onResize={onResize}
-            onResizeCommit={onResizeCommit}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
+            handlers={handlers}
           />
         </div>
       ))}

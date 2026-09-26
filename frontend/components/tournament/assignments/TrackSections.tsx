@@ -7,9 +7,9 @@ import type { EventDisplayState } from '@/components/tournament/assignments/Even
 import type {
   Assignment, Role, TournamentEvent, TournamentShift, TournamentTrack,
 } from '@/lib/api'
-import { buildLanes } from '@/lib/assignments/board'
+import { buildLanes, type BoardHandlers } from '@/lib/assignments/board'
 import type { Flag } from '@/lib/assignments/flags'
-import type { AssignmentRole, Lane } from '@/lib/assignments/lanes'
+import type { Lane } from '@/lib/assignments/lanes'
 
 // The narrowest a shiftless track's box may get before it wraps to its own
 // line. Enough for one chip — a full name, its role pill and the × — since
@@ -79,7 +79,7 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
  */
 export const TrackSections = memo(function TrackSections({
   event, rowAssignments, roleCatalog, flagsFor, display, showTrackLabels, overAllShifts,
-  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+  handlers,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -87,14 +87,9 @@ export const TrackSections = memo(function TrackSections({
   flagsFor: (a: Assignment) => Flag[]
   display: EventDisplayState
   showTrackLabels: boolean
-  onRemove: (laneKey: string, eventId: number) => void
   /** The row's all-shifts target is being hovered. */
   overAllShifts: boolean
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+  handlers: BoardHandlers
 }) {
   const { unpinned } = buildLanes(rowAssignments, event.shifts.map((s) => s.id))
 
@@ -153,12 +148,7 @@ export const TrackSections = memo(function TrackSections({
         display={display}
         showLabel={showTrackLabels}
         overAllShifts={overAllShifts}
-        onResize={onResize}
-        onResizeCommit={onResizeCommit}
-        onToggleRole={onToggleRole}
-        onPickRole={onPickRole}
-        onRemove={onRemove}
-        onPickDefaultRole={onPickDefaultRole}
+        handlers={handlers}
       />
     )
   }
