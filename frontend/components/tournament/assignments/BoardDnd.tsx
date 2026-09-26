@@ -20,9 +20,10 @@ import {
 } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection,
-  useSensor, useSensors,
-  type CollisionDetection, type DragEndEvent, type DragStartEvent,
+  useDndMonitor, useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent, type DragStartEvent, type Modifier,
 } from "@dnd-kit/core";
+import { getEventCoordinates } from "@dnd-kit/utilities";
 
 /**
  * Whatever is under the cursor, falling back to rectangles.
@@ -41,11 +42,79 @@ const underCursor: CollisionDetection = (args) => {
   return pointer.length > 0 ? pointer : rectIntersection(args);
 };
 
+/**
+ * Pins the overlay's top-left corner to the cursor rather than to wherever
+ * the card was grabbed.
+ *
+ * dnd-kit positions the overlay over the *source node's* rect and then
+ * translates it by the pointer delta — so grabbing a tall member card by its
+ * bottom edge leaves the little chip floating up where the card's name was.
+ * Adding the grab offset back (cursor minus the node's top-left) cancels
+ * that, which is what @dnd-kit/modifiers' snapCenterToCursor does; it's four
+ * lines, so it lives here rather than as another dependency.
+ *
+ * The corner, not the chip's centre, because the modifier cannot know the
+ * chip's size: dnd-kit forces the overlay wrapper to the *source card's*
+ * width and height, so the rect here is the card's. The chip centres itself
+ * on that corner in CSS below, where its own box is the one being measured.
+ */
+const followCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
+  if (!activatorEvent || !draggingNodeRect) return transform;
+  const grabbedAt = getEventCoordinates(activatorEvent);
+  if (!grabbedAt) return transform;
+  return {
+    ...transform,
+    x: transform.x + grabbedAt.x - draggingNodeRect.left,
+    y: transform.y + grabbedAt.y - draggingNodeRect.top,
+  };
+};
+
+/** What a drop target calls itself in the overlay's "assigning to" line.
+ *  Every droppable on the board carries one in its `data`. */
+interface DropTargetData {
+  label?: string;
+}
+
+/**
+ * The name of whatever the cursor is over, riding under the dragged chip.
+ *
+ * In the overlay rather than anchored to the target, because the target the
+ * cursor found can be a 60px strip of header halfway up a scrolled page —
+ * the one place a label is guaranteed to be both visible and next to the
+ * thing you are aiming with is the cursor itself.
+ *
+ * useDndMonitor, not useDndContext: the monitor fires when `over` *changes*,
+ * so this re-renders per target crossed rather than per frame.
+ */
+function AssigningTo() {
+  const [label, setLabel] = useState<string | null>(null);
+  useDndMonitor({
+    onDragOver: ({ over }) => setLabel((over?.data.current as DropTargetData | undefined)?.label ?? null),
+    onDragEnd: () => setLabel(null),
+    onDragCancel: () => setLabel(null),
+  });
+  if (!label) return null;
+  return (
+    <div style={{
+      padding: "3px 7px", borderRadius: "var(--radius-sm)",
+      background: "var(--color-text-primary)", color: "var(--color-surface)",
+      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
+      whiteSpace: "nowrap",
+    }}>
+      Assigning to {label}
+    </div>
+  );
+}
+
 interface BoardDndHandlers {
   onDragStart?: (event: DragStartEvent) => void;
   onDragEnd?: (event: DragEndEvent) => void;
   /** What follows the cursor, resolved once from the active draggable's id. */
   renderOverlay?: (activeId: string) => ReactNode;
+  /** The dragged person's name, for surfaces that draw their own preview of
+   *  the drop — the timeline's ghost row. Same resolution as the overlay:
+   *  once, at drag start, from whichever surface owns the draggable. */
+  labelFor?: (activeId: string) => string | null;
 }
 
 const RegisterContext = createContext<((id: string, handlers: BoardDndHandlers) => void) | null>(null);
@@ -59,10 +128,18 @@ const RegisterContext = createContext<((id: string, handlers: BoardDndHandlers) 
  * per drag. This flips exactly twice, on start and on end.
  */
 const DraggingContext = createContext(false);
+/** The dragged person's name while a drag is in flight, null otherwise.
+ *  Flips on the same two renders DraggingContext does. */
+const DragLabelContext = createContext<string | null>(null);
 
 /** Whether any drag is in flight. Safe to read from a memoised subtree. */
 export function useBoardDragging() {
   return useContext(DraggingContext);
+}
+
+/** Who is being dragged, for a surface drawing its own drop preview. */
+export function useBoardDragLabel() {
+  return useContext(DragLabelContext);
 }
 
 /**
@@ -90,6 +167,7 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
   // its new value.
   const [overlay, setOverlay] = useState<ReactNode>(null);
   const [dragging, setDragging] = useState(false);
+  const [dragLabel, setDragLabel] = useState<string | null>(null);
 
   const register = useCallback((id: string, next: BoardDndHandlers) => {
     handlers.current.set(id, next);
@@ -101,6 +179,16 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
     for (const entry of handlers.current.values()) {
       const overlay = entry.renderOverlay?.(activeId);
       if (overlay) return overlay;
+    }
+    return null;
+  }
+
+  /** Same first-claim rule as the overlay: a surface returns null for ids it
+   *  doesn't own. */
+  function labelFor(activeId: string): string | null {
+    for (const entry of handlers.current.values()) {
+      const label = entry.labelFor?.(activeId);
+      if (label) return label;
     }
     return null;
   }
@@ -118,17 +206,51 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
         onDragStart={(event) => {
           setDragging(true);
           setOverlay(renderOverlay(String(event.active.id)));
+          setDragLabel(labelFor(String(event.active.id)));
           for (const entry of handlers.current.values()) entry.onDragStart?.(event);
         }}
         onDragEnd={(event) => {
           setDragging(false);
           setOverlay(null);
+          setDragLabel(null);
           for (const entry of handlers.current.values()) entry.onDragEnd?.(event);
         }}
-        onDragCancel={() => { setDragging(false); setOverlay(null) }}
+        onDragCancel={() => { setDragging(false); setOverlay(null); setDragLabel(null) }}
       >
-        <DraggingContext.Provider value={dragging}>{children}</DraggingContext.Provider>
-        <DragOverlay>{overlay}</DragOverlay>
+        <DraggingContext.Provider value={dragging}>
+          <DragLabelContext.Provider value={dragLabel}>{children}</DragLabelContext.Provider>
+        </DraggingContext.Provider>
+        {/* No drop animation: the overlay is pinned to the cursor, so the
+            default one flies it back to the card it was grabbed from — a
+            chip sailing across the page after the drop already landed. */}
+        <DragOverlay modifiers={[followCursor]} dropAnimation={null}>
+          {overlay && (
+            // The wrapper dnd-kit sizes is the source card's box, so nothing
+            // inside it can be laid out against the chip — both pieces hang
+            // off its top-left corner, which the modifier above has parked
+            // under the cursor. translate(-50%) on the chip is what actually
+            // centres it there, since only CSS knows how big it is.
+            <div style={{ position: "relative", width: 0, height: 0 }}>
+              {/* max-content, or the name wraps to one word per line: an
+                  absolutely positioned box shrinks to fit its containing
+                  block, and this one's is the zero-width anchor. */}
+              <div style={{
+                position: "absolute", top: 0, left: 0, transform: "translate(-50%, -50%)",
+                width: "max-content",
+              }}>
+                {overlay}
+              </div>
+              {/* Below the chip, clear of the cursor: a label under the
+                  pointer is the one thing you cannot read while aiming. */}
+              <div style={{
+                position: "absolute", top: "22px", left: 0, transform: "translateX(-50%)",
+                width: "max-content", display: "flex", justifyContent: "center",
+              }}>
+                <AssigningTo />
+              </div>
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
     </RegisterContext.Provider>
   );

@@ -138,7 +138,7 @@ export function TrackSection({
   // at whole, so only it registers as a target.
   const { setNodeRef, isOver } = useDroppable({
     id: `track:${event.id}:${track.id}`,
-    data: { kind: 'track', eventId: event.id, trackId: track.id },
+    data: { kind: 'track', eventId: event.id, trackId: track.id, label: track.name },
     disabled: hasShifts,
   })
 

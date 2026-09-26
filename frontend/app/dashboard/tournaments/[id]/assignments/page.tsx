@@ -1126,6 +1126,7 @@ export default function AssignmentsPage() {
   // reach it. Behaviour still belongs here; only the context moved.
   useRegisterBoardDnd('board', {
     onDragEnd: handleDragEnd,
+    labelFor,
     renderOverlay: (activeId) => {
       const label = labelFor(activeId)
       if (!label) return null
