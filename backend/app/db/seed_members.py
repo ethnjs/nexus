@@ -14,7 +14,7 @@ invocation works against any database.
 
     python -m app.db.seed_members --tournament 3
     python -m app.db.seed_members --tournament 3 --no-onboarding
-    python -m app.db.seed_members --tournament 3 --email-prefix member --seed 7
+    python -m app.db.seed_members --tournament 3 --email-prefix member --rng-seed 7
     python -m app.db.seed_members --tournament 3 --create 50
 
 Run from backend/ with the venv active.
@@ -312,7 +312,7 @@ def ensure_accounts(db: Session, prefix: str, domain: str, count: int, password:
     would have to invent numbers and could collide with one already there.
 
     Names come off a private RNG so growing the population doesn't shift the
-    profile data a given --seed produces for everyone else.
+    profile data a given --rng-seed produces for everyone else.
     """
     from app.core.auth import hash_password
     from app.models.models import User
@@ -424,8 +424,11 @@ def build_parser() -> argparse.ArgumentParser:
                                "PREFIX1..PREFIXN don't exist yet")
     accounts.add_argument("--password", default="test1234", metavar="PW",
                           help="password for accounts this run creates (default: test1234)")
-    parser.add_argument("--seed", type=int, default=0, metavar="N",
-                        help="RNG seed - same value gives the same data (default: 0)")
+    # Deliberately not --seed: next to --create N in a script called a seeder,
+    # "--seed 50" reads as "seed 50 members" and silently does something else.
+    parser.add_argument("--rng-seed", type=int, default=0, metavar="N",
+                        help="RNG seed - same value gives the same fake people, "
+                             "not a count (default: 0)")
 
     toggles = parser.add_argument_group("what to seed")
     toggles.add_argument("--onboarding", action=argparse.BooleanOptionalAction, default=True,
@@ -464,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
     from app.db.session import SessionLocal
     from app.models.models import Event, Tournament, University
 
-    rng = random.Random(args.seed)
+    rng = random.Random(args.rng_seed)
     db = SessionLocal()
     try:
         tournament = db.query(Tournament).filter(Tournament.id == args.tournament).first()
@@ -475,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         accounts_created = 0
         if args.create:
             accounts_created = ensure_accounts(
-                db, args.email_prefix, args.email_domain, args.create, args.password, args.seed
+                db, args.email_prefix, args.email_domain, args.create, args.password, args.rng_seed
             )
 
         pairs, created = resolve_members(db, tournament.id, args.email_prefix, args.enroll, args.limit)
