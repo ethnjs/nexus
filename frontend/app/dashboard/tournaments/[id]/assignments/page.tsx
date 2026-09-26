@@ -31,7 +31,7 @@ import {
 
 import { DockedPanel } from '@/components/layout/DockedPanel'
 
-import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
+import { useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
 import { RolePillMenu } from '@/components/assignments/RolePillMenu'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members/MemberPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
@@ -141,6 +141,11 @@ function useGrabCursor(listeners: DragListeners) {
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
+
+// The narrowest a shiftless track's box may get before it wraps to its own
+// line. Enough for one chip — a full name, its role pill and the × — since
+// anything under that turns every name into an ellipsis.
+const NO_SHIFT_MIN_WIDTH = 230
 
 function fullName(member: { first_name: string | null; last_name: string | null }) {
   return [member.first_name, member.last_name].filter(Boolean).join(' ')
@@ -688,22 +693,193 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
   )
 }
 
-/** The track name plus its default role pill, above one track's shift grid. */
-function TrackTimelineHeader({ track, roleCatalog, onPickDefaultRole }: {
+/**
+ * Everything one track of an event holds: its logistics, its staffing target,
+ * and its people.
+ *
+ * The section is the unit the whole row is built from, because a track is the
+ * scope of every answer an event gives — where it is, when it runs, how many
+ * of each role it wants, who is on it. Splitting those across an event-wide
+ * metadata column and a separate people area meant an event on two days had
+ * to either join two answers into one line or pick one and drop the other.
+ *
+ * A track with shifts draws its timeline; a shiftless one (Test Writing, or
+ * a day whose shifts were detached) is a dashed box that takes drops whole,
+ * since it has no columns to aim at.
+ */
+function TrackSection({
+  event, track, shifts, pinnedLanes, unpinnedLanes, rowAssignments, roleCatalog, flagsFor,
+  display, showLabel, overAllShifts,
+  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+}: {
+  event: TournamentEvent
   track: TournamentTrack
+  /** This track's own shifts, in schedule order. Empty for a shiftless one. */
+  shifts: TournamentShift[]
+  /** Bars on those shifts. */
+  pinnedLanes: Lane[]
+  /** People on this track but on none of its shifts. */
+  unpinnedLanes: Lane[]
+  rowAssignments: Assignment[]
   roleCatalog: Role[]
+  flagsFor: (a: Assignment) => Flag[]
+  display: EventDisplayState
+  /** False on a track tab and in simple mode — the tab already names the
+   *  track, so the pill, time, location and staffing stand on their own. */
+  showLabel: boolean
+  overAllShifts: boolean
+  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
+  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
+  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onRemove: (laneKey: string, eventId: number) => void
   onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
+  const hasShifts = shifts.length > 0
+  // A track with columns is aimed at through them; a shiftless one is aimed
+  // at whole, so only it registers as a target.
+  const { setNodeRef, isOver } = useDroppable({
+    id: `track:${event.id}:${track.id}`,
+    data: { kind: 'track', eventId: event.id, trackId: track.id },
+    disabled: hasShifts,
+  })
+
+  const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
+  const location = detail?.building_name
+    ? [detail.building_name, detail.floor, detail.rooms.join(', ')].filter(Boolean).join(' ')
+    : null
+  // The track's window: its first shift's start to its last one's end.
+  // Derived, not stored — an event has no times of its own, only the union of
+  // the shifts on it (see TournamentEvent in models.py).
+  const span = hasShifts
+    ? `${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`
+    : null
+  const needs = detail?.needs ?? []
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        color: 'var(--color-text-tertiary)',
-      }}>
-        {track.name}
-      </span>
-      <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
+    <div
+      ref={setNodeRef}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0,
+        // Boxed only where there is no timeline — a grid draws its own edges
+        // in its columns. The box is also the drop target itself, so it tints
+        // rather than lighting its border, the same signal the shift columns
+        // give.
+        ...(hasShifts ? null : {
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-sm)',
+          padding: '6px 8px',
+          background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
+          transition: 'background 120ms ease',
+        }),
+      }}
+    >
+      {/* Label, role, time and place on one line — they are all answers to
+          "what is this track of this event", and each is short enough that
+          stacking them spent a row of height per word. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+        {showLabel && (
+          <span style={{
+            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+            letterSpacing: '0.05em', textTransform: 'uppercase',
+            color: 'var(--color-text-tertiary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {track.name}
+          </span>
+        )}
+        <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
+        {display.time && span && (
+          <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
+        )}
+        {display.room && location && (
+          <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
+        )}
+      </div>
+
+      {/* Across, not down: a track wants a handful of roles at most, and a
+          row of them reads as one progress line for the track rather than as
+          a list of separate facts. */}
+      {needs.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 14px' }}>
+          {needs.map((need) => (
+            <StaffingNeedLine
+              key={need.role_id}
+              need={need}
+              filled={staffedCount(rowAssignments, need.role_id, track.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {hasShifts ? (
+        <>
+          <TrackShiftGrid
+            eventId={event.id}
+            shifts={shifts}
+            lanes={pinnedLanes}
+            roleCatalog={roleCatalog}
+            flagsFor={flagsFor}
+            onResize={onResize}
+            onResizeCommit={onResizeCommit}
+            onToggleRole={onToggleRole}
+            onPickRole={onPickRole}
+            onRemove={onRemove}
+            overAllShifts={overAllShifts}
+          />
+          {/* Detaching a shift unpins its people without dropping them (see
+              detach_shifts_from_assignments), so a track with columns can
+              still hold someone on none of them. Shown under its own grid
+              rather than in a section of their own — they are this track's
+              staffing either way. */}
+          {unpinnedLanes.length > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
+              paddingTop: '5px', borderTop: '1px dashed var(--color-border)',
+            }}>
+              <span style={{
+                fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+                color: 'var(--color-text-tertiary)',
+              }}>
+                No shift
+              </span>
+              {unpinnedLanes.map((lane) => (
+                <Chip
+                  key={lane.key}
+                  lane={lane}
+                  eventId={event.id}
+                  roleCatalog={roleCatalog}
+                  flagsFor={flagsFor}
+                  onToggleRole={onToggleRole}
+                  onPickRole={onPickRole}
+                  onRemove={onRemove}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      ) : unpinnedLanes.length === 0 ? (
+        // Kept on screen rather than hidden: this box is the only way onto a
+        // shiftless track, and a target that appears only once you have
+        // already hit it is not a target you can find.
+        <EmptyState size="sm" title="Nobody assigned" />
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {unpinnedLanes.map((lane) => (
+            <Chip
+              key={lane.key}
+              lane={lane}
+              eventId={event.id}
+              roleCatalog={roleCatalog}
+              flagsFor={flagsFor}
+              onToggleRole={onToggleRole}
+              onPickRole={onPickRole}
+              onRemove={onRemove}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -716,32 +892,26 @@ function TrackTimelineHeader({ track, roleCatalog, onPickDefaultRole }: {
  * one row being hovered; everything else it takes is stable while dragging,
  * so the other rows now bail out here.
  */
-const ShiftTimeline = memo(function ShiftTimeline({
-  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts, onPickDefaultRole, showTrackHeaders,
+const TrackSections = memo(function TrackSections({
+  event, rowAssignments, roleCatalog, flagsFor, display, showTrackLabels, overAllShifts,
+  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
   roleCatalog: Role[]
+  flagsFor: (a: Assignment) => Flag[]
+  display: EventDisplayState
+  showTrackLabels: boolean
   onRemove: (laneKey: string, eventId: number) => void
   /** The row's all-shifts target is being hovered. */
   overAllShifts: boolean
-  flagsFor: (a: Assignment) => Flag[]
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
-  /** True on the All tab — a track tab or a simple tournament already says
-   *  which track this is, so its grid gets no header even when (as is
-   *  always true there) it is the only group. */
-  showTrackHeaders: boolean
 }) {
-  const shiftIds = event.shifts.map((s) => s.id)
-  const { unpinned } = buildLanes(rowAssignments, shiftIds)
-  // Any drag in flight, from the belt or from another chip. Our own context,
-  // not useDndContext — see the note on useBoardDragging.
-  const dragging = useBoardDragging()
-  const noShiftTracks = noShiftTracksOf(event, unpinned)
+  const { unpinned } = buildLanes(rowAssignments, event.shifts.map((s) => s.id))
 
   // The event's own shifts, grouped by the track that owns them — a Map
   // remembers insertion order, and `event.shifts` already arrives schedule-
@@ -756,148 +926,90 @@ const ShiftTimeline = memo(function ShiftTimeline({
     return groups
   }, [event.shifts])
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: showTrackHeaders ? '14px' : '4px', minWidth: 0 }}>
-      {[...shiftsByTrack.entries()].map(([trackId, shifts]) => {
-        const track = event.tracks.find((t) => t.id === trackId)
-        const shiftIdsHere = shifts.map((s) => s.id)
-        // Only this track's own rows — a row pinned to another track's shift
-        // must never count as unpinned here just because it misses this
-        // group's shift list; the event-wide `unpinned` above already covers
-        // every track's true unpinned rows in one shared section below.
-        const trackRows = rowAssignments.filter((a) => a.shift && shiftIdsHere.includes(a.shift.id))
-        const { lanes } = buildLanes(trackRows, shiftIdsHere)
-        return (
-          <div key={trackId} style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-            {showTrackHeaders && track && (
-              <TrackTimelineHeader
-                track={track}
-                roleCatalog={roleCatalog}
-                onPickDefaultRole={onPickDefaultRole}
-              />
-            )}
-            <TrackShiftGrid
-              eventId={event.id}
-              shifts={shifts}
-              lanes={lanes}
-              roleCatalog={roleCatalog}
-              flagsFor={flagsFor}
-              onResize={onResize}
-              onResizeCommit={onResizeCommit}
-              onToggleRole={onToggleRole}
-              onPickRole={onPickRole}
-              onRemove={onRemove}
-              overAllShifts={overAllShifts}
-            />
-          </div>
-        )
-      })}
+  // Every track that gets a section: the event's own, plus any the rows point
+  // at that the event's list has lost track of (noShiftTracksOf synthesises
+  // those). Ones with shifts first, in schedule order, so the timelines read
+  // top to bottom before the workstreams that sit beside them.
+  const byId = new Map<number, TournamentTrack>()
+  for (const track of event.tracks) byId.set(track.id, track)
+  for (const track of noShiftTracksOf(event, unpinned)) {
+    if (!byId.has(track.id)) byId.set(track.id, track)
+  }
+  const dated = [...shiftsByTrack.keys()]
+    .map((id) => byId.get(id))
+    .filter((track): track is TournamentTrack => track !== undefined)
+  const datedIds = new Set(dated.map((t) => t.id))
+  const shiftless = [...byId.values()].filter((t) => !datedIds.has(t.id))
 
-      {/* Normally only when somebody is actually unpinned — an always-present
-          empty section is chrome explaining a state that isn't happening. But
-          its columns are the only targets a cosmetic track has, and a target
-          that only exists once you have already used it is not reachable by
-          dragging. So it also appears, empty, for the duration of a drag. */}
-      {(unpinned.length > 0 || (dragging && noShiftTracks.length > 0)) && (
-        <UnpinnedSection
-          eventId={event.id}
-          unpinned={unpinned}
-          cosmeticTracks={noShiftTracks}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-          onPickDefaultRole={onPickDefaultRole}
-        />
+  const unpinnedByTrack = bucketByTrack(unpinned, [...dated, ...shiftless])
+
+  const sectionFor = (track: TournamentTrack) => {
+    const shifts = shiftsByTrack.get(track.id) ?? []
+    const shiftIdsHere = shifts.map((s) => s.id)
+    // Only this track's own pinned rows — a row on another track's shift
+    // would otherwise land in this call's `unpinned` bucket purely for
+    // missing this track's shift list. The event-wide `unpinned` above is
+    // the one that decides who is genuinely on no shift.
+    const trackRows = rowAssignments.filter((a) => a.shift && shiftIdsHere.includes(a.shift.id))
+    const { lanes } = shifts.length > 0
+      ? buildLanes(trackRows, shiftIdsHere)
+      : { lanes: [] as Lane[] }
+    return (
+      <TrackSection
+        key={track.id}
+        event={event}
+        track={track}
+        shifts={shifts}
+        pinnedLanes={lanes}
+        unpinnedLanes={unpinnedByTrack.get(track.id) ?? []}
+        rowAssignments={rowAssignments}
+        roleCatalog={roleCatalog}
+        flagsFor={flagsFor}
+        display={display}
+        showLabel={showTrackLabels}
+        overAllShifts={overAllShifts}
+        onResize={onResize}
+        onResizeCommit={onResizeCommit}
+        onToggleRole={onToggleRole}
+        onPickRole={onPickRole}
+        onRemove={onRemove}
+        onPickDefaultRole={onPickDefaultRole}
+      />
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
+      {/* A timeline owns its full width — its columns *are* the day, and two
+          days side by side would halve every shift. */}
+      {dated.map(sectionFor)}
+
+      {/* The shiftless ones go back beside each other: they hold chips, not
+          columns, so width costs them little. `flex` with a basis rather than
+          equal grid tracks, because equal tracks divided by four squeezed
+          every name card to an ellipsis — this way they share what's there
+          and wrap once a column would drop under NO_SHIFT_MIN_WIDTH. */}
+      {shiftless.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minWidth: 0 }}>
+          {shiftless.map((track) => (
+            <div
+              key={track.id}
+              // `min(..., 100%)` rather than a flat minimum: with both panels
+              // docked the people area itself can be narrower than one box,
+              // and a hard floor would push the row into a sideways scroll.
+              style={{
+                flex: `1 1 ${NO_SHIFT_MIN_WIDTH}px`,
+                minWidth: `min(${NO_SHIFT_MIN_WIDTH}px, 100%)`,
+              }}
+            >
+              {sectionFor(track)}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
 })
-
-/**
- * One cosmetic track's share of the no-shift area: its people, and the target
- * that puts more of them there.
- *
- * A cosmetic track (is_primary false — Test Writing, Review) has no shifts by
- * construction, so it can never be a timeline column; before this it had no
- * area of its own at all, and a drop anywhere on the event granted
- * `tracks[0]`'s default role. On an event that runs on both Day 1 and Test
- * Writing that is simply the wrong role, with nothing on screen to say so.
- *
- * The role is named in the header rather than left to be discovered after the
- * drop, since granting it is the whole point of aiming at this column.
- */
-function TrackColumn({
-  eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
-}: {
-  eventId: number
-  track: TournamentTrack
-  lanes: Lane[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `track:${eventId}:${track.id}`,
-    data: { kind: 'track', eventId, trackId: track.id },
-  })
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0,
-        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
-        // Border stays the ordinary colour while hovered — the tint alone
-        // says "you can drop here", the same as the event row and the shift
-        // columns. --color-accent is near-black, so lighting the border made
-        // one column jump out of a row of otherwise quiet boxes.
-        border: '1px solid var(--color-border)',
-        background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
-        // Tall enough to be aimed at while empty — this is the only way onto
-        // a cosmetic track, so it cannot be a hairline.
-        minHeight: '58px',
-        transition: 'background 120ms ease',
-      }}
-    >
-      {/* alignItems: center, not baseline — baseline suited two plain-text
-          spans, but a bordered pill's baseline sits low inside its own box,
-          which reads as the pill hanging below the label beside it. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-          letterSpacing: '0.05em', textTransform: 'uppercase',
-          color: 'var(--color-text-tertiary)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {track.name} · {lanes.length}
-        </span>
-        {/* A track with no default role still takes drops: naming that in
-            the pill itself is more use than a column you cannot aim at and
-            cannot ask why — and now it doubles as the fix. */}
-        <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {lanes.map((lane) => (
-          <Chip
-            key={lane.key}
-            lane={lane}
-            eventId={eventId}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
 
 /**
  * Which column an unpinned chip sits in — the track the row itself names.
@@ -942,123 +1054,6 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
     })
   }
   return columns
-}
-
-/** The no-shift area, split into one equal column per cosmetic track. Equal
- *  because nothing ranks them — an event's cosmetic tracks are parallel
- *  workstreams, not a hierarchy — and they divide the people area exactly,
- *  which is the row's width less the metadata column. */
-function NoShiftTracks({
-  eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
-}: {
-  eventId: number
-  tracks: TournamentTrack[]
-  lanes: Lane[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
-}) {
-  if (tracks.length === 0) return null
-  const buckets = bucketByTrack(lanes, tracks)
-  return (
-    <div style={{
-      display: 'grid', gap: '6px',
-      gridTemplateColumns: `repeat(${tracks.length}, minmax(0, 1fr))`,
-    }}>
-      {tracks.map((track) => (
-        <TrackColumn
-          key={track.id}
-          eventId={eventId}
-          track={track}
-          lanes={buckets.get(track.id) ?? []}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-          onPickDefaultRole={onPickDefaultRole}
-        />
-      ))}
-    </div>
-  )
-}
-
-/**
- * Assigned to the event but pinned to no shift — test writing, and anything
- * not yet scheduled. Its own section because these are exactly the people a
- * TD needs to find and drag up onto a column.
- *
- * The section has no target of its own: it is exactly the event's cosmetic
- * tracks, one column each. A generic "no shift" drop is what used to grant
- * `tracks[0]`'s role with nothing on screen naming the track it billed, so
- * removing it removes the only way to land in that state by accident. The
- * cost is that an event with no cosmetic track can no longer be given an
- * unpinned assignment from the board — its columns are what a drop is for.
- * Existing unpinned people on such an event still show, read-only as a
- * placement: they are still draggable up onto a shift.
- */
-function UnpinnedSection({
-  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
-}: {
-  eventId: number
-  unpinned: Lane[]
-  /** The event's shiftless tracks — the section's columns, in event order. */
-  cosmeticTracks: TournamentTrack[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
-}) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: '6px',
-      marginTop: '2px', paddingTop: '6px',
-      borderTop: '1px solid var(--color-border)',
-    }}>
-      {cosmeticTracks.length > 0 ? (
-        <NoShiftTracks
-          eventId={eventId}
-          tracks={cosmeticTracks}
-          lanes={unpinned}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onPickDefaultRole={onPickDefaultRole}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-        />
-      ) : (
-        <>
-          <span style={{
-            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-            letterSpacing: '0.05em', textTransform: 'uppercase',
-            color: 'var(--color-text-tertiary)',
-          }}>
-            No shift · {unpinned.length}
-          </span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {unpinned.map((lane) => (
-              <Chip
-                key={lane.key}
-                lane={lane}
-                eventId={eventId}
-                roleCatalog={roleCatalog}
-                flagsFor={flagsFor}
-                onToggleRole={onToggleRole}
-                onPickRole={onPickRole}
-                onRemove={onRemove}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
 }
 
 function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) {
@@ -1111,64 +1106,6 @@ function StaffingNeedLine({ need, filled }: { need: EventStaffingNeedRead; fille
   )
 }
 
-/**
- * One track's slice of an event's metadata, on the All tab — location, time
- * and staffing, all scoped to this one track, under the track's own name as
- * a header. A track tab shows the same three things inline with no header,
- * since the tab already says which track it is; the All tab is where an
- * event can hold several genuinely different answers at once (Day 1 in one
- * building needing 6 volunteers, Day 2 in another needing 8), so it repeats
- * the block once per track instead of joining them into one confusing line.
- */
-function TrackMetaBlock({ event, track, rowAssignments, display }: {
-  event: TournamentEvent
-  track: TournamentTrack
-  rowAssignments: Assignment[]
-  display: EventDisplayState
-}) {
-  const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
-  const location = detail?.building_name
-    ? [detail.building_name, detail.floor, detail.rooms.join(', ')].filter(Boolean).join(' ')
-    : null
-  // Already in schedule order (withOrderedShifts sorts the whole event once,
-  // on arrival), so filtering to this track keeps that order rather than
-  // needing to re-sort.
-  const trackShifts = event.shifts.filter((s) => s.track_id === track.id)
-  const span = trackShifts.length > 0
-    ? `${formatTime(trackShifts[0].start)} – ${formatTime(trackShifts[trackShifts.length - 1].end)}`
-    : null
-  const needs = detail?.needs ?? []
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        color: 'var(--color-text-tertiary)',
-      }}>
-        {track.name}
-      </span>
-      {display.room && location && (
-        <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
-      )}
-      {display.time && span && (
-        <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
-      )}
-      {needs.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-          {needs.map((need) => (
-            <StaffingNeedLine
-              key={need.role_id}
-              need={need}
-              filled={staffedCount(rowAssignments, need.role_id, track.id)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Event row
 // ---------------------------------------------------------------------------
@@ -1181,15 +1118,14 @@ function EventRow({
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   display: EventDisplayState
-  /** null on the All tab (and always, in simple mode) — each of the event's
-   *  tracks gets its own labelled metadata block there (see TrackMetaBlock).
-   *  Set, the metadata narrows to that one track with no header, since the
-   *  tab already says which track it is. */
+  /** null on the All tab (and always, in simple mode). Set, every section
+   *  drops its track name — the tab already said it — while keeping the
+   *  role pill, time, location and staffing. */
   activeTrackId: number | null
   /** A one-track tournament: there is only ever one answer, so the sole
    *  track's own name would label something nobody was choosing between.
    *  An event that merely happens to run on one track *of several* in an
-   *  advanced tournament still gets the header — the ambiguity is real
+   *  advanced tournament still gets the label — the ambiguity is real
    *  there, just not for this event. */
   simple: boolean
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
@@ -1203,56 +1139,40 @@ function EventRow({
    *  since only it holds every track's and every assignment's state. */
   onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
-  // Two targets on a row with shifts: the metadata column means "every
-  // shift", and each timeline column means that one. The row itself is only a
-  // target when there are no shifts to aim at.
+  // Two targets on a row with shifts: the event's own name means "every
+  // shift", and each timeline column means that one.
   const { setNodeRef: setAllShiftsRef, isOver: overAllShifts } = useDroppable({
     id: `allday:${event.id}`,
     data: { kind: 'allday', eventId: event.id },
   })
-  // The row is a target only for an event with neither shifts to aim at nor
-  // cosmetic tracks to split by — anything else has a more specific target.
-  const cosmeticTracks = cosmeticTracksOf(event)
+  // The bare row is a target only for an event on no track at all. Every
+  // other event is a stack of track sections, and each of those is either a
+  // grid of shift columns or a target in its own right — both of which name
+  // the track they bill, where this one can only guess at `tracks[0]`.
   const { setNodeRef: setRowRef, isOver: overRow } = useDroppable({
     id: `event:${event.id}`,
     data: { kind: 'event', eventId: event.id },
-    disabled: event.shifts.length > 0 || cosmeticTracks.length > 0,
+    disabled: event.tracks.length > 0,
   })
   // Memoised so the lane objects survive this row's per-crossing re-renders
   // (useDroppable above) — ChipBody's memo compares them by identity.
-  const hasShifts = event.shifts.length > 0
-  const shiftlessLanes = useMemo(
-    () => (hasShifts ? [] : buildLanes(rowAssignments, []).unpinned),
-    [rowAssignments, hasShifts],
+  const trackless = event.tracks.length === 0
+  const tracklessLanes = useMemo(
+    () => (trackless ? buildLanes(rowAssignments, []).unpinned : []),
+    [rowAssignments, trackless],
   )
 
   // A simple tournament has exactly one track, so there is never a real
-  // choice for a header to name — falling back to it here is what keeps a
+  // choice for a label to name — falling back to it here is what keeps a
   // one-track tournament from printing a track name nobody needed labelled,
   // same as an actual track tab does for the same reason.
   const focusedTrackId = activeTrackId ?? (simple ? event.tracks[0]?.id ?? null : null)
 
-  // The focused track's own detail — set on a track tab, or in simple mode.
-  // Its `needs` drive the staffing block below.
-  const trackDetail = focusedTrackId !== null
-    ? event.track_details.find((d) => d.track_id === focusedTrackId) ?? null
-    : null
-
-  // Both only used once a track is focused — the All tab on an advanced
-  // tournament gives each track its own block (TrackMetaBlock below),
-  // computed the same way per track rather than joined into one line here.
-  const location = trackDetail?.building_name
-    ? [trackDetail.building_name, trackDetail.floor, trackDetail.rooms.join(', ')].filter(Boolean).join(' ')
-    : null
-  // The tab's window: earliest shift start to latest shift end. Derived, not
-  // stored — an event has no times of its own, only the union of the shifts
-  // attached to it (see TournamentEvent in models.py). `event.shifts` is
-  // already narrowed to the active track's shifts by `boardEvents`.
-  const span = event.shifts.length > 0
-    ? `${formatTime(event.shifts[0].start)} – ${formatTime(event.shifts[event.shifts.length - 1].end)}`
-    : null
-
   return (
+    // The event names itself in a column of its own and hands the rest of the
+    // row to its tracks. The name earns the rail: it is what the eye runs
+    // down to find a row, and putting it on the same stack as the tracks
+    // buried it under everything each track had to say.
     <div
       style={{
         display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
@@ -1262,142 +1182,78 @@ function EventRow({
         border: '1px solid var(--color-border)',
         background: overRow ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
         transition: 'background 120ms ease',
-        // A row you cannot aim at is not a drop target. `start`, not `center`:
-        // centering pins the row to one line's height, so a second lane spills
-        // past the border instead of growing it.
+        // `start`, not `center`: centering pins the row to one line's height,
+        // so a second section spills past the border instead of growing it.
         minHeight: '56px', alignItems: 'start',
       }}
     >
+      {/* The name is also the all-shifts target — it is the one part of the
+          row that speaks for every track at once, which is exactly what
+          dropping here means. */}
       <div
         ref={event.shifts.length > 0 ? setAllShiftsRef : undefined}
         style={{
-          display: 'flex', flexDirection: 'column', gap: '4px',
+          display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
           position: 'relative', borderRadius: 'var(--radius-sm)',
           padding: '2px 4px', margin: '-2px -4px',
           background: overAllShifts ? 'var(--color-accent-subtle)' : 'transparent',
           transition: 'background 120ms ease',
         }}
       >
+        {/* eventName, not `name`: a catalog-linked event leaves its own
+            name column null and carries it on the joined canonical event. */}
+        <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
+          {eventName(event)}
+        </span>
+        {display.division && event.division && (
+          <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
+        )}
+        {display.type && event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
         {/* Says what dropping here does, and only while it would do it. */}
         {overAllShifts && event.shifts.length > 0 && (
           <span style={{
-            position: 'absolute', right: '4px', top: '2px',
+            marginLeft: 'auto',
             fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
             color: 'var(--color-accent)',
           }}>
             All shifts
           </span>
         )}
-        {/* Name in sans and first — it is what you scan the column for. The
-            division trails it as a tag rather than leading, so the names line
-            up on the left edge instead of being indented by a badge. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {/* eventName, not `name`: a catalog-linked event leaves its own
-              name column null and carries it on the joined canonical event. */}
-          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
-            {eventName(event)}
-          </span>
-          {display.division && event.division && (
-            <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
-          )}
-          {display.type && event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
-        </div>
-
-        {/* Icon + text per line, so the kinds stay distinguishable without
-            labels. Sans, not mono: these read as prose, not as data. */}
-        {focusedTrackId !== null ? (
-          // Either a track tab, or a simple tournament's sole track — either
-          // way there's no ambiguity to label, so no track name header, no
-          // badges naming other tracks. Just that track's own location, time
-          // and staffing.
-          <>
-            {display.room && location && (
-              <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
-            )}
-            {display.time && span && (
-              <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
-            )}
-            {trackDetail && trackDetail.needs.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '2px' }}>
-                {trackDetail.needs.map((need) => (
-                  <StaffingNeedLine
-                    key={need.role_id}
-                    need={need}
-                    filled={staffedCount(rowAssignments, need.role_id, focusedTrackId)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          // All: an event can hold a genuinely different answer per track
-          // (different building, different day, different staffing), so each
-          // track gets its own labelled block rather than one joined line.
-          display.tracks && event.tracks.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
-              {event.tracks.map((track) => (
-                <TrackMetaBlock
-                  key={track.id}
-                  event={event}
-                  track={track}
-                  rowAssignments={rowAssignments}
-                  display={display}
-                />
-              ))}
-            </div>
-          )
-        )}
       </div>
 
-      {event.shifts.length === 0 ? (
-        // No shifts to lay a timeline over — test writing and friends. The
-        // whole people area is the no-shift area here, so it is split the
-        // same way: one column per cosmetic track.
-        cosmeticTracks.length > 0 ? (
-          <NoShiftTracks
-            eventId={event.id}
-            tracks={noShiftTracksOf(event, shiftlessLanes)}
-            lanes={shiftlessLanes}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
-            onPickDefaultRole={onPickDefaultRole}
-          />
-        ) : (
-          // No cosmetic track to split by, so the row itself stays the
-          // target — the alternative is an event nothing can be assigned to.
-          <div ref={setRowRef} style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {rowAssignments.length === 0 ? (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <EmptyState size="sm" title="Nobody assigned" />
-              </div>
-            ) : (
-              // No shifts to index against, so every row lands in `unpinned` —
-              // which is the grouping we want anyway: one chip per person,
-              // carrying however many roles they hold here.
-              shiftlessLanes.map((lane) => (
-                <Chip
-                  key={lane.key}
-                  lane={lane}
-                  eventId={event.id}
-                  roleCatalog={roleCatalog}
-                  flagsFor={flagsFor}
-                  onToggleRole={onToggleRole}
-                  onPickRole={onPickRole}
-                  onRemove={onRemove}
-                />
-              ))
-            )}
-          </div>
-        )
+      {trackless ? (
+        // No track means nowhere to hang a section: no location to store, no
+        // needs to declare, and no default role to bill a drop to. The row
+        // itself stays the target — the alternative is an event nothing can
+        // be assigned to at all.
+        <div ref={setRowRef} style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {tracklessLanes.length === 0 ? (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <EmptyState size="sm" title="Nobody assigned" />
+            </div>
+          ) : (
+            tracklessLanes.map((lane) => (
+              <Chip
+                key={lane.key}
+                lane={lane}
+                eventId={event.id}
+                roleCatalog={roleCatalog}
+                flagsFor={flagsFor}
+                onToggleRole={onToggleRole}
+                onPickRole={onPickRole}
+                onRemove={onRemove}
+              />
+            ))
+          )}
+        </div>
       ) : (
-        <ShiftTimeline
+        <TrackSections
           event={event}
           rowAssignments={rowAssignments}
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
+          display={display}
+          showTrackLabels={display.tracks && focusedTrackId === null}
           onResize={onResize}
           onResizeCommit={onResizeCommit}
           onToggleRole={onToggleRole}
@@ -1405,7 +1261,6 @@ function EventRow({
           onRemove={onRemove}
           overAllShifts={overAllShifts}
           onPickDefaultRole={onPickDefaultRole}
-          showTrackHeaders={focusedTrackId === null}
         />
       )}
     </div>
