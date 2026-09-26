@@ -19,9 +19,27 @@ import {
   type ReactNode,
 } from "react";
 import {
-  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
-  type DragEndEvent, type DragStartEvent,
+  DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection,
+  useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
+
+/**
+ * Whatever is under the cursor, falling back to rectangles.
+ *
+ * The board's targets nest and differ wildly in size: a track's timeline body
+ * means "every shift on this track", and the strip of shift headers sitting
+ * inside it means one of them. dnd-kit's default picks whichever rectangle
+ * the *dragged item* overlaps most, which for a chip taller than the header
+ * strip is always the body — the header could not be hit at all.
+ *
+ * The fallback matters for keyboard drags, which have no pointer: there
+ * `pointerWithin` returns nothing and rectangles are the only answer.
+ */
+const underCursor: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  return pointer.length > 0 ? pointer : rectIntersection(args);
+};
 
 interface BoardDndHandlers {
   onDragStart?: (event: DragStartEvent) => void;
@@ -96,6 +114,7 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
     <RegisterContext.Provider value={register}>
       <DndContext
         sensors={sensors}
+        collisionDetection={underCursor}
         onDragStart={(event) => {
           setDragging(true);
           setOverlay(renderOverlay(String(event.active.id)));
