@@ -40,12 +40,6 @@ export function EventRow({
   simple: boolean
   handlers: BoardHandlers
 }) {
-  // Two targets on a row with shifts: the event's own name means "every
-  // shift", and each timeline column means that one.
-  const { setNodeRef: setAllShiftsRef, isOver: overAllShifts } = useDroppable({
-    id: `allday:${event.id}`,
-    data: { kind: 'allday', eventId: event.id },
-  })
   // The bare row is a target only for an event on no track at all. Every
   // other event is a stack of track sections, and each of those is either a
   // grid of shift columns or a target in its own right — both of which name
@@ -88,19 +82,13 @@ export function EventRow({
         minHeight: '56px', alignItems: 'start',
       }}
     >
-      {/* The name is also the all-shifts target — it is the one part of the
-          row that speaks for every track at once, which is exactly what
-          dropping here means. */}
-      <div
-        ref={event.shifts.length > 0 ? setAllShiftsRef : undefined}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
-          position: 'relative', borderRadius: 'var(--radius-sm)',
-          padding: '2px 4px', margin: '-2px -4px',
-          background: overAllShifts ? 'var(--color-accent-subtle)' : 'transparent',
-          transition: 'background 120ms ease',
-        }}
-      >
+      {/* Just the name now. The all-shifts target moved onto each track's
+          own timeline body, where it can say which track it means — the name
+          speaks for every track at once, which on a two-day event is the one
+          thing a drop must not be vague about. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0,
+      }}>
         {/* eventName, not `name`: a catalog-linked event leaves its own
             name column null and carries it on the joined canonical event. */}
         <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
@@ -110,16 +98,6 @@ export function EventRow({
           <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
         )}
         {display.type && event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
-        {/* Says what dropping here does, and only while it would do it. */}
-        {overAllShifts && event.shifts.length > 0 && (
-          <span style={{
-            marginLeft: 'auto',
-            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-            color: 'var(--color-accent)',
-          }}>
-            All shifts
-          </span>
-        )}
       </div>
 
       {trackless ? (
@@ -154,7 +132,6 @@ export function EventRow({
           display={display}
           showTrackLabels={display.tracks && focusedTrackId === null}
           handlers={handlers}
-          overAllShifts={overAllShifts}
         />
       )}
     </div>

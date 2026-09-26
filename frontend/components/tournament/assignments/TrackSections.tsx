@@ -72,12 +72,11 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
  * Memoised: EventRow above calls useDroppable, so it re-renders every time
  * the drag crosses into a different target — twenty-five rows rebuilding
  * their lanes, chips and flags per crossing. The row's droppable state that
- * this subtree actually needs is `overAllShifts`, which only moves for the
- * one row being hovered; everything else it takes is stable while dragging,
- * so the other rows now bail out here.
+ * Nothing it takes moves during a drag — each section owns its own drop
+ * state now — so every row but the one being rebuilt bails out here.
  */
 export const TrackSections = memo(function TrackSections({
-  event, rowAssignments, roleCatalog, flagsFor, display, showTrackLabels, overAllShifts,
+  event, rowAssignments, roleCatalog, flagsFor, display, showTrackLabels,
   handlers,
 }: {
   event: TournamentEvent
@@ -86,8 +85,6 @@ export const TrackSections = memo(function TrackSections({
   flagsFor: (a: Assignment) => Flag[]
   display: EventDisplayState
   showTrackLabels: boolean
-  /** The row's all-shifts target is being hovered. */
-  overAllShifts: boolean
   handlers: BoardHandlers
 }) {
   const { unpinned } = buildLanes(rowAssignments, event.shifts.map((s) => s.id))
@@ -146,7 +143,6 @@ export const TrackSections = memo(function TrackSections({
         flagsFor={flagsFor}
         display={display}
         showLabel={showTrackLabels}
-        overAllShifts={overAllShifts}
         handlers={handlers}
       />
     )

@@ -946,7 +946,12 @@ export default function AssignmentsPage() {
   function targetShiftIds(target: Record<string, unknown>, event: TournamentEvent) {
     if (target.kind === 'shift') return [target.shiftId as number]
     if (target.kind === 'allday') {
-      return event.shifts.length > 0 ? event.shifts.map((s) => s.id) : [null]
+      // One track's worth, not the event's: the target lives in that track's
+      // own timeline body, and an event running two days must never staff
+      // somebody across both because they aimed at one.
+      const trackId = target.trackId as number
+      const onTrack = event.shifts.filter((s) => s.track_id === trackId)
+      return onTrack.length > 0 ? onTrack.map((s) => s.id) : [null]
     }
     return [null]
   }
@@ -999,16 +1004,7 @@ export default function AssignmentsPage() {
       // names its event) and has no single PATCH for it either, since the
       // shift is what a write can repoint — so it stays a delete and create.
       const sameEvent = event.id === assignment.event.id
-      // "All shifts" means all of *this bar's* track's shifts. The target
-      // speaks for the whole event, but a pinned bar belongs to one track and
-      // spanning it onto the other day would staff someone on a day nobody
-      // put them on. An unpinned chip names no day to narrow to, so it keeps
-      // the target's own answer.
-      const laneTrackId = assignment.shift?.track_id ?? null
-      const targetIds = kind === 'allday' && laneTrackId !== null
-        ? event.shifts.filter((s) => s.track_id === laneTrackId).map((s) => s.id)
-        : shiftIds
-      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, targetIds))
+      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds))
       if (!trackRef) {
         show('This drop names no track to assign against.', 'error')
         return
@@ -1032,7 +1028,7 @@ export default function AssignmentsPage() {
 
       const kept: Assignment[] = []
       const added: Assignment[] = []
-      for (const shiftId of targetIds) {
+      for (const shiftId of shiftIds) {
         const rowTrack = trackForShift(shiftId)
         for (const role of rolesToKeep) {
           const found = reusable.get(cellKey(shiftId, rowTrack.id, role))

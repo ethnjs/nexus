@@ -113,7 +113,7 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
  */
 export function TrackSection({
   event, track, shifts, pinnedLanes, unpinnedLanes, rowAssignments, roleCatalog, flagsFor,
-  display, showLabel, overAllShifts,
+  display, showLabel,
   handlers,
 }: {
   event: TournamentEvent
@@ -131,7 +131,6 @@ export function TrackSection({
   /** False on a track tab and in simple mode — the tab already names the
    *  track, so the pill, time, location and staffing stand on their own. */
   showLabel: boolean
-  overAllShifts: boolean
   handlers: BoardHandlers
 }) {
   const hasShifts = shifts.length > 0
@@ -171,7 +170,9 @@ export function TrackSection({
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-sm)',
           padding: '6px 8px',
-          background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
+          background: isOver && unpinnedLanes.length > 0
+            ? 'var(--color-accent-subtle)'
+            : 'transparent',
           transition: 'background 120ms ease',
         }),
       }}
@@ -222,12 +223,12 @@ export function TrackSection({
         <>
           <TrackShiftGrid
             eventId={event.id}
+            trackId={track.id}
             shifts={shifts}
             lanes={pinnedLanes}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             handlers={handlers}
-            overAllShifts={overAllShifts}
           />
           {/* Detaching a shift unpins its people without dropping them (see
               detach_shifts_from_assignments), so a track with columns can
@@ -262,8 +263,11 @@ export function TrackSection({
       ) : unpinnedLanes.length === 0 ? (
         // Kept on screen rather than hidden: this box is the only way onto a
         // shiftless track, and a target that appears only once you have
-        // already hit it is not a target you can find.
-        <EmptyState size="sm" title="Nobody assigned" />
+        // already hit it is not a target you can find. While it is the only
+        // thing in the box it carries the drop highlight itself — it is what
+        // the eye is on, and tinting the box behind it as well would say the
+        // same thing twice.
+        <EmptyState size="sm" title="Nobody assigned" active={isOver} />
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
           {unpinnedLanes.map((lane) => (

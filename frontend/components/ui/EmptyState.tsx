@@ -20,9 +20,17 @@ interface EmptyStateProps {
    * surface fill would blank out the answer the row was drawn to give.
    */
   transparent?: boolean
+  /**
+   * The slot is the drop target a drag is currently over. Takes the accent
+   * tint and firms its outline — `--color-accent` is near-black, so the
+   * border goes to `--color-border-strong` rather than to it.
+   */
+  active?: boolean
 }
 
-export function EmptyState({ icon, title, description, action, size = 'md', transparent = false }: EmptyStateProps) {
+export function EmptyState({
+  icon, title, description, action, size = 'md', transparent = false, active = false,
+}: EmptyStateProps) {
   const compact = size === 'sm'
   return (
     <div style={{
@@ -32,9 +40,12 @@ export function EmptyState({ icon, title, description, action, size = 'md', tran
       height: compact ? undefined : '240px',
       padding: compact ? '10px 12px' : undefined,
       gap: compact ? '8px' : '12px', textAlign: 'center',
-      border: '1px dashed var(--color-border)',
+      border: `1px dashed ${active ? 'var(--color-border-strong)' : 'var(--color-border)'}`,
       borderRadius: compact ? 'var(--radius-md)' : 'var(--radius-lg)',
-      background: transparent ? 'transparent' : 'var(--color-surface)',
+      background: active
+        ? 'var(--color-accent-subtle)'
+        : transparent ? 'transparent' : 'var(--color-surface)',
+      transition: 'background 120ms ease, border-color 120ms ease',
     }}>
       {icon && (
         <div style={{ color: 'var(--color-text-tertiary)', display: 'flex' }}>
