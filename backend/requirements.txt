@@ -33,8 +33,8 @@ google-auth==2.37.0
 google-auth-oauthlib==1.2.1
 google-api-python-client==2.154.0
 
-# Resend (email services) API
-resend==2.32.2
+# Amazon SES (email sending)
+boto3==1.43.103
 
 # Testing
 pytest==8.3.4
