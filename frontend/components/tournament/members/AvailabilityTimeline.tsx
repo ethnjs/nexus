@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import { Badge } from "@/components/ui/Badge";
 import { formatTime } from "@/lib/timeFormat";
 
@@ -37,6 +39,41 @@ interface AvailabilityTimelineProps {
 }
 
 const HOUR_MS = 3600000;
+
+/**
+ * The bar's pixel width, so the hour lines can be placed on whole device
+ * pixels.
+ *
+ * A line at a percentage offset lands wherever the arithmetic puts it, which
+ * on a fractional boundary the browser paints across two physical pixels —
+ * so on a scaled display (Windows at 125%, any HiDPI screen) some lines come
+ * out a shade thicker than their neighbours. Rounding each offset to a device
+ * pixel makes every line land the same way, which is what makes them look
+ * alike.
+ */
+function useBarWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, width };
+}
+
+/** `x` snapped to the nearest physical pixel. Falls back to the raw value
+ *  before the first measurement, when there is no width to snap against. */
+function snap(x: number): number {
+  const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  return Math.round(x * ratio) / ratio;
+}
 
 // The frame's radius less its 1px border — the arc a block sitting against
 // that edge has to match exactly.
@@ -117,6 +154,8 @@ function timeRange(span: Span): string {
 }
 
 export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover, fullWidth }: AvailabilityTimelineProps) {
+  // Above the early return below — a hook cannot be called conditionally.
+  const { ref: barRef, width: barWidth } = useBarWidth();
   const total = dayEnd - dayStart;
   if (total <= 0) return null;
 
@@ -155,7 +194,7 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
         ))}
       </div>
 
-      <div style={{
+      <div ref={barRef} style={{
         position: "relative", height: "22px",
         borderRadius: "var(--radius-sm)", overflow: "hidden",
         border: "1px solid var(--color-border-strong)", background: RED,
@@ -179,7 +218,10 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
           <div
             key={t}
             style={{
-              position: "absolute", top: 0, bottom: 0, left: pct(t - dayStart),
+              position: "absolute", top: 0, bottom: 0,
+              left: barWidth
+                ? `${snap(((t - dayStart) / total) * barWidth)}px`
+                : pct(t - dayStart),
               width: "1px", background: "var(--color-border-strong)", pointerEvents: "none",
             }}
           />
