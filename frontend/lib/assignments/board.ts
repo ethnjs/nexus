@@ -64,13 +64,26 @@ export function withOrderedShifts(event: TournamentEvent): TournamentEvent {
   };
 }
 
-/** A bar's identity: one member on one event, with a *set* of roles (one row
- *  per shift per role). Shift rows share one key so a bar can span Day 1 and
- *  Day 2; unpinned rows key by track, so a role edit or drag on Test Writing
- *  can't rebuild the Day 1 bar, or vice versa. */
+/**
+ * A bar's identity: one member on one track of one event, with a *set* of
+ * roles (one row per shift per role).
+ *
+ * Track-scoped on both branches, because a track is where a bar lives: each
+ * one draws its own grid, so nothing can span two of them. Pinned rows key
+ * by the track their *shift* falls on — the same thing that decides which
+ * grid the chip is drawn in — and unpinned rows by the track they name.
+ *
+ * Shift rows used to share one key across an event, back when a single grid
+ * spanned every track. Once the board split per track, that key made one
+ * member on Day 1 and Day 2 a single bar in the eyes of every write that
+ * resolves a lane by key: dragging the Day 2 chip picked up Day 1's rows and
+ * deleted them, and resizing it measured against Day 1's columns.
+ */
 export function laneKeyOf(assignment: Assignment) {
   const member = assignment.member.membership_id;
-  return assignment.shift ? `${member}:shifts` : `${member}:track:${assignment.track.id}`;
+  return assignment.shift
+    ? `${member}:shifts:${assignment.shift.track_id}`
+    : `${member}:track:${assignment.track.id}`;
 }
 
 /** The board's bars: one per member on the event, across its shifts. */
