@@ -68,10 +68,13 @@ export function EventRow({
   // same as an actual track tab does for the same reason.
   const focusedTrackId = activeTrackId ?? (simple ? event.tracks[0]?.id ?? null : null)
 
-  // The row is the target; anything with its own answer to a click is not.
-  // Asked of the click's origin rather than wired per control, because the
-  // row is a stack of components that keeps growing — a pill menu, a chip,
-  // its × — and each would otherwise have to remember to stop the bubble.
+  // The name rail is the target, not the whole row: the rest of the row is
+  // where the staffing is worked, and a click there lands on a chip, a pill
+  // or the gap between them rather than on "open this event".
+  //
+  // The origin is still checked, because the rail has its own controls in
+  // reach and will grow more — asking the click where it came from beats
+  // wiring stopPropagation into each one.
   function openFromRow(e: ReactMouseEvent<HTMLDivElement>) {
     const from = e.target as HTMLElement
     if (from.closest('button, a, input, select, textarea, [data-row-click-opaque]')) return
@@ -84,9 +87,7 @@ export function EventRow({
     // down to find a row, and putting it on the same stack as the tracks
     // buried it under everything each track had to say.
     <div
-      onClick={onOpen ? openFromRow : undefined}
       style={{
-        cursor: onOpen ? 'pointer' : undefined,
         display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
         padding: '10px 12px', borderRadius: 'var(--radius-md)',
         // Border stays the ordinary colour while dragging — a tint carries
@@ -106,9 +107,17 @@ export function EventRow({
           own timeline body, where it can say which track it means — the name
           speaks for every track at once, which on a two-day event is the one
           thing a drop must not be vague about. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0,
-      }}>
+      <div
+        onClick={onOpen ? openFromRow : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0,
+          cursor: onOpen ? 'pointer' : undefined,
+          // The rail is one grid cell tall by default; stretching it gives
+          // the click the whole column rather than just the line the name
+          // happens to sit on.
+          alignSelf: 'stretch', alignContent: 'flex-start', paddingTop: '2px',
+        }}
+      >
         {/* eventName, not `name`: a catalog-linked event leaves its own
             name column null and carries it on the joined canonical event. */}
         <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
