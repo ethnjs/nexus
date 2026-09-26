@@ -158,29 +158,38 @@ function TimelineBar({
       />
     </div>
   )
-}/** One shift's full-height column. Invisible until a drag is over it, then
- *  the column itself tints — the target is the area you are already aiming
- *  at, not a separate band that has to be explained. */
-function ShiftColumn({
-  eventId, shiftId, first, allShifts,
-}: { eventId: number; shiftId: number; first: boolean; allShifts: boolean }) {
+}/**
+ * One shift's header cell: its name, and the target that staffs that shift
+ * alone.
+ *
+ * The header rather than the column beneath it, because the column is now
+ * the body's — dropping into the bars area means every shift on the track.
+ * Naming one shift is the narrower ask, so it gets the narrower target, and
+ * the label you are aiming at is the one that says which shift you'll get.
+ */
+function ShiftHeaderCell({ eventId, shift }: { eventId: number; shift: TournamentShift }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `shift:${eventId}:${shiftId}`,
-    data: { kind: 'shift', eventId, shiftId },
+    id: `shift:${eventId}:${shift.id}`,
+    data: { kind: 'shift', eventId, shiftId: shift.id },
   })
   return (
     <div
       ref={setNodeRef}
       style={{
-        borderLeft: first ? 'none' : '1px solid var(--color-border)',
-        // `allShifts` is the row's all-shifts target being hovered. It tints
-        // every column because that is literally what dropping there does —
-        // showing the preview only on the metadata block asked you to take
-        // its word for it.
-        background: isOver || allShifts ? 'var(--color-accent-subtle)' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        // Roomier than the text needs: the cursor picks the target now, so
+        // this strip has to be aimable rather than merely legible.
+        minWidth: 0, padding: '3px 6px', borderRadius: 'var(--radius-sm)',
+        background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
         transition: 'background 120ms ease',
+        fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
+        color: isOver ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
       }}
-    />
+    >
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {shift.label}
+      </span>
+    </div>
   )
 }
 
@@ -191,44 +200,48 @@ function ShiftColumn({
  * whose columns silently jump from one track's day to another's.
  */
 export function TrackShiftGrid({
-  eventId, shifts, lanes, roleCatalog, flagsFor, handlers, overAllShifts,
+  eventId, trackId, shifts, lanes, roleCatalog, flagsFor, handlers,
 }: {
   eventId: number
+  /** The track these shifts belong to — what a body drop bills "all shifts"
+   *  against, now that an event can draw a grid per track. */
+  trackId: number
   shifts: TournamentShift[]
   lanes: Lane[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   handlers: BoardHandlers
-  /** The row's all-shifts target is being hovered. */
-  overAllShifts: boolean
 }) {
   const columns = shifts.length
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`
   // One time at every divider, edges included — n shifts have n+1 boundaries,
   // and each internal one is both a shift's end and the next one's start.
   const boundaries = [shifts[0].start, ...shifts.map((s) => s.end)]
+  // The bars area, and every shift on this track with it. The body is where
+  // the staffing already is, so "put them on the whole track" is the thing
+  // you aim at by default; a single shift is the deliberate, narrower aim.
+  const { setNodeRef: setAllShiftsRef, isOver: overAllShifts } = useDroppable({
+    id: `allday:${eventId}:${trackId}`,
+    data: { kind: 'allday', eventId, trackId },
+  })
 
   return (
     <div style={{
       position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0,
     }}>
-      {/* The columns are both the dividers and the drop targets, drawn once as
-          a layer behind everything so they run the full height of the lanes.
-          Per-lane borders never line up, and a separate strip of drop zones
-          made you aim somewhere other than where the shift is. */}
+      {/* Dividers only — the drop targets moved onto the header cells and the
+          body below. Drawn once as a layer behind everything so they run the
+          full height of the lanes, since per-lane borders never line up. */}
       <div
         style={{
           position: 'absolute', inset: 0, display: 'grid',
-          gridTemplateColumns: gridColumns,
+          gridTemplateColumns: gridColumns, pointerEvents: 'none',
         }}
       >
         {shifts.map((shift, i) => (
-          <ShiftColumn
+          <div
             key={shift.id}
-            eventId={eventId}
-            shiftId={shift.id}
-            first={i === 0}
-            allShifts={overAllShifts}
+            style={{ borderLeft: i === 0 ? 'none' : '1px solid var(--color-border)' }}
           />
         ))}
       </div>
@@ -247,7 +260,7 @@ export function TrackShiftGrid({
           reads as "this column starts at"; the last boundary has no column
           after it, so it flips to the left. */}
       <div style={{
-        position: 'relative', pointerEvents: 'none',
+        position: 'relative',
         display: 'grid', gridTemplateColumns: gridColumns,
         borderBottom: '1px solid var(--color-border)', paddingBottom: '4px',
       }}>
@@ -256,6 +269,10 @@ export function TrackShiftGrid({
             key={i}
             style={{
               position: 'absolute', left: `${(i / columns) * 100}%`, top: '50%',
+              // Out of the way of the header cells below, which are what a
+              // drop aims at — a time sits on a divider, so it belongs to
+              // neither of the shifts it separates.
+              pointerEvents: 'none',
               // translateY centres it against the taller shift name beside it;
               // the last one also pulls itself back inside the right edge.
               transform: i === columns ? 'translate(-100%, -50%)' : 'translateY(-50%)',
@@ -269,47 +286,54 @@ export function TrackShiftGrid({
           </span>
         ))}
         {shifts.map((shift) => (
-          <span key={shift.id} style={{
-            fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
-            color: 'var(--color-text-secondary)', textAlign: 'center',
-            padding: '0 6px', minWidth: 0,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {shift.label}
-          </span>
+          <ShiftHeaderCell key={shift.id} eventId={eventId} shift={shift} />
         ))}
       </div>
 
-      {lanes.length === 0 && (
-        // Empty means empty *here*: this is the timeline, so it reports on
-        // the shifts alone. People in the cosmetic-track columns below are
-        // not on a shift, and counting them as staffing would leave an event
-        // whose competition days are unstaffed looking covered.
-        //
-        // Sits above the column layer so the dividers don't strike through
-        // it, and spans the row so an unstaffed event reads as a gap in the
-        // board rather than as a stray line of text.
-        <div style={{ position: 'relative' }}>
-          <EmptyState size="sm" title="Nobody assigned" />
-        </div>
-      )}
-
-      {lanes.map((lane) => (
-        <div
-          key={lane.key}
-          data-lane
-          style={{ position: 'relative', display: 'grid', gridTemplateColumns: gridColumns }}
-        >
-          <TimelineBar
-            lane={lane}
-            eventId={eventId}
-            columns={columns}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            handlers={handlers}
-          />
-        </div>
-      ))}
+      <div
+        ref={setAllShiftsRef}
+        style={{
+          position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px',
+          minWidth: 0, borderRadius: 'var(--radius-sm)',
+          // Only when there is something to tint behind: an empty body says
+          // so through its own empty state instead, which is the thing the
+          // eye is already on.
+          background: overAllShifts && lanes.length > 0 ? 'var(--color-accent-subtle)' : 'transparent',
+          transition: 'background 120ms ease',
+        }}
+      >
+        {lanes.length === 0 ? (
+          // Empty means empty *here*: this is the timeline, so it reports on
+          // the shifts alone. People in a cosmetic track's box are not on a
+          // shift, and counting them as staffing would leave an event whose
+          // competition days are unstaffed looking covered.
+          //
+          // Sits above the divider layer so they don't strike through it, and
+          // doubles as the track's drop target while it is the only thing in
+          // the body — which is why it lights up rather than the box around
+          // it.
+          <div style={{ position: 'relative' }}>
+            <EmptyState size="sm" title="Nobody assigned" active={overAllShifts} />
+          </div>
+        ) : (
+          lanes.map((lane) => (
+            <div
+              key={lane.key}
+              data-lane
+              style={{ position: 'relative', display: 'grid', gridTemplateColumns: gridColumns }}
+            >
+              <TimelineBar
+                lane={lane}
+                eventId={eventId}
+                columns={columns}
+                roleCatalog={roleCatalog}
+                flagsFor={flagsFor}
+                handlers={handlers}
+              />
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
