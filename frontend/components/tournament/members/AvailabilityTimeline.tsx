@@ -38,6 +38,40 @@ interface AvailabilityTimelineProps {
 
 const HOUR_MS = 3600000;
 
+// The frame's radius less its 1px border — the arc a block sitting against
+// that edge has to match exactly.
+const INNER_RADIUS = "calc(var(--radius-sm) - 1px)";
+
+/**
+ * One block's edges, as offsets from the bar's own two edges.
+ *
+ * `right`, not `width`: a block running to the end of the day computed its
+ * width as a percentage, and left% + width% lands a fraction of a pixel short
+ * of 100% on most bar widths — which paints a hairline of the bar's pink
+ * background between the green and the frame. Pinning the far edge to 0
+ * leaves nothing to round.
+ */
+function blockEdges(start: number, end: number, dayStart: number, dayEnd: number) {
+  const total = dayEnd - dayStart;
+  const atStart = start <= dayStart;
+  const atEnd = end >= dayEnd;
+  return {
+    left: atStart ? 0 : `${((start - dayStart) / total) * 100}%`,
+    right: atEnd ? 0 : `${((dayEnd - end) / total) * 100}%`,
+    ...endRadii(atStart, atEnd),
+  };
+}
+
+function endRadii(atStart: boolean, atEnd: boolean) {
+  if (!atStart && !atEnd) return null;
+  return {
+    borderTopLeftRadius: atStart ? INNER_RADIUS : undefined,
+    borderBottomLeftRadius: atStart ? INNER_RADIUS : undefined,
+    borderTopRightRadius: atEnd ? INNER_RADIUS : undefined,
+    borderBottomRightRadius: atEnd ? INNER_RADIUS : undefined,
+  };
+}
+
 // Every hour boundary strictly inside the window — where the gridlines go.
 function interiorHours(dayStart: number, dayEnd: number): number[] {
   const hours: number[] = [];
@@ -131,7 +165,11 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
             key={span.start}
             style={{
               position: "absolute", top: 0, bottom: 0,
-              left: pct(span.start - dayStart), width: pct(span.end - span.start),
+              // A block touching an end of the bar also takes that end's
+              // corners: the bar is square-cornered content behind a rounded,
+              // clipping frame, so otherwise the corner arcs clip the green
+              // away and the pink background shows through them.
+              ...blockEdges(span.start, span.end, dayStart, dayEnd),
               background: GREEN,
             }}
           />
@@ -155,7 +193,7 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
             onMouseLeave={() => onHover(null)}
             style={{
               position: "absolute", top: 0, bottom: 0,
-              left: pct(shift.start - dayStart), width: pct(shift.end - shift.start),
+              ...blockEdges(shift.start, shift.end, dayStart, dayEnd),
               background: hoveredId === shift.id ? GREEN_HOVER : "transparent",
               transition: "background 120ms ease",
             }}

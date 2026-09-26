@@ -429,7 +429,7 @@ function AvailabilityDay({ day, trackName, slots, offered }: {
   const barWindow = hourWindow(offered?.length ? offered : slots)
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
       {/* Track over date in one fixed-width rail: both name the same row,
           and putting the track on its own line beside the bar would spend a
           third of the card's width on it. The track leads because it is what
@@ -450,11 +450,13 @@ function AvailabilityDay({ day, trackName, slots, offered }: {
         )}
         {formatDayLabel(day)}
       </span>
-      {/* The timeline is written to sit at the far right of a 700px panel row
-          and hard-codes a 220px basis; on a card it has to take what is left
-          of the width instead. */}
+      {/* fullWidth, or the timeline keeps the `flex: 0 0 220px` it wears
+          beside a 700px panel row — a basis that cannot shrink, and 220px is
+          wider than what the rail leaves of a 340px belt card, so the bar ran
+          off the card's right edge. Here it takes whatever is left instead. */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
         <AvailabilityTimeline
+          fullWidth
           dayStart={barWindow.start}
           dayEnd={barWindow.end}
           shifts={toTimelineShifts(slots)}
