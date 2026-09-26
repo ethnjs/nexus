@@ -69,6 +69,98 @@ const followCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform })
   };
 };
 
+/**
+ * Auto-scrolling, by what the cursor is over rather than by where the drag
+ * started.
+ *
+ * dnd-kit scrolls the scrollable ancestors of the *dragged node* whenever it
+ * has no drop target under the cursor — and a member card's nearest
+ * scrollable ancestor is the belt it was picked up from. The shell's <main>
+ * is its own scroll container (Shell.module.css: the shell is 100dvh and
+ * overflow:hidden, so the document itself never scrolls) and is no ancestor
+ * of the belt at all, which is why dragging toward the bottom of the screen
+ * scrolled the panel and the board stayed put.
+ *
+ * Hit-testing the pointer answers the question directly: carry a card over
+ * the board and the board scrolls; over the belt and the belt does. Both the
+ * target and the speed are sticky — a pointer that stops arriving (dragged
+ * onto the taskbar, off the window) leaves the last ones standing, so the
+ * scroll keeps running until you steer it back. It needs
+ * the overlay to be transparent to hit-testing, which is why DragOverlay
+ * below is given pointerEvents: none — it is centred on the cursor, so
+ * otherwise it is the only thing elementFromPoint would ever find.
+ */
+const SCROLL_EDGE = 72;
+const SCROLL_MAX_SPEED = 16;
+
+/** The nearest ancestor of `from` that scrolls vertically and has content to
+ *  scroll. Direction is deliberately not considered: a container at its
+ *  bottom is still the one the cursor is over, and scrollTop clamps itself —
+ *  skipping it here would silently hand the gesture to a container the
+ *  cursor left. */
+function scrollableFrom(from: Element | null): HTMLElement | null {
+  for (let node = from; node instanceof HTMLElement; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow !== "auto" && overflow !== "scroll" && overflow !== "overlay") continue;
+    if (node.scrollHeight > node.clientHeight + 1) return node;
+  }
+  return null;
+}
+
+/** How fast to scroll from how deep into a container's edge zone the cursor
+ *  is: nothing until the last SCROLL_EDGE px, then linear to full speed at
+ *  the edge itself. */
+function edgeSpeed(y: number, top: number, bottom: number): number {
+  if (y > bottom - SCROLL_EDGE) {
+    return Math.min(1, (y - (bottom - SCROLL_EDGE)) / SCROLL_EDGE) * SCROLL_MAX_SPEED;
+  }
+  if (y < top + SCROLL_EDGE) {
+    return -Math.min(1, ((top + SCROLL_EDGE) - y) / SCROLL_EDGE) * SCROLL_MAX_SPEED;
+  }
+  return 0;
+}
+
+function useCursorAutoScroll(dragging: boolean) {
+  useEffect(() => {
+    if (!dragging) return;
+    let frame = 0;
+    let container: HTMLElement | null = null;
+    let speed = 0;
+
+    function aim(e: PointerEvent) {
+      // Clamped to the viewport: past its edge the cursor is over the
+      // browser chrome or the desktop, and "as far down as you can go" is
+      // still a perfectly clear instruction — it just reads as full speed
+      // rather than as no target.
+      const x = Math.min(Math.max(e.clientX, 0), window.innerWidth - 1);
+      const y = Math.min(Math.max(e.clientY, 0), window.innerHeight - 1);
+      // The viewport's own edges, not the container's: the belt and the
+      // board both run the full height of the shell, and a container taller
+      // than the screen would otherwise put its edge zone off-screen.
+      speed = edgeSpeed(y, 0, window.innerHeight);
+      if (speed === 0) return;
+      // Whatever scrolls under the cursor — but the last one stays in force
+      // when there is nothing there, which is the whole point of the edge
+      // zones: they overlap the dashboard's top bar and the panel's header,
+      // neither of which scrolls, and stopping there would mean the scroll
+      // died exactly where you were steering it.
+      const found = scrollableFrom(document.elementFromPoint(x, y));
+      if (found) container = found;
+    }
+    function step() {
+      if (container && speed !== 0) container.scrollTop += speed;
+      frame = requestAnimationFrame(step);
+    }
+
+    window.addEventListener("pointermove", aim);
+    frame = requestAnimationFrame(step);
+    return () => {
+      window.removeEventListener("pointermove", aim);
+      cancelAnimationFrame(frame);
+    };
+  }, [dragging]);
+}
+
 /** What a drop target calls itself in the overlay's "assigning to" line.
  *  Every droppable on the board carries one in its `data`. */
 interface DropTargetData {
@@ -168,6 +260,7 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
   const [overlay, setOverlay] = useState<ReactNode>(null);
   const [dragging, setDragging] = useState(false);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
+  useCursorAutoScroll(dragging);
 
   const register = useCallback((id: string, next: BoardDndHandlers) => {
     handlers.current.set(id, next);
@@ -203,6 +296,9 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
       <DndContext
         sensors={sensors}
         collisionDetection={underCursor}
+        // Ours instead, above — dnd-kit's scrolls whatever the *card* sits
+        // inside, which is the belt it never leaves.
+        autoScroll={false}
         onDragStart={(event) => {
           setDragging(true);
           setOverlay(renderOverlay(String(event.active.id)));
@@ -223,7 +319,13 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
         {/* No drop animation: the overlay is pinned to the cursor, so the
             default one flies it back to the card it was grabbed from — a
             chip sailing across the page after the drop already landed. */}
-        <DragOverlay modifiers={[followCursor]} dropAnimation={null}>
+        {/* Transparent to hit-testing: it sits under the cursor by design,
+            and the auto-scroller asks what the cursor is over. */}
+        <DragOverlay
+          modifiers={[followCursor]}
+          dropAnimation={null}
+          style={{ pointerEvents: "none" }}
+        >
           {overlay && (
             // The wrapper dnd-kit sizes is the source card's box, so nothing
             // inside it can be laid out against the chip — both pieces hang
