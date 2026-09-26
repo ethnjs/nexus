@@ -14,7 +14,7 @@ import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { formatTrackDates, placeOf } from "@/lib/tournamentDisplay";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
-import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
+import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { withTrackDetail, trackDetail } from "@/lib/eventTrackDetails";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TabStrip } from "@/components/ui/TabStrip";
