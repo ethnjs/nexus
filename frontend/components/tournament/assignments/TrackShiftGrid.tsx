@@ -3,6 +3,7 @@
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
+import { useBoardDragLabel } from '@/components/tournament/assignments/BoardDnd'
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Assignment, Role, TournamentShift } from '@/lib/api'
@@ -170,7 +171,7 @@ function TimelineBar({
 function ShiftHeaderCell({ eventId, shift }: { eventId: number; shift: TournamentShift }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `shift:${eventId}:${shift.id}`,
-    data: { kind: 'shift', eventId, shiftId: shift.id },
+    data: { kind: 'shift', eventId, shiftId: shift.id, label: shift.label },
   })
   return (
     <div
@@ -179,7 +180,11 @@ function ShiftHeaderCell({ eventId, shift }: { eventId: number; shift: Tournamen
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         // Roomier than the text needs: the cursor picks the target now, so
         // this strip has to be aimable rather than merely legible.
-        minWidth: 0, padding: '3px 6px', borderRadius: 'var(--radius-sm)',
+        // The header's own 4px of breathing room lives *inside* the cell, so
+        // the tint runs down to the rule under it rather than stopping short
+        // and leaving a pale stripe between the target and its own border.
+        minWidth: 0, padding: '3px 6px 7px',
+        borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
         background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
         transition: 'background 120ms ease',
         fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
@@ -220,9 +225,10 @@ export function TrackShiftGrid({
   // The bars area, and every shift on this track with it. The body is where
   // the staffing already is, so "put them on the whole track" is the thing
   // you aim at by default; a single shift is the deliberate, narrower aim.
+  const dragLabel = useBoardDragLabel()
   const { setNodeRef: setAllShiftsRef, isOver: overAllShifts } = useDroppable({
     id: `allday:${eventId}:${trackId}`,
-    data: { kind: 'allday', eventId, trackId },
+    data: { kind: 'allday', eventId, trackId, label: 'all shifts' },
   })
 
   return (
@@ -262,7 +268,7 @@ export function TrackShiftGrid({
       <div style={{
         position: 'relative',
         display: 'grid', gridTemplateColumns: gridColumns,
-        borderBottom: '1px solid var(--color-border)', paddingBottom: '4px',
+        borderBottom: '1px solid var(--color-border)',
       }}>
         {boundaries.map((moment, i) => (
           <span
@@ -332,6 +338,37 @@ export function TrackShiftGrid({
               />
             </div>
           ))
+        )}
+
+        {/* A staffed track's body has no empty space left to tint, so the
+            all-shifts target reads as a faint wash behind rows that are
+            already there. The ghost row is the target drawing itself: a bar
+            the full width of the track, in the place the real one will
+            appear, under the people already on it. */}
+        {overAllShifts && lanes.length > 0 && (
+          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: gridColumns }}>
+            <div style={{
+              gridColumn: `1 / ${columns + 1}`, minWidth: 0, padding: `0 ${BAR_GUTTER}px`,
+              // Purely a preview — it must never eat the pointer, or the
+              // body droppable it belongs to would stop seeing the cursor.
+              pointerEvents: 'none',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '5px 8px', borderRadius: 'var(--radius-sm)',
+                border: '1px dashed var(--color-border-strong)',
+                background: 'var(--color-accent-subtle)',
+                fontFamily: 'var(--font-sans)', fontSize: '12px', fontWeight: 500,
+                color: 'var(--color-text-secondary)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {dragLabel ?? 'New assignment'}
+                <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+                  all shifts
+                </span>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
