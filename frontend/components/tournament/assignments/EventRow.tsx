@@ -46,7 +46,7 @@ export function EventRow({
   // the track they bill, where this one can only guess at `tracks[0]`.
   const { setNodeRef: setRowRef, isOver: overRow } = useDroppable({
     id: `event:${event.id}`,
-    data: { kind: 'event', eventId: event.id },
+    data: { kind: 'event', eventId: event.id, label: eventName(event) },
     disabled: event.tracks.length > 0,
   })
   // Memoised so the lane objects survive this row's per-crossing re-renders
