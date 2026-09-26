@@ -336,11 +336,13 @@ def mock_forms_service() -> MagicMock:
 @pytest.fixture(autouse=True)
 def mock_send_email(monkeypatch):
     """
-    Stubs the actual Resend call so no test run consumes real email quota.
+    Stubs the actual SES send so no test run makes real AWS calls or
+    consumes email quota.
     Patched at _send() — the one low-level function every sender (signup
     verify, email change, password reset, account setup, etc.) funnels
     through — so new senders are covered automatically without needing
-    their own mock.
+    their own mock. tests/services/test_email_service.py overrides this to
+    test _send itself.
     """
     mock = AsyncMock()
     monkeypatch.setattr("app.services.email_service._send", mock)

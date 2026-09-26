@@ -1,11 +1,18 @@
 import asyncio
-import resend
+import logging
+import time
+from functools import lru_cache
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 
+import boto3
+from botocore.config import Config
+
 from app.core.config import get_settings
 from app.core.auth import create_verification_token, RateLimitedError
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -130,19 +137,90 @@ def _cta_url(path: str, token: Optional[str] = None) -> str:
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
+# ---------------------------------------------------------------------------
+# Sending (Amazon SES v2)
+#
+# boto3 is synchronous, so each send runs in a worker thread via
+# asyncio.to_thread — SDK retry backoff sleeps happen there too, never on
+# the event loop. Standard retry mode is pinned explicitly: boto3's default
+# (legacy) doesn't treat SES v2's TooManyRequestsException as retryable.
+# ---------------------------------------------------------------------------
+
+@lru_cache()
+def _get_ses_client(access_key_id: str, secret_access_key: str, region: str, max_attempts: int):
+    # Dedicated Session rather than boto3.client(): the default session isn't
+    # thread-safe, but the client it produces is, and it's shared across threads.
+    session = boto3.session.Session(
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
+    )
+    return session.client(
+        "sesv2",
+        config=Config(retries={"mode": "standard", "total_max_attempts": max_attempts}),
+    )
+
+
+class _SendRateLimiter:
+    """
+    Spaces sends at least `interval` seconds apart so a burst (a staff invite
+    to dozens of addresses) stays under SES's per-second sending quota instead
+    of getting throttled. SDK retries are only the backstop.
+
+    Pacing is per process. With 2+ uvicorn workers or replicas, each paces
+    independently and the combined rate becomes N x SES_MAX_SEND_RATE — until
+    this is replaced with a shared limiter, set SES_MAX_SEND_RATE to
+    quota / N.
+    """
+
+    def __init__(self) -> None:
+        self._next_slot = 0.0
+
+    async def wait(self, interval: float) -> None:
+        # No lock: nothing is awaited between reading and advancing
+        # _next_slot, so concurrent callers on the event loop can't interleave.
+        now = time.monotonic()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+
+
+_rate_limiter = _SendRateLimiter()
+
+
 async def _send(to: str, subject: str, text: str, html: str) -> None:
     settings = get_settings()
-    resend.api_key = settings.resend_api_key
 
-    params: resend.Emails.SendParams = {
-        "from": "NEXUS <verify@nexus.socalscioly.org>",
-        "to": to,
-        "subject": subject,
-        "text": text,
-        "html": html,
-    }
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
+        if settings.app_env == "production":
+            raise RuntimeError("SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set")
+        logger.warning("SES not configured, skipping email to %s: %s", to, subject)
+        if settings.app_env == "development":
+            logger.warning("Skipped email body:\n%s", text)
+        return
 
-    await resend.Emails.send_async(params)
+    client = _get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+    await _rate_limiter.wait(1 / settings.ses_max_send_rate)
+    await asyncio.to_thread(
+        client.send_email,
+        FromEmailAddress=settings.email_from_address,
+        Destination={"ToAddresses": [to]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": text, "Charset": "UTF-8"},
+                    "Html": {"Data": html, "Charset": "UTF-8"},
+                },
+            },
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
