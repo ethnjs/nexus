@@ -664,7 +664,13 @@ export default function AssignmentsPage() {
         row.event.id === eventId && laneKeyOf(row) === laneKey)
       if (inLane.length === 0) return current
 
-      const shiftIds = event.shifts.map((s) => s.id)
+      // The lane's own track's shifts, not the event's. `index` was measured
+      // against the columns of one grid, and each track draws its own — on an
+      // event running two days, counting into `event.shifts` would land a Day
+      // 2 resize on Day 1's columns.
+      const trackId = inLane.find((row) => row.shift)?.shift?.track_id
+      const trackShifts = event.shifts.filter((s) => s.track_id === trackId)
+      const shiftIds = trackShifts.map((s) => s.id)
       const covered = inLane
         .map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))
         .filter((i) => i >= 0)
@@ -678,7 +684,7 @@ export default function AssignmentsPage() {
 
       return rebuildLane(
         current, eventId, laneKey,
-        event.shifts.slice(from, to + 1).map((s) => s.id),
+        trackShifts.slice(from, to + 1).map((s) => s.id),
         rolesOf(inLane), event,
       ).rows
     })
@@ -1003,11 +1009,25 @@ export default function AssignmentsPage() {
       // names its event) and has no single PATCH for it either, since the
       // shift is what a write can repoint — so it stays a delete and create.
       const sameEvent = event.id === assignment.event.id
-      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds))
+      // "All shifts" means all of *this bar's* track's shifts. The target
+      // speaks for the whole event, but a pinned bar belongs to one track and
+      // spanning it onto the other day would staff someone on a day nobody
+      // put them on. An unpinned chip names no day to narrow to, so it keeps
+      // the target's own answer.
+      const laneTrackId = assignment.shift?.track_id ?? null
+      const targetIds = kind === 'allday' && laneTrackId !== null
+        ? event.shifts.filter((s) => s.track_id === laneTrackId).map((s) => s.id)
+        : shiftIds
+      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, targetIds))
       if (!trackRef) {
         show('This drop names no track to assign against.', 'error')
         return
       }
+      // Each cell is billed to the track its own shift falls on, the way
+      // rebuildLane does it — a drop spanning two days must not file Day 2's
+      // rows under Day 1 just because the target named that one first.
+      const trackForShift = (shiftId: number | null) =>
+        (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef
       // The track is part of a cell's identity, not just its payload: two
       // unpinned rows for the same person and role differ only by it, so
       // dragging a chip from Test Writing to Test Reviewing has to read as a
@@ -1022,9 +1042,10 @@ export default function AssignmentsPage() {
 
       const kept: Assignment[] = []
       const added: Assignment[] = []
-      for (const shiftId of shiftIds) {
+      for (const shiftId of targetIds) {
+        const rowTrack = trackForShift(shiftId)
         for (const role of rolesToKeep) {
-          const found = reusable.get(cellKey(shiftId, trackRef.id, role))
+          const found = reusable.get(cellKey(shiftId, rowTrack.id, role))
           if (found) { kept.push(found); continue }
           added.push({
             ...template,
@@ -1032,7 +1053,7 @@ export default function AssignmentsPage() {
             event: eventRef,
             role,
             shift: shiftFor(shiftId),
-            track: trackRef,
+            track: rowTrack,
             updated_at: new Date().toISOString(),
           })
         }
@@ -1086,7 +1107,9 @@ export default function AssignmentsPage() {
       const newRows: Assignment[] = shiftIds.map((shiftId) => ({
         id: nextLocalId(),
         event: eventRef,
-        track: trackRef,
+        // From the shift, not from the target: an all-shifts drop on an event
+        // running two days writes each row against the day it lands on.
+        track: (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
         member: {
           user_id: member.user!.id,
           membership_id: member.id,
