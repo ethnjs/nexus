@@ -64,6 +64,7 @@ import {
 } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { ProgressRing } from '@/components/ui/ProgressRing'
 import { TabStrip } from '@/components/ui/TabStrip'
 import { Spinner } from '@/components/ui/Spinner'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -71,8 +72,8 @@ import {
   ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
   ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tabSurface, tournamentEventsApi,
   tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type DisplayConfig, type MembershipFull, type Role, type TournamentEvent,
-  type TournamentShift, type TournamentTrack,
+  type Assignment, type DisplayConfig, type EventStaffingNeedRead, type MembershipFull, type Role,
+  type TournamentEvent, type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
   assignmentFlags,
@@ -945,11 +946,106 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
   )
 }
 
+/** How many distinct members hold one role on one track — never a row count.
+ *  A member spanning morning and afternoon shifts on the same track is two
+ *  assignment rows (one per shift) but one person, so counting rows would
+ *  make splitting a shift in two look like hiring somebody new. */
+function staffedCount(rowAssignments: readonly Assignment[], roleId: number, trackId: number): number {
+  const members = new Set<number | null>()
+  for (const a of rowAssignments) {
+    if (a.role.id === roleId && a.track.id === trackId) members.add(a.member.membership_id)
+  }
+  return members.size
+}
+
+/** One role's progress toward one track's need for it. Full role name and a
+ *  plain `#/#`, not an abbreviation — the crowding that motivated an
+ *  abbreviated line only happens once several tracks' roles share one line,
+ *  and this always renders inside its own track's block. Same three-state
+ *  colour as the chip warning border: success once filled, warning while
+ *  short, muted at zero. */
+function StaffingNeedLine({ need, filled }: { need: EventStaffingNeedRead; filled: number }) {
+  const color = filled >= need.count
+    ? 'var(--color-success)'
+    : filled > 0
+      ? 'var(--color-warning)'
+      : 'var(--color-border-strong)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <ProgressRing completed={filled} total={need.count} size={13} strokeWidth={16} color={color} />
+      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+        {need.role_label}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+        {filled}/{need.count}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * One track's slice of an event's metadata, on the All tab — location, time
+ * and staffing, all scoped to this one track, under the track's own name as
+ * a header. A track tab shows the same three things inline with no header,
+ * since the tab already says which track it is; the All tab is where an
+ * event can hold several genuinely different answers at once (Day 1 in one
+ * building needing 6 volunteers, Day 2 in another needing 8), so it repeats
+ * the block once per track instead of joining them into one confusing line.
+ */
+function TrackMetaBlock({ event, track, rowAssignments, display }: {
+  event: TournamentEvent
+  track: TournamentTrack
+  rowAssignments: Assignment[]
+  display: EventDisplayState
+}) {
+  const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
+  const location = detail?.building_name
+    ? [detail.building_name, detail.floor, detail.rooms.join(', ')].filter(Boolean).join(' ')
+    : null
+  // Already in schedule order (withOrderedShifts sorts the whole event once,
+  // on arrival), so filtering to this track keeps that order rather than
+  // needing to re-sort.
+  const trackShifts = event.shifts.filter((s) => s.track_id === track.id)
+  const span = trackShifts.length > 0
+    ? `${formatTime(trackShifts[0].start)} – ${formatTime(trackShifts[trackShifts.length - 1].end)}`
+    : null
+  const needs = detail?.needs ?? []
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+        letterSpacing: '0.05em', textTransform: 'uppercase',
+        color: 'var(--color-text-tertiary)',
+      }}>
+        {track.name}
+      </span>
+      {display.room && location && (
+        <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
+      )}
+      {display.time && span && (
+        <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
+      )}
+      {needs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          {needs.map((need) => (
+            <StaffingNeedLine
+              key={need.role_id}
+              need={need}
+              filled={staffedCount(rowAssignments, need.role_id, track.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Event row
 // ---------------------------------------------------------------------------
 function EventRow({
-  event, rowAssignments, roleCatalog, flagsFor, display, trackNames,
+  event, rowAssignments, roleCatalog, flagsFor, display, activeTrackId, simple,
   onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
 }: {
   event: TournamentEvent
@@ -957,10 +1053,17 @@ function EventRow({
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   display: EventDisplayState
-  /** Every track the event runs on, tab or no tab — `event.tracks` is sliced
-   *  to what is on screen, and "which days is this event on" is a question
-   *  about the event rather than about the tab. */
-  trackNames: string[]
+  /** null on the All tab (and always, in simple mode) — each of the event's
+   *  tracks gets its own labelled metadata block there (see TrackMetaBlock).
+   *  Set, the metadata narrows to that one track with no header, since the
+   *  tab already says which track it is. */
+  activeTrackId: number | null
+  /** A one-track tournament: there is only ever one answer, so the sole
+   *  track's own name would label something nobody was choosing between.
+   *  An event that merely happens to run on one track *of several* in an
+   *  advanced tournament still gets the header — the ambiguity is real
+   *  there, just not for this event. */
+  simple: boolean
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
@@ -990,21 +1093,30 @@ function EventRow({
     [rowAssignments, hasShifts],
   )
 
-  // One line per track the event is placed on. Location is per track now, so
-  // an event running both days genuinely has two answers — joining them is
-  // honest where picking one would not be. Step 14's track tabs will narrow
-  // this to the tab's own track.
-  const location = event.track_details
-    .filter((d) => d.building_name)
-    .map((d) => [d.building_name, d.floor, d.rooms.join(', ')].filter(Boolean).join(' '))
-    .join(' · ')
-  // The event's window: earliest shift start to latest shift end. Derived,
-  // not stored — an event has no times of its own, only the union of the
-  // shifts attached to it (see TournamentEvent in models.py).
-  const starts = event.shifts.map((s) => s.start).sort()
-  const ends = event.shifts.map((s) => s.end).sort()
+  // A simple tournament has exactly one track, so there is never a real
+  // choice for a header to name — falling back to it here is what keeps a
+  // one-track tournament from printing a track name nobody needed labelled,
+  // same as an actual track tab does for the same reason.
+  const focusedTrackId = activeTrackId ?? (simple ? event.tracks[0]?.id ?? null : null)
+
+  // The focused track's own detail — set on a track tab, or in simple mode.
+  // Its `needs` drive the staffing block below.
+  const trackDetail = focusedTrackId !== null
+    ? event.track_details.find((d) => d.track_id === focusedTrackId) ?? null
+    : null
+
+  // Both only used once a track is focused — the All tab on an advanced
+  // tournament gives each track its own block (TrackMetaBlock below),
+  // computed the same way per track rather than joined into one line here.
+  const location = trackDetail?.building_name
+    ? [trackDetail.building_name, trackDetail.floor, trackDetail.rooms.join(', ')].filter(Boolean).join(' ')
+    : null
+  // The tab's window: earliest shift start to latest shift end. Derived, not
+  // stored — an event has no times of its own, only the union of the shifts
+  // attached to it (see TournamentEvent in models.py). `event.shifts` is
+  // already narrowed to the active track's shifts by `boardEvents`.
   const span = event.shifts.length > 0
-    ? `${formatTime(starts[0])} – ${formatTime(ends[ends.length - 1])}`
+    ? `${formatTime(event.shifts[0].start)} – ${formatTime(event.shifts[event.shifts.length - 1].end)}`
     : null
 
   return (
@@ -1060,16 +1172,47 @@ function EventRow({
 
         {/* Icon + text per line, so the kinds stay distinguishable without
             labels. Sans, not mono: these read as prose, not as data. */}
-        {display.room && location && (
-          <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
-        )}
-        {display.time && span && (
-          <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
-        )}
-        {display.tracks && trackNames.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-            {trackNames.map((name) => <Badge key={name} variant="default">{name}</Badge>)}
-          </div>
+        {focusedTrackId !== null ? (
+          // Either a track tab, or a simple tournament's sole track — either
+          // way there's no ambiguity to label, so no track name header, no
+          // badges naming other tracks. Just that track's own location, time
+          // and staffing.
+          <>
+            {display.room && location && (
+              <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
+            )}
+            {display.time && span && (
+              <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
+            )}
+            {trackDetail && trackDetail.needs.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '2px' }}>
+                {trackDetail.needs.map((need) => (
+                  <StaffingNeedLine
+                    key={need.role_id}
+                    need={need}
+                    filled={staffedCount(rowAssignments, need.role_id, focusedTrackId)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          // All: an event can hold a genuinely different answer per track
+          // (different building, different day, different staffing), so each
+          // track gets its own labelled block rather than one joined line.
+          display.tracks && event.tracks.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
+              {event.tracks.map((track) => (
+                <TrackMetaBlock
+                  key={track.id}
+                  event={event}
+                  track={track}
+                  rowAssignments={rowAssignments}
+                  display={display}
+                />
+              ))}
+            </div>
+          )
         )}
       </div>
 
@@ -1360,11 +1503,6 @@ export default function AssignmentsPage() {
     shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
     tracks: event.tracks.filter((t) => showsTrack(t.id)),
   })), [events, showsTrack])
-
-  const allTrackNames = useMemo(
-    () => new Map((events ?? []).map((e) => [e.id, e.tracks.map((t) => t.name)])),
-    [events],
-  )
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -2222,7 +2360,8 @@ export default function AssignmentsPage() {
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
                 display={eventDisplay}
-                trackNames={allTrackNames.get(event.id) ?? []}
+                activeTrackId={activeTrackId}
+                simple={simple}
                 onResize={handleResize}
                 onResizeCommit={handleResizeCommit}
                 onToggleRole={handleToggleRole}
