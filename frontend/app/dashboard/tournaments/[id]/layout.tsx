@@ -16,7 +16,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
 import { tournamentsApi, ApiError } from "@/lib/api";
-import { BoardDndProvider } from "@/components/assignments/BoardDnd";
+import { BoardDndProvider } from "@/components/tournament/assignments/BoardDnd";
 
 function TournamentNotFound() {
   const router = useRouter();
