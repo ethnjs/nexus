@@ -31,7 +31,7 @@ import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members
 import { EventPanel, EVENT_PANEL_WIDTH } from '@/components/tournament/events/EventPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
-  MembersFilterModal, MEMBERS_FILTER_KEYS,
+  MembersFilterModal, MEMBERS_FILTER_KEYS, defaultMemberFiltersForTab,
   membersFilterFromStored, membersFilterToStored, membersFilterParams,
   type MembersFilterState,
 } from '@/components/tournament/members/MembersFilterModal'
@@ -41,7 +41,7 @@ import {
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, filterAllows, isFilterActive } from '@/components/ui/FilterModal'
+import { emptyFilterState, filterAllows, sameFilterState } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
@@ -49,11 +49,12 @@ import { useTournament } from '@/lib/useTournament'
 import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
 import { Button } from '@/components/ui/Button'
 import { FilterButton } from '@/components/ui/FilterButton'
+import { DisplayButton } from '@/components/ui/DisplayButton'
 import { Card } from '@/components/ui/Card'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { IconEvents, IconEye, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
+import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { TabStrip } from '@/components/ui/TabStrip'
@@ -80,11 +81,13 @@ import { useToast } from '@/lib/useToast'
 
 import {
   DEFAULT_EVENT_DISPLAY, EventDisplayModal, eventDisplayFromColumns,
-  eventDisplayToColumns, eventDisplayToHidden, type EventDisplayState,
+  eventDisplayToColumns, eventDisplayToHidden, sameEventDisplay,
+  type EventDisplayState,
 } from '@/components/tournament/assignments/EventDisplayModal'
 import {
   DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
-  memberDisplayFromHidden, memberDisplayToHidden, type MemberDisplayState,
+  memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
+  type MemberDisplayState,
 } from '@/components/tournament/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/tournament/assignments/MemberCard'
 import { EventRow } from '@/components/tournament/assignments/EventRow'
@@ -235,6 +238,19 @@ export default function AssignmentsPage() {
   // once and the tab's slice derived from it, rather than a fetch per tab.
   const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId)
   const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId)
+
+  // What this tab shows and narrows to before anything is saved for it — and
+  // what its modals' Reset buttons return to. Held once rather than rebuilt
+  // at each use, so the modals and the effect below can't drift apart.
+  const trackIds = useMemo(() => tracks.map((t) => t.id), [tracks])
+  const memberDisplayDefaults = useMemo(
+    () => defaultMemberDisplayForTab(trackIds, activeTrackId),
+    [trackIds, activeTrackId],
+  )
+  const memberFilterDefaults = useMemo(
+    () => defaultMemberFiltersForTab(trackIds, activeTrackId),
+    [trackIds, activeTrackId],
+  )
   const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null)
 
   // Read once: unlike the roster's, nothing here gates a fetch (both halves
@@ -258,13 +274,17 @@ export default function AssignmentsPage() {
     setEventFilters(eventsFilterFromStored(events?.filters))
     setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
     const card = savedConfig[cardSurface]
-    setMemberFilters(membersFilterFromStored(card?.filters))
-    // Nothing saved for this tab yet: the tab decides which tracks the card
-    // starts with, rather than every tab starting with all of them.
+    // Nothing saved for this tab yet: the tab decides what the belt narrows
+    // to and which tracks the card carries, rather than every tab starting
+    // unfiltered and showing all of them. A saved `{}` is a real state —
+    // somebody cleared every chip — so only an absent one falls back.
+    setMemberFilters(card?.filters
+      ? membersFilterFromStored(card.filters)
+      : memberFilterDefaults)
     setMemberDisplay(Array.isArray(card?.hidden)
       ? memberDisplayFromHidden(card.hidden)
-      : defaultMemberDisplayForTab(tracks.map((t) => t.id), activeTrackId))
-  }, [savedConfig, eventsSurface, cardSurface, tracks, activeTrackId])
+      : memberDisplayDefaults)
+  }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults])
 
   /** Persists one surface and keeps the local copy in step, so switching away
    *  and back shows what was just set rather than what was last fetched. */
@@ -397,7 +417,15 @@ export default function AssignmentsPage() {
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
   const eventFilterActive = isEventsFilterActive(eventFilters)
-  const memberFilterActive = isFilterActive(memberFilters)
+  // Against the tab's defaults, not against nothing: the belt is *always*
+  // narrowed to the day being staffed, so isFilterActive would light the
+  // clear button on every tab from the first render and offer to undo a
+  // state the button itself hands back.
+  const memberFilterActive = !sameFilterState(memberFilters, memberFilterDefaults)
+  // Same rule for the cards: off-default is what the control reports, and on
+  // a track tab the default already hides every other day's slices.
+  const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults)
+  const eventDisplayActive = !sameEventDisplay(eventDisplay, DEFAULT_EVENT_DISPLAY)
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
@@ -979,18 +1007,19 @@ export default function AssignmentsPage() {
           width={BELT_PANEL_WIDTH}
           headerActions={
             <>
-              <Button
-                type="button" variant="secondary" size="sm" iconOnly
-                title="Configure member cards"
-                onClick={() => setShowMemberDisplayModal(true)}
-              >
-                <IconEye size={14} />
-              </Button>
+              <DisplayButton
+                size="sm" iconOnly label="Configure member cards"
+                active={memberDisplayActive}
+                onOpen={() => setShowMemberDisplayModal(true)}
+                onReset={() => applyMemberDisplay(memberDisplayDefaults)}
+              />
               <FilterButton
                 size="sm" iconOnly label="Filter members"
                 active={memberFilterActive}
                 onOpen={() => setShowMemberFilterModal(true)}
-                onClear={() => applyMemberFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
+                // Back to the tab's own filters, not to nothing: this tab's
+                // unfiltered state *is* the day it is staffing.
+                onClear={() => applyMemberFilters(memberFilterDefaults)}
               />
             </>
           }
@@ -1020,7 +1049,7 @@ export default function AssignmentsPage() {
                   memberQuery || memberFilterActive ? (
                     <Button
                       size="sm" variant="secondary"
-                      onClick={() => { setMemberQuery(''); applyMemberFilters(emptyFilterState(MEMBERS_FILTER_KEYS)) }}
+                      onClick={() => { setMemberQuery(''); applyMemberFilters(memberFilterDefaults) }}
                     >
                       Clear filters
                     </Button>
@@ -1070,7 +1099,9 @@ export default function AssignmentsPage() {
   }, [
     panelStack, focused, focusedId, focusedEvent, visibleEvents, openEventPanel,
     belt, members, allShifts, memberQuery,
-    memberFilters, panelAssignmentsVersion, memberFilterActive, memberDisplay, applyMemberFilters,
+    memberFilters, memberFilterDefaults, panelAssignmentsVersion, memberFilterActive,
+    memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
+    applyMemberFilters,
     canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
     setPanel, clearPanel,
   ])
@@ -1367,9 +1398,11 @@ export default function AssignmentsPage() {
               onOpen={() => setShowEventFilterModal(true)}
               onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
             />
-            <Button size="md" variant="secondary" onClick={() => setShowEventDisplayModal(true)}>
-              <IconEye size={14} /> Display
-            </Button>
+            <DisplayButton
+              active={eventDisplayActive}
+              onOpen={() => setShowEventDisplayModal(true)}
+              onReset={() => applyEventDisplay(DEFAULT_EVENT_DISPLAY)}
+            />
           </div>
           <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
 
@@ -1435,6 +1468,7 @@ export default function AssignmentsPage() {
           tournamentId={tournamentId}
           roleOptions={roleCatalog.map((r) => ({ value: String(r.id), label: r.label }))}
           filters={memberFilters}
+          defaults={memberFilterDefaults}
           onApply={applyMemberFilters}
           onClose={() => setShowMemberFilterModal(false)}
         />
@@ -1442,6 +1476,7 @@ export default function AssignmentsPage() {
       {showMemberDisplayModal && (
         <MemberDisplayModal
           display={memberDisplay}
+          defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
