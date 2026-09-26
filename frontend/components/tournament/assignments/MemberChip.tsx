@@ -123,6 +123,9 @@ export function MemberChip(props: MemberChipProps) {
   return (
     <div
       ref={setNodeRef}
+      // A click on a chip is about the chip. The row behind it opens the
+      // event panel, and picking a role or removing someone must not.
+      data-row-click-opaque
       {...listeners}
       {...attributes}
       onPointerEnter={() => setHovered(true)}

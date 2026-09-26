@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from 'react'
+import { useMemo, type MouseEvent as ReactMouseEvent } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
@@ -21,7 +21,7 @@ function divisionVariant(division: string | null) {
 
 export function EventRow({
   event, rowAssignments, roleCatalog, flagsFor, display, activeTrackId, simple,
-  handlers,
+  selected, onOpen, handlers,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -38,6 +38,11 @@ export function EventRow({
    *  advanced tournament still gets the label — the ambiguity is real
    *  there, just not for this event. */
   simple: boolean
+  /** This row's panel is the one open. */
+  selected?: boolean
+  /** Opens this event's panel. Omitted for a viewer who can't manage events,
+   *  which is also what leaves the row without a pointer cursor. */
+  onOpen?: () => void
   handlers: BoardHandlers
 }) {
   // The bare row is a target only for an event on no track at all. Every
@@ -63,20 +68,35 @@ export function EventRow({
   // same as an actual track tab does for the same reason.
   const focusedTrackId = activeTrackId ?? (simple ? event.tracks[0]?.id ?? null : null)
 
+  // The row is the target; anything with its own answer to a click is not.
+  // Asked of the click's origin rather than wired per control, because the
+  // row is a stack of components that keeps growing — a pill menu, a chip,
+  // its × — and each would otherwise have to remember to stop the bubble.
+  function openFromRow(e: ReactMouseEvent<HTMLDivElement>) {
+    const from = e.target as HTMLElement
+    if (from.closest('button, a, input, select, textarea, [data-row-click-opaque]')) return
+    onOpen?.()
+  }
+
   return (
     // The event names itself in a column of its own and hands the rest of the
     // row to its tracks. The name earns the rail: it is what the eye runs
     // down to find a row, and putting it on the same stack as the tracks
     // buried it under everything each track had to say.
     <div
+      onClick={onOpen ? openFromRow : undefined}
       style={{
+        cursor: onOpen ? 'pointer' : undefined,
         display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
         padding: '10px 12px', borderRadius: 'var(--radius-md)',
         // Border stays the ordinary colour while dragging — a tint carries
-        // the "you can drop here" signal without the row jumping out.
-        border: '1px solid var(--color-border)',
-        background: overRow ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
-        transition: 'background 120ms ease',
+        // the "you can drop here" signal without the row jumping out. The
+        // open row is the one exception: its tint has to survive scrolling
+        // past twenty other rows, so it gets the stronger edge as well.
+        // --color-accent is near-black and would read as an error state.
+        border: `1px solid var(--color-border${selected ? '-strong' : ''})`,
+        background: overRow || selected ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
+        transition: 'background 120ms ease, border-color 120ms ease',
         // `start`, not `center`: centering pins the row to one line's height,
         // so a second section spills past the border instead of growing it.
         minHeight: '56px', alignItems: 'start',

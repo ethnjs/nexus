@@ -28,6 +28,7 @@ import { DockedPanel } from '@/components/layout/DockedPanel'
 
 import { useRegisterBoardDnd } from '@/components/tournament/assignments/BoardDnd'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members/MemberPanel'
+import { EventPanel, EVENT_PANEL_WIDTH } from '@/components/tournament/events/EventPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
   MembersFilterModal, MEMBERS_FILTER_KEYS,
@@ -59,10 +60,10 @@ import { TabStrip } from '@/components/ui/TabStrip'
 import { Spinner } from '@/components/ui/Spinner'
 import {
   ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
-  ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tabSurface, tournamentEventsApi,
-  tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type DisplayConfig, type MembershipFull, type Role,
-  type TournamentEvent, type TournamentShift, type TournamentTrack,
+  ApiError, assignmentsApi, buildingsApi, canonicalEventsApi, displayConfigApi, membersApi,
+  rolesApi, tabSurface, tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi,
+  type Assignment, type CanonicalEvent, type DisplayConfig, type MembershipFull, type Role,
+  type TournamentBuilding, type TournamentEvent, type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
   assignmentFlags,
@@ -74,7 +75,7 @@ import { roleKey, rolesOf, sameRole, type AssignmentRole } from '@/lib/assignmen
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
 import { eventName } from '@/lib/eventDisplay'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
-import { useInitialPanelId, usePanelUrlSync } from '@/lib/usePanelUrl'
+import { useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
@@ -94,6 +95,19 @@ import {
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
+
+/** One open docked panel. At most one of each kind is ever open, which is
+ *  what keeps the stack two deep and makes `kind` a usable React key. */
+type PanelKind = 'member' | 'event'
+interface PanelRef { kind: PanelKind; id: number }
+const PANEL_WIDTH: Record<PanelKind, number> = {
+  member: MEMBER_PANEL_WIDTH,
+  event: EVENT_PANEL_WIDTH,
+}
+/** How long after a drop a click on an event row is ignored. A chip dragged
+ *  within its own row makes the row the click's common ancestor, so the drop
+ *  would otherwise open the panel it landed on. */
+const CLICK_AFTER_DRAG_MS = 250
 
 // ---------------------------------------------------------------------------
 // Board
@@ -133,15 +147,51 @@ export default function AssignmentsPage() {
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1))
   const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
   const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
+  // Only the event panel reads these two; the board itself has no use for
+  // them, so they are fetched for its sake rather than the page's.
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([])
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([])
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
   const [loadError, setLoadError] = useState<string | undefined>()
 
   // Which member's panel is open, mirrored into ?member= so a refresh — or a
   // link pasted to a colleague — comes back to it. Same param name as the
   // roster's, since it is the same panel showing the same member.
+  // Both panels share one docked column, stacked front to back rather than
+  // side by side: a 700px member panel beside a 600px event panel leaves no
+  // board to drag onto. Only the top one is ever visible — it covers the
+  // other outright — and closing it uncovers what was already there.
   const initialMemberId = useInitialPanelId('member')
-  const [focusedId, setFocusedId] = useState<number | null>(initialMemberId)
-  usePanelUrlSync('member', focusedId)
+  const initialEventId = useInitialPanelId('event')
+  const [panelStack, setPanelStack] = useState<PanelRef[]>(() => [
+    // Member first, so a link carrying both comes back with the event panel
+    // on top — the order opening them by hand produces.
+    ...(initialMemberId !== null ? [{ kind: 'member' as const, id: initialMemberId }] : []),
+    ...(initialEventId !== null ? [{ kind: 'event' as const, id: initialEventId }] : []),
+  ])
+  const focusedId = panelStack.find((p) => p.kind === 'member')?.id ?? null
+  const focusedEventId = panelStack.find((p) => p.kind === 'event')?.id ?? null
+  usePanelParamsSync({ member: focusedId, event: focusedEventId })
+
+  // Opening replaces its own kind and moves it to the front — which is both
+  // "only one member panel at a time" and "the one you just opened is the
+  // one you see", in a single rule.
+  const openPanel = useCallback((kind: PanelKind, id: number) => {
+    setPanelStack((stack) => [...stack.filter((p) => p.kind !== kind), { kind, id }])
+  }, [])
+  const closePanel = useCallback((kind: PanelKind) => {
+    setPanelStack((stack) => stack.filter((p) => p.kind !== kind))
+  }, [])
+
+  // When the last drop landed. A chip dragged from one shift to another
+  // inside the same row leaves that row as the click's common ancestor, so
+  // the browser fires a click on it once the drag ends — and the row would
+  // open the panel for a gesture that was never a click.
+  const lastDropAt = useRef(0)
+  const openEventPanel = useCallback((id: number) => {
+    if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return
+    openPanel('event', id)
+  }, [openPanel])
 
   const [eventQuery, setEventQuery] = useState('')
   const [eventFilters, setEventFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS))
@@ -291,8 +341,14 @@ export default function AssignmentsPage() {
     // not the roster, so the belt just degrades to empty for them rather
     // than the page 403ing outright.
     membersApi.list(tournamentId).then((data) => { if (current) setMembers(data) }).catch(() => {})
+    // For the event panel. manage_events-gated like the panel itself, so a
+    // members-only coordinator simply never opens one.
+    if (canManageEvents) {
+      canonicalEventsApi.list().then((data) => { if (current) setCanonicalEvents(data) }).catch(() => {})
+      buildingsApi.list(tournamentId).then((data) => { if (current) setBuildings(data) }).catch(() => {})
+    }
     return () => { current = false }
-  }, [tournamentId, canView, refreshKey])
+  }, [tournamentId, canView, canManageEvents, refreshKey])
 
   // Every event with its hidden tracks stripped out — shifts and tracks both.
   // Derived once and read by *everything* downstream, render and handlers
@@ -814,12 +870,106 @@ export default function AssignmentsPage() {
 
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
+  // From the unfiltered list: an event hidden by the current tab or filter is
+  // still the event whose panel is open, and dropping it out from under the
+  // panel because a filter narrowed would close it mid-edit.
+  const focusedEvent = focusedEventId === null
+    ? null
+    : (events ?? []).find((e) => e.id === focusedEventId) ?? null
 
-  // Both panels live in the shell's single slot as one flex row, since the
-  // slot holds one registration at a time. Widths add up so the board gives
-  // back exactly what the open panels take.
+  // The whole docked column lives in the shell's single slot, since the slot
+  // holds one registration at a time: the belt, then the panel stack beside
+  // it. The board gives back the belt's width plus the widest open panel —
+  // the stack overlaps, so a second panel costs nothing more.
   useEffect(() => {
     const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1
+    // Through the board's own order, filters and tab included — the arrows
+    // walk the list you are looking at, the way the belt's walk the belt.
+    const eventIndex = focusedEvent
+      ? visibleEvents.findIndex((e) => e.id === focusedEvent.id)
+      : -1
+    // The panel on top decides the column's width — not the widest one open.
+    // A wider panel underneath is clipped rather than left sticking out as a
+    // strip of half-rendered labels, and closing the top one widens the
+    // column back to whatever it uncovers.
+    const top = panelStack[panelStack.length - 1]
+    const stackWidth = top ? PANEL_WIDTH[top.kind] : 0
+
+    const panelFor = (ref: PanelRef) => {
+      if (ref.kind === 'member') {
+        return focused && (
+          <MemberPanel
+            key={focused.id}
+            tournamentId={tournamentId}
+            membershipId={focused.id}
+            allRoles={roleCatalog}
+            canTouchRole={canTouchRole}
+            canEditMember={canEditMember}
+            collectIsOver18={!!selectedTournament?.collect_is_over_18}
+            collectIsOver21={!!selectedTournament?.collect_is_over_21}
+            isArchived={isArchived}
+            isSelf={currentUser?.id === focused.user.id}
+            // No onRemove/onSelfRemove: removing someone from the tournament
+            // is the roster's job, not this board's — omitting them hides
+            // the control entirely rather than wiring a flow that doesn't
+            // belong here.
+            onClose={() => closePanel('member')}
+            // Roles only: the roles PATCH returns none of the built groups
+            // (event prefs, track statuses), so swapping the row would blank them.
+            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
+              m.id === updated.id ? { ...m, roles: updated.roles } : m
+            )))}
+            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
+            assignmentsVersion={panelAssignmentsVersion}
+            onPrev={() => index > 0 && openPanel('member', belt[index - 1].id)}
+            onNext={() => index < belt.length - 1 && openPanel('member', belt[index + 1].id)}
+            hasPrev={index > 0}
+            hasNext={index >= 0 && index < belt.length - 1}
+          />
+        )
+      }
+      // Not loaded is not the same as not there: the id can arrive from the
+      // URL before the events fetch lands, so an absent event holds the slot
+      // open rather than closing the panel a refresh meant to restore.
+      return focusedEvent && (
+        <EventPanel
+          key={focusedEvent.id}
+          tournamentId={tournamentId}
+          event={focusedEvent}
+          locked={isArchived}
+          canonicalEvents={canonicalEvents}
+          allShifts={allShifts}
+          tracks={tracks}
+          buildings={buildings}
+          roles={roleCatalog}
+          onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+          onBuildingSaved={(building) => setBuildings((cur) => (
+            cur.some((b) => b.id === building.id)
+              ? cur.map((b) => (b.id === building.id ? building : b))
+              : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
+          ))}
+          onClose={() => closePanel('event')}
+          // withOrderedShifts, like the list fetch: the board indexes bars by
+          // position in `shifts`, so a save that came back unsorted would
+          // silently reorder the timeline's columns.
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (
+            e.id === saved.id ? withOrderedShifts(saved) : e
+          )))}
+          onDeleted={(id) => {
+            setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))
+            closePanel('event')
+          }}
+          // -1 means the open event is filtered out of the current view, so
+          // there is no "next" from it to speak of — both arrows go quiet
+          // rather than jumping to a row chosen by accident.
+          onPrev={() => eventIndex > 0 && openEventPanel(visibleEvents[eventIndex - 1].id)}
+          onNext={() => eventIndex >= 0 && eventIndex < visibleEvents.length - 1
+            && openEventPanel(visibleEvents[eventIndex + 1].id)}
+          hasPrev={eventIndex > 0}
+          hasNext={eventIndex >= 0 && eventIndex < visibleEvents.length - 1}
+        />
+      )
+    }
 
     setPanel(
       <div style={{ display: 'flex', height: '100%' }}>
@@ -885,49 +1035,44 @@ export default function AssignmentsPage() {
                   selected={focusedId === member.id}
                   display={memberDisplay}
                   allShifts={allShifts}
-                  onOpen={() => setFocusedId(member.id)}
+                  onOpen={() => openPanel('member', member.id)}
                 />
               ))
             )}
           </div>
         </DockedPanel>
 
-        {focused && (
-          <MemberPanel
-            key={focused.id}
-            tournamentId={tournamentId}
-            membershipId={focused.id}
-            allRoles={roleCatalog}
-            canTouchRole={canTouchRole}
-            canEditMember={canEditMember}
-            collectIsOver18={!!selectedTournament?.collect_is_over_18}
-            collectIsOver21={!!selectedTournament?.collect_is_over_21}
-            isArchived={isArchived}
-            isSelf={currentUser?.id === focused.user.id}
-            // No onRemove/onSelfRemove: removing someone from the tournament
-            // is the roster's job, not this board's — omitting them hides
-            // the control entirely rather than wiring a flow that doesn't
-            // belong here.
-            onClose={() => setFocusedId(null)}
-            // Roles only: the roles PATCH returns none of the built groups
-            // (event prefs, track statuses), so swapping the row would blank them.
-            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
-              m.id === updated.id ? { ...m, roles: updated.roles } : m
-            )))}
-            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
-            assignmentsVersion={panelAssignmentsVersion}
-            onPrev={() => index > 0 && setFocusedId(belt[index - 1].id)}
-            onNext={() => index < belt.length - 1 && setFocusedId(belt[index + 1].id)}
-            hasPrev={index > 0}
-            hasNext={index >= 0 && index < belt.length - 1}
-          />
+        {/* The stack itself: one box the width of the widest panel, with
+            each panel pinned to its right edge and ordered back to front.
+            Right-aligned rather than left, so a narrower panel on top leaves
+            the one behind it showing along the inside edge instead of
+            floating over its middle. */}
+        {panelStack.length > 0 && (
+          <div style={{
+            position: 'relative', width: stackWidth, height: '100%', overflow: 'hidden',
+          }}>
+            {panelStack.map((ref, depth) => (
+              <div
+                key={ref.kind}
+                style={{
+                  position: 'absolute', top: 0, right: 0, height: '100%',
+                  width: PANEL_WIDTH[ref.kind], zIndex: depth + 1,
+                }}
+              >
+                {panelFor(ref)}
+              </div>
+            ))}
+          </div>
         )}
       </div>,
-      BELT_PANEL_WIDTH + (focused ? MEMBER_PANEL_WIDTH : 0),
+      BELT_PANEL_WIDTH + stackWidth,
     )
   }, [
-    focused, focusedId, belt, members, allShifts, memberQuery, memberFilters, panelAssignmentsVersion,
-    memberFilterActive, memberDisplay, applyMemberFilters, setPanel, clearPanel,
+    panelStack, focused, focusedId, focusedEvent, visibleEvents, openEventPanel,
+    belt, members, allShifts, memberQuery,
+    memberFilters, panelAssignmentsVersion, memberFilterActive, memberDisplay, applyMemberFilters,
+    canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
+    setPanel, clearPanel,
   ])
 
   // Unmount only — leaving the page must not leave the panels behind.
@@ -1125,7 +1270,10 @@ export default function AssignmentsPage() {
   // slot, which is outside <main>, so a context inside this page could never
   // reach it. Behaviour still belongs here; only the context moved.
   useRegisterBoardDnd('board', {
-    onDragEnd: handleDragEnd,
+    onDragEnd: (event) => {
+      lastDropAt.current = Date.now()
+      handleDragEnd(event)
+    },
     labelFor,
     renderOverlay: (activeId) => {
       const label = labelFor(activeId)
@@ -1251,6 +1399,8 @@ export default function AssignmentsPage() {
                 display={eventDisplay}
                 activeTrackId={activeTrackId}
                 simple={simple}
+                selected={event.id === focusedEventId}
+                onOpen={canManageEvents ? () => openEventPanel(event.id) : undefined}
                 handlers={boardHandlers}
               />
             ))
