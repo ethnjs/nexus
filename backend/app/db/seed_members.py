@@ -15,6 +15,7 @@ invocation works against any database.
     python -m app.db.seed_members --tournament 3
     python -m app.db.seed_members --tournament 3 --no-onboarding
     python -m app.db.seed_members --tournament 3 --email-prefix member --seed 7
+    python -m app.db.seed_members --tournament 3 --create 50
 
 Run from backend/ with the venv active.
 """
@@ -74,6 +75,18 @@ MEMBERSHIP_NOTES = [
     "Needs parking pass", "First-time volunteer",
 ]
 COMPETITION_NOTES = [None, None, "Medaled at states", "Two seasons"]
+FIRST_NAMES = [
+    "Ava", "Liam", "Sofia", "Noah", "Priya", "Mateo", "Chloe", "Ethan", "Nina", "Owen",
+    "Maya", "Caleb", "Amara", "Diego", "Hana", "Jonah", "Leila", "Marcus", "Iris", "Theo",
+    "Rosa", "Kai", "Elena", "Simon", "Yara", "Andre", "Talia", "Felix", "Nadia", "Quinn",
+    "Jasmine", "Victor", "Imani", "Dmitri", "Grace", "Alma", "Rohan", "Sadie", "Emeka", "Lucia",
+]
+LAST_NAMES = [
+    "Nguyen", "Patel", "Garcia", "Okafor", "Kim", "Rossi", "Haddad", "Silva", "Novak", "Tran",
+    "Mendoza", "Abebe", "Lindqvist", "Cruz", "Iqbal", "Moreau", "Yamada", "Brennan", "Kowalski",
+    "Delgado", "Sharma", "Osei", "Fontaine", "Vargas", "Petrov", "Reyes", "Castillo", "Duarte",
+    "Larsen", "Mwangi",
+]
 STUDENT_STATUSES = ["Undergraduate", "Graduate", "Non-Student"]
 STUDENT_STATUS_WEIGHTS = [13, 5, 3]
 
@@ -288,6 +301,48 @@ def reset_onboarding(db: Session, form_ids: list[str], user_ids: list[int], memb
 # Lookups
 # ---------------------------------------------------------------------------
 
+def ensure_accounts(db: Session, prefix: str, domain: str, count: int, password: str, seed: int) -> int:
+    """Bring the `{prefix}N@{domain}` population up to `count`, creating only
+    the numbers that are missing.
+
+    `count` is a target, not a quantity to add — so `--create 50` twice creates
+    fifty accounts, and `--create 60` afterwards adds ten. Asking the database
+    which exact emails exist beats counting the existing accounts and making up
+    the difference: with a sparse population (test3, test7, test40) a count
+    would have to invent numbers and could collide with one already there.
+
+    Names come off a private RNG so growing the population doesn't shift the
+    profile data a given --seed produces for everyone else.
+    """
+    from app.core.auth import hash_password
+    from app.models.models import User
+
+    emails = [f"{prefix}{i}@{domain}".lower() for i in range(1, count + 1)]
+    existing = {
+        e for (e,) in db.query(User.email).filter(User.email.in_(emails))
+    }
+    missing = [e for e in emails if e not in existing]
+    if not missing:
+        return 0
+
+    # One hash for every account: bcrypt is deliberately slow, and 50 of them
+    # is a visible pause for no benefit when the password is identical anyway.
+    hashed = hash_password(password)
+    name_rng = random.Random(seed)
+    for email in missing:
+        db.add(User(
+            email=email,
+            hashed_password=hashed,
+            first_name=name_rng.choice(FIRST_NAMES),
+            last_name=name_rng.choice(LAST_NAMES),
+            role="user",
+            status="active",
+            email_verified=True,
+        ))
+    db.flush()
+    return len(missing)
+
+
 def resolve_members(db: Session, tournament_id: int, email_prefix: str, enroll: bool, limit: int | None):
     """Every account whose email starts with the prefix, paired with its
     membership in this tournament — creating the membership when missing, so a
@@ -358,8 +413,17 @@ def build_parser() -> argparse.ArgumentParser:
                         help="tournament id to seed")
     parser.add_argument("--email-prefix", default="test", metavar="PREFIX",
                         help="seed accounts whose email starts with this (default: test)")
+    parser.add_argument("--email-domain", default="nexus.dev", metavar="DOMAIN",
+                        help="domain for accounts this run creates (default: nexus.dev)")
     parser.add_argument("--limit", type=int, metavar="N",
                         help="only seed the first N matching accounts")
+
+    accounts = parser.add_argument_group("account creation")
+    accounts.add_argument("-c", "--create", type=int, metavar="N",
+                          help="seed N members total, creating whichever of "
+                               "PREFIX1..PREFIXN don't exist yet")
+    accounts.add_argument("--password", default="test1234", metavar="PW",
+                          help="password for accounts this run creates (default: test1234)")
     parser.add_argument("--seed", type=int, default=0, metavar="N",
                         help="RNG seed - same value gives the same data (default: 0)")
 
@@ -406,6 +470,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"no tournament with id {args.tournament}")
             return 1
 
+        accounts_created = 0
+        if args.create:
+            accounts_created = ensure_accounts(
+                db, args.email_prefix, args.email_domain, args.create, args.password, args.seed
+            )
+
         pairs, created = resolve_members(db, tournament.id, args.email_prefix, args.enroll, args.limit)
         if not pairs:
             print(f"no accounts matching {args.email_prefix}*@* with a membership in {tournament.name!r}")
@@ -416,8 +486,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"note: {tournament.name!r} has no published onboarding forms - skipping onboarding")
 
         print(f"tournament : {tournament.name} (id {tournament.id})")
+        notes = []
+        if accounts_created:
+            notes.append(f"{accounts_created} new accounts")
+        if created:
+            notes.append(f"{created} newly enrolled")
         print(f"members    : {len(pairs)} matching {args.email_prefix}*@*"
-              + (f" ({created} newly enrolled)" if created else ""))
+              + (f" ({', '.join(notes)})" if notes else ""))
         print(f"forms      : {[f.name for f in forms] or 'none'}")
         print(f"seeding    : " + ", ".join(
             name for name, on in (
@@ -425,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
                 ("experience", args.experience), ("onboarding", bool(forms)),
             ) if on
         ) or "nothing")
+        if accounts_created:
+            print(f"password   : {args.password}")
         print()
 
         university_ids = [uid for (uid,) in db.query(University.id)]
