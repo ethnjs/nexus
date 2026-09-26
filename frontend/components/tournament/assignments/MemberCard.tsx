@@ -374,10 +374,18 @@ function VolunteerField({ member, display }: FieldProps) {
 // Availability — the panel's timeline, and nothing else
 // ---------------------------------------------------------------------------
 
-function groupByDay<T extends { start: string }>(slots: T[]): Map<string, T[]> {
+/** One row of the section: a track's own day. Two sites running the same
+ *  Saturday are separate tracks with separate shifts, so keying on the date
+ *  alone drew both on one bar — and the bar's window is the union of the
+ *  two, which is a day neither track actually offered. */
+function dayKey(trackId: number, start: string) {
+  return `${trackId}|${toDateInput(start)}`
+}
+
+function groupByDay<T extends { start: string; track_id: number }>(slots: T[]): Map<string, T[]> {
   const byDay = new Map<string, T[]>()
   for (const slot of slots) {
-    const day = toDateInput(slot.start)
+    const day = dayKey(slot.track_id, slot.start)
     const group = byDay.get(day)
     if (group) group.push(slot)
     else byDay.set(day, [slot])
@@ -408,8 +416,12 @@ function toTimelineShifts(slots: MembershipAvailability[]): TimelineShift[] {
 
 /** The panel pairs the bar with a badge per shift; here the bar is the whole
  *  section, so the label and time live only in its hover readout. */
-function AvailabilityDay({ day, slots, offered }: {
+function AvailabilityDay({ day, trackName, slots, offered }: {
   day: string
+  /** The track this day belongs to, or null for one the member has no track
+   *  status for — the name comes off that list, which is the card's only
+   *  catalog of track names. */
+  trackName: string | null
   slots: MembershipAvailability[]
   offered: TournamentShift[] | undefined
 }) {
@@ -418,10 +430,24 @@ function AvailabilityDay({ day, slots, offered }: {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* Track over date in one fixed-width rail: both name the same row,
+          and putting the track on its own line beside the bar would spend a
+          third of the card's width on it. The track leads because it is what
+          the row is scoped to — the date is which of its days. */}
       <span style={{
-        fontFamily: 'var(--font-sans)', fontSize: '10px', width: '52px', flexShrink: 0,
-        color: 'var(--color-text-secondary)',
+        display: 'flex', flexDirection: 'column',
+        fontFamily: 'var(--font-sans)', fontSize: '10px', width: '72px', flexShrink: 0,
+        color: 'var(--color-text-secondary)', minWidth: 0,
       }}>
+        {trackName && (
+          <span style={{
+            fontSize: '9px', fontWeight: 600, letterSpacing: '0.04em',
+            textTransform: 'uppercase', color: 'var(--color-text-tertiary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {trackName}
+          </span>
+        )}
         {formatDayLabel(day)}
       </span>
       {/* The timeline is written to sit at the far right of a 700px panel row
@@ -444,6 +470,9 @@ function AvailabilityField({ member, display, allShifts }: FieldProps) {
   const slots = (member.availability ?? [])
     .filter((slot) => trackShown(display, 'availability', slot.track_id))
   const offeredByDay = groupByDay(allShifts)
+  const trackNames = new Map(
+    (member.track_statuses ?? []).map((track) => [track.track_id, track.name]),
+  )
 
   return (
     <Field label="Availability">
@@ -455,13 +484,19 @@ function AvailabilityField({ member, display, allShifts }: FieldProps) {
           style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
         >
           {[...groupByDay(slots).entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([day, daySlots]) => (
+            // By date first, so two tracks sharing a Saturday sit together
+            // rather than in whatever order the tracks were created.
+            .sort(([a], [b]) => a.split('|')[1].localeCompare(b.split('|')[1]))
+            .map(([key, daySlots]) => (
               <AvailabilityDay
-                key={day}
-                day={day}
+                key={key}
+                // The date half of the key, not the slot's own start:
+                // formatDayLabel takes a YYYY-MM-DD, and an instant would
+                // come out as an Invalid Date.
+                day={key.split('|')[1]}
+                trackName={trackNames.get(daySlots[0].track_id) ?? null}
                 slots={daySlots}
-                offered={offeredByDay.get(day)}
+                offered={offeredByDay.get(key)}
               />
             ))}
         </div>
@@ -487,6 +522,11 @@ const FIELDS: {
   { key: 'age', shownWhen: (d) => fieldShown(d, 'age'), render: AgeField },
   { key: 'track_status', shownWhen: (d) => fieldShown(d, 'track_status'), render: TrackStatusField },
   { key: 'event_preferences', shownWhen: (d) => fieldShown(d, 'event_preferences'), render: PreferencesField },
+  // Above the experience tables: availability is what a coordinator staffing
+  // the board is actually reading the card for, and past tournaments are
+  // background. The two tables are the long half of the card, so anything
+  // under them is a scroll away.
+  { key: 'availability', shownWhen: (d) => fieldShown(d, 'availability'), render: AvailabilityField },
   {
     key: 'competition',
     shownWhen: (d) => fieldShown(d, 'competition_school') || fieldShown(d, 'competition_event'),
@@ -498,7 +538,6 @@ const FIELDS: {
       || fieldShown(d, 'volunteer_event') || fieldShown(d, 'volunteer_role'),
     render: VolunteerField,
   },
-  { key: 'availability', shownWhen: (d) => fieldShown(d, 'availability'), render: AvailabilityField },
 ]
 
 /**
