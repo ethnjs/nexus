@@ -56,6 +56,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { FilterButton } from '@/components/ui/FilterButton'
 import { Card } from '@/components/ui/Card'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
 import {
@@ -64,6 +65,7 @@ import {
 } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PillMenu } from '@/components/ui/PillMenu'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import { TabStrip } from '@/components/ui/TabStrip'
 import { Spinner } from '@/components/ui/Spinner'
@@ -521,50 +523,37 @@ function ShiftColumn({
 }
 
 /**
- * Memoised: EventRow above calls useDroppable, so it re-renders every time
- * the drag crosses into a different target — twenty-five rows rebuilding
- * their lanes, chips and flags per crossing. The row's droppable state that
- * this subtree actually needs is `overAllShifts`, which only moves for the
- * one row being hovered; everything else it takes is stable while dragging,
- * so the other rows now bail out here.
+ * One track's own grid: its shift columns, the time/name header above them,
+ * and the bars on it. Split out of ShiftTimeline so an event running on
+ * several tracks can repeat this once per track instead of drawing one grid
+ * whose columns silently jump from one track's day to another's.
  */
-const ShiftTimeline = memo(function ShiftTimeline({
-  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts,
+function TrackShiftGrid({
+  eventId, shifts, lanes, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts,
 }: {
-  event: TournamentEvent
-  rowAssignments: Assignment[]
+  eventId: number
+  shifts: TournamentShift[]
+  lanes: Lane[]
   roleCatalog: Role[]
-  onRemove: (laneKey: string, eventId: number) => void
-  /** The row's all-shifts target is being hovered. */
-  overAllShifts: boolean
   flagsFor: (a: Assignment) => Flag[]
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onRemove: (laneKey: string, eventId: number) => void
+  /** The row's all-shifts target is being hovered. */
+  overAllShifts: boolean
 }) {
-  const shiftIds = event.shifts.map((s) => s.id)
-  const { lanes, unpinned } = buildLanes(rowAssignments, shiftIds)
-  // Any drag in flight, from the belt or from another chip. Our own context,
-  // not useDndContext — see the note on useBoardDragging.
-  const dragging = useBoardDragging()
-  const columns = event.shifts.length
+  const columns = shifts.length
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`
-  const noShiftTracks = noShiftTracksOf(event, unpinned)
-
   // One time at every divider, edges included — n shifts have n+1 boundaries,
   // and each internal one is both a shift's end and the next one's start.
-  const boundaries = [event.shifts[0].start, ...event.shifts.map((s) => s.end)]
+  const boundaries = [shifts[0].start, ...shifts.map((s) => s.end)]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-      {/* Everything the columns apply to, and nothing else — the layer below
-          is `inset: 0` against *this* box, so the No-shift section being a
-          sibling rather than a child is what keeps the dividers from running
-          down through it. Those people are on no column by definition. */}
-      <div style={{
-        position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0,
-      }}>
+    <div style={{
+      position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0,
+    }}>
       {/* The columns are both the dividers and the drop targets, drawn once as
           a layer behind everything so they run the full height of the lanes.
           Per-lane borders never line up, and a separate strip of drop zones
@@ -575,10 +564,10 @@ const ShiftTimeline = memo(function ShiftTimeline({
           gridTemplateColumns: gridColumns,
         }}
       >
-        {event.shifts.map((shift, i) => (
+        {shifts.map((shift, i) => (
           <ShiftColumn
             key={shift.id}
-            eventId={event.id}
+            eventId={eventId}
             shiftId={shift.id}
             first={i === 0}
             allShifts={overAllShifts}
@@ -621,7 +610,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
             {formatTime(moment)}
           </span>
         ))}
-        {event.shifts.map((shift) => (
+        {shifts.map((shift) => (
           <span key={shift.id} style={{
             fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
             color: 'var(--color-text-secondary)', textAlign: 'center',
@@ -655,7 +644,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
         >
           <TimelineBar
             lane={lane}
-            eventId={event.id}
+            eventId={eventId}
             columns={columns}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
@@ -667,14 +656,148 @@ const ShiftTimeline = memo(function ShiftTimeline({
           />
         </div>
       ))}
+    </div>
+  )
+}
+
+/** A track's default role, as a pill menu — picking a new role hands the
+ *  change to the caller rather than writing anything itself, since applying
+ *  it means both a track PATCH and a bulk assignment rewrite that only the
+ *  page has the state for. Shared by the timeline header and a cosmetic
+ *  track's column header — same field, same control, wherever it shows. */
+function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
+  track: TournamentTrack
+  roleCatalog: Role[]
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+}) {
+  const role = track.default_role_id === null
+    ? null
+    : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+  return (
+    <PillMenu
+      label={role ? role.label : 'No default role'}
+      tone={role ? 'default' : 'muted'}
+      items={roleCatalog}
+      getKey={(r) => r.id}
+      renderLabel={(r) => r.label}
+      isSelected={(r) => role !== null && role.id === r.id}
+      onSelect={(r) => onPickDefaultRole(track, r)}
+      width={180}
+      align="left"
+    />
+  )
+}
+
+/** The track name plus its default role pill, above one track's shift grid. */
+function TrackTimelineHeader({ track, roleCatalog, onPickDefaultRole }: {
+  track: TournamentTrack
+  roleCatalog: Role[]
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+        letterSpacing: '0.05em', textTransform: 'uppercase',
+        color: 'var(--color-text-tertiary)',
+      }}>
+        {track.name}
+      </span>
+      <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
+    </div>
+  )
+}
+
+/**
+ * Memoised: EventRow above calls useDroppable, so it re-renders every time
+ * the drag crosses into a different target — twenty-five rows rebuilding
+ * their lanes, chips and flags per crossing. The row's droppable state that
+ * this subtree actually needs is `overAllShifts`, which only moves for the
+ * one row being hovered; everything else it takes is stable while dragging,
+ * so the other rows now bail out here.
+ */
+const ShiftTimeline = memo(function ShiftTimeline({
+  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts, onPickDefaultRole, showTrackHeaders,
+}: {
+  event: TournamentEvent
+  rowAssignments: Assignment[]
+  roleCatalog: Role[]
+  onRemove: (laneKey: string, eventId: number) => void
+  /** The row's all-shifts target is being hovered. */
+  overAllShifts: boolean
+  flagsFor: (a: Assignment) => Flag[]
+  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
+  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
+  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+  /** True on the All tab — a track tab or a simple tournament already says
+   *  which track this is, so its grid gets no header even when (as is
+   *  always true there) it is the only group. */
+  showTrackHeaders: boolean
+}) {
+  const shiftIds = event.shifts.map((s) => s.id)
+  const { unpinned } = buildLanes(rowAssignments, shiftIds)
+  // Any drag in flight, from the belt or from another chip. Our own context,
+  // not useDndContext — see the note on useBoardDragging.
+  const dragging = useBoardDragging()
+  const noShiftTracks = noShiftTracksOf(event, unpinned)
+
+  // The event's own shifts, grouped by the track that owns them — a Map
+  // remembers insertion order, and `event.shifts` already arrives schedule-
+  // sorted (withOrderedShifts), so each group stays in that same order.
+  const shiftsByTrack = useMemo(() => {
+    const groups = new Map<number, TournamentShift[]>()
+    for (const shift of event.shifts) {
+      const list = groups.get(shift.track_id)
+      if (list) list.push(shift)
+      else groups.set(shift.track_id, [shift])
+    }
+    return groups
+  }, [event.shifts])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: showTrackHeaders ? '14px' : '4px', minWidth: 0 }}>
+      {[...shiftsByTrack.entries()].map(([trackId, shifts]) => {
+        const track = event.tracks.find((t) => t.id === trackId)
+        const shiftIdsHere = shifts.map((s) => s.id)
+        // Only this track's own rows — a row pinned to another track's shift
+        // must never count as unpinned here just because it misses this
+        // group's shift list; the event-wide `unpinned` above already covers
+        // every track's true unpinned rows in one shared section below.
+        const trackRows = rowAssignments.filter((a) => a.shift && shiftIdsHere.includes(a.shift.id))
+        const { lanes } = buildLanes(trackRows, shiftIdsHere)
+        return (
+          <div key={trackId} style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+            {showTrackHeaders && track && (
+              <TrackTimelineHeader
+                track={track}
+                roleCatalog={roleCatalog}
+                onPickDefaultRole={onPickDefaultRole}
+              />
+            )}
+            <TrackShiftGrid
+              eventId={event.id}
+              shifts={shifts}
+              lanes={lanes}
+              roleCatalog={roleCatalog}
+              flagsFor={flagsFor}
+              onResize={onResize}
+              onResizeCommit={onResizeCommit}
+              onToggleRole={onToggleRole}
+              onPickRole={onPickRole}
+              onRemove={onRemove}
+              overAllShifts={overAllShifts}
+            />
+          </div>
+        )
+      })}
 
       {/* Normally only when somebody is actually unpinned — an always-present
           empty section is chrome explaining a state that isn't happening. But
           its columns are the only targets a cosmetic track has, and a target
           that only exists once you have already used it is not reachable by
           dragging. So it also appears, empty, for the duration of a drag. */}
-      </div>
-
       {(unpinned.length > 0 || (dragging && noShiftTracks.length > 0)) && (
         <UnpinnedSection
           eventId={event.id}
@@ -685,6 +808,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
           onToggleRole={onToggleRole}
           onPickRole={onPickRole}
           onRemove={onRemove}
+          onPickDefaultRole={onPickDefaultRole}
         />
       )}
     </div>
@@ -704,7 +828,9 @@ const ShiftTimeline = memo(function ShiftTimeline({
  * The role is named in the header rather than left to be discovered after the
  * drop, since granting it is the whole point of aiming at this column.
  */
-function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
+function TrackColumn({
+  eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+}: {
   eventId: number
   track: TournamentTrack
   lanes: Lane[]
@@ -713,14 +839,12 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `track:${eventId}:${track.id}`,
     data: { kind: 'track', eventId, trackId: track.id },
   })
-  const role = track.default_role_id === null
-    ? null
-    : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
 
   return (
     <div
@@ -740,7 +864,10 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
         transition: 'background 120ms ease',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', minWidth: 0 }}>
+      {/* alignItems: center, not baseline — baseline suited two plain-text
+          spans, but a bordered pill's baseline sits low inside its own box,
+          which reads as the pill hanging below the label beside it. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
         <span style={{
           fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
           letterSpacing: '0.05em', textTransform: 'uppercase',
@@ -749,15 +876,10 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
         }}>
           {track.name} · {lanes.length}
         </span>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontSize: '10px', whiteSpace: 'nowrap',
-          // A track with no default role still takes drops: the failure names
-          // the track, which is more use than a column you cannot aim at and
-          // cannot ask why.
-          color: role ? 'var(--color-text-tertiary)' : 'var(--color-warning)',
-        }}>
-          {role ? role.label : 'No default role'}
-        </span>
+        {/* A track with no default role still takes drops: naming that in
+            the pill itself is more use than a column you cannot aim at and
+            cannot ask why — and now it doubles as the fix. */}
+        <DefaultRolePillMenu track={track} roleCatalog={roleCatalog} onPickDefaultRole={onPickDefaultRole} />
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {lanes.map((lane) => (
@@ -826,7 +948,9 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
  *  because nothing ranks them — an event's cosmetic tracks are parallel
  *  workstreams, not a hierarchy — and they divide the people area exactly,
  *  which is the row's width less the metadata column. */
-function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
+function NoShiftTracks({
+  eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+}: {
   eventId: number
   tracks: TournamentTrack[]
   lanes: Lane[]
@@ -835,6 +959,7 @@ function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggle
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
   if (tracks.length === 0) return null
   const buckets = bucketByTrack(lanes, tracks)
@@ -854,6 +979,7 @@ function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggle
           onToggleRole={onToggleRole}
           onPickRole={onPickRole}
           onRemove={onRemove}
+          onPickDefaultRole={onPickDefaultRole}
         />
       ))}
     </div>
@@ -875,7 +1001,7 @@ function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggle
  * placement: they are still draggable up onto a shift.
  */
 function UnpinnedSection({
-  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove,
+  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
 }: {
   eventId: number
   unpinned: Lane[]
@@ -886,6 +1012,7 @@ function UnpinnedSection({
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
   return (
     <div style={{
@@ -900,6 +1027,7 @@ function UnpinnedSection({
           lanes={unpinned}
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
+          onPickDefaultRole={onPickDefaultRole}
           onToggleRole={onToggleRole}
           onPickRole={onPickRole}
           onRemove={onRemove}
@@ -1046,7 +1174,7 @@ function TrackMetaBlock({ event, track, rowAssignments, display }: {
 // ---------------------------------------------------------------------------
 function EventRow({
   event, rowAssignments, roleCatalog, flagsFor, display, activeTrackId, simple,
-  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
+  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -1069,6 +1197,11 @@ function EventRow({
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
+  /** A track's own header (multi-track events on the All tab) lets a TD
+   *  repoint its default role right there. Applying it — the track PATCH
+   *  plus migrating existing holders of the old default — is the page's job,
+   *  since only it holds every track's and every assignment's state. */
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
 }) {
   // Two targets on a row with shifts: the metadata column means "every
   // shift", and each timeline column means that one. The row itself is only a
@@ -1230,6 +1363,7 @@ function EventRow({
             onToggleRole={onToggleRole}
             onPickRole={onPickRole}
             onRemove={onRemove}
+            onPickDefaultRole={onPickDefaultRole}
           />
         ) : (
           // No cosmetic track to split by, so the row itself stays the
@@ -1270,6 +1404,8 @@ function EventRow({
           onPickRole={onPickRole}
           onRemove={onRemove}
           overAllShifts={overAllShifts}
+          onPickDefaultRole={onPickDefaultRole}
+          showTrackHeaders={focusedTrackId === null}
         />
       )}
     </div>
@@ -1937,6 +2073,53 @@ export default function AssignmentsPage() {
     setLaneRoles(laneKey, eventId, () => [role])
   }
 
+  // A track's default role, changed from its timeline header. Scoped to the
+  // whole track across the tournament — not to the one event the header
+  // happened to be drawn on — since the default role is a track setting, and
+  // "change every Volunteer on Day 1 to Test Writer" means every event on
+  // Day 1, not just this one.
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    track: TournamentTrack
+    oldRole: Role
+    newRole: Role
+    affected: Assignment[]
+    resolve: () => void
+  } | null>(null)
+
+  async function applyDefaultRoleChange(track: TournamentTrack, newRole: Role, affected: Assignment[]) {
+    const updated = await tournamentTracksApi.update(tournamentId, track.id, { default_role_id: newRole.id })
+    setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)))
+    if (affected.length > 0) {
+      await Promise.all(affected.map((row) =>
+        assignmentsApi.update(tournamentId, row.id, { role_id: newRole.id })))
+      const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label }
+      const affectedIds = new Set(affected.map((r) => r.id))
+      setRows((current) => current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)))
+      setBoardWriteVersion((v) => v + 1)
+    }
+  }
+
+  /** Picking a new default role for a track. Only the people currently
+   *  holding the *old* default on that track move to the new one — anyone
+   *  staffed under a different role is untouched, since a role they were
+   *  deliberately given is not the same fact as a role they inherited from
+   *  the track's default. Nothing to migrate (no default set yet, or nobody
+   *  holds it) applies immediately with no prompt. */
+  function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
+    if (!requireWriteAccess()) return Promise.resolve()
+    if (track.default_role_id === newRole.id) return Promise.resolve()
+    const oldRole = track.default_role_id === null
+      ? null
+      : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+    const affected = oldRole
+      ? rows.filter((r) => r.track.id === track.id && r.role.id === oldRole.id)
+      : []
+    if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, [])
+    return new Promise<void>((resolve) => {
+      setPendingRoleChange({ track, oldRole, newRole, affected, resolve })
+    })
+  }
+
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
 
@@ -2367,6 +2550,7 @@ export default function AssignmentsPage() {
                 onToggleRole={handleToggleRole}
                 onPickRole={handlePickRole}
                 onRemove={handleRemove}
+                onPickDefaultRole={requestDefaultRoleChange}
               />
             ))
           )}
@@ -2410,6 +2594,31 @@ export default function AssignmentsPage() {
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
+        />
+      )}
+      {pendingRoleChange && (
+        <ConfirmModal
+          title="Change default role"
+          description={
+            <>
+              {pendingRoleChange.track.name}&rsquo;s default role is changing from{' '}
+              <strong>{pendingRoleChange.oldRole.label}</strong> to{' '}
+              <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{' '}
+              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{' '}
+              {pendingRoleChange.affected.length === 1 ? 'assignment' : 'assignments'} on this
+              track to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on
+              this track is left alone.
+            </>
+          }
+          confirmLabel="Change role"
+          variant="primary"
+          onConfirm={() => applyDefaultRoleChange(
+            pendingRoleChange.track, pendingRoleChange.newRole, pendingRoleChange.affected,
+          )}
+          onClose={() => {
+            pendingRoleChange.resolve()
+            setPendingRoleChange(null)
+          }}
         />
       )}
     </div>
