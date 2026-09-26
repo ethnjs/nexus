@@ -1422,7 +1422,19 @@ export default function AssignmentsPage() {
               }
             />
           ) : (
-            visibleEvents.map((event) => (
+            // The whole list is one grid, and each row a subgrid of it, so
+            // the name column is exactly as wide as the longest name on
+            // screen and every timeline still starts on the same line. A
+            // per-row `auto` column would fit each name and leave the rows
+            // ragged; a fixed one aligns them and pads most rows with air.
+            //
+            // fit-content, so one very long name wraps at 220px instead of
+            // taking the width off every row's timeline.
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'fit-content(220px) 1fr',
+              gap: '8px', minWidth: 0,
+            }}>
+            {visibleEvents.map((event) => (
               <EventRow
                 key={event.id}
                 event={event}
@@ -1436,7 +1448,8 @@ export default function AssignmentsPage() {
                 onOpen={canManageEvents ? () => openEventPanel(event.id) : undefined}
                 handlers={boardHandlers}
               />
-            ))
+            ))}
+            </div>
           )}
         </div>
 

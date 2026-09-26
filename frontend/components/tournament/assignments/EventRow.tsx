@@ -88,7 +88,13 @@ export function EventRow({
     // buried it under everything each track had to say.
     <div
       style={{
-        display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
+        // The list's own columns, not this row's: the name rail is shared by
+        // every row (see the grid around them), so it is as wide as the
+        // longest name rather than a fixed width most events leave half
+        // empty. The row's padding comes out of the first and last track, so
+        // the columns still line up row to row.
+        display: 'grid', gridColumn: '1 / -1', gridTemplateColumns: 'subgrid',
+        columnGap: '8px',
         padding: '10px 12px', borderRadius: 'var(--radius-md)',
         // Border stays the ordinary colour while dragging — a tint carries
         // the "you can drop here" signal without the row jumping out. The
