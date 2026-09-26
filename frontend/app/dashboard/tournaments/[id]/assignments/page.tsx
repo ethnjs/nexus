@@ -310,13 +310,6 @@ export default function AssignmentsPage() {
     : id === activeTrackId
   ), [activeTrackId, hiddenTracks])
 
-  // The catalog's hidden ids, for the row-level rules below that reason about
-  // tracks rather than about one event's copy of them.
-  const hiddenTrackIds = useMemo(
-    () => tracks.filter((t) => !showsTrack(t.id)).map((t) => t.id),
-    [tracks, showsTrack],
-  )
-
   const boardEvents = useMemo(() => (events ?? []).map((event) => ({
     ...event,
     shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
@@ -329,24 +322,21 @@ export default function AssignmentsPage() {
   // pinned to a hidden track's shift is dropped here, but stays in `rows` for
   // the conflict flags and for every write path — hiding a day must not make
   // a double-booking on it invisible to the day that is showing.
-  const visibleRows = useMemo(() => {
-    const hidden = new Set(hiddenTrackIds)
-    if (hidden.size === 0) return rows
-    // An unpinned row names no track, so it goes by the same role match that
-    // buckets it into a column (see bucketByTrack) — otherwise hiding Test
-    // Writing would leave its people showing under Writer's Class. Only roles
-    // that are *no* visible track's default count, so a shared default never
-    // hides someone the remaining column is still speaking for.
-    const claimed = new Set(tracks.filter((t) => !t.is_primary && !hidden.has(t.id))
-      .map((t) => t.default_role_id))
-    const hiddenRoles = new Set(tracks
-      .filter((t) => !t.is_primary && hidden.has(t.id) && t.default_role_id !== null)
-      .map((t) => t.default_role_id)
-      .filter((roleId) => !claimed.has(roleId)))
-    return rows.filter((row) => (row.shift === null
-      ? !hiddenRoles.has(row.role.id)
-      : !hidden.has(row.shift.track_id)))
-  }, [rows, tracks, hiddenTrackIds])
+  // Every row names its track, pinned or not, so both ask the same question:
+  // is this row's track on screen. An unpinned row used to be matched by
+  // *role* instead — a leftover from before assignments carried a track, and
+  // wrong as soon as two cosmetic tracks shared a default role, since neither
+  // could then claim a row over the other. Test Writing's people leaked onto
+  // the Writer's Class tab, and the board grew a second section for a track
+  // the tab had excluded.
+  //
+  // Asked through showsTrack rather than against a list of hidden ids: an
+  // event can carry a track the catalog no longer lists (an archived one
+  // pending delete), and a list of the others would let that one through.
+  const visibleRows = useMemo(
+    () => rows.filter((row) => showsTrack(row.shift ? row.shift.track_id : row.track.id)),
+    [rows, showsTrack],
+  )
 
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
