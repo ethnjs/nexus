@@ -87,7 +87,9 @@ import {
 } from '@/components/tournament/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/tournament/assignments/MemberCard'
 import { EventRow } from '@/components/tournament/assignments/EventRow'
-import { fullName, laneKeyOf, withOrderedShifts } from '@/lib/assignments/board'
+import {
+  fullName, laneKeyOf, withOrderedShifts, type BoardHandlers,
+} from '@/lib/assignments/board'
 
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
@@ -801,6 +803,19 @@ export default function AssignmentsPage() {
     })
   }
 
+  // Every write a row can start, in one object. Rebuilt per render like the
+  // functions it holds, so the rows' memoisation behaves exactly as it did
+  // when these were six separate props — what mattered there and still
+  // matters is that the *page* doesn't re-render mid-drag.
+  const boardHandlers: BoardHandlers = {
+    onResize: handleResize,
+    onResizeCommit: handleResizeCommit,
+    onToggleRole: handleToggleRole,
+    onPickRole: handlePickRole,
+    onRemove: handleRemove,
+    onPickDefaultRole: requestDefaultRoleChange,
+  }
+
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
 
@@ -1226,12 +1241,7 @@ export default function AssignmentsPage() {
                 display={eventDisplay}
                 activeTrackId={activeTrackId}
                 simple={simple}
-                onResize={handleResize}
-                onResizeCommit={handleResizeCommit}
-                onToggleRole={handleToggleRole}
-                onPickRole={handlePickRole}
-                onRemove={handleRemove}
-                onPickDefaultRole={requestDefaultRoleChange}
+                handlers={boardHandlers}
               />
             ))
           )}

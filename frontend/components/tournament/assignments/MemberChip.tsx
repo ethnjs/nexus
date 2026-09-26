@@ -10,9 +10,9 @@ import { RolePillMenu } from '@/components/tournament/assignments/RolePillMenu'
 import { IconWarning, IconX } from '@/components/ui/Icons'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { Assignment, Role } from '@/lib/api'
-import { fullName } from '@/lib/assignments/board'
+import { fullName, type ChipHandlers } from '@/lib/assignments/board'
 import type { Flag } from '@/lib/assignments/flags'
-import { laneFlags, type AssignmentRole, type Lane } from '@/lib/assignments/lanes'
+import { laneFlags, type Lane } from '@/lib/assignments/lanes'
 
 type DragListeners = ReturnType<typeof useDraggable>['listeners']
 
@@ -98,13 +98,7 @@ interface MemberChipProps {
   /** Every role the tournament offers, for the pill's picker. */
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  /** Adds or removes one role, leaving the rest — the multi-select path. */
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  /** Replaces every role this person holds here with the one picked — the
-   *  default path, since swapping a role is far commoner than stacking one. */
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  /** Drops the whole bar — every shift, every role. */
-  onRemove: (laneKey: string, eventId: number) => void
+  handlers: ChipHandlers
   /** Given, the chip grows its own resize edges — no separate handles. */
   onResizeStart?: (edge: 'start' | 'end', e: ReactPointerEvent) => void
   /** Which edge is mid-drag, so its grip stays lit once the cursor has
@@ -150,7 +144,7 @@ export function MemberChip(props: MemberChipProps) {
 }
 
 const MemberChipBody = memo(function MemberChipBody({
-  lane, eventId, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onResizeStart, resizingEdge, hovered,
+  lane, eventId, roleCatalog, flagsFor, handlers, onResizeStart, resizingEdge, hovered,
 }: MemberChipProps & { hovered: boolean }) {
   const assignment = lane.assignments[0]
   const roles = lane.roles
@@ -227,8 +221,8 @@ const MemberChipBody = memo(function MemberChipBody({
         <RolePillMenu
           roles={roles}
           roleCatalog={roleCatalog}
-          onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-          onPickRole={(role) => onPickRole(lane.key, eventId, role)}
+          onToggleRole={(role) => handlers.onToggleRole(lane.key, eventId, role)}
+          onPickRole={(role) => handlers.onPickRole(lane.key, eventId, role)}
         />
       </span>
       {flags.length > 0 && (
@@ -244,7 +238,7 @@ const MemberChipBody = memo(function MemberChipBody({
       <ChipAction
         hovered={hovered}
         danger
-        onClick={() => onRemove(lane.key, eventId)}
+        onClick={() => handlers.onRemove(lane.key, eventId)}
         title="Remove from this event"
         label={`Remove ${fullName(assignment.member)} from this event`}
       >

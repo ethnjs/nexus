@@ -8,10 +8,9 @@ import { TrackSections } from '@/components/tournament/assignments/TrackSections
 import type { EventDisplayState } from '@/components/tournament/assignments/EventDisplayModal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import type { Assignment, Role, TournamentEvent, TournamentTrack } from '@/lib/api'
-import { buildLanes } from '@/lib/assignments/board'
+import type { Assignment, Role, TournamentEvent } from '@/lib/api'
+import { buildLanes, type BoardHandlers } from '@/lib/assignments/board'
 import type { Flag } from '@/lib/assignments/flags'
-import type { AssignmentRole } from '@/lib/assignments/lanes'
 import { eventName } from '@/lib/eventDisplay'
 
 function divisionVariant(division: string | null) {
@@ -22,7 +21,7 @@ function divisionVariant(division: string | null) {
 
 export function EventRow({
   event, rowAssignments, roleCatalog, flagsFor, display, activeTrackId, simple,
-  onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, onPickDefaultRole,
+  handlers,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -39,16 +38,7 @@ export function EventRow({
    *  advanced tournament still gets the label — the ambiguity is real
    *  there, just not for this event. */
   simple: boolean
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-  /** A track's own header (multi-track events on the All tab) lets a TD
-   *  repoint its default role right there. Applying it — the track PATCH
-   *  plus migrating existing holders of the old default — is the page's job,
-   *  since only it holds every track's and every assignment's state. */
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+  handlers: BoardHandlers
 }) {
   // Two targets on a row with shifts: the event's own name means "every
   // shift", and each timeline column means that one.
@@ -150,9 +140,7 @@ export function EventRow({
                 eventId={event.id}
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
-                onToggleRole={onToggleRole}
-                onPickRole={onPickRole}
-                onRemove={onRemove}
+                handlers={handlers}
               />
             ))
           )}
@@ -165,13 +153,8 @@ export function EventRow({
           flagsFor={flagsFor}
           display={display}
           showTrackLabels={display.tracks && focusedTrackId === null}
-          onResize={onResize}
-          onResizeCommit={onResizeCommit}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
+          handlers={handlers}
           overAllShifts={overAllShifts}
-          onPickDefaultRole={onPickDefaultRole}
         />
       )}
     </div>
