@@ -147,7 +147,14 @@ export function Popover<T>({
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>
+      {/* display: flex so the trigger box is exactly as tall as the trigger
+          itself. As a plain block it held the trigger as *inline* content, so
+          its height came from a line box — and the strut of that line box is
+          sized from the ambient font (body's unitless line-height: 1.5 × the
+          inherited font-size, so 21px at 14px). A 19px pill inside a 21px
+          line box is baseline-aligned, which puts all 2px of the excess above
+          it, and anything centred against that box then sits ~1px low. */}
+      <div ref={triggerRef} onClick={() => setOpen((v) => !v)} style={{ display: "flex" }}>
         {typeof trigger === "function" ? trigger(open) : trigger}
       </div>
 
