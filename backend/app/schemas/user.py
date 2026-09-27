@@ -95,6 +95,7 @@ class AdminUserListResponse(AdminUserSlimResponse):
 class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
+    has_password: bool = False
 
 
 class TournamentMembershipAssignment(BaseModel):
