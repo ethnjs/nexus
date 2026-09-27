@@ -1,4 +1,6 @@
 import asyncio
+import logging
+
 import resend
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -129,9 +131,19 @@ def _cta_url(path: str, token: Optional[str] = None) -> str:
 
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
+logger = logging.getLogger(__name__)
+
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
     settings = get_settings()
+    # A blank key would be sent as "Bearer ", which httpx rejects. .env.example
+    # says blank means skip in dev.
+    if not settings.resend_api_key:
+        if settings.app_env == "production":
+            raise RuntimeError("RESEND_API_KEY must be set in production")
+        logger.warning("RESEND_API_KEY unset, skipping email to %s: %s", to, subject)
+        return
+
     resend.api_key = settings.resend_api_key
 
     params: resend.Emails.SendParams = {
