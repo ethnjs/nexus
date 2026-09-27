@@ -176,7 +176,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=is_prod or is_preview,
-        samesite="none" if (is_prod or is_preview) else "lax",
+        samesite="lax",
         max_age=COOKIE_MAX_AGE,
         path="/",
         domain=".socalscioly.org" if is_prod else None,
@@ -186,10 +186,13 @@ def set_auth_cookie(response: Response, token: str) -> None:
 def clear_auth_cookie(response: Response) -> None:
     settings = get_settings()
     is_prod = settings.app_env == "production"
+    is_preview = settings.app_env == "preview"
     response.delete_cookie(
         key=COOKIE_NAME,
         path="/",
         domain=".socalscioly.org" if is_prod else None,
+        samesite="lax",
+        secure=is_prod or is_preview,
     )
 
 
