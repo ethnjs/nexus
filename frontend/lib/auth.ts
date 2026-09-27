@@ -1,5 +1,20 @@
 
 
+const GOOGLE_AUTH_ERRORS: Record<string, string> = {
+    google_account_exists: "An account with this email already exists. Sign in with your password, then connect Google in Settings.",
+    google_account_inactive: "This account isn't active. Contact support if you think that's a mistake.",
+    google_failed: "Google sign-in didn't work. Please try again.",
+    google_cancelled: "Google sign-in was cancelled.",
+    google_unavailable: "Google sign-in isn't available right now.",
+    google_already_linked: "That Google account is already connected to a different NEXUS account.",
+    google_link_exists: "A Google account is already connected.",
+}
+
+export function googleAuthErrorMessage(code: string | null | undefined): string | null {
+    if (!code) return null
+    return GOOGLE_AUTH_ERRORS[code] ?? "Google sign-in didn't work. Please try again."
+}
+
 // A redirect target from a query param is untrusted input — only accept a
 // same-origin relative path (single leading '/', no protocol-relative "//"
 // trick, no embedded scheme) so it can't be used as an open redirect.

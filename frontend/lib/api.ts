@@ -266,6 +266,13 @@ export const authApi = {
   confirmAccountSetup: (token: string, password: string) =>
     api.post<AdminUserSlim>('/auth/account-setup/confirm/', { token, password }),
 
+  // Full navigation, not fetch — the backend answers with a redirect to Google.
+  googleStartUrl: (intent: 'login' | 'link', redirect?: string | null) => {
+    const params = new URLSearchParams({ intent })
+    if (redirect) params.set('redirect', redirect)
+    return `${API_BASE}/auth/oauth/google/start/?${params.toString()}`
+  },
+
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>('/auth/email/revert/', { token, new_password: newPassword }),
 }
