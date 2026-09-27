@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 from functools import lru_cache
 
+# Production startup refuses this value. See main.py.
+DEV_OAUTH_STATE_SECRET = "dev-oauth-state-secret-change-in-production"
+
 
 class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -26,6 +29,13 @@ class Settings(BaseSettings):
 
     resend_api_key: str = "" # set in .env file for dev or env vars in prod, never commit here
     frontend_url: str = "http://localhost:3000/" # remember to set to actual url in prod
+
+    # Web OAuth client for Google sign-in — not the service account above.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""
+    # Signs the oauth_state cookie. Production refuses the default.
+    oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
 
 
 @lru_cache()
