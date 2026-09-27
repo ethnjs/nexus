@@ -5,11 +5,14 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
+from starlette.middleware.sessions import SessionMiddleware
+
 from app.api.routes import (
     auth,
     events,
     forms,
     join,
+    oauth,
     season_event,
     sheets,
     universities,
@@ -36,12 +39,15 @@ from app.api.routes.tournament import setup_checklist as tournament_setup_checkl
 from app.api.routes.tournament import shifts as tournament_shifts
 from app.api.routes.tournament import tracks as tournament_tracks
 from app.api.routes.tournament import zones as tournament_zones
-from app.core.config import get_settings
+from app.core.config import DEV_OAUTH_STATE_SECRET, get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 
 settings = get_settings()
 DEV_DOCS = settings.app_env in ("development", "preview")
+
+if settings.app_env == "production" and settings.oauth_state_secret == DEV_OAUTH_STATE_SECRET:
+    raise RuntimeError("OAUTH_STATE_SECRET must be set in production")
 
 
 def _read_app_version() -> str:
@@ -103,6 +109,17 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# oauth_state cookie: signed handshake for the Google redirect only, not login.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.oauth_state_secret,
+    session_cookie="oauth_state",
+    max_age=600,
+    same_site="lax",
+    https_only=settings.app_env in ("production", "preview"),
+    path="/",
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -119,6 +136,7 @@ api_key_dependency = Depends(verify_api_key)
 # All routes require API key — including auth (login, logout, register).
 # In development with API_KEY unset, security.py skips the check automatically.
 app.include_router(auth.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(oauth.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(join.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(events.admin_router, prefix="", dependencies=[api_key_dependency])
