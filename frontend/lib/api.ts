@@ -1,5 +1,7 @@
-// In dev:  NEXT_PUBLIC_API_URL=http://localhost:8001 → hits backend directly
-// In prod: NEXT_PUBLIC_API_URL is unset → goes through /api/proxy → Next.js adds API key server-side
+// Always goes through /api/proxy (the Next.js route at app/api/proxy/[...path]/,
+// which attaches the API key server-side) — dev, preview, and prod all use this
+// same path. NEXT_PUBLIC_API_URL is an escape hatch, not a required env var: set
+// it only if you want the browser to call a backend directly, bypassing the proxy.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
