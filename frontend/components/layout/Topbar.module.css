@@ -98,3 +98,51 @@
     display: none;
   }
 }
+
+/*
+ * The collapsed page header's way back: a caret hanging off the bar's bottom
+ * edge, centred on the crumb it belongs to.
+ *
+ * Three-sided, with the open side facing the bar — it reads as a tab the bar
+ * is holding rather than as a button floating under it. Its side borders
+ * start where the bar's own bottom border ends, so the three lines meet
+ * rather than crossing, and the bar's own border runs unbroken behind it.
+ * The rule lives here because the bar is what you hover to reveal it;
+ * TopbarCrumb only wears the class.
+ */
+.crumbCaret {
+  position: absolute;
+  /* +1px for the bar's own bottom border. The crumb is stretched to the
+     bar's *content* box, which stops where that border starts, so a plain
+     100% parks the caret on the line and blanks it out behind the box. */
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  /* Invisible is not absent: at opacity 0 it would still swallow clicks
+     aimed at the page it is hanging over. */
+  pointer-events: none;
+  transition: opacity 150ms ease, color 120ms ease;
+}
+
+.topbar:hover .crumbCaret,
+.crumbCaret:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.crumbCaret:hover {
+  color: var(--color-text-primary);
+}

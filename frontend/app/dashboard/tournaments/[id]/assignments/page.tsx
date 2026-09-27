@@ -57,7 +57,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { TabStrip } from '@/components/ui/TabStrip'
+import { CollapsibleHeader } from '@/components/ui/CollapsibleHeader'
 import { Spinner } from '@/components/ui/Spinner'
 import {
   ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
@@ -222,7 +222,14 @@ export default function AssignmentsPage() {
     ? pickedTrackId
     : null
 
-  function pickTab(key: string) {
+  // Memoised: CollapsibleHeader re-registers the bar's copy whenever this
+  // identity changes, and a fresh array each render would do that per frame.
+  const headerTabs = useMemo(
+    () => [{ key: 'all', label: 'All' }, ...tracks.map((t) => ({ key: String(t.id), label: t.name }))],
+    [tracks],
+  )
+
+  const pickTab = useCallback((key: string) => {
     const next = key === 'all' ? null : Number(key)
     setPickedTrackId(next)
     // Merged, so an open ?member= panel survives the tab change.
@@ -231,7 +238,7 @@ export default function AssignmentsPage() {
     else params.set('track', String(next))
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }
+  }, [pathname, router])
 
   // Each tab keeps its own filters, columns and card fields, stored under its
   // own surface key ("assignments_events:track:3"). The whole config is read
@@ -1358,19 +1365,15 @@ export default function AssignmentsPage() {
     // No padding or max-width of its own: the shell's <main> already supplies
     // 22px/24px, and a centred max-width fought the docked panels for space.
     <div>
-      <PageHeader
+      {/* Tabs are hidden in simple mode: with one track, All is the only
+          tab there could be — so the header collapses to the title alone,
+          which is what the bar then shows. */}
+      <CollapsibleHeader
         heading="Assignments"
+        tabs={simple ? undefined : headerTabs}
+        activeKey={activeTrackId === null ? 'all' : String(activeTrackId)}
+        onChange={pickTab}
       />
-
-      {/* Hidden in simple mode: with one track, All is the only tab there
-          could be. */}
-      {!simple && (
-        <TabStrip
-          tabs={[{ key: 'all', label: 'All' }, ...tracks.map((t) => ({ key: String(t.id), label: t.name }))]}
-          activeKey={activeTrackId === null ? 'all' : String(activeTrackId)}
-          onChange={pickTab}
-        />
-      )}
 
       {loadError && (
         <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginBottom: '10px' }}>
