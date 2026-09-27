@@ -8,7 +8,18 @@ import pytest
 from authlib.integrations.base_client import OAuthError
 from authlib.integrations.starlette_client.apps import StarletteOAuth2App
 
+from app.core.auth import create_session
 from app.models.models import OAuthIdentity, OAuthProvider, User
+from tests.conftest import login
+
+
+@pytest.fixture
+def volunteer_no_password(db):
+    user = User(email="vol@test.com", first_name="Volunteer", last_name="NoPassword", role="user", status="active")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def _complete_profile(db, user: User) -> None:
@@ -96,6 +107,10 @@ class TestGoogleStart:
         res = _start(client)
         assert res.status_code == 302
         assert _location(res).endswith("/sign-in?error=google_unavailable")
+
+    def test_link_without_session_goes_to_sign_in(self, client, google_settings):
+        res = _start(client, intent="link")
+        assert _location(res).endswith("/sign-in?redirect=/settings/security")
 
 
 class TestGoogleCallback:
@@ -216,3 +231,103 @@ class TestGoogleCallback:
         assert "evil.example" not in _location(res)
         assert _location(res) == "http://localhost:3000/onboarding"
 
+
+class TestGoogleLink:
+    def test_links_a_different_email(self, client, db, td_user, google_settings, monkeypatch, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        _start(client, intent="link")
+        res = _callback(client, monkeypatch, {
+            "sub": "personal-sub",
+            "email": "personal@gmail.com",
+            "email_verified": True,
+        })
+        assert _location(res).endswith("/settings/security?linked=google")
+        db.refresh(td_user)
+        assert td_user.email == "td@test.com"
+        identity = db.query(OAuthIdentity).filter_by(user_id=td_user.id).one()
+        assert identity.email_at_provider == "personal@gmail.com"
+        assert mock_send_email.await_count == 1
+
+    def test_sub_already_linked_elsewhere(self, client, db, td_user, other_user, google_settings, monkeypatch):
+        db.add(OAuthIdentity(
+            user_id=other_user.id,
+            provider=OAuthProvider.google,
+            provider_account_id="taken-sub",
+            email_at_provider="other@test.com",
+        ))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        _start(client, intent="link")
+        res = _callback(client, monkeypatch, {
+            "sub": "taken-sub",
+            "email": "other@test.com",
+            "email_verified": True,
+        })
+        assert _location(res).endswith("/settings/security?error=google_already_linked")
+
+    def test_second_google_link_rejected(self, client, db, td_user, google_settings, monkeypatch):
+        db.add(OAuthIdentity(
+            user_id=td_user.id,
+            provider=OAuthProvider.google,
+            provider_account_id="first-sub",
+            email_at_provider="td@test.com",
+        ))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        _start(client, intent="link")
+        res = _callback(client, monkeypatch, {
+            "sub": "second-sub",
+            "email": "second@gmail.com",
+            "email_verified": True,
+        })
+        assert _location(res).endswith("/settings/security?error=google_link_exists")
+
+    def test_session_changed_between_start_and_callback(self, client, db, td_user, other_user, google_settings, monkeypatch):
+        login(client, "td@test.com", "tdpass")
+        _start(client, intent="link")
+        login(client, "other@test.com", "otherpass")
+        res = _callback(client, monkeypatch, {
+            "sub": "hijack-sub",
+            "email": "hijack@gmail.com",
+            "email_verified": True,
+        })
+        assert _location(res).endswith("/settings/security?error=google_failed")
+        assert db.query(OAuthIdentity).count() == 0
+
+
+class TestIdentities:
+    def test_list_and_unlink(self, client, db, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        db.add(OAuthIdentity(
+            user_id=td_user.id,
+            provider=OAuthProvider.google,
+            provider_account_id="list-sub",
+            email_at_provider="td@gmail.com",
+        ))
+        db.commit()
+
+        listed = client.get("/users/me/identities/")
+        assert listed.status_code == 200
+        body = listed.json()
+        assert body[0]["provider"] == "google"
+        assert body[0]["email_at_provider"] == "td@gmail.com"
+        assert "created_at" in body[0]
+
+        res = client.delete("/users/me/identities/google/")
+        assert res.status_code == 200
+        assert db.query(OAuthIdentity).count() == 0
+        assert mock_send_email.await_count == 1
+
+    def test_unlink_blocked_without_password(self, client, db, volunteer_no_password):
+        token = create_session(db, volunteer_no_password.id)
+        client.cookies.set("access_token", token)
+        db.add(OAuthIdentity(
+            user_id=volunteer_no_password.id,
+            provider=OAuthProvider.google,
+            provider_account_id="only-sub",
+            email_at_provider="vol@test.com",
+        ))
+        db.commit()
+        res = client.delete("/users/me/identities/google/")
+        assert res.status_code == 400
+        assert db.query(OAuthIdentity).count() == 1
