@@ -5,7 +5,6 @@ import { useDroppable } from '@dnd-kit/core'
 
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
 import { TrackSections } from '@/components/tournament/assignments/TrackSections'
-import type { EventDisplayState } from '@/components/tournament/assignments/EventDisplayModal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Assignment, Role, TournamentEvent } from '@/lib/api'
@@ -20,14 +19,13 @@ function divisionVariant(division: string | null) {
 }
 
 export function EventRow({
-  event, rowAssignments, roleCatalog, flagsFor, display, activeTrackId, simple,
+  event, rowAssignments, roleCatalog, flagsFor, activeTrackId, simple,
   selected, onOpen, handlers,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  display: EventDisplayState
   /** null on the All tab (and always, in simple mode). Set, every section
    *  drops its track name — the tab already said it — while keeping the
    *  role pill, time, location and staffing. */
@@ -129,10 +127,10 @@ export function EventRow({
         <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
           {eventName(event)}
         </span>
-        {display.division && event.division && (
+        {event.division && (
           <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
         )}
-        {display.type && event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
+        {event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
       </div>
 
       {trackless ? (
@@ -164,8 +162,7 @@ export function EventRow({
           rowAssignments={rowAssignments}
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
-          display={display}
-          showTrackLabels={display.tracks && focusedTrackId === null}
+          showTrackLabels={focusedTrackId === null}
           handlers={handlers}
         />
       )}

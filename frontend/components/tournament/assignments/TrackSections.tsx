@@ -3,7 +3,6 @@
 import { memo, useMemo } from 'react'
 
 import { TrackSection } from '@/components/tournament/assignments/TrackSection'
-import type { EventDisplayState } from '@/components/tournament/assignments/EventDisplayModal'
 import type {
   Assignment, Role, TournamentEvent, TournamentShift, TournamentTrack,
 } from '@/lib/api'
@@ -77,14 +76,13 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
  * state now — so every row but the one being rebuilt bails out here.
  */
 export const TrackSections = memo(function TrackSections({
-  event, rowAssignments, roleCatalog, flagsFor, display, showTrackLabels,
+  event, rowAssignments, roleCatalog, flagsFor, showTrackLabels,
   handlers,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  display: EventDisplayState
   showTrackLabels: boolean
   handlers: BoardHandlers
 }) {
@@ -142,7 +140,6 @@ export const TrackSections = memo(function TrackSections({
         rowAssignments={rowAssignments}
         roleCatalog={roleCatalog}
         flagsFor={flagsFor}
-        display={display}
         showLabel={showTrackLabels}
         handlers={handlers}
       />

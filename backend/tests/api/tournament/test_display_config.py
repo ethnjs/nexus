@@ -40,12 +40,13 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
-    # `columns`/`sections`/`filters`/`sort` come back as None: absent means
-    # "use the defaults", which is why they aren't empty lists.
+    # `columns`/`sections`/`filters`/`sort`/`sorts` come back as None: absent
+    # means "use the defaults", which is why they aren't empty lists.
     assert response.json() == {
         "unknown_surface": {
             "hidden": ["track:999", "not_a_real_namespace:x"],
-            "columns": None, "sections": None, "filters": None, "sort": None,
+            "columns": None, "sections": None, "filters": None,
+            "sort": None, "sorts": None,
         },
     }
 
@@ -63,7 +64,11 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200
     saved = {
-        surface: {**config, "columns": None, "sections": None, "filters": None, "sort": None}
+        surface: {
+            **config,
+            "columns": None, "sections": None, "filters": None,
+            "sort": None, "sorts": None,
+        }
         for surface, config in payload.items()
     }
     assert response.json() == saved
@@ -215,6 +220,51 @@ def test_put_assignments_events_rejects_foreign_column(client, td_user, td_tourn
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"assignments_events:all": {"hidden": [], "columns": ["category"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignments_events_saves_sort_chain(client, td_user, td_tournament):
+    """The board sorts by several keys at once, so it stores `sorts` (an
+    ordered chain) rather than the tables' single `sort`."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events:all": {"sorts": [
+            {"field": "staffing", "direction": "desc"},
+            {"field": "start", "direction": "asc"},
+        ]}},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["assignments_events:all"]["sorts"] == [
+        {"field": "staffing", "direction": "desc"},
+        {"field": "start", "direction": "asc"},
+    ]
+
+
+def test_put_assignments_events_rejects_unknown_sort_field(client, td_user, td_tournament):
+    """Every entry in the chain is checked, not just the first — a bad key
+    buried at position two would otherwise be stored and then silently ignored
+    by the client that reads it back."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events:all": {"sorts": [
+            {"field": "name", "direction": "asc"},
+            {"field": "shoe_size", "direction": "asc"},
+        ]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_events_table_rejects_board_only_sort_field(client, td_user, td_tournament):
+    """Staffing is a board sort: the table holds no assignments, so it has no
+    gap to sort by. Same separation as the columns and filters above."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"sort": {"field": "staffing", "direction": "desc"}}},
     )
     assert response.status_code == 422
 

@@ -50,6 +50,8 @@ import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
 import { Button } from '@/components/ui/Button'
 import { FilterButton } from '@/components/ui/FilterButton'
 import { DisplayButton } from '@/components/ui/DisplayButton'
+import { SortButton } from '@/components/ui/SortButton'
+import { SortModal } from '@/components/ui/SortModal'
 import { Card } from '@/components/ui/Card'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import table from '@/components/ui/Table.module.css'
@@ -80,10 +82,12 @@ import { useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
-  DEFAULT_EVENT_DISPLAY, EventDisplayModal, eventDisplayFromColumns,
-  eventDisplayToColumns, eventDisplayToHidden, sameEventDisplay,
-  type EventDisplayState,
-} from '@/components/tournament/assignments/EventDisplayModal'
+  DEFAULT_EVENT_SORT, EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK,
+  eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
+} from '@/lib/assignments/eventSort'
+import {
+  sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from '@/lib/sorting'
 import {
   DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
   memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
@@ -198,9 +202,9 @@ export default function AssignmentsPage() {
 
   const [eventQuery, setEventQuery] = useState('')
   const [eventFilters, setEventFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS))
-  const [eventDisplay, setEventDisplay] = useState<EventDisplayState>(DEFAULT_EVENT_DISPLAY)
+  const [eventSort, setEventSort] = useState<SortRule<EventSortField>[]>(DEFAULT_EVENT_SORT)
   const [showEventFilterModal, setShowEventFilterModal] = useState(false)
-  const [showEventDisplayModal, setShowEventDisplayModal] = useState(false)
+  const [showEventSortModal, setShowEventSortModal] = useState(false)
 
   const [memberQuery, setMemberQuery] = useState('')
   const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS))
@@ -279,7 +283,11 @@ export default function AssignmentsPage() {
     if (savedConfig === null) return
     const events = savedConfig[eventsSurface]
     setEventFilters(eventsFilterFromStored(events?.filters))
-    setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
+    // Absent means "never saved", which is the default chain — an empty
+    // *array* is a real state (somebody removed every rule) and stays empty.
+    setEventSort(events?.sorts
+      ? sortRulesFromStored(events.sorts, isEventSortField)
+      : DEFAULT_EVENT_SORT)
     const card = savedConfig[cardSurface]
     // Nothing saved for this tab yet: the tab decides what the belt narrows
     // to and which tracks the card carries, rather than every tab starting
@@ -308,12 +316,9 @@ export default function AssignmentsPage() {
     persistSurface(eventsSurface, { filters: eventsFilterToStored(next) })
   }, [persistSurface, eventsSurface])
 
-  const applyEventDisplay = useCallback((next: EventDisplayState) => {
-    setEventDisplay(next)
-    persistSurface(eventsSurface, {
-      columns: eventDisplayToColumns(next),
-      hidden: eventDisplayToHidden(next),
-    })
+  const applyEventSort = useCallback((next: SortRule<EventSortField>[]) => {
+    setEventSort(next)
+    persistSurface(eventsSurface, { sorts: sortRulesToStored(next) })
   }, [persistSurface, eventsSurface])
 
   const applyMemberFilters = useCallback((next: MembersFilterState) => {
@@ -382,16 +387,13 @@ export default function AssignmentsPage() {
   // alike: the timeline indexes bars by position in `shifts`, and a resize
   // slices that same array, so a handler working from the unfiltered event
   // while the row draws a filtered one would move the wrong bar.
-  // Whether a track is on screen: the tab decides on a track tab, the
-  // Display modal's hidden set on All. Asked per id rather than built as a
-  // list of hidden ones, because an event can carry a track the catalog no
-  // longer lists (an archived one pending delete) — listing the others would
-  // let that one through the tab.
-  const hiddenTracks = useMemo(() => new Set(eventDisplay.hiddenTracks), [eventDisplay.hiddenTracks])
-  const showsTrack = useCallback((id: number) => (activeTrackId === null
-    ? !hiddenTracks.has(id)
-    : id === activeTrackId
-  ), [activeTrackId, hiddenTracks])
+  // Whether a track is on screen. The tab is the whole answer now: it used
+  // to be the tab *plus* a per-viewer hidden set, which was two ways to say
+  // the same thing once every track had a tab of its own.
+  const showsTrack = useCallback(
+    (id: number) => activeTrackId === null || id === activeTrackId,
+    [activeTrackId],
+  )
 
   const boardEvents = useMemo(() => (events ?? []).map((event) => ({
     ...event,
@@ -432,7 +434,7 @@ export default function AssignmentsPage() {
   // Same rule for the cards: off-default is what the control reports, and on
   // a track tab the default already hides every other day's slices.
   const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults)
-  const eventDisplayActive = !sameEventDisplay(eventDisplay, DEFAULT_EVENT_DISPLAY)
+  const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT)
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
@@ -456,7 +458,7 @@ export default function AssignmentsPage() {
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
-    return (boardEvents ?? []).filter((event) => {
+    const matching = (boardEvents ?? []).filter((event) => {
       if (text && !eventName(event).toLowerCase().includes(text)) return false
       if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
       if (!filterAllows(eventFilters.type, event.event_type)) return false
@@ -477,7 +479,16 @@ export default function AssignmentsPage() {
       if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
       return true
     })
-  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
+    // Sorted after filtering, not before: the staffing key costs a pass over
+    // each event's assignments, and there is no reason to pay it for rows the
+    // filter is about to drop.
+    return sortRows(
+      matching,
+      eventSort,
+      (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
+      eventSortTiebreak,
+    )
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds, eventSort, showsTrack])
 
 
   // Members matching the filters, from the same server filter the members
@@ -1401,10 +1412,10 @@ export default function AssignmentsPage() {
               onOpen={() => setShowEventFilterModal(true)}
               onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
             />
-            <DisplayButton
-              active={eventDisplayActive}
-              onOpen={() => setShowEventDisplayModal(true)}
-              onReset={() => applyEventDisplay(DEFAULT_EVENT_DISPLAY)}
+            <SortButton
+              active={eventSortActive}
+              onOpen={() => setShowEventSortModal(true)}
+              onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
             />
           </div>
           <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
@@ -1444,7 +1455,6 @@ export default function AssignmentsPage() {
                 rowAssignments={byEvent.get(event.id) ?? []}
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
-                display={eventDisplay}
                 activeTrackId={activeTrackId}
                 simple={simple}
                 selected={event.id === focusedEventId}
@@ -1469,12 +1479,15 @@ export default function AssignmentsPage() {
           onClose={() => setShowEventFilterModal(false)}
         />
       )}
-      {showEventDisplayModal && (
-        <EventDisplayModal
-          display={eventDisplay}
-          tracks={activeTrackId === null ? tracks : []}
-          onApply={applyEventDisplay}
-          onClose={() => setShowEventDisplayModal(false)}
+      {showEventSortModal && (
+        <SortModal
+          title="Sort events"
+          fields={EVENT_SORT_OPTIONS}
+          rules={eventSort}
+          defaults={DEFAULT_EVENT_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => applyEventSort(next as SortRule<EventSortField>[])}
+          onClose={() => setShowEventSortModal(false)}
         />
       )}
       {/* No `options` — the roster's own modal fetches the real tournament's

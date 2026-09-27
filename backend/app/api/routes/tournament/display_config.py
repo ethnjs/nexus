@@ -125,16 +125,18 @@ def update_display_config(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Unknown filter '{key}'",
                 )
-        if config.sort:
-            if config.sort.field not in known_sort_fields(surface):
+        # Both shapes, same vocabulary: `sort` is one key, `sorts` an
+        # ordered chain of them. A surface stores whichever suits it.
+        for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
+            if rule.field not in known_sort_fields(surface):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Unknown sort field '{config.sort.field}'",
+                    detail=f"Unknown sort field '{rule.field}'",
                 )
-            if config.sort.direction not in KNOWN_SORT_DIRECTIONS:
+            if rule.direction not in KNOWN_SORT_DIRECTIONS:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Unknown sort direction '{config.sort.direction}'",
+                    detail=f"Unknown sort direction '{rule.direction}'",
                 )
         seen_sections: set[str] = set()
         for section in config.sections or []:
