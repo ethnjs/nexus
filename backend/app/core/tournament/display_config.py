@@ -232,6 +232,28 @@ KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
     "division", "type", "category", "track", "staffing",
 })
 
+# The board sorts by more than the events table does, for the same reason its
+# filters do: it holds the assignments, so "who still needs people" is a
+# question it can answer and the table cannot. `start` is the first shift on
+# the tab's track rather than a column on the event -- an event has no time of
+# its own, only the shifts under it.
+#
+# Unlike the table's, this surface stores a *list* of these (see `sorts` on
+# DisplayConfigSurface): a board sorted by staffing alone puts a hundred fully
+# staffed events in arbitrary order, so the second key is the one doing the
+# reading.
+#
+# No "division": within one tournament a division is part of an event's
+# identity, not a facet of it -- Crime Busters B and Crime Busters C are two
+# events - so the board sorts them by name with the division on the end, and a
+# separate key could only scatter one event's divisions apart. The events
+# table keeps its own, where Division is a column of its own.
+# "location" is one key, not building/floor/room: the board prints the three
+# as one label ("Kerckhoff 101") and a walking order is that label's order.
+KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
+    "name", "category", "start", "staffing", "location",
+})
+
 # ---------------------------------------------------------------------------
 # Assignments board — member belt card
 #
@@ -445,6 +467,8 @@ def known_sort_fields(surface: str) -> frozenset[str]:
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_SORT_FIELDS
+    if surface == ASSIGNMENTS_EVENTS:
+        return KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS
     return frozenset()
 
 

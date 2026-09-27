@@ -585,3 +585,16 @@ export function IconSchool({ size = 18, ...props }: IconProps) {
     </svg>
   );
 }
+
+// Sort: two bars of different lengths over an arrow — the "order these" mark,
+// distinct from IconFilter's funnel (which narrows) and the chevrons (which
+// open things).
+export function IconSort({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M2.5 4.5h7M2.5 8h4.5M2.5 11.5h2.5" />
+      <path d="M11.5 4v8M9.5 10l2 2 2-2" />
+    </svg>
+  )
+}

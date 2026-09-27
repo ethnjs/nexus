@@ -15,9 +15,10 @@ import type {
 import type { Flag } from '@/lib/assignments/flags'
 import type { Lane } from '@/lib/assignments/lanes'
 import type { BoardHandlers } from '@/lib/assignments/board'
+import { staffedCount } from '@/lib/assignments/staffing'
+import { trackLocationLabel } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
 
-import type { EventDisplayState } from '@/components/tournament/assignments/EventDisplayModal'
 
 function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -30,18 +31,6 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
       {children}
     </span>
   )
-}
-
-/** How many distinct members hold one role on one track — never a row count.
- *  A member spanning morning and afternoon shifts on the same track is two
- *  assignment rows (one per shift) but one person, so counting rows would
- *  make splitting a shift in two look like hiring somebody new. */
-function staffedCount(rowAssignments: readonly Assignment[], roleId: number, trackId: number): number {
-  const members = new Set<number | null>()
-  for (const a of rowAssignments) {
-    if (a.role.id === roleId && a.track.id === trackId) members.add(a.member.membership_id)
-  }
-  return members.size
 }
 
 /** One role's progress toward one track's need for it. Full role name and a
@@ -113,7 +102,7 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
  */
 export function TrackSection({
   event, track, shifts, pinnedLanes, unpinnedLanes, rowAssignments, roleCatalog, flagsFor,
-  display, showLabel,
+  showLabel,
   handlers,
 }: {
   event: TournamentEvent
@@ -127,7 +116,6 @@ export function TrackSection({
   rowAssignments: Assignment[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
-  display: EventDisplayState
   /** False on a track tab and in simple mode — the tab already names the
    *  track, so the pill, time, location and staffing stand on their own. */
   showLabel: boolean
@@ -143,12 +131,7 @@ export function TrackSection({
   })
 
   const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
-  // Building and room only. The floor is stored and edited per track, but a
-  // room number already implies it to anyone reading the board, and spelling
-  // it out made the commonest line on the row a third longer.
-  const location = detail?.building_name
-    ? [detail.building_name, detail.rooms.join(', ')].filter(Boolean).join(' ')
-    : null
+  const location = trackLocationLabel(detail)
   // The track's window: its first shift's start to its last one's end.
   // Derived, not stored — an event has no times of its own, only the union of
   // the shifts on it (see TournamentEvent in models.py).
@@ -196,12 +179,8 @@ export function TrackSection({
           roleCatalog={roleCatalog}
           onPickDefaultRole={handlers.onPickDefaultRole}
         />
-        {display.time && span && (
-          <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
-        )}
-        {display.room && location && (
-          <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
-        )}
+        {span && <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>}
+        {location && <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>}
       </div>
 
       {/* Across, not down: a track wants a handful of roles at most, and a

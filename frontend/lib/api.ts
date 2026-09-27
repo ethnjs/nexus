@@ -2347,6 +2347,10 @@ export interface DisplayConfigSurface {
   filters?: Record<string, string[]> | null
   // Either table: the viewer's sort. null means the page's own default.
   sort?: DisplayConfigSort | null
+  // Surfaces that sort by more than one key, in precedence order — the first
+  // sorts, the rest break its ties. Separate from `sort` so the single-sort
+  // tables keep reading exactly what they wrote.
+  sorts?: DisplayConfigSort[] | null
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>
