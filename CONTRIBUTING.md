@@ -37,6 +37,16 @@ Email (sign-in and sign-up codes, password reset, invites) is sent through Resen
 
 Add dependencies with `uv add <pkg>`, or `uv add --dev <pkg>` for dev-only tools. Commit `pyproject.toml` and `uv.lock` together, and never edit either one's versions by hand.
 
+### Google sign-in (optional)
+
+Leave the `GOOGLE_OAUTH_*` variables blank and the button reports that Google sign-in isn't available. To try it, create a Web-application OAuth client (scopes `openid email profile`) and register:
+
+- `http://localhost:8001/auth/oauth/google/callback/` (dev, browser talks to the backend directly)
+- `http://localhost:3000/api/proxy/auth/oauth/google/callback` (dev, once local traffic goes through the proxy)
+- `https://nexus.socalscioly.org/api/proxy/auth/oauth/google/callback`
+
+Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (the URI this environment actually uses), and `OAUTH_STATE_SECRET` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Production refuses to start on the dev default secret.
+
 ### 3. Frontend
 
 From `frontend/`:
