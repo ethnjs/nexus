@@ -217,11 +217,13 @@ def get_me(
         )
         response = UserMeFullResponse.model_validate(user, from_attributes=True)
         response.missing_profile_fields = compute_missing_profile_fields(user)
+        response.has_password = user.hashed_password is not None
         return response
 
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
     response.is_onboarding_complete = is_onboarding_complete(current_user, db=db)
+    response.has_password = current_user.hashed_password is not None
     return response
 
 
@@ -247,6 +249,7 @@ def update_user_me(
 
     response = UserMeFullResponse.model_validate(user, from_attributes=True)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
+    response.has_password = user.hashed_password is not None
     return response
 
 
