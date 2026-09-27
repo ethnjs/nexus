@@ -76,8 +76,16 @@ interface DropdownProps {
   minWidth?:    number
   /** Fixed width of the trigger (and panel) in px, e.g. for a dropdown that sits in a fixed-width toolbar slot. */
   width?:       number
-  // primary -- var(--color-bg); secondary (default) -- var(--color-surface).
-  variant?:     'primary' | 'secondary'
+  /** Trigger is exactly as wide as its own label, so the chevron sits against
+   *  the text instead of at the far edge of a fixed box. For a dropdown that
+   *  reads as part of a sentence rather than as a form field. The panel still
+   *  opens at its own natural width. */
+  fitContent?:  boolean
+  // primary -- var(--color-bg); secondary -- var(--color-surface);
+  // transparent -- no fill and no border until hovered or open, for a trigger
+  // that sits inside other chrome (the Topbar's page crumb) where a boxed
+  // control would read as a second switcher.
+  variant?:     'primary' | 'secondary' | 'transparent'
   id?:          string
   /** Message shown in the panel when there are no options. */
   emptyMessage?: string
@@ -100,9 +108,10 @@ const SIZE_MAP: Record<'sm' | 'md', { height: number; triggerFontSize: string; o
   md: { height: 36, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '14px' },
 }
 
-const BACKGROUND_MAP: Record<'primary' | 'secondary', string> = {
-  primary:   'var(--color-bg)',
-  secondary: 'var(--color-surface)',
+const BACKGROUND_MAP: Record<'primary' | 'secondary' | 'transparent', string> = {
+  primary:     'var(--color-bg)',
+  secondary:   'var(--color-surface)',
+  transparent: 'transparent',
 }
 
 // ─── Panel position type ──────────────────────────────────────────────────────
@@ -126,6 +135,7 @@ export function Dropdown({
   size = 'md',
   minWidth,
   width,
+  fitContent = false,
   variant = 'primary',
   id,
   emptyMessage,
@@ -138,6 +148,7 @@ export function Dropdown({
   const triggerId                 = id ?? generatedId
   const [open, setOpen]           = useState(false)
   const [focused, setFocused]     = useState(false)
+  const [hovered, setHovered]     = useState(false)
   const [activeIdx, setActiveIdx] = useState<number>(-1)
   const [panelPos, setPanelPos]   = useState<PanelPos | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -293,6 +304,11 @@ export function Dropdown({
   const borderColor = error ? 'var(--color-danger)' : focused && !open
     ? 'var(--color-border-strong)'
     : 'var(--color-border)'
+  // A transparent trigger shows its edges only once it is being used —
+  // hovered, focused or open. The border is still *there* the rest of the
+  // time, in the surface colour, so nothing shifts when it appears.
+  const showsEdges = !!error || focused || open || hovered
+  const transparent = variant === 'transparent'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: fullWidth ? '100%' : undefined }}>
@@ -324,6 +340,8 @@ export function Dropdown({
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
           style={{
             display:        'flex',
             alignItems:     'center',
@@ -332,19 +350,22 @@ export function Dropdown({
             width:          fullWidth ? '100%' : width ? `${width}px` : undefined,
             minWidth:       minWidth ? `${minWidth}px` : undefined,
             height:         `${sizing.height}px`,
-            padding:        '0 10px',
+            // A fitted trigger is sized by its label, so it must not also
+            // stretch the gap between label and chevron to fill a box.
+            ...(fitContent ? { justifyContent: 'flex-start', gap: '4px' } : null),
+            padding:        fitContent ? '0 6px' : '0 10px',
             fontFamily:     'var(--font-sans)',
             fontSize:       sizing.triggerFontSize,
             fontWeight:     500,
             color:          selected ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-            background:     triggerBg,
-            border:         `1px solid ${borderColor}`,
+            background:     transparent && !showsEdges ? 'transparent' : triggerBg,
+            border:         `1px solid ${transparent && !showsEdges ? 'transparent' : borderColor}`,
             borderRadius:   'var(--radius-md)',
             cursor:         locked ? 'not-allowed' : 'pointer',
             opacity:        locked ? 0.6 : 1,
             outline:        'none',
             textAlign:      'left',
-            transition:     'border-color 150ms ease',
+            transition:     'border-color 150ms ease, background 150ms ease',
             boxSizing:      'border-box',
           }}
         >
