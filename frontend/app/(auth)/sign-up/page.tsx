@@ -5,6 +5,7 @@ import { Suspense, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath } from "@/lib/auth";
@@ -73,6 +74,22 @@ function SignUpContent() {
             title="Create your account"
             subtitle="Volunteer at tournaments, or run your own."
           />
+          <GoogleSignInButton href={authApi.googleStartUrl("login", redirect)} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              margin: "20px 0",
+              color: "var(--color-text-tertiary)",
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+            }}
+          >
+            <span style={{ flex: 1, height: "1px", background: "var(--color-border)" }} />
+            or
+            <span style={{ flex: 1, height: "1px", background: "var(--color-border)" }} />
+          </div>
           <CredentialsForm
             email={email}
             onEmailChange={setEmail}
