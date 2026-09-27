@@ -175,10 +175,21 @@ export default function SecuritySettingsPage() {
             <a
               href={authApi.googleStartUrl("link")}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "36px",
+                padding: "0 16px",
+                boxSizing: "border-box",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                color: "var(--color-text-primary)",
                 fontFamily: "var(--font-sans)",
                 fontSize: "14px",
                 fontWeight: 600,
-                color: "var(--color-text-primary)",
+                letterSpacing: "0.01em",
+                textDecoration: "none",
               }}
             >
               Connect
