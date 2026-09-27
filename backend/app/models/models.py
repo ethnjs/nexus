@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models."""
 
+import enum
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, NamedTuple
 from zoneinfo import ZoneInfo
@@ -11,6 +12,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Enum,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -200,7 +202,7 @@ class User(Base):
     # Auth fields
     hashed_password: Mapped[str | None] = mapped_column(
         String(255)
-    )  # null = cannot log in, must reset password and verify via email
+    )  # null = no password; sign-in is still possible via a linked oauth identity
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[str] = mapped_column(String(32), default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
@@ -279,6 +281,38 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    oauth_identities: Mapped[list["OAuthIdentity"]] = relationship(
+        "OAuthIdentity", back_populates="user", passive_deletes=True
+    )
+
+
+class OAuthProvider(str, enum.Enum):
+    google = "google"
+
+
+class OAuthIdentity(Base):
+    """One external login per provider. Keyed on the provider's stable account
+    id (`sub` for Google), never on email — the provider email is only a label."""
+
+    __tablename__ = "oauth_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[OAuthProvider] = mapped_column(
+        Enum(OAuthProvider, name="oauth_provider", values_callable=lambda e: [m.value for m in e])
+    )
+    provider_account_id: Mapped[str] = mapped_column(String(255))
+    email_at_provider: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship("User", back_populates="oauth_identities")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "provider_account_id", name="uq_oauth_identity_provider_account"
+        ),
+        UniqueConstraint("provider", "user_id", name="uq_oauth_identity_provider_user"),
     )
 
 
