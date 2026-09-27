@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { authApi, ApiError } from "@/lib/api";
-import { checkPassword, validatePassword, PasswordChecks } from "@/lib/auth";
+import { authApi, usersApi, ApiError, OAuthIdentity } from "@/lib/api";
+import { checkPassword, validatePassword, PasswordChecks, googleAuthErrorMessage } from "@/lib/auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
@@ -29,11 +29,75 @@ export default function SecuritySettingsPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [passwordJustSet, setPasswordJustSet] = useState(false);
+  const hasPassword = passwordJustSet || (currentUser?.has_password ?? true);
+  const [googleIdentity, setGoogleIdentity] = useState<OAuthIdentity | null>(null);
+  const [identitiesLoading, setIdentitiesLoading] = useState(true);
+  const [unlinking, setUnlinking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [noticeError, setNoticeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
     if (!currentUser) router.replace("/");
   }, [authLoading, currentUser, router]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("linked") === "google") setNotice("Google is connected.");
+    const err = googleAuthErrorMessage(params.get("error"));
+    if (err) setNoticeError(err);
+  }, []);
+
+  useEffect(() => {
+    usersApi.identities()
+      .then((rows) => setGoogleIdentity(rows.find((row) => row.provider === "google") ?? null))
+      .catch(() => {})
+      .finally(() => setIdentitiesLoading(false));
+  }, []);
+
+  async function handleUnlink() {
+    setUnlinking(true);
+    setNotice(null);
+    setNoticeError(null);
+    try {
+      await usersApi.unlinkGoogle();
+      setGoogleIdentity(null);
+      setNotice("Google was disconnected.");
+    } catch (error: unknown) {
+      setNoticeError(error instanceof ApiError ? error.message : "Something went wrong. Try again.");
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSuccess(false);
+    setErrors({});
+    const passwordErr = validatePassword(newPassword);
+    if (passwordErr) {
+      setErrors((er) => ({ ...er, new_password: passwordErr }));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrors((er) => ({ ...er, confirm_password: "Passwords don't match." }));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await authApi.setPassword(newPassword);
+      setNewPassword("");
+      setConfirmPassword("");
+      setChecks(EMPTY_CHECKS);
+      setPasswordJustSet(true);
+      setSuccess(true);
+    } catch (error: unknown) {
+      setErrors((er) => ({ ...er, form: error instanceof ApiError ? error.message : "Something went wrong. Try again." }));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,7 +142,104 @@ export default function SecuritySettingsPage() {
     <div>
       <PageHeader heading="Security" />
 
+      {(notice || noticeError) && (
+        <div style={{ marginBottom: "16px" }}>
+          <Banner variant={noticeError ? "error" : "success"} message={noticeError ?? notice ?? ""} />
+        </div>
+      )}
+
+      <SettingsSection title="Connected accounts">
+        <SettingsRow
+          label="Google"
+          helper={googleIdentity?.email_at_provider ?? "Sign in with Google as well as your password."}
+          last
+        >
+          {identitiesLoading ? null : googleIdentity ? (
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={unlinking}
+                disabled={!hasPassword}
+                onClick={handleUnlink}
+              >
+                Disconnect
+              </Button>
+              {!hasPassword && (
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: "8px 0 0" }}>
+                  Set a password before disconnecting Google, or you won&rsquo;t be able to sign in.
+                </p>
+              )}
+            </div>
+          ) : (
+            <a
+              href={authApi.googleStartUrl("link")}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "var(--color-text-primary)",
+              }}
+            >
+              Connect
+            </a>
+          )}
+        </SettingsRow>
+      </SettingsSection>
+
       <SettingsSection title="Password">
+        {!hasPassword ? (
+          <form onSubmit={handleSetPassword}>
+            <SettingsRow label="New password">
+              <Input
+                fullWidth
+                font="sans"
+                type="password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  setChecks(checkPassword(e.target.value, confirmPassword));
+                  setErrors((er) => ({ ...er, new_password: undefined }));
+                }}
+                autoComplete="new-password"
+                error={errors.new_password}
+              />
+            </SettingsRow>
+            <SettingsRow label="Confirm new password" last>
+              <Input
+                fullWidth
+                font="sans"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setChecks(checkPassword(newPassword, e.target.value));
+                  setErrors((er) => ({ ...er, confirm_password: undefined }));
+                }}
+                autoComplete="new-password"
+                error={errors.confirm_password}
+              />
+            </SettingsRow>
+            {newPassword && (
+              <div style={{ margin: "20px 0" }}>
+                <PasswordChecklist checks={checks} />
+              </div>
+            )}
+            {success && (
+              <div style={{ marginBottom: "16px" }}>
+                <Banner variant="success" message="Your password has been set." />
+              </div>
+            )}
+            {errors.form && (
+              <div style={{ marginBottom: "16px" }}>
+                <Banner variant="error" message={errors.form} />
+              </div>
+            )}
+            <Button type="submit" variant="primary" loading={submitting} style={{ marginBottom: "20px" }}>
+              Set password
+            </Button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit}>
           <SettingsRow label="Current password">
             <Input
@@ -146,6 +307,7 @@ export default function SecuritySettingsPage() {
             Update password
           </Button>
         </form>
+        )}
       </SettingsSection>
 
       <SettingsSection title="Sessions">

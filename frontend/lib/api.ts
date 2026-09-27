@@ -179,6 +179,7 @@ export interface AdminUserSlim extends UserSlim {
 export interface UserMeSlim extends AdminUserSlim {
   is_profile_complete:    boolean
   is_onboarding_complete: boolean
+  has_password:           boolean
 }
 
 // Matches UserFullResponse — slim + profile fields. No account-internal
@@ -266,6 +267,9 @@ export const authApi = {
   confirmAccountSetup: (token: string, password: string) =>
     api.post<AdminUserSlim>('/auth/account-setup/confirm/', { token, password }),
 
+  setPassword: (newPassword: string) =>
+    api.post<void>('/auth/password/set/', { new_password: newPassword }),
+
   // Full navigation, not fetch — the backend answers with a redirect to Google.
   googleStartUrl: (intent: 'login' | 'link', redirect?: string | null) => {
     const params = new URLSearchParams({ intent })
@@ -289,9 +293,17 @@ export interface UserSession {
   is_current:      boolean
 }
 
+export interface OAuthIdentity {
+  provider:           string
+  email_at_provider:  string | null
+  created_at:         string
+}
+
 export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
   me:       ()                          => api.get<UserMeSlim>('/users/me/'),
+  identities: ()                        => api.get<OAuthIdentity[]>('/users/me/identities/'),
+  unlinkGoogle: ()                      => api.delete<void>('/users/me/identities/google/'),
   // GET /users/me/?full=true — matches UserMeFullResponse
   meFull:   ()                          => api.get<UserMeFull>('/users/me/?full=true'),
   // PATCH /users/me/ — matches UserMeFullResponse
