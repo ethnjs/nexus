@@ -46,6 +46,5 @@ jobs:
         env:
           APP_ENV: test
           API_KEY: ""
-          JWT_SECRET: test-secret
           TEST_DATABASE_URL: postgresql://nexus:nexus@127.0.0.1:5432/nexus_test
         run: pytest
