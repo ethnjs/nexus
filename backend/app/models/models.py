@@ -5,10 +5,11 @@ NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
 with SQLAlchemy 2.0.36 + Python 3.13.
 """
 
+import enum
 from datetime import date, datetime, timedelta, timezone
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
-    Integer, String, Text, Boolean, Date, DateTime, JSON,
+    Integer, String, Text, Boolean, Date, DateTime, JSON, Enum,
     ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint,
     Column, event, Index, text,
 )
@@ -176,7 +177,7 @@ class User(Base):
     pronouns = Column(String(100), nullable=True)
 
     # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
+    hashed_password = Column(String(255), nullable=True)   # null = no password; sign-in is still possible via a linked oauth identity
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
@@ -231,6 +232,38 @@ class User(Base):
     join_codes = relationship("JoinCode", back_populates="creator")
     created_forms = relationship("Form", back_populates="creator")
     form_responses = relationship("FormResponse", back_populates="user")
+    oauth_identities = relationship(
+        "OAuthIdentity", back_populates="user", passive_deletes=True
+    )
+
+
+class OAuthProvider(str, enum.Enum):
+    google = "google"
+
+
+class OAuthIdentity(Base):
+    """One external login per provider. Keyed on the provider's stable account
+    id (`sub` for Google), never on email — the provider email is only a label."""
+
+    __tablename__ = "oauth_identities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(
+        Enum(OAuthProvider, name="oauth_provider", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
+    provider_account_id = Column(String(255), nullable=False)
+    email_at_provider = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    user = relationship("User", back_populates="oauth_identities")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_account_id", name="uq_oauth_identity_provider_account"),
+        UniqueConstraint("provider", "user_id", name="uq_oauth_identity_provider_user"),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Competition Experience
