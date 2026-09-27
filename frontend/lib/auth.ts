@@ -11,7 +11,7 @@ const GOOGLE_AUTH_ERRORS: Record<string, string> = {
 };
 
 export function googleAuthErrorMessage(code: string | null | undefined): string | null {
-  if (!code) return null;
+  if (!code?.startsWith("google_")) return null;
   return GOOGLE_AUTH_ERRORS[code] ?? "Google sign-in didn't work. Please try again.";
 }
 
