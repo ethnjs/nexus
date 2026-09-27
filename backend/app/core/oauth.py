@@ -31,6 +31,12 @@ class AccountInactive(Exception):
     """The matched account is not status='active'."""
 
 
+class GoogleLinkError(Exception):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
 def is_google_configured() -> bool:
     settings = get_settings()
     return bool(
@@ -147,6 +153,38 @@ def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
         raise
     db.refresh(user)
     return user, True
+
+
+def link_google_identity(db: Session, user: User, claims: dict) -> OAuthIdentity:
+    """Attach this Google account to an already-signed-in user. No email match."""
+    email, sub = _email_and_sub(claims)
+    existing = _find_identity(db, sub)
+    if existing is not None:
+        code = "google_link_exists" if existing.user_id == user.id else "google_already_linked"
+        raise GoogleLinkError(code)
+
+    owned = (
+        db.query(OAuthIdentity)
+        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google)
+        .first()
+    )
+    if owned is not None:
+        raise GoogleLinkError("google_link_exists")
+
+    row = OAuthIdentity(
+        user_id=user.id,
+        provider=OAuthProvider.google,
+        provider_account_id=sub,
+        email_at_provider=email,
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise GoogleLinkError("google_already_linked")
+    db.refresh(row)
+    return row
 
 
 def with_redirect(path: str, redirect: str | None) -> str:

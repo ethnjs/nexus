@@ -38,6 +38,8 @@ async def _render_all() -> list[Sent]:
         await email_service.send_email_change_email(NEW, TOKEN)
         await email_service.send_email_change_requested_notice(OLD, NEW, TOKEN)
         await email_service.send_password_reset_email(TO, TOKEN)
+        await email_service.send_identity_linked_notice(TO, NEW)
+        await email_service.send_identity_unlinked_notice(TO, NEW)
         await email_service.send_password_changed_notice(TO)
         await email_service.send_account_setup_email(TO, TOKEN)
         await email_service.send_staff_invite_email(TO, TOURNAMENT, join_url)
