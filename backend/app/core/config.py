@@ -21,9 +21,6 @@ class Settings(BaseSettings):
 
     api_key: str = ""  # For direct API access / Swagger only
 
-    # Must be set to a long random string in production
-    jwt_secret: str = "dev-secret-change-in-production"
-
     resend_api_key: str = "" # set in .env file for dev or env vars in prod, never commit here
     frontend_url: str = "http://localhost:3000/" # remember to set to actual url in prod
 
