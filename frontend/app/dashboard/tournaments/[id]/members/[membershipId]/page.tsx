@@ -18,7 +18,7 @@ import { MemberSections } from "@/components/tournament/sections/MemberSections"
 import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
-import { ALL_TRACKS_LOCKED_REASON } from "@/lib/responseLock";
+import { ALL_TRACKS_LOCKED_REASON, NO_TRACKS_ANSWERED_REASON } from "@/lib/responseLock";
 
 /**
  * One member's whole record for this tournament.
@@ -132,12 +132,17 @@ export default function MemberPage() {
   // a member on their own page still can't hand themselves a role.
   const rolesLocked = !canManageMembers || !canEditMember(full);
 
-  // The edit page would open onto nothing but "Editing is closed" cards, so
-  // the button says so here instead. One open track is enough to leave it
-  // working — the edit page shows the rest as locked in place.
+  // The edit page would open onto nothing but placeholder cards, so the
+  // button says why here instead. One writable track — answered and unlocked
+  // — is enough to leave it working; the edit page explains the rest in place.
   const liveTracks = (full.track_statuses ?? []).filter((track) => !track.is_archived);
   const allTracksLocked = liveTracks.length > 0 && liveTracks.every((track) => track.lock_responses);
-  const editLockedReason = isArchived ? ARCHIVED_REASON : allTracksLocked ? ALL_TRACKS_LOCKED_REASON : undefined;
+  const noneWritable = liveTracks.length > 0
+    && !liveTracks.some((track) => !track.lock_responses && track.status !== "pending");
+  const editLockedReason = isArchived ? ARCHIVED_REASON
+    : allTracksLocked ? ALL_TRACKS_LOCKED_REASON
+    : noneWritable ? NO_TRACKS_ANSWERED_REASON
+    : undefined;
 
   return (
     // Same 900px column /profile/[id] reads in: it's the same kind of page —

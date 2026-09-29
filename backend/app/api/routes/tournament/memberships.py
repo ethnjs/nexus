@@ -26,7 +26,7 @@ from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
 )
 from app.core.tournament.roles import validate_member_target
-from app.core.tournament.tracks import require_track_unlocked
+from app.core.tournament.tracks import require_track_answered, require_track_unlocked
 from app.db.session import get_db
 from app.core.form.member_options import member_editable_reserved_fields, member_track_options
 from app.core.form.validation import (
@@ -510,6 +510,7 @@ def update_my_availability(
     m = _my_membership(db, tournament_id, current_user)
     track = _live_track(db, tournament_id, track_id)
     require_track_unlocked(track)
+    require_track_answered(db, m.id, track)
 
     owned_shift_ids = shift_ids_on_tracks(db, tournament_id, {track_id})
     unknown = set(payload.shift_ids) - owned_shift_ids
@@ -545,7 +546,9 @@ def update_my_lunch(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     m = _my_membership(db, tournament_id, current_user)
-    require_track_unlocked(_live_track(db, tournament_id, track_id))
+    track = _live_track(db, tournament_id, track_id)
+    require_track_unlocked(track)
+    require_track_answered(db, m.id, track)
 
     field = next(
         (
@@ -613,7 +616,9 @@ def update_my_event_preferences(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     m = _my_membership(db, tournament_id, current_user)
-    require_track_unlocked(_live_track(db, tournament_id, track_id))
+    track = _live_track(db, tournament_id, track_id)
+    require_track_unlocked(track)
+    require_track_answered(db, m.id, track)
 
     field = next(
         (
@@ -709,7 +714,9 @@ def update_my_event_preferences(
 # mistaken opt-out would be a one-way door.
 #
 # All of which is moot on a locked track: `lock_responses` closes this route
-# entirely, declining included. See require_track_unlocked.
+# entirely, declining included. See require_track_unlocked. And none of it
+# applies before the member's first answer, which only a form can give — see
+# require_track_answered.
 # ---------------------------------------------------------------------------
 @router.put("/me/track-statuses/{track_id}/", response_model=MembershipTrackStatusRead)
 def update_my_track_status(
@@ -728,6 +735,7 @@ def update_my_track_status(
 
     track = _live_track(db, tournament_id, track_id)
     require_track_unlocked(track)
+    require_track_answered(db, m.id, track)
     _set_track_status(db, m.id, track, payload.status)
     db.commit()
 

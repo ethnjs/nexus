@@ -82,7 +82,9 @@ function TrackSignupCard({
 }) {
   const pending = track.status === "pending";
   const locked = !!lockedReason;
-  // Details don't matter once they've said no, and don't exist before they answer.
+  // Details don't matter once they've said no, and don't exist before they
+  // answer. Before then there is nothing to edit either: the first answer
+  // always goes through a form, so the card says so rather than offering one.
   const summary = pending
     ? "You haven't answered for this track yet."
     : track.status === "declined"
@@ -122,14 +124,9 @@ function TrackSignupCard({
 
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <Button type="button" variant="ghost" size="sm" onClick={onView}>View all</Button>
-        <Button
-          type="button"
-          variant={pending ? "primary" : "secondary"}
-          size="sm"
-          onClick={onEdit}
-          disabled={locked}
-        >
-          {pending ? "Answer" : "Edit"}
+        {/* Only ever an edit: there is no answering from here (see summary). */}
+        <Button type="button" variant="secondary" size="sm" onClick={onEdit} disabled={locked || pending}>
+          Edit
         </Button>
       </div>
     </OverviewCard>

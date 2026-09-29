@@ -110,6 +110,33 @@ def require_track_unlocked(track: TournamentTrack) -> None:
         )
 
 
+def require_track_answered(db: Session, membership_id: int, track: TournamentTrack) -> None:
+    """Refuse a member write to a track they have never answered for.
+
+    A member's first answer on a track always goes through a signup form —
+    that is where the questions sit in context, alongside whatever the TD
+    wrote around them. The self-service routes are for changing an answer
+    afterwards, not for skipping the form. "Answered" is having a status row,
+    which a form submission's write-through creates.
+
+    Checked after require_track_unlocked, so a locked track reports the lock
+    — the more final of the two reasons.
+    """
+    answered = (
+        db.query(TournamentMembershipTrackStatus.id)
+        .filter(
+            TournamentMembershipTrackStatus.membership_id == membership_id,
+            TournamentMembershipTrackStatus.track_id == track.id,
+        )
+        .first()
+    )
+    if answered is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Answer '{track.name}' through its signup form first.",
+        )
+
+
 def track_shift_count(db: Session, track_id: int) -> int:
     """How many shifts sit on a track. Used to refuse clearing its dates back
     to TBD — a shift is bounded by its track's range, and taking the range
