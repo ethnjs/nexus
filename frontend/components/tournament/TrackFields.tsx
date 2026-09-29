@@ -170,6 +170,16 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
       </FieldRow>
 
+      {/* Deliberately not scoped to competition days: a member answers for a
+          cosmetic track like Test Writing too, so it can be closed the same
+          way. */}
+      <FieldRow
+        label="Lock member responses"
+        helper="Closes this track to member edits — availability, lunch, event preferences and status, including opting out."
+      >
+        <Toggle checked={draft.lock_responses} onChange={(v) => onChange({ lock_responses: v })} locked={locked} />
+      </FieldRow>
+
       <FieldRow
         label="Default role"
         helper="The role the assignments board grants when someone is placed on this track with no role picked yet."

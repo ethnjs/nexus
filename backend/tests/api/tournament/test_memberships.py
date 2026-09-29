@@ -2247,6 +2247,21 @@ def test_locked_track_stays_readable(client, td_user, td_tournament, db):
     assert next(t for t in options["tracks"] if t["track_id"] == track.id)["lock_responses"] is True
 
 
+def test_locked_track_flag_rides_on_a_pending_entry(client, td_user, td_tournament, db):
+    """A track the member hasn't answered is padded in as "pending" — built
+    by hand rather than from a row, so the flag has to be carried explicitly
+    or the overview card offers an Answer button the route will refuse."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+
+    entry = next(
+        t for t in client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+        if t["track_id"] == track.id
+    )
+    assert entry["status"] == "pending"
+    assert entry["lock_responses"] is True
+
+
 def test_an_unlocked_track_is_the_default(client, td_user, td_tournament, db):
     track = _make_track(db, td_tournament.id)
     assert track.lock_responses is False

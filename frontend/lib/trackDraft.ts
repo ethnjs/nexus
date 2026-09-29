@@ -13,6 +13,7 @@ export interface TrackDraft {
   university_id: number | null;
   division:      TournamentDivision[];
   allow_confirm: boolean;
+  lock_responses: boolean;
   default_role_id: number | null;
   // UI-only, never sent as fields of their own: the backend reads an absent
   // date or venue on a primary track as TBD. They exist because the form has
@@ -26,7 +27,7 @@ export interface TrackDraft {
 export const EMPTY_TRACK_DRAFT: TrackDraft = {
   name: "", is_primary: false, start_date: "", end_date: "",
   location: "", university_id: null, division: [], allow_confirm: false,
-  default_role_id: null, dates_tbd: false, location_tbd: false,
+  lock_responses: false, default_role_id: null, dates_tbd: false, location_tbd: false,
 };
 
 export function trackToDraft(track: TournamentTrack): TrackDraft {
@@ -39,6 +40,7 @@ export function trackToDraft(track: TournamentTrack): TrackDraft {
     university_id: track.university?.id ?? null,
     division:      track.division ?? [],
     allow_confirm: track.allow_confirm,
+    lock_responses: track.lock_responses,
     default_role_id: track.default_role_id,
     // On a track that has already been saved, absent *is* TBD — there is no
     // half-filled state to preserve. Cosmetic tracks are never TBD: they have
@@ -60,6 +62,7 @@ export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
     name:          draft.name.trim(),
     is_primary:    draft.is_primary,
     allow_confirm: draft.allow_confirm,
+    lock_responses: draft.lock_responses,
     default_role_id: draft.default_role_id,
   };
   if (!draft.is_primary) {

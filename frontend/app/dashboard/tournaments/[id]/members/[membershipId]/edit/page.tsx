@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ApiError, MyTrackOptions, formsApi, membersApi } from "@/lib/api";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { TRACK_LOCKED_REASON } from "@/lib/responseLock";
 import { Banner } from "@/components/ui/Banner";
 import { MemberEditDraft, TrackDraft, editableTracks, saveDraft, toDraft } from "@/lib/memberEdit";
 import { TrackEditSection } from "@/components/tournament/edit/TrackEditSection";
@@ -34,6 +35,8 @@ export default function MemberEditPage() {
   const isSelf = me?.id === membershipId;
   const { isArchived } = useArchiveLock();
 
+  // Locked tracks included: each renders as its own locked card in place, so
+  // the member can see which tracks are closed rather than just fewer tracks.
   const [tracks, setTracks] = useState<MyTrackOptions[] | null>(null);
   const [baseline, setBaseline] = useState<MemberEditDraft>({});
   const [draft, setDraft] = useState<MemberEditDraft>({});
@@ -51,7 +54,9 @@ export default function MemberEditPage() {
         const completed = new Set(forms.filter((form) => form.completed).map((form) => form.id));
         const editable = editableTracks(response.tracks, completed);
         setTracks(editable);
-        const initial = toDraft(editable);
+        // Only unlocked tracks get a draft. saveDraft skips a track with none,
+        // so a locked track can never be written from here.
+        const initial = toDraft(editable.filter((track) => !track.lock_responses));
         setBaseline(initial);
         setDraft(initial);
       })
@@ -146,7 +151,19 @@ export default function MemberEditPage() {
             <EmptyState title="Nothing to edit yet" description="This tournament hasn't set up any tracks." />
           </Card>
         )}
-        {tracks?.map((track) => (
+        {tracks?.map((track) => track.lock_responses ? (
+          // A locked track is a placeholder rather than its controls rendered
+          // inert: there is nothing to do with it here, and the overview card
+          // is where its answers stay visible.
+          <Card key={track.track_id} radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>{track.track_name}</h2>
+            <EmptyState
+              icon={<IconLock size={28} />}
+              title="Editing is closed"
+              description={TRACK_LOCKED_REASON}
+            />
+          </Card>
+        ) : (
           <TrackEditSection
             key={track.track_id}
             track={track}
