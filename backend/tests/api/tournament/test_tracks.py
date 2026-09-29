@@ -82,6 +82,25 @@ def test_manage_tournament_can_create_list_and_update_tracks(client, db, td_user
     assert updated.json()["name"] == "Question Writing"
 
 
+def test_track_round_trips_lock_responses(client, td_user, td_tournament):
+    """The TD's switch for closing a track to member edits — set on create,
+    flipped by PATCH, and off by default."""
+    login(client, "td@test.com", "tdpass")
+
+    default = _create_track(client, td_tournament.id, "Test Writing").json()
+    assert default["lock_responses"] is False
+
+    locked = _create_track(client, td_tournament.id, "Locked", lock_responses=True).json()
+    assert locked["lock_responses"] is True
+
+    unlocked = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{locked['id']}/",
+        json={"lock_responses": False},
+    )
+    assert unlocked.status_code == 200
+    assert unlocked.json()["lock_responses"] is False
+
+
 def test_track_is_archived_is_not_patchable(client, td_user, td_tournament):
     """Pending-delete is set by DELETE and cleared by /restore/. A TD toggling
     it as a field would let them hide a track without the lifecycle ever
@@ -403,7 +422,8 @@ def test_member_reads_their_own_track_statuses(client, db, td_user, td_tournamen
     entry = next(s for s in res.json()["track_statuses"] if s["track_id"] == track["id"])
     assert entry == {
         "track_id": track["id"], "name": "Test Writing", "is_archived": False,
-        "status": "confirmed", "allow_confirm": False, "updated_at": entry["updated_at"],
+        "status": "confirmed", "allow_confirm": False, "lock_responses": False,
+        "updated_at": entry["updated_at"],
     }
 
 

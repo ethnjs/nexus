@@ -857,9 +857,24 @@ class TournamentTrack(Base):
     # Whether a member may move themselves to "confirmed" on this track from
     # their own member page. Off by default: on most tracks `confirmed` means
     # the TD staffed them, and only the TD knows when that's true. Opting
-    # *out* never consults this — declining a track is always the member's
-    # own call.
+    # *out* never consults this — declining is not something confirmation
+    # being closed should block. (`lock_responses` below does block it: that
+    # one closes the track to changes of every kind.)
     allow_confirm = Column(Boolean, nullable=False, default=False)
+    # Freezes this track's member-editable answers — availability, lunch,
+    # event preferences and status. Set once the TD has staffed the day out of
+    # those answers, at which point a member quietly changing one pulls the
+    # ground out from under the assignments board.
+    #
+    # Unlike allow_confirm this covers opting *out* too: on a locked track a
+    # member can't decline either. That deliberately overrides the rule that
+    # declining is always the member's own call (see
+    # TournamentMembershipTrackStatus) — a locked track is one people are
+    # already staffed on, so a late withdrawal is a conversation with the TD
+    # rather than a button.
+    #
+    # Forms are out of scope: they write the same rows and keep doing so.
+    lock_responses = Column(Boolean, nullable=False, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,
     # a competition day's is more often a general volunteer role. SET NULL

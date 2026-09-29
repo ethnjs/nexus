@@ -299,7 +299,7 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
     row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/members/").json() if r["id"] == m.id)
     assert row["track_statuses"] == [{
         "track_id": track.id, "name": "Test Writing", "is_archived": False,
-        "status": "confirmed", "allow_confirm": False,
+        "status": "confirmed", "allow_confirm": False, "lock_responses": False,
         "updated_at": row["track_statuses"][0]["updated_at"],
     }]
 
@@ -1777,10 +1777,13 @@ def _make_shift(db, tournament_id, label="Morning", day=1):
     return shift
 
 
-def _make_track(db, tournament_id, name="Test Writing", allow_confirm=False):
+def _make_track(db, tournament_id, name="Test Writing", allow_confirm=False, lock_responses=False):
     from app.models.models import TournamentTrack
 
-    track = TournamentTrack(tournament_id=tournament_id, name=name, allow_confirm=allow_confirm)
+    track = TournamentTrack(
+        tournament_id=tournament_id, name=name,
+        allow_confirm=allow_confirm, lock_responses=lock_responses,
+    )
     db.add(track)
     db.commit()
     db.refresh(track)
@@ -2175,8 +2178,87 @@ def test_self_service_writes_reject_a_pending_delete_track(client, td_user, td_t
     ).status_code == 409
 
 
+# ---------------------------------------------------------------------------
+# lock_responses — the TD closing a track to member edits
+# ---------------------------------------------------------------------------
+
+def test_locked_track_refuses_every_member_write(client, td_user, td_tournament, db):
+    """All four per-track member writes, refused on a locked track.
+
+    Checked before each route's own validation, so the payloads here don't
+    need to be otherwise valid — a locked track is closed regardless of what
+    is being sent to it."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me"
+
+    assert client.put(f"{base}/availability/{track.id}/", json={"shift_ids": []}).status_code == 403
+    assert client.put(f"{base}/lunch/{track.id}/protein/", json={"option_ids": []}).status_code == 403
+    assert client.put(f"{base}/event-preferences/{track.id}/", json={"selections": []}).status_code == 403
+    assert client.put(f"{base}/track-statuses/{track.id}/", json={"status": "interested"}).status_code == 403
+
+
+def test_locked_track_refuses_declining_too(client, td_user, td_tournament, db):
+    """The lock covers opting *out*, unlike allow_confirm. A locked track is
+    one people are already staffed on, so leaving is a conversation with the
+    TD rather than a button."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 403
+    assert "locked" in response.json()["detail"]
+
+
+def test_unlocking_a_track_restores_member_writes(client, td_user, td_tournament, db):
+    """The lock is a gate, not a one-way door — the same write succeeds once
+    the TD turns it off."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
+    assert client.put(url, json={"status": "declined"}).status_code == 403
+
+    track.lock_responses = False
+    db.commit()
+    assert client.put(url, json={"status": "declined"}).status_code == 200
+
+
+def test_locked_track_stays_readable(client, td_user, td_tournament, db):
+    """Reads are untouched: a member can still see what they answered, and
+    the flag rides along so the page knows to render it read-only."""
+    from app.models.models import TournamentMembershipTrackStatus
+
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    m = _my_membership(db, td_tournament, td_user)
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    entry = next(
+        t for t in client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+        if t["track_id"] == track.id
+    )
+    assert entry["status"] == "confirmed"
+    assert entry["lock_responses"] is True
+
+    options = client.get(f"/tournaments/{td_tournament.id}/members/me/options/").json()
+    assert next(t for t in options["tracks"] if t["track_id"] == track.id)["lock_responses"] is True
+
+
+def test_an_unlocked_track_is_the_default(client, td_user, td_tournament, db):
+    track = _make_track(db, td_tournament.id)
+    assert track.lock_responses is False
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    ).status_code == 200
+
+
 def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_tournament, db):
-    """Opting out is the member's own call on any track."""
+    """Opting out is the member's own call on any *unlocked* track."""
     track = _make_track(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(

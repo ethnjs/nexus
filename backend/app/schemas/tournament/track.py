@@ -98,6 +98,7 @@ def require_primary_fields(track) -> None:
 class TournamentTrackCreate(_TrackFields):
     name: str = Field(max_length=255)
     allow_confirm: bool = False
+    lock_responses: bool = False
 
     @field_validator("name")
     @classmethod
@@ -124,6 +125,7 @@ class TournamentTrackUpdate(BaseModel):
 
     name: str | None = Field(default=None, max_length=255)
     allow_confirm: bool | None = None
+    lock_responses: bool | None = None
     is_primary: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -175,6 +177,8 @@ class TournamentTrackRead(BaseModel):
     # Members may self-confirm on this track (see the model). Read by the
     # member page to decide whether to offer the control at all.
     allow_confirm: bool
+    # Members may not change anything on this track (see the model).
+    lock_responses: bool
     created_at: datetime
     updated_at: datetime
 
@@ -202,20 +206,24 @@ class MembershipTrackStatusRead(BaseModel):
     # no other way to learn it — and without it, it can't tell whether to
     # offer a Confirm control at all.
     allow_confirm: bool = False
+    # Same reasoning: without it the page can't tell whether to render this
+    # track's controls read-only.
+    lock_responses: bool = False
     # None on a "pending" entry: there's no row, so nothing has been updated.
     updated_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row) -> "MembershipTrackStatusRead":
         """Flattens the track relationship — `name`/`is_archived`/
-        `allow_confirm` live on TournamentTrack, not on the status row
-        itself, so from_attributes alone can't build this."""
+        `allow_confirm`/`lock_responses` live on TournamentTrack, not on the
+        status row itself, so from_attributes alone can't build this."""
         return cls(
             track_id=row.track_id,
             name=row.track.name,
             is_archived=row.track.is_archived,
             status=row.status,
             allow_confirm=row.track.allow_confirm,
+            lock_responses=row.track.lock_responses,
             updated_at=row.updated_at,
         )
 

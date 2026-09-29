@@ -27,6 +27,7 @@ Two invariants drive everything here:
 """
 from __future__ import annotations
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.form import track_referenced_by_form_field
@@ -89,6 +90,24 @@ def track_member_data_count(db: Session, track_id: int) -> int:
         .filter(TournamentMembershipTrackStatus.track_id == track_id)
         .count()
     )
+
+
+def require_track_unlocked(track: TournamentTrack) -> None:
+    """Refuse a member write to a track whose responses are locked.
+
+    Called explicitly in each member-facing write route rather than folded
+    into a dependency, for the same reason require_not_archived is: reads of
+    a locked track stay open, so the gate belongs on the writes alone.
+
+    Covers declining as well as confirming — see the model. The TD is not
+    subject to it: staff-side edits to the same rows go through the roster,
+    which is how a member who needs out of a locked track gets out.
+    """
+    if track.lock_responses:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Responses for '{track.name}' are locked — contact the tournament director.",
+        )
 
 
 def track_shift_count(db: Session, track_id: int) -> int:
