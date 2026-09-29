@@ -233,9 +233,11 @@ def test_create_tournament_both_location_and_university_id_rejected(client, td_u
     }).status_code == 422
 
 
-def test_create_tournament_neither_location_nor_university_id_rejected(client, td_user):
+def test_create_tournament_with_neither_location_nor_university_id_is_tbd(client, td_user):
+    """A venue is often signed weeks after the date is set, so a tournament
+    is creatable without one — the track reads as TBD until it has one."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
+    response = client.post("/tournaments/", json={
         **REQUIRED_FIELDS,
         "name": "No Source",
         "tracks": [{
@@ -243,7 +245,31 @@ def test_create_tournament_neither_location_nor_university_id_rejected(client, t
             "start_date": future_date(5, 21), "end_date": future_date(5, 23),
             "division": ["B"],
         }],
-    }).status_code == 422
+    })
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["location"] is None
+    assert body["university"] is None
+    assert body["dates"]
+
+
+def test_create_tournament_with_an_undated_track_is_tbd(client, td_user):
+    """The other axis: "we're running, we don't know when". The past-date
+    check has no date to judge and must not trip over its absence."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "No Dates",
+        "tracks": [{
+            "name": "Main", "is_primary": True,
+            "location": "Test Location", "division": ["B"],
+        }],
+    })
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["dates"] == []
+    assert body["is_multi_day"] is False
+    assert body["location"] == "Test Location"
 
 
 def test_create_tournament_without_primary_track_rejected(client, td_user):

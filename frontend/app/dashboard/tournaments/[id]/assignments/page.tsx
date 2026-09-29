@@ -813,7 +813,8 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
     columns.push(event.tracks.find((t) => t.id === track.id) ?? {
       ...track, tournament_id: event.tournament_id, start_date: null, end_date: null,
       university: null, location: null, division: null, is_archived: false,
-      allow_confirm: false, default_role_id: null, created_at: '', updated_at: '',
+      allow_confirm: false, lock_responses: false, default_role_id: null,
+      created_at: '', updated_at: '',
     })
   }
   return columns

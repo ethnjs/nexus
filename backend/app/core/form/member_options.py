@@ -149,6 +149,9 @@ def member_track_options(
             "track_name": track.name,
             "is_primary": track.is_primary,
             "allow_confirm": track.allow_confirm,
+            # A locked track still appears, with everything it asks — the
+            # member can see what they answered, they just can't change it.
+            "lock_responses": track.lock_responses,
             "status": status_by_track.get(track.id),
             "availability": availability_by_track.get(track.id, []),
             # The member's current shifts *on this track* — the whole-set a

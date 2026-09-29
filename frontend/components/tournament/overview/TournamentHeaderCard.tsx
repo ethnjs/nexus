@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 import type { TournamentTrack } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
-import { formatTrackDates, placeOf, primaryTracks, tournamentYear } from "@/lib/tournamentDisplay";
+import { formatTrackDates, placeOf, placeOfTrack, primaryTracks, tournamentYear } from "@/lib/tournamentDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 import { OverviewCard, OVERVIEW_CARD_PADDING } from "./OverviewCard";
@@ -63,7 +63,7 @@ export function TournamentHeaderCard() {
 }
 
 function TrackTile({ track }: { track: TournamentTrack }) {
-  const place = placeOf(track);
+  const place = placeOfTrack(track);
   const dates = formatTrackDates(track, "weekday");
 
   return (

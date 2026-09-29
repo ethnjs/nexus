@@ -52,24 +52,29 @@ class _TrackFields(BaseModel):
 def require_primary_fields(track) -> None:
     """The primary/cosmetic invariant, shared by create and update.
 
-    A primary track is a real competition day: the tournament derives its own
-    dates, venue and divisions from it (Tournament.primary_tracks), and shifts
-    validate against its range — none of which works with a hole in it. A
-    cosmetic track is the opposite: carrying a venue it doesn't have would
-    show up in the tournament's derived location."""
+    A primary track is a real competition day, but not necessarily a settled
+    one: a TD routinely creates a tournament before the venue is signed or
+    the date is fixed. Absent dates and an absent venue are how a primary
+    track says TBD — there's no separate flag, so there's nothing that can
+    disagree with the fields it describes. A cosmetic track is the opposite:
+    carrying a venue it doesn't have would show up in the tournament's
+    derived location.
+
+    Divisions stay required. A TD knows which divisions they're running long
+    before they know where, and events and registration hang off them."""
     if track.is_primary:
-        missing = [
-            name for name, value in (
-                ("start_date", track.start_date),
-                ("end_date", track.end_date),
-                ("division", track.division),
-            ) if not value
-        ]
-        if missing:
-            raise ValueError(f"a primary track requires: {', '.join(missing)}")
-        if bool(track.university_id) == bool(track.location):
+        if not track.division:
+            raise ValueError("a primary track requires: division")
+        # All-or-nothing. Both absent is TBD; one absent is a half-filled row,
+        # and letting it through would give every date renderer a third case.
+        if bool(track.start_date) != bool(track.end_date):
             raise ValueError(
-                "a primary track must have exactly one of university_id or location, not both"
+                "a primary track needs both start_date and end_date, or neither"
+            )
+        # At most one, where it used to be exactly one — neither is TBD.
+        if track.university_id and track.location:
+            raise ValueError(
+                "a primary track must have at most one of university_id or location, not both"
             )
     else:
         present = [
@@ -93,6 +98,11 @@ def require_primary_fields(track) -> None:
 class TournamentTrackCreate(_TrackFields):
     name: str = Field(max_length=255)
     allow_confirm: bool = False
+    # Locked from the start: a TD opens member editing on purpose rather than
+    # remembering to close it once the day is staffed. Forms are unaffected,
+    # so signing up still works. Set here and not on the column, which stays
+    # unlocked so rows built directly (fixtures, imports) keep the old shape.
+    lock_responses: bool = True
 
     @field_validator("name")
     @classmethod
@@ -119,6 +129,7 @@ class TournamentTrackUpdate(BaseModel):
 
     name: str | None = Field(default=None, max_length=255)
     allow_confirm: bool | None = None
+    lock_responses: bool | None = None
     is_primary: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -170,6 +181,8 @@ class TournamentTrackRead(BaseModel):
     # Members may self-confirm on this track (see the model). Read by the
     # member page to decide whether to offer the control at all.
     allow_confirm: bool
+    # Members may not change anything on this track (see the model).
+    lock_responses: bool
     created_at: datetime
     updated_at: datetime
 
@@ -197,20 +210,24 @@ class MembershipTrackStatusRead(BaseModel):
     # no other way to learn it — and without it, it can't tell whether to
     # offer a Confirm control at all.
     allow_confirm: bool = False
+    # Same reasoning: without it the page can't tell whether to render this
+    # track's controls read-only.
+    lock_responses: bool = False
     # None on a "pending" entry: there's no row, so nothing has been updated.
     updated_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row) -> "MembershipTrackStatusRead":
         """Flattens the track relationship — `name`/`is_archived`/
-        `allow_confirm` live on TournamentTrack, not on the status row
-        itself, so from_attributes alone can't build this."""
+        `allow_confirm`/`lock_responses` live on TournamentTrack, not on the
+        status row itself, so from_attributes alone can't build this."""
         return cls(
             track_id=row.track_id,
             name=row.track.name,
             is_archived=row.track.is_archived,
             status=row.status,
             allow_confirm=row.track.allow_confirm,
+            lock_responses=row.track.lock_responses,
             updated_at=row.updated_at,
         )
 

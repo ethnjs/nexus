@@ -13,6 +13,7 @@ from app.core.tournament.permissions import (
 )
 from app.core.tournament.tracks import (
     live_primary_track_count, track_blocking_references, track_member_data_count,
+    track_shift_count,
 )
 from app.db.session import get_db
 from app.models.models import TournamentRole, TournamentTrack, User
@@ -131,6 +132,24 @@ def update_track(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
     if "default_role_id" in updates:
         _check_default_role(db, tournament_id, updates["default_role_id"])
+
+    # Clearing dates back to TBD with shifts still on the track would leave
+    # them bounded by nothing, and re-dating it later re-checks nothing. The
+    # TD moves or deletes the shifts first, exactly as they would to delete
+    # the track. Checked before the merge so a refusal leaves the row clean.
+    clearing_dates = any(
+        field in updates and updates[field] is None for field in ("start_date", "end_date")
+    )
+    if clearing_dates and track.start_date is not None:
+        shift_count = track_shift_count(db, track.id)
+        if shift_count:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"'{track.name}' has {shift_count} shift(s) — move or delete them "
+                    "before clearing its dates"
+                ),
+            )
 
     # Demoting the last primary track would leave the tournament with no
     # dates, venue or divisions at all — the same hole deleting it would.

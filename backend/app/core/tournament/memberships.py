@@ -443,6 +443,7 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
             is_archived=track.is_archived,
             status=PENDING_TRACK_STATUS,
             allow_confirm=track.allow_confirm,
+            lock_responses=track.lock_responses,
         )
         for track in live_tracks
         if track.id not in existing
