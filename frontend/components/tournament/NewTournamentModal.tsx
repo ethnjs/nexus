@@ -10,7 +10,8 @@ import {
   EMPTY_TRACK_DRAFT, TrackDraft, trackDraftPayload, validateTrackDraft,
 } from '@/lib/trackDraft'
 import { todayLocalDateString } from '@/lib/date'
-import { TrackFields, TrackSummary } from '@/components/tournament/TrackFields'
+import { TbdCheckbox, TrackFields, TrackSummary } from '@/components/tournament/TrackFields'
+import { TBD } from '@/lib/tournamentDisplay'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -47,6 +48,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   // Most tournaments run one day, so the end date only appears when the TD
   // says it spans more — same treatment a track's dates get in TrackFields.
   const [spansDays, setSpansDays]  = useState(false)
+  // Simple mode's own TBD switches, mirroring the two in TrackFields. A blank
+  // date or venue is still an error; TBD is the way to say it isn't decided.
+  const [datesTbd, setDatesTbd]       = useState(false)
+  const [locationTbd, setLocationTbd] = useState(false)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -89,6 +94,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         location: locationText,
         university_id: matchedUniversity?.id ?? null,
         division,
+        dates_tbd: datesTbd,
+        location_tbd: locationTbd,
       },
     }])
     setErrors({})
@@ -107,6 +114,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       setEndDate(primary.end_date)
       setSpansDays(!!primary.end_date && primary.end_date !== primary.start_date)
       setDivision(primary.division)
+      setDatesTbd(primary.dates_tbd)
+      setLocationTbd(primary.location_tbd)
     }
     setTrackRows([])
     setTrackErrors({})
@@ -128,12 +137,16 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   function collectTracks(): TrackDraft[] | null {
     if (!advanced) {
       const fieldErrors: Record<string, string> = {}
-      if (!matchedUniversity && !locationText.trim()) fieldErrors.location = 'Location is required'
-      if (!startDate) fieldErrors.startDate = 'Start date is required'
-      // YYYY-MM-DD strings compare lexicographically in chronological order
-      else if (startDate < todayLocalDateString()) fieldErrors.startDate = 'Start date cannot be in the past'
-      if (!endDate) fieldErrors.endDate = 'End date is required'
-      else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
+      if (!locationTbd && !matchedUniversity && !locationText.trim()) {
+        fieldErrors.location = 'Required, or mark the venue TBD'
+      }
+      if (!datesTbd) {
+        if (!startDate) fieldErrors.startDate = 'Required, or mark the date TBD'
+        // YYYY-MM-DD strings compare lexicographically in chronological order
+        else if (startDate < todayLocalDateString()) fieldErrors.startDate = 'Start date cannot be in the past'
+        if (!endDate) fieldErrors.endDate = 'End date is required'
+        else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
+      }
       if (division.length === 0) fieldErrors.division = 'Select at least one division'
 
       if (Object.keys(fieldErrors).length > 0) { setErrors((prev) => ({ ...prev, ...fieldErrors })); return null }
@@ -148,6 +161,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         location: locationText,
         university_id: matchedUniversity?.id ?? null,
         division,
+        dates_tbd: datesTbd,
+        location_tbd: locationTbd,
       }]
     }
 
@@ -234,25 +249,42 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
 
         {!advanced && (
           <>
-            <Combobox
-              label="Location"
-              required
-              options={universities}
-              getId={(u) => u.id}
-              getLabel={(u) => u.name}
-              getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
-              value={locationText}
-              onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
-              error={errors.location}
-              placeholder="e.g. Caltech, Pasadena CA"
-            />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: spansDays ? '1fr 1fr' : '1fr', gap: '12px' }}>
+              <Combobox
+                label="Location"
+                required
+                options={universities}
+                getId={(u) => u.id}
+                getLabel={(u) => u.name}
+                getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
+                value={locationTbd ? TBD : locationText}
+                onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
+                error={errors.location}
+                placeholder="e.g. Caltech, Pasadena CA"
+                locked={locationTbd}
+              />
+              <TbdCheckbox
+                label="Venue not decided yet"
+                checked={locationTbd}
+                locked={false}
+                onChange={(checked) => {
+                  setLocationTbd(checked)
+                  if (checked) { setLocationText(''); setMatchedUniversity(null) }
+                  setErrors(({ location, ...rest }) => rest)
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: spansDays && !datesTbd ? '1fr 1fr' : '1fr', gap: '12px' }}>
                 <Input
-                  label={spansDays ? 'Start Date' : 'Date'}
+                  label={spansDays && !datesTbd ? 'Start Date' : 'Date'}
                   required
-                  type="date"
-                  value={startDate}
+                  // Locked and reading "TBD" rather than removed — the field
+                  // stays put, and a date input can only hold a date, so the
+                  // type swaps to text to show the word.
+                  type={datesTbd ? 'text' : 'date'}
+                  value={datesTbd ? TBD : startDate}
+                  locked={datesTbd}
                   // A single-day tournament keeps its end date in step: the
                   // track it creates needs both, and the TD has said it
                   // doesn't span days.
@@ -265,7 +297,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   min={todayLocalDateString()}
                   fullWidth
                 />
-                {spansDays && (
+                {spansDays && !datesTbd && (
                   <Input
                     label="End Date"
                     required
@@ -278,9 +310,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   />
                 )}
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: datesTbd ? 'default' : 'pointer' }}>
                 <Checkbox
-                  checked={spansDays}
+                  checked={spansDays && !datesTbd}
+                  locked={datesTbd}
                   onChange={(checked) => {
                     setSpansDays(checked)
                     if (!checked) setEndDate(startDate)
@@ -291,6 +324,16 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   Runs more than one day
                 </span>
               </label>
+              <TbdCheckbox
+                label="Date not decided yet"
+                checked={datesTbd}
+                locked={false}
+                onChange={(checked) => {
+                  setDatesTbd(checked)
+                  if (checked) { setSpansDays(false); setStartDate(''); setEndDate('') }
+                  setErrors(({ startDate, endDate, ...rest }) => rest)
+                }}
+              />
             </div>
           </>
         )}
