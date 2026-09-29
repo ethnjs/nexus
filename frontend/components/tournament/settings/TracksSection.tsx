@@ -5,7 +5,7 @@ import {
   ApiError, Role, TournamentTrack, TournamentTrackDeleteResult, University,
   rolesApi, tournamentTracksApi, universitiesApi,
 } from "@/lib/api";
-import { formatTrackDates, placeOf } from "@/lib/tournamentDisplay";
+import { formatTrackDates, placeOfTrack } from "@/lib/tournamentDisplay";
 import {
   EMPTY_TRACK_DRAFT, TrackDraft, trackDraftPayload, trackToDraft, validateTrackDraft,
 } from "@/lib/trackDraft";
@@ -305,7 +305,7 @@ function TrackRow({
 
   const isNew = track === null;
   const name = isNew ? (draft.name.trim() || "Untitled track") : track.name;
-  const place = track && placeOf(track);
+  const place = track && placeOfTrack(track);
   const dates = track && formatTrackDates(track);
   const readOnly = locked || !!track?.is_archived;
 
