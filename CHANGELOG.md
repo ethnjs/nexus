@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.0-beta](https://github.com/ethnjs/nexus/compare/v1.1.0-beta...v1.2.0-beta) (2026-09-29)
+
+
+### Features
+
+* **shifts:** refuse shifts on a TBD track and date-clearing under existing shifts ([7093adb](https://github.com/ethnjs/nexus/commit/7093adbd9a948ff4c3d60f09738ff09349da3b94))
+* **tournaments:** split the new tournament modal into two steps ([986f7e5](https://github.com/ethnjs/nexus/commit/986f7e52eb2d7779382c4ed0722014366fb56177))
+* **tracks:** add explicit TBD checkboxes to the track and tournament forms ([f3531c1](https://github.com/ethnjs/nexus/commit/f3531c1f54d1738f717d59dae36c6dce5d74b1d4))
+* **tracks:** allow a primary track to have TBD dates and venue ([eb200d3](https://github.com/ethnjs/nexus/commit/eb200d3681cfc72fb50ad063535ee6aabf529ec5))
+* **tracks:** close a locked track's member editing in the UI ([0593c49](https://github.com/ethnjs/nexus/commit/0593c49a2aa4baab7c437bc3739250f1906c8e19))
+* **tracks:** let a TD lock a track's member responses ([cd72544](https://github.com/ethnjs/nexus/commit/cd725449a776fa74f849226b06cc6032d3cb52cd))
+* **tracks:** lock new tracks by default and add a lock-all toggle ([853f50b](https://github.com/ethnjs/nexus/commit/853f50b81aba7ab0e1a5b986f3c315a9b8f71117))
+* **tracks:** render TBD for a primary track with no dates or venue ([628ff08](https://github.com/ethnjs/nexus/commit/628ff08fe4c5e032683337066099beb0f0481d5c))
+* **tracks:** require a member's first track answer to come from a form ([8a4102a](https://github.com/ethnjs/nexus/commit/8a4102a3cf4590907f38944b60abb4e3a6bd3596))
+* **tracks:** TBD dates and venues, and per-track response locks ([f9c977c](https://github.com/ethnjs/nexus/commit/f9c977ce9405d70843132710decc7d91abeac1d9))
+
+
+### Bug Fixes
+
+* **auth:** set access_token cookie to SameSite=Lax instead of None ([166b01a](https://github.com/ethnjs/nexus/commit/166b01aaa6ef695b9463c9726e9b9885a34bc601))
+* **auth:** set access_token cookie to SameSite=Lax instead of None ([de7edec](https://github.com/ethnjs/nexus/commit/de7edecb20c75b434ac68d895af8c9ff7b1856d7))
+* **docs:** stop tracking docs/temp and ignore it ([562622f](https://github.com/ethnjs/nexus/commit/562622f8968e07005113e04b9f5992e85b7844e4))
+* **ui:** scroll the modal overlay instead of overflowing the viewport ([9f9704c](https://github.com/ethnjs/nexus/commit/9f9704c3b248b3382f4b15175816d7a72d8cb7c3))
+
 ## [1.1.0-beta](https://github.com/ethnjs/nexus/compare/v1.0.0-beta...v1.1.0-beta) (2026-09-17)
 
 
