@@ -63,9 +63,13 @@ def get_shift(
 
 def _resolve_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrack:
     """The track a shift is being placed on, rejected unless it can actually
-    hold one. Only a primary track has dates, and a shift with no date range
-    to sit inside is unvalidatable; a pending-delete track is on its way out,
-    so adding a shift would only deepen the reference that blocks it."""
+    hold one. A shift with no date range to sit inside is unvalidatable, and
+    that happens two ways: a cosmetic track never has dates, and a primary
+    track whose dates are still TBD doesn't have them yet. The two are
+    reported separately — one is a permanent property of the track, the other
+    is something the TD fixes by filling the dates in. A pending-delete track
+    is on its way out, so adding a shift would only deepen the reference that
+    blocks it."""
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     if track.is_archived:
         raise HTTPException(
@@ -76,6 +80,11 @@ def _resolve_track(db: Session, tournament_id: int, track_id: int) -> Tournament
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"'{track.name}' has no dates — only a primary track can hold shifts",
+        )
+    if track.start_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{track.name}' has no dates yet — set them before adding shifts",
         )
     return track
 

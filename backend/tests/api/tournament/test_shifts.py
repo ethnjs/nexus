@@ -168,6 +168,65 @@ def test_shift_cannot_be_placed_on_a_cosmetic_track(client, td_user, td_tourname
     assert "no dates" in response.json()["detail"]
 
 
+def test_shift_cannot_be_placed_on_a_tbd_track(client, td_user, td_tournament):
+    """A primary track whose dates are still TBD has no range either. Reported
+    separately from the cosmetic case: this one the TD fixes by setting the
+    dates, rather than being a permanent property of the track."""
+    login(client, "td@test.com", "tdpass")
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Day 2", "is_primary": True, "division": ["B"]},
+    ).json()
+    response = _make_shift(client, td_tournament.id, track_id=track["id"])
+    assert response.status_code == 409
+    assert "no dates yet" in response.json()["detail"]
+
+
+def test_shift_can_be_placed_once_a_tbd_track_is_dated(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Day 2", "is_primary": True, "division": ["B"]},
+    ).json()
+    day = (date.today() + timedelta(days=30)).isoformat()
+    client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track['id']}/",
+        json={"start_date": day, "end_date": day},
+    )
+    response = _make_shift(
+        client, td_tournament.id, track_id=track["id"],
+        start=day + "T08:00:00Z", end=day + "T12:00:00Z",
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_track_dates_cannot_be_cleared_while_it_holds_shifts(client, td_user, td_tournament):
+    """The reverse direction. Clearing the dates would leave the shift bounded
+    by nothing, and re-dating the track later re-checks nothing."""
+    login(client, "td@test.com", "tdpass")
+    assert _make_shift(client, td_tournament.id).status_code == 201
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{_primary_track(client, td_tournament.id)}/",
+        json={"start_date": None, "end_date": None},
+    )
+    assert response.status_code == 409
+    assert "shift(s)" in response.json()["detail"]
+
+
+def test_track_dates_can_be_cleared_once_its_shifts_are_gone(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{_primary_track(client, td_tournament.id)}/",
+        json={"start_date": None, "end_date": None},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["start_date"] is None
+
+
 def test_track_with_shifts_cannot_be_deleted(client, td_user, td_tournament, db):
     """Shifts carry member availability — deleting a track is not a licence to
     destroy answers people gave."""

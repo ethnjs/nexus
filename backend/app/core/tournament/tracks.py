@@ -91,6 +91,13 @@ def track_member_data_count(db: Session, track_id: int) -> int:
     )
 
 
+def track_shift_count(db: Session, track_id: int) -> int:
+    """How many shifts sit on a track. Used to refuse clearing its dates back
+    to TBD — a shift is bounded by its track's range, and taking the range
+    away would leave it bounded by nothing with nothing to re-check it."""
+    return db.query(TournamentShift).filter(TournamentShift.track_id == track_id).count()
+
+
 def live_primary_track_count(db: Session, tournament_id: int, *, excluding_id: int | None = None) -> int:
     query = db.query(TournamentTrack).filter(
         TournamentTrack.tournament_id == tournament_id,
