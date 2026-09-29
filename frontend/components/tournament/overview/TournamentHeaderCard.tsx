@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 import type { TournamentTrack } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
-import { formatTrackDates, placeOf, placeOfTrack, primaryTracks, tournamentYear } from "@/lib/tournamentDisplay";
+import { formatTrackDates, placeOfTrack, primaryTracks, tournamentYear } from "@/lib/tournamentDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 import { OverviewCard, OVERVIEW_CARD_PADDING } from "./OverviewCard";
@@ -14,9 +14,9 @@ const TILE_GAP = 8;
 const MAX_TILES_ACROSS = 3;
 
 /**
- * The overview's title card: the tournament's name and tags, then a tile per
- * primary track. Tiles because a multi-site tournament has no single
- * where/when, and one line per track ran them together.
+ * The overview's title card: the tournament's name and tags, then where and
+ * when. A single competition day shows that inline; several get a tile each,
+ * since a multi-site tournament has no single where/when.
  */
 export function TournamentHeaderCard() {
   const { selectedTournament: tournament } = useTournament();
@@ -24,12 +24,12 @@ export function TournamentHeaderCard() {
 
   const year = tournamentYear(tournament);
   const tracks = primaryTracks(tournament);
-  // Divisions live on each track's tile; only a tournament with no tiles
-  // shows them up here, so they never appear twice.
+  // Divisions live on each track's tile; with one track or none there are no
+  // tiles, so they sit up here instead and never appear twice.
   const tags = [
     tournament.state,
     tournament.level && tournament.level[0].toUpperCase() + tournament.level.slice(1),
-    ...(tracks.length === 0 ? tournament.division ?? [] : []),
+    ...(tracks.length <= 1 ? tournament.division ?? [] : []),
   ].filter(Boolean) as string[];
 
   // Tells the mosaic how many columns to span — one tile needs no more than one.
@@ -49,7 +49,10 @@ export function TournamentHeaderCard() {
         </div>
       )}
 
-      {tracks.length > 0 && (
+      {/* One day needs no tile, and its name ("Main") would say nothing. */}
+      {tracks.length === 1 && <TrackFacts track={tracks[0]} />}
+
+      {tracks.length > 1 && (
         <div style={{
           display: "grid",
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${TILE_MIN_WIDTH}px), 1fr))`,
@@ -63,9 +66,6 @@ export function TournamentHeaderCard() {
 }
 
 function TrackTile({ track }: { track: TournamentTrack }) {
-  const place = placeOfTrack(track);
-  const dates = formatTrackDates(track, "weekday");
-
   return (
     <div style={{
       minWidth: 0, padding: "12px", display: "flex", flexDirection: "column", gap: "6px",
@@ -74,13 +74,26 @@ function TrackTile({ track }: { track: TournamentTrack }) {
       <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
         {track.name}
       </span>
-      {place && <Fact icon={<IconLocation />}>{place}</Fact>}
-      {dates && <Fact icon={<IconCalendar />}>{dates}</Fact>}
+      <TrackFacts track={track} />
       {!!track.division?.length && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
           {track.division.map((division) => <Badge key={division}>{division}</Badge>)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A track's where and when — inside a tile, or inline when it's the only one. */
+function TrackFacts({ track }: { track: TournamentTrack }) {
+  const place = placeOfTrack(track);
+  const dates = formatTrackDates(track, "weekday");
+  if (!place && !dates) return null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {place && <Fact icon={<IconLocation />}>{place}</Fact>}
+      {dates && <Fact icon={<IconCalendar />}>{dates}</Fact>}
     </div>
   );
 }
