@@ -10,3 +10,6 @@ CLAUDE_OUTPUT_BEHAVIOR.md
 password.txt
 CLAUDE.md
 TASK.md
+
+# Private notes — docs/ syncs to the public docs site, so never commit these
+docs/temp/
