@@ -52,24 +52,29 @@ class _TrackFields(BaseModel):
 def require_primary_fields(track) -> None:
     """The primary/cosmetic invariant, shared by create and update.
 
-    A primary track is a real competition day: the tournament derives its own
-    dates, venue and divisions from it (Tournament.primary_tracks), and shifts
-    validate against its range — none of which works with a hole in it. A
-    cosmetic track is the opposite: carrying a venue it doesn't have would
-    show up in the tournament's derived location."""
+    A primary track is a real competition day, but not necessarily a settled
+    one: a TD routinely creates a tournament before the venue is signed or
+    the date is fixed. Absent dates and an absent venue are how a primary
+    track says TBD — there's no separate flag, so there's nothing that can
+    disagree with the fields it describes. A cosmetic track is the opposite:
+    carrying a venue it doesn't have would show up in the tournament's
+    derived location.
+
+    Divisions stay required. A TD knows which divisions they're running long
+    before they know where, and events and registration hang off them."""
     if track.is_primary:
-        missing = [
-            name for name, value in (
-                ("start_date", track.start_date),
-                ("end_date", track.end_date),
-                ("division", track.division),
-            ) if not value
-        ]
-        if missing:
-            raise ValueError(f"a primary track requires: {', '.join(missing)}")
-        if bool(track.university_id) == bool(track.location):
+        if not track.division:
+            raise ValueError("a primary track requires: division")
+        # All-or-nothing. Both absent is TBD; one absent is a half-filled row,
+        # and letting it through would give every date renderer a third case.
+        if bool(track.start_date) != bool(track.end_date):
             raise ValueError(
-                "a primary track must have exactly one of university_id or location, not both"
+                "a primary track needs both start_date and end_date, or neither"
+            )
+        # At most one, where it used to be exactly one — neither is TBD.
+        if track.university_id and track.location:
+            raise ValueError(
+                "a primary track must have at most one of university_id or location, not both"
             )
     else:
         present = [

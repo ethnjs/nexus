@@ -6,6 +6,7 @@ from tests.conftest import grant_role, login
 from app.models.models import (
     Form,
     FormField,
+    University,
     TournamentMembership,
     TournamentMembershipTrackStatus,
     TournamentTrack,
@@ -17,7 +18,8 @@ def _create_track(client, tournament_id: int, name: str, **fields):
 
 
 def _primary_fields(**overrides):
-    """The four a primary track must carry."""
+    """A fully settled primary track. Only `division` is actually required —
+    the rest may be absent, which is how a track says TBD."""
     return {
         "is_primary": True,
         "start_date": str(date.today() + timedelta(days=30)),
@@ -139,13 +141,86 @@ def test_track_is_scoped_to_its_tournament(client, db, td_user, td_tournament, o
 # The primary/cosmetic invariant
 # ---------------------------------------------------------------------------
 
-def test_primary_track_requires_schedule_and_venue(client, td_user, td_tournament):
+def test_primary_track_requires_division(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    for missing in ("start_date", "end_date", "division", "location"):
+    fields = _primary_fields()
+    fields.pop("division")
+    response = _create_track(client, td_tournament.id, "No division", **fields)
+    assert response.status_code == 422
+
+
+def test_primary_track_may_be_tbd(client, td_user, td_tournament):
+    """Absent dates and an absent venue are how a primary track says TBD —
+    there is no separate flag. Divisions stay required."""
+    login(client, "td@test.com", "tdpass")
+    fields = _primary_fields()
+    for absent in ("start_date", "end_date", "location"):
+        fields.pop(absent)
+
+    response = _create_track(client, td_tournament.id, "Day 2", **fields)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["start_date"] is None
+    assert body["end_date"] is None
+    assert body["location"] is None
+    assert body["university"] is None
+    assert body["division"] == ["B"]
+
+
+def test_primary_track_may_be_tbd_on_one_axis_only(client, td_user, td_tournament):
+    """Date and venue are independent: a venue booked before the date is
+    fixed, or the reverse, are both ordinary."""
+    login(client, "td@test.com", "tdpass")
+
+    no_venue = _primary_fields()
+    no_venue.pop("location")
+    assert _create_track(client, td_tournament.id, "Dated", **no_venue).status_code == 201
+
+    no_dates = _primary_fields()
+    no_dates.pop("start_date")
+    no_dates.pop("end_date")
+    assert _create_track(client, td_tournament.id, "Sited", **no_dates).status_code == 201
+
+
+def test_primary_track_dates_are_all_or_nothing(client, td_user, td_tournament):
+    """One date without the other is a half-filled row, not a TBD."""
+    login(client, "td@test.com", "tdpass")
+    for missing in ("start_date", "end_date"):
         fields = _primary_fields()
         fields.pop(missing)
-        response = _create_track(client, td_tournament.id, f"Missing {missing}", **fields)
+        response = _create_track(client, td_tournament.id, f"Half {missing}", **fields)
         assert response.status_code == 422, missing
+
+
+def test_primary_track_still_rejects_two_venues(client, db, td_user, td_tournament):
+    """Relaxed to *at most* one of university/location, not to neither rule
+    at all."""
+    login(client, "td@test.com", "tdpass")
+    university = University(name="MIT")
+    db.add(university)
+    db.commit()
+    response = _create_track(
+        client, td_tournament.id, "Two venues",
+        **_primary_fields(university_id=university.id),
+    )
+    assert response.status_code == 422
+
+
+def test_a_tbd_track_can_be_given_its_dates_later(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    fields = _primary_fields()
+    fields.pop("start_date")
+    fields.pop("end_date")
+    track = _create_track(client, td_tournament.id, "Day 2", **fields).json()
+
+    start = str(date.today() + timedelta(days=60))
+    end = str(date.today() + timedelta(days=61))
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track['id']}/",
+        json={"start_date": start, "end_date": end},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["start_date"] == start
 
 
 def test_cosmetic_track_cannot_carry_a_venue(client, td_user, td_tournament):
@@ -157,7 +232,7 @@ def test_cosmetic_track_cannot_carry_a_venue(client, td_user, td_tournament):
 def test_patch_is_validated_against_the_stored_row(client, td_user, td_tournament, db):
     """A PATCH sending only `is_primary` can't be judged by the payload alone
     — the invariant is checked after the merge, against the track's existing
-    (empty) dates."""
+    (empty) division. Its empty dates are fine now; they just mean TBD."""
     login(client, "td@test.com", "tdpass")
     track = _create_track(client, td_tournament.id, "Test Writing").json()
     response = client.patch(

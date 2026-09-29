@@ -837,9 +837,10 @@ class TournamentTrack(Base):
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
 
-    # See the class docstring. Required nullable at the DB level because a
-    # cosmetic track legitimately has none of the four; the primary-track
-    # invariant is enforced in the schema layer and the tracks routes.
+    # See the class docstring. Nullable at the DB level because a cosmetic
+    # track legitimately has none of the four, and because a primary track
+    # uses their absence to say TBD; the primary-track invariant is enforced
+    # in the schema layer and the tracks routes.
     is_primary = Column(Boolean, nullable=False, default=False)
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
@@ -884,10 +885,11 @@ class TournamentTrack(Base):
     )
 
 
-# Exactly one of university_id/location (XOR), and only on a primary track —
-# a cosmetic track has neither. Checked at flush rather than per-attribute so
-# swapping one for the other doesn't trip on a false-invalid intermediate
-# state. Moved here from Tournament when venues became per-track.
+# At most one of university_id/location, and only on a primary track — a
+# cosmetic track has neither, and a primary track with neither is TBD.
+# Checked at flush rather than per-attribute so swapping one for the other
+# doesn't trip on a false-invalid intermediate state. Moved here from
+# Tournament when venues became per-track.
 @event.listens_for(TournamentTrack, "before_insert")
 @event.listens_for(TournamentTrack, "before_update")
 def _validate_track_source(mapper, connection, target: "TournamentTrack"):
@@ -895,8 +897,7 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
     loc = bool(target.location)
     if univ and loc:
         raise ValueError("A track must have only one of university_id or location, not both.")
-    if target.is_primary and not univ and not loc:
-        raise ValueError("A primary track must have either a university_id or a location.")
+    # A primary track with neither is not an error — that's how it says TBD.
     if not target.is_primary and (univ or loc):
         raise ValueError("Only a primary track can have a university_id or location.")
 
