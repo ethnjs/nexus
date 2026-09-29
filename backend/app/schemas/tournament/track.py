@@ -98,7 +98,11 @@ def require_primary_fields(track) -> None:
 class TournamentTrackCreate(_TrackFields):
     name: str = Field(max_length=255)
     allow_confirm: bool = False
-    lock_responses: bool = False
+    # Locked from the start: a TD opens member editing on purpose rather than
+    # remembering to close it once the day is staffed. Forms are unaffected,
+    # so signing up still works. Set here and not on the column, which stays
+    # unlocked so rows built directly (fixtures, imports) keep the old shape.
+    lock_responses: bool = True
 
     @field_validator("name")
     @classmethod

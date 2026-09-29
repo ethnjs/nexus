@@ -874,6 +874,9 @@ class TournamentTrack(Base):
     # rather than a button.
     #
     # Forms are out of scope: they write the same rows and keep doing so.
+    #
+    # A track created through the API starts locked — the default lives on
+    # TournamentTrackCreate, not here.
     lock_responses = Column(Boolean, nullable=False, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,

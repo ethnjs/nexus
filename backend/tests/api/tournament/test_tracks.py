@@ -84,21 +84,21 @@ def test_manage_tournament_can_create_list_and_update_tracks(client, db, td_user
 
 def test_track_round_trips_lock_responses(client, td_user, td_tournament):
     """The TD's switch for closing a track to member edits — set on create,
-    flipped by PATCH, and off by default."""
+    flipped by PATCH, and on by default."""
     login(client, "td@test.com", "tdpass")
 
     default = _create_track(client, td_tournament.id, "Test Writing").json()
-    assert default["lock_responses"] is False
+    assert default["lock_responses"] is True
 
-    locked = _create_track(client, td_tournament.id, "Locked", lock_responses=True).json()
-    assert locked["lock_responses"] is True
+    opened = _create_track(client, td_tournament.id, "Open", lock_responses=False).json()
+    assert opened["lock_responses"] is False
 
-    unlocked = client.patch(
-        f"/tournaments/{td_tournament.id}/tracks/{locked['id']}/",
-        json={"lock_responses": False},
+    relocked = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{opened['id']}/",
+        json={"lock_responses": True},
     )
-    assert unlocked.status_code == 200
-    assert unlocked.json()["lock_responses"] is False
+    assert relocked.status_code == 200
+    assert relocked.json()["lock_responses"] is True
 
 
 def test_track_is_archived_is_not_patchable(client, td_user, td_tournament):
@@ -422,7 +422,8 @@ def test_member_reads_their_own_track_statuses(client, db, td_user, td_tournamen
     entry = next(s for s in res.json()["track_statuses"] if s["track_id"] == track["id"])
     assert entry == {
         "track_id": track["id"], "name": "Test Writing", "is_archived": False,
-        "status": "confirmed", "allow_confirm": False, "lock_responses": False,
+        # Created through the API, so locked by default.
+        "status": "confirmed", "allow_confirm": False, "lock_responses": True,
         "updated_at": entry["updated_at"],
     }
 

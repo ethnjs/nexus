@@ -27,7 +27,9 @@ export interface TrackDraft {
 export const EMPTY_TRACK_DRAFT: TrackDraft = {
   name: "", is_primary: false, start_date: "", end_date: "",
   location: "", university_id: null, division: [], allow_confirm: false,
-  lock_responses: false, default_role_id: null, dates_tbd: false, location_tbd: false,
+  // Locked from the start, matching the backend's create default: a TD opens
+  // member editing on purpose rather than closing it after the fact.
+  lock_responses: true, default_role_id: null, dates_tbd: false, location_tbd: false,
 };
 
 export function trackToDraft(track: TournamentTrack): TrackDraft {
