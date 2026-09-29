@@ -32,6 +32,48 @@ const STATE_OPTIONS: TournamentState[] = [...TOURNAMENT_STATES]
 // removal doesn't shuffle React's identity for the rows below it.
 interface TrackRow { key: number; draft: TrackDraft }
 
+// The submit button lives in the modal's pinned footer, outside the <form>,
+// so it has to name the form it submits.
+const FORM_ID = 'new-tournament-form'
+
+const STEP_LABELS = ['Details', 'Date and location'] as const
+
+/** Which of the two steps you're on. Labelled, not just dotted — "step 2 of
+ *  2" says nothing about what's left to fill in. */
+function StepDots({ step }: { step: 1 | 2 }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+      {STEP_LABELS.map((label, i) => {
+        const n = (i + 1) as 1 | 2
+        const active = n === step
+        const done = n < step
+        return (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '18px', height: '18px', borderRadius: '50%',
+              fontFamily: 'var(--font-mono)', fontSize: '10px',
+              background: active || done ? 'var(--color-text-primary)' : 'transparent',
+              color: active || done ? 'var(--color-surface)' : 'var(--color-text-tertiary)',
+              border: active || done ? 'none' : '1px solid var(--color-border-strong)',
+            }}>
+              {n}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-sans)', fontSize: '12px',
+              color: active ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+              fontWeight: active ? 600 : 400,
+            }}>
+              {label}
+            </span>
+            {n === 1 && <span style={{ width: '16px', height: '1px', background: 'var(--color-border-strong)' }} />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalProps) {
   const [name, setName]           = useState('')
   const [shortName, setShortName] = useState('')
@@ -53,14 +95,25 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   const [datesTbd, setDatesTbd]       = useState(false)
   const [locationTbd, setLocationTbd] = useState(false)
   const [loading, setLoading]     = useState(false)
-  const [errors, setErrors]       = useState<Record<string, string>>({})
+  // Only the API failure is *stored*. Field errors are derived from the
+  // inputs on every render (see below), so they can never describe a value
+  // that has since changed — which is what made them survive into a step the
+  // TD had not filled in yet.
+  const [formError, setFormError] = useState<string | null>(null)
+  // Which steps have had their button pressed. Nothing is shown against a
+  // step until its own action has been attempted, so arriving somewhere new
+  // is always clean no matter what the inputs currently say.
+  const [attempted, setAttempted] = useState({ details: false, schedule: false })
+  // Two steps rather than one long form: identity first, then when/where.
+  // The split is by what a TD knows at once — the name and level are decided
+  // long before the venue is booked.
+  const [step, setStep] = useState<1 | 2>(1)
 
   // Advanced mode swaps the single venue/dates/divisions for a repeatable
   // track editor. Simple mode is not a lesser thing — it creates exactly the
   // same shape, one primary track named after the tournament.
   const [advanced, setAdvanced] = useState(false)
   const [trackRows, setTrackRows] = useState<TrackRow[]>([])
-  const [trackErrors, setTrackErrors] = useState<Record<number, Record<string, string>>>({})
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
 
   useEffect(() => {
@@ -98,7 +151,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         location_tbd: locationTbd,
       },
     }])
-    setErrors({})
+    setAttempted((a) => ({ ...a, schedule: false }))
     setAdvanced(true)
   }
 
@@ -118,8 +171,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       setLocationTbd(primary.location_tbd)
     }
     setTrackRows([])
-    setTrackErrors({})
-    setErrors({})
+    setAttempted((a) => ({ ...a, schedule: false }))
     setAdvanced(false)
   }
 
@@ -133,66 +185,101 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     setTrackRows((rows) => rows.map((row) => row.key === key ? { ...row, draft: { ...row.draft, ...updates } } : row))
   }
 
-  /** The tracks to send, or null when something doesn't validate. */
-  function collectTracks(): TrackDraft[] | null {
-    if (!advanced) {
-      const fieldErrors: Record<string, string> = {}
-      if (!locationTbd && !matchedUniversity && !locationText.trim()) {
-        fieldErrors.location = 'Required, or mark the venue TBD'
-      }
-      if (!datesTbd) {
-        if (!startDate) fieldErrors.startDate = 'Required, or mark the date TBD'
-        // YYYY-MM-DD strings compare lexicographically in chronological order
-        else if (startDate < todayLocalDateString()) fieldErrors.startDate = 'Start date cannot be in the past'
-        if (!endDate) fieldErrors.endDate = 'End date is required'
-        else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
-      }
-      if (division.length === 0) fieldErrors.division = 'Select at least one division'
+  /**
+   * Validation is split by step, so each button only judges what is actually
+   * on screen: Next checks step 1, Create checks both. Neither validator
+   * touches state — they return what is wrong and the caller decides what to
+   * show, which is what lets Create surface step 1's problems by sending you
+   * back to step 1 rather than reporting them against fields you can't see.
+   */
 
-      if (Object.keys(fieldErrors).length > 0) { setErrors((prev) => ({ ...prev, ...fieldErrors })); return null }
-
-      // The tournament's whole schedule, as the one competition day it is.
-      return [{
-        ...EMPTY_TRACK_DRAFT,
-        name: trackName(),
-        is_primary: true,
-        start_date: startDate,
-        end_date: endDate,
-        location: locationText,
-        university_id: matchedUniversity?.id ?? null,
-        division,
-        dates_tbd: datesTbd,
-        location_tbd: locationTbd,
-      }]
-    }
-
-    const found: Record<number, Record<string, string>> = {}
-    for (const row of trackRows) {
-      const others = trackRows.filter((other) => other.key !== row.key).map((other) => other.draft.name)
-      const rowErrors = validateTrackDraft(row.draft, others)
-      if (Object.keys(rowErrors).length > 0) found[row.key] = rowErrors
-    }
-    setTrackErrors(found)
-    if (Object.keys(found).length > 0) return null
-    if (!trackRows.some((row) => row.draft.is_primary)) {
-      setErrors((prev) => ({ ...prev, tracks: 'At least one track has to be a competition day.' }))
-      return null
-    }
-    return trackRows.map((row) => row.draft)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  /** Step 1 — the tournament's identity. */
+  function validateDetails(): Record<string, string> {
     const fieldErrors: Record<string, string> = {}
-
     if (!name.trim()) fieldErrors.name = 'Name is required'
     else if (/\d/.test(name)) fieldErrors.name = 'Name must not contain numbers — the year is added automatically'
     if (!matchedState) fieldErrors.state = 'State is required — pick one from the list'
     if (!matchedLevel) fieldErrors.level = 'Level is required — pick one from the list'
+    return fieldErrors
+  }
 
-    setErrors(fieldErrors)
-    const tracks = collectTracks()
-    if (Object.keys(fieldErrors).length > 0 || !tracks || !matchedState || !matchedLevel) return
+  /**
+   * Step 2 — when and where. Two shapes behind one result: simple mode owns
+   * the fields directly, advanced mode defers to each track's own validator,
+   * so `rows` is keyed by track and `fields` by field name.
+   */
+  function validateSchedule(): { fields: Record<string, string>; rows: Record<number, Record<string, string>> } {
+    const fields: Record<string, string> = {}
+    const rows: Record<number, Record<string, string>> = {}
+
+    if (!advanced) {
+      if (!locationTbd && !matchedUniversity && !locationText.trim()) {
+        fields.location = 'Required, or mark the venue TBD'
+      }
+      if (!datesTbd) {
+        if (!startDate) fields.startDate = 'Required, or mark the date TBD'
+        // YYYY-MM-DD strings compare lexicographically in chronological order
+        else if (startDate < todayLocalDateString()) fields.startDate = 'Start date cannot be in the past'
+        if (!endDate) fields.endDate = 'End date is required'
+        else if (startDate && endDate < startDate) fields.endDate = 'End date cannot be before start date'
+      }
+      if (division.length === 0) fields.division = 'Select at least one division'
+      return { fields, rows }
+    }
+
+    for (const row of trackRows) {
+      const others = trackRows.filter((other) => other.key !== row.key).map((other) => other.draft.name)
+      const rowErrors = validateTrackDraft(row.draft, others)
+      if (Object.keys(rowErrors).length > 0) rows[row.key] = rowErrors
+    }
+    if (!trackRows.some((row) => row.draft.is_primary)) {
+      fields.tracks = 'At least one track has to be a competition day.'
+    }
+    return { fields, rows }
+  }
+
+  /** The tracks to send. Assumes validateSchedule has already passed. */
+  function buildTracks(): TrackDraft[] {
+    if (advanced) return trackRows.map((row) => row.draft)
+    // The tournament's whole schedule, as the one competition day it is.
+    return [{
+      ...EMPTY_TRACK_DRAFT,
+      name: trackName(),
+      is_primary: true,
+      start_date: startDate,
+      end_date: endDate,
+      location: locationText,
+      university_id: matchedUniversity?.id ?? null,
+      division,
+      dates_tbd: datesTbd,
+      location_tbd: locationTbd,
+    }]
+  }
+
+  /** Next judges step 1 and nothing else. Step 2 stays un-attempted, so it
+   *  renders clean however empty its fields are. */
+  function goToSchedule() {
+    setAttempted((a) => ({ ...a, details: true }))
+    if (Object.keys(detailErrors).length === 0) setStep(2)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+
+    // Enter inside a field submits the form, including the Enter that picks
+    // an option out of a combobox. On step 1 that means Next, not Create.
+    if (step === 1) { goToSchedule(); return }
+
+    setAttempted({ details: true, schedule: true })
+
+    // A step-1 problem is invisible from step 2, so go back to it rather than
+    // reporting against fields the TD cannot see.
+    if (Object.keys(detailErrors).length > 0) { setStep(1); return }
+    if (Object.keys(scheduleErrors.fields).length > 0) return
+    if (Object.keys(scheduleErrors.rows).length > 0) return
+    if (!matchedState || !matchedLevel) return
+
+    const tracks = buildTracks()
 
     setLoading(true)
     try {
@@ -206,34 +293,75 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       })
       onCreated(t)
     } catch {
-      setErrors({ form: 'Failed to create tournament' })
+      setFormError('Failed to create tournament')
     } finally {
       setLoading(false)
     }
   }
 
+  // Recomputed every render, so an error disappears the moment the input it
+  // describes becomes valid — no clearing on change, nothing to go stale.
+  const detailErrors = validateDetails()
+  const scheduleErrors = validateSchedule()
+  // What is actually rendered: gated on that step having been attempted, so
+  // a step you have only just arrived at shows nothing.
+  const shownDetails = attempted.details ? detailErrors : {} as Record<string, string>
+  const shownSchedule = attempted.schedule ? scheduleErrors.fields : {} as Record<string, string>
+  const trackErrors = attempted.schedule ? scheduleErrors.rows : {}
+
+
   return (
-    // Advanced widens the modal rather than lengthening it: details on the
-    // left, the track list on the right, so a four-track regional doesn't
-    // become a page-tall form.
-    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 1000 : 440}>
-      <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{
-          display: advanced ? 'grid' : 'flex',
-          // The left column holds four short inputs and stops; the right holds
-          // the track editor, whose labels and helper text wrap badly at half
-          // width. Fixed left, elastic right.
-          gridTemplateColumns: advanced ? '300px minmax(0, 1fr)' : undefined,
-          flexDirection: 'column', alignItems: 'start', gap: advanced ? '24px' : '14px',
-        }}>
+    // Steps replaced the old two-column advanced layout: the track editor now
+    // gets a step of its own, so it no longer has to share a row with the
+    // details and can use the full width.
+    <Modal
+      title="New Tournament"
+      onClose={onClose}
+      closeOnOverlayClick={false}
+      width={step === 2 && advanced ? 820 : 440}
+      footer={
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {formError && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', margin: 0 }}>
+              {formError}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button
+              type="button" variant="secondary" size="md" fullWidth
+              onClick={step === 1 ? onClose : () => setStep(1)}
+            >
+              {step === 1 ? 'Cancel' : 'Back'}
+            </Button>
+            {/* Distinct keys so Create is a new element, not Next with its type
+                flipped mid-click — otherwise the click that sets step 2 lands
+                on a submit button and fires Create, flagging step 2's errors. */}
+            {step === 1 ? (
+              <Button key="next" type="button" variant="primary" size="md" fullWidth onClick={goToSchedule}>
+                Next
+              </Button>
+            ) : (
+              // Outside the <form>, so it submits by id rather than by nesting.
+              <Button key="create" type="submit" form={FORM_ID} variant="primary" size="md" fullWidth loading={loading}>
+                Create
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <StepDots step={step} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'start', gap: '14px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
+        {step === 1 && (<>
         <Input
           label="Name"
           required
           charset="alpha"
           value={name}
-          onChange={(e) => { setName(e.target.value); setErrors(({ name, ...rest }) => rest) }}
-          error={errors.name}
+          onChange={(e) => setName(e.target.value)}
+          error={shownDetails.name}
           placeholder="e.g. Caltech Invitational"
           fullWidth
           autoFocus
@@ -246,8 +374,33 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           placeholder="e.g. SoCal, OC, LA"
           fullWidth
         />
+        <Combobox
+          label="State"
+          required
+          options={STATE_OPTIONS}
+          getId={(s) => s}
+          getLabel={(s) => s}
+          allowFreeText={false}
+          value={stateText}
+          onChange={(text, matched) => { setStateText(text); setMatchedState(matched) }}
+          error={shownDetails.state}
+          placeholder="e.g. Southern California"
+        />
+        <Combobox
+          label="Level"
+          required
+          options={LEVEL_OPTIONS}
+          getId={(o) => o.value}
+          getLabel={(o) => o.label}
+          allowFreeText={false}
+          value={levelText}
+          onChange={(text, matched) => { setLevelText(text); setMatchedLevel(matched) }}
+          error={shownDetails.level}
+          placeholder="e.g. Invitational"
+        />
+        </>)}
 
-        {!advanced && (
+        {step === 2 && !advanced && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <Combobox
@@ -258,8 +411,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 getLabel={(u) => u.name}
                 getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
                 value={locationTbd ? TBD : locationText}
-                onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
-                error={errors.location}
+                onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched) }}
+                error={shownSchedule.location}
                 placeholder="e.g. Caltech, Pasadena CA"
                 locked={locationTbd}
               />
@@ -270,7 +423,6 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 onChange={(checked) => {
                   setLocationTbd(checked)
                   if (checked) { setLocationText(''); setMatchedUniversity(null) }
-                  setErrors(({ location, ...rest }) => rest)
                 }}
               />
             </div>
@@ -291,9 +443,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   onChange={(e) => {
                     setStartDate(e.target.value)
                     if (!spansDays) setEndDate(e.target.value)
-                    setErrors(({ startDate, endDate, ...rest }) => rest)
                   }}
-                  error={errors.startDate}
+                  error={shownSchedule.startDate}
                   min={todayLocalDateString()}
                   fullWidth
                 />
@@ -303,8 +454,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                     required
                     type="date"
                     value={endDate}
-                    onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
-                    error={errors.endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    error={shownSchedule.endDate}
                     min={startDate || todayLocalDateString()}
                     fullWidth
                   />
@@ -317,7 +468,6 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   onChange={(checked) => {
                     setSpansDays(checked)
                     if (!checked) setEndDate(startDate)
-                    setErrors(({ endDate, ...rest }) => rest)
                   }}
                 />
                 <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
@@ -331,39 +481,14 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 onChange={(checked) => {
                   setDatesTbd(checked)
                   if (checked) { setSpansDays(false); setStartDate(''); setEndDate('') }
-                  setErrors(({ startDate, endDate, ...rest }) => rest)
                 }}
               />
             </div>
           </>
         )}
 
-        <Combobox
-          label="State"
-          required
-          options={STATE_OPTIONS}
-          getId={(s) => s}
-          getLabel={(s) => s}
-          allowFreeText={false}
-          value={stateText}
-          onChange={(text, matched) => { setStateText(text); setMatchedState(matched); setErrors(({ state, ...rest }) => rest) }}
-          error={errors.state}
-          placeholder="e.g. Southern California"
-        />
-        <Combobox
-          label="Level"
-          required
-          options={LEVEL_OPTIONS}
-          getId={(o) => o.value}
-          getLabel={(o) => o.label}
-          allowFreeText={false}
-          value={levelText}
-          onChange={(text, matched) => { setLevelText(text); setMatchedLevel(matched); setErrors(({ level, ...rest }) => rest) }}
-          error={errors.level}
-          placeholder="e.g. Invitational"
-        />
 
-        {!advanced && (
+        {step === 2 && !advanced && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label style={{
               fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
@@ -378,21 +503,21 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   type="button"
                   variant={division.includes(d) ? 'primary' : 'secondary'}
                   size="sm"
-                  onClick={() => { toggleDivision(d); setErrors(({ division, ...rest }) => rest) }}
+                  onClick={() => toggleDivision(d)}
                 >
                   {d}
                 </Button>
               ))}
             </div>
-            {errors.division && (
+            {shownSchedule.division && (
               <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)' }}>
-                {errors.division}
+                {shownSchedule.division}
               </p>
             )}
           </div>
         )}
 
-        {!advanced && (
+        {step === 2 && !advanced && (
           <button
             type="button"
             onClick={enableAdvanced}
@@ -407,7 +532,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         )}
         </div>
 
-        {advanced && (
+        {step === 2 && advanced && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
             <div>
               <div style={{
@@ -500,9 +625,9 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
               })}
             </div>
 
-            {errors.tracks && (
+            {shownSchedule.tracks && (
               <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
-                {errors.tracks}
+                {shownSchedule.tracks}
               </p>
             )}
             <Button type="button" variant="secondary" size="sm" onClick={addTrackRow} style={{ alignSelf: 'flex-start' }}>
@@ -512,19 +637,6 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         )}
         </div>
 
-        {errors.form && (
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
-            {errors.form}
-          </p>
-        )}
-        <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-          <Button type="button" variant="secondary" size="md" fullWidth onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" size="md" fullWidth loading={loading}>
-            Create
-          </Button>
-        </div>
       </form>
     </Modal>
   )
