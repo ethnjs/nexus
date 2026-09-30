@@ -1,5 +1,7 @@
-// In dev:  NEXT_PUBLIC_API_URL=http://localhost:8001 → hits backend directly
-// In prod: NEXT_PUBLIC_API_URL is unset → goes through /api/proxy → Next.js adds API key server-side
+// Always goes through /api/proxy (the Next.js route at app/api/proxy/[...path]/,
+// which attaches the API key server-side) — dev, preview, and prod all use this
+// same path. NEXT_PUBLIC_API_URL is an escape hatch, not a required env var: set
+// it only if you want the browser to call a backend directly, bypassing the proxy.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -390,6 +392,8 @@ export interface TournamentTrack {
   is_archived:   boolean
   /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
   allow_confirm: boolean
+  /** TD-controlled: closes the track to member edits entirely, declining included. */
+  lock_responses: boolean
   // The role the assignments board grants a member placed on this track with
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
@@ -772,6 +776,10 @@ export interface MembershipTrackStatus {
   // because GET /tracks/ is manage_tournament-gated, so a member page has no
   // other way to learn it.
   allow_confirm: boolean
+  // The TD has closed this track to member edits. Carried for the same
+  // reason as allow_confirm — the overview card needs it to explain why the
+  // Edit button is disabled.
+  lock_responses: boolean
   // Null on a pending entry: no row, so nothing has been updated.
   updated_at:  string | null
 }
@@ -1216,6 +1224,9 @@ export interface MyTrackOptions {
   track_name:    string
   is_primary:    boolean
   allow_confirm: boolean
+  // The TD has closed this track to member edits — it is dropped from the
+  // edit page entirely rather than rendered inert.
+  lock_responses: boolean
   // Null when the member has no row for this track at all.
   status:        TrackStatus | null
   // Fields come back in get_form_for_rendering shape with config.options

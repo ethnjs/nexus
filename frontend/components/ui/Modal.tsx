@@ -9,13 +9,16 @@ interface ModalProps {
   title?: string
   onClose: () => void
   children: ReactNode
+  /** Rendered below the body, separated from it. Not pinned — the overlay
+   *  scrolls as a page, so the actions sit at the end of the modal. */
+  footer?: ReactNode
   width?: number
   closeOnOverlayClick?: boolean
   variant?: ModalVariant
   contentStyle?: React.CSSProperties
 }
 
-export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, variant = 'normal', contentStyle }: ModalProps) {
+export function Modal({ title, onClose, children, footer, width = 440, closeOnOverlayClick = true, variant = 'normal', contentStyle }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -41,7 +44,15 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
         position: 'fixed', inset: 0,
         background: 'rgba(0,0,0,0.35)',
         zIndex: 200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        // The overlay is what scrolls, not the modal's insides: a tall form
+        // grows to its natural height and you scroll the page past it, rather
+        // than reading it through a window with its own scrollbar.
+        overflowY: 'auto',
+        padding: '16px',
+        // `margin: auto` on the child rather than centring here — with
+        // alignItems: 'center' an over-tall child overflows *both* ways and
+        // its top becomes unreachable.
+        display: 'flex',
       }}
       onMouseDown={(e) => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
       onClick={(e) => {
@@ -55,7 +66,12 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
           borderRadius: 'var(--radius-lg)',
           padding: '28px',
           width,
-          maxWidth: 'calc(100vw - 32px)',
+          maxWidth: '100%',
+          // Centred while it fits, pinned to the top once it doesn't — which
+          // is what keeps a tall modal's title reachable instead of clipped
+          // off the top of the viewport.
+          margin: 'auto',
+          flexShrink: 0,
           boxShadow: 'var(--shadow-lg)',
           ...contentStyle,
         }}
@@ -73,6 +89,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
           </h2>
         )}
         {children}
+        {footer && <div style={{ paddingTop: '16px' }}>{footer}</div>}
       </div>
     </div>,
     document.body

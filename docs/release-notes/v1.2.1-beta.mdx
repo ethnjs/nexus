@@ -1,0 +1,15 @@
+---
+title: v1.2.1-beta
+description: Age flags show for tournaments whose dates are TBD
+date: 2026-09-29T18:00:00-07:00
+---
+
+A small fix for tournaments that collect age flags but don't have a date yet.
+
+## Fixes
+
+- Every member of a tournament with TBD dates showed **18+ Unknown** and **21+ Unknown**, even after consenting. Until a date is set, age is now checked against today's date.
+
+## Worth knowing
+
+- **Age flags on a TBD tournament are provisional.** Once you set the first date, they're rechecked against that day, so someone who turns 18 before the tournament will switch from Under 18 to 18+.

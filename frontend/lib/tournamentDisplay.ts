@@ -71,14 +71,37 @@ export function formatDayRange(start: string | null, end: string | null, style: 
   return formatDates(enumerateDays(start, end), style);
 }
 
+/**
+ * What a primary track shows in place of a date or venue it doesn't have yet.
+ *
+ * Absence means two different things depending on the track. A cosmetic track
+ * has no dates or venue by definition and shows nothing at all; a primary one
+ * is a real competition day whose details simply aren't settled. So the
+ * decision needs the track, not just the field, and lives in the two helpers
+ * below rather than being re-derived at every call site.
+ */
+export const TBD = "TBD";
+
 /** A track's own days, for the per-track rows a multi-site tournament shows. */
 export function formatTrackDates(track: TournamentTrack, style: DateStyle = "short"): string | null {
-  return formatDayRange(track.start_date, track.end_date, style);
+  const formatted = formatDayRange(track.start_date, track.end_date, style);
+  if (formatted) return formatted;
+  return track.is_primary ? TBD : null;
 }
 
 /** Where a tournament or track happens — university name wins over free text. */
 export function placeOf(entity: { location: string | null; university: { name: string } | null }): string | null {
   return entity.university?.name ?? entity.location ?? null;
+}
+
+/**
+ * placeOf for a track, where an absent venue on a primary track reads TBD.
+ * `short` picks the university's abbreviation, for a table cell — TBD is
+ * already short enough to need no second form.
+ */
+export function placeOfTrack(track: TournamentTrack, { short = false } = {}): string | null {
+  const place = short ? placeOfShort(track) : placeOf(track);
+  return place ?? (track.is_primary ? TBD : null);
 }
 
 /**
@@ -170,9 +193,22 @@ export function tournamentFactRows(
     return primary.map((track) => ({
       key: track.id,
       name: track.name,
-      place: placeOf(track),
+      place: placeOfTrack(track),
       dates: formatTrackDates(track, style),
     }));
+  }
+  // With exactly one primary track the tournament's own `location`/`dates`
+  // are derived from it, so reading the track directly says the same thing —
+  // and is the only version that can tell a TBD day from a tournament that
+  // somehow has no primary track at all.
+  if (primary.length === 1) {
+    const [track] = primary;
+    return [{
+      key: "tournament",
+      name: null,
+      place: placeOfTrack(track),
+      dates: formatTrackDates(track, style),
+    }];
   }
   return [{ key: "tournament", name: null, place: placeOf(t), dates: formatDates(t.dates, style) }];
 }

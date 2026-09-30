@@ -44,16 +44,10 @@ Dev seed accounts (created automatically on startup):
 ```bash
 cd frontend
 pnpm install
-```
-
-Create `frontend/.env.local`:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8001
-```
-
-```bash
 pnpm dev
 ```
+
+No `.env.local` needed — the frontend talks to the backend through the same `/api/proxy` route used in preview and production, which defaults to `http://localhost:8001`. If your backend runs on a different port, create `frontend/.env.local` with `API_URL=http://localhost:<port>`. `API_URL` is a frontend server-only variable read by the proxy route handler (never sent to the browser) that controls where the proxy forwards requests to; `API_KEY` is the `X-API-Key` header value. For most local dev, leave unset in both frontend and backend environments since api key checks are skiped entirely when `API_KEY` is empty.
 
 ### Running tests
 

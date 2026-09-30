@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminTournamentsApi, tournamentsApi, AdminTournament, ApiError } from "@/lib/api";
 import {
-  formatDates, formatTrackDates, placeOf, placeOfShort, primaryTracks,
+  formatDates, formatTrackDates, placeOf, placeOfShort, placeOfTrack, primaryTracks,
   stateAbbreviation, tournamentDisplayName,
 } from "@/lib/tournamentDisplay";
 import { formatDuration } from "@/lib/timeFormat";
@@ -88,10 +88,14 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
   const primary = primaryTracks(tournament);
 
   if (primary.length <= 1) {
-    const place = placeOfShort(tournament);
+    // Read the sole primary track rather than the tournament: the two say the
+    // same thing, but only the track knows a missing venue means TBD.
+    const [track] = primary;
+    const place = track ? placeOfTrack(track, { short: true }) : placeOfShort(tournament);
     // Full name in the title — the abbreviation is for scanning the column,
     // not for hiding which university it is.
-    return <span style={TEXT_CELL} title={placeOf(tournament) ?? undefined}>{place ?? "—"}</span>;
+    const full = track ? placeOfTrack(track) : placeOf(tournament);
+    return <span style={TEXT_CELL} title={full ?? undefined}>{place ?? "—"}</span>;
   }
 
   return (
@@ -105,10 +109,10 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
                 {track.name}
               </span>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-                {placeOf(track) ?? "No venue"}
+                {placeOfTrack(track)}
               </span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-                {formatTrackDates(track) ?? "No dates"}
+                {formatTrackDates(track)}
               </span>
             </div>
           ))}
@@ -181,7 +185,11 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
 
       <VenueCell tournament={tournament} />
 
-      <span style={TEXT_CELL}>{formatDates(tournament.dates) ?? "—"}</span>
+      <span style={TEXT_CELL}>
+        {primary.length === 1
+          ? formatTrackDates(primary[0])
+          : formatDates(tournament.dates) ?? "—"}
+      </span>
 
       {/* Primary over total: a cosmetic track carries no dates or venue, so
           the two numbers explain an empty Venue or Dates cell. */}

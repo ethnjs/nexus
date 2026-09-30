@@ -33,6 +33,54 @@
   }
 }
 
+/* Muted rather than faded out: it has to stay legible, since hovering it is
+   how the member finds out why they can't edit. */
+.locked {
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border-strong);
+  cursor: not-allowed;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  .locked:hover {
+    transform: none;
+  }
+}
+
+/* Opens to the left, vertically centred on the button — the only side with
+   room, since the button sits in the bottom-right corner. */
+.reason {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: max-content;
+  max-width: min(280px, calc(100vw - 100px));
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: default;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.locked:hover .reason,
+.locked:focus-visible .reason,
+.locked:active .reason {
+  opacity: 1;
+  visibility: visible;
+}
+
 @media (max-width: 640px) {
   /* Closer to the corner, and clear of the iOS home indicator. */
   .button {

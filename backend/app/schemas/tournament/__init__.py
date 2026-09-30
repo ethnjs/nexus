@@ -74,7 +74,8 @@ class TournamentFieldValidators:
 
 class TournamentCreate(TournamentFieldValidators, BaseModel):
     """No dates, venue or divisions here — those belong to tracks, and a
-    tournament is created with at least one primary track carrying them. The
+    tournament is created with at least one primary track carrying them (or
+    deliberately not: a primary track with no dates or venue is TBD). The
     simple single-site case sends exactly one track; a multi-site regional
     sends one per venue/day.
 
@@ -109,8 +110,10 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
             raise ValueError("track names must be unique within a tournament")
         # Checked here rather than on the track itself: a *new* tournament
         # can't be in the past, but an existing track legitimately can be
-        # (editing a venue on a tournament already underway).
-        if any(t.start_date < date.today() for t in primary):
+        # (editing a venue on a tournament already underway). A TBD track has
+        # no start_date to judge, and skipping it is the point — "we're
+        # running, we don't know when" is exactly when a tournament is made.
+        if any(t.start_date and t.start_date < date.today() for t in primary):
             raise ValueError("start_date cannot be in the past")
         return self
 

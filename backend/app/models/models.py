@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
@@ -537,20 +538,27 @@ class TournamentMembership(Base):
     # Age is measured against the tournament's first day, which is derived
     # from its primary tracks rather than stored. `first_day`, not the `dates`
     # list: someone's age on the day the tournament opens is what a minimum-age
-    # rule means. None until a primary track has dates.
+    # rule means. A TBD tournament falls back to today in its own timezone.
+    @property
+    def _age_reference_day(self) -> date:
+        first_day = self.tournament.first_day
+        if first_day is not None:
+            return first_day
+        return datetime.now(ZoneInfo(self.tournament.timezone)).date()
+
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
-        if self.user.date_of_birth is None or self.tournament.first_day is None:
+        if self.user.date_of_birth is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 18)
+        return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 18)
 
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
-        if self.user.date_of_birth is None or self.tournament.first_day is None:
+        if self.user.date_of_birth is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 21)
+        return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 21)
 
     # No .expression variants, so no server-side age filtering — and now
     # doubly so: first_day is a Python-side aggregate over tracks, not a
@@ -837,9 +845,10 @@ class TournamentTrack(Base):
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
 
-    # See the class docstring. Required nullable at the DB level because a
-    # cosmetic track legitimately has none of the four; the primary-track
-    # invariant is enforced in the schema layer and the tracks routes.
+    # See the class docstring. Nullable at the DB level because a cosmetic
+    # track legitimately has none of the four, and because a primary track
+    # uses their absence to say TBD; the primary-track invariant is enforced
+    # in the schema layer and the tracks routes.
     is_primary = Column(Boolean, nullable=False, default=False)
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
@@ -856,9 +865,27 @@ class TournamentTrack(Base):
     # Whether a member may move themselves to "confirmed" on this track from
     # their own member page. Off by default: on most tracks `confirmed` means
     # the TD staffed them, and only the TD knows when that's true. Opting
-    # *out* never consults this — declining a track is always the member's
-    # own call.
+    # *out* never consults this — declining is not something confirmation
+    # being closed should block. (`lock_responses` below does block it: that
+    # one closes the track to changes of every kind.)
     allow_confirm = Column(Boolean, nullable=False, default=False)
+    # Freezes this track's member-editable answers — availability, lunch,
+    # event preferences and status. Set once the TD has staffed the day out of
+    # those answers, at which point a member quietly changing one pulls the
+    # ground out from under the assignments board.
+    #
+    # Unlike allow_confirm this covers opting *out* too: on a locked track a
+    # member can't decline either. That deliberately overrides the rule that
+    # declining is always the member's own call (see
+    # TournamentMembershipTrackStatus) — a locked track is one people are
+    # already staffed on, so a late withdrawal is a conversation with the TD
+    # rather than a button.
+    #
+    # Forms are out of scope: they write the same rows and keep doing so.
+    #
+    # A track created through the API starts locked — the default lives on
+    # TournamentTrackCreate, not here.
+    lock_responses = Column(Boolean, nullable=False, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,
     # a competition day's is more often a general volunteer role. SET NULL
@@ -884,10 +911,11 @@ class TournamentTrack(Base):
     )
 
 
-# Exactly one of university_id/location (XOR), and only on a primary track —
-# a cosmetic track has neither. Checked at flush rather than per-attribute so
-# swapping one for the other doesn't trip on a false-invalid intermediate
-# state. Moved here from Tournament when venues became per-track.
+# At most one of university_id/location, and only on a primary track — a
+# cosmetic track has neither, and a primary track with neither is TBD.
+# Checked at flush rather than per-attribute so swapping one for the other
+# doesn't trip on a false-invalid intermediate state. Moved here from
+# Tournament when venues became per-track.
 @event.listens_for(TournamentTrack, "before_insert")
 @event.listens_for(TournamentTrack, "before_update")
 def _validate_track_source(mapper, connection, target: "TournamentTrack"):
@@ -895,8 +923,7 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
     loc = bool(target.location)
     if univ and loc:
         raise ValueError("A track must have only one of university_id or location, not both.")
-    if target.is_primary and not univ and not loc:
-        raise ValueError("A primary track must have either a university_id or a location.")
+    # A primary track with neither is not an error — that's how it says TBD.
     if not target.is_primary and (univ or loc):
         raise ValueError("Only a primary track can have a university_id or location.")
 

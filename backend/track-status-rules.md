@@ -52,6 +52,19 @@ legitimate outcome of the rules — a respondent answering what they were asked
 Applies to `PUT /members/me/track-statuses/{track_id}/` and to the `status`
 field on `PUT /members/me/availability/{track_id}/`.
 
+Two gates come before the table below, and apply to every self-service write
+on the track (availability, lunch, and event preferences as well as status):
+
+- **The track must not be locked** (`lock_responses`, `require_track_unlocked`).
+  Declining included — see the model.
+- **The member must already have answered** (`require_track_answered`): a
+  status row has to exist, and only a form's write-through creates one. The
+  first answer on a track always goes through a form, where the questions sit
+  in context; this page is for changing it afterwards. So `pending` is never
+  a starting point here.
+
+When both fail, the lock is what's reported — answering the form wouldn't help.
+
 | status | allowed when |
 |---|---|
 | `declined` | **always** — opting out is the member's own call, on any track |
@@ -91,5 +104,6 @@ to act on something that is already leaving.
 |---|---|
 | the monotonic rule | `app/core/form/write_through.py` — `can_set_track_status` |
 | the self-service rule | `app/api/routes/tournament/memberships.py` — `_set_track_status` |
+| the lock and first-answer gates | `app/core/tournament/tracks.py` — `require_track_unlocked`, `require_track_answered` |
 | `pending` padding | `app/core/tournament/memberships.py` — `build_track_statuses` |
 | the `allow_confirm` flag | `TournamentTrack.allow_confirm`, surfaced on `MembershipTrackStatusRead` so the member page can tell whether to offer a Confirm control at all |

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ApiError, MyTrackOptions, formsApi, membersApi } from "@/lib/api";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { TRACK_LOCKED_REASON, TRACK_UNANSWERED_REASON } from "@/lib/responseLock";
 import { Banner } from "@/components/ui/Banner";
 import { MemberEditDraft, TrackDraft, editableTracks, saveDraft, toDraft } from "@/lib/memberEdit";
 import { TrackEditSection } from "@/components/tournament/edit/TrackEditSection";
@@ -14,7 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
+import { IconArrowLeft, IconForms, IconLock } from "@/components/ui/Icons";
 
 /**
  * A member editing their own answers, one section per track.
@@ -24,6 +25,13 @@ import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
  * coordinator sees somebody. That split is deliberate — a coordinator's own
  * update schema is notes-only, so there is no version of this page for them.
  */
+/** Whether the member may change anything on this track here. The first
+ *  answer always goes through a form (status null means there isn't one yet),
+ *  and a locked track takes no answers at all — both refused server-side too. */
+function isWritable(track: MyTrackOptions): boolean {
+  return !track.lock_responses && track.status !== null;
+}
+
 export default function MemberEditPage() {
   const params = useParams();
   const router = useRouter();
@@ -34,6 +42,8 @@ export default function MemberEditPage() {
   const isSelf = me?.id === membershipId;
   const { isArchived } = useArchiveLock();
 
+  // Locked tracks included: each renders as its own locked card in place, so
+  // the member can see which tracks are closed rather than just fewer tracks.
   const [tracks, setTracks] = useState<MyTrackOptions[] | null>(null);
   const [baseline, setBaseline] = useState<MemberEditDraft>({});
   const [draft, setDraft] = useState<MemberEditDraft>({});
@@ -51,7 +61,9 @@ export default function MemberEditPage() {
         const completed = new Set(forms.filter((form) => form.completed).map((form) => form.id));
         const editable = editableTracks(response.tracks, completed);
         setTracks(editable);
-        const initial = toDraft(editable);
+        // Only writable tracks get a draft. saveDraft skips a track with none,
+        // so a locked or unanswered track can never be written from here.
+        const initial = toDraft(editable.filter(isWritable));
         setBaseline(initial);
         setDraft(initial);
       })
@@ -146,7 +158,19 @@ export default function MemberEditPage() {
             <EmptyState title="Nothing to edit yet" description="This tournament hasn't set up any tracks." />
           </Card>
         )}
-        {tracks?.map((track) => (
+        {tracks?.map((track) => !isWritable(track) ? (
+          // A placeholder rather than its controls rendered inert: there is
+          // nothing to do with it here, and the overview card is where any
+          // answers stay visible. Locked wins — it is the more final reason.
+          <Card key={track.track_id} radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>{track.track_name}</h2>
+            {track.lock_responses ? (
+              <EmptyState icon={<IconLock size={28} />} title="Editing is closed" description={TRACK_LOCKED_REASON} />
+            ) : (
+              <EmptyState icon={<IconForms size={28} />} title={TRACK_UNANSWERED_REASON} />
+            )}
+          </Card>
+        ) : (
           <TrackEditSection
             key={track.track_id}
             track={track}

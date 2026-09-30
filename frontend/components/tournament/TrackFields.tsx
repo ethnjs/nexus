@@ -4,7 +4,7 @@ import { ReactNode, useState } from "react";
 import { Role, TournamentDivision, University, TOURNAMENT_DIVISIONS } from "@/lib/api";
 import { TrackDraft } from "@/lib/trackDraft";
 import { todayLocalDateString } from "@/lib/date";
-import { formatDayRange } from "@/lib/tournamentDisplay";
+import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -51,10 +51,16 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "flex", gap: "10px" }}>
+              {/* TBD keeps the field in place reading "TBD" rather than
+                  removing it — the row shouldn't reflow, and the TD should be
+                  able to see what the track will say. `type` swaps to text
+                  because a date input can't display anything but a date. */}
               <Input
-                label={multiDay ? "Start" : "Date"} required type="date" fullWidth locked={locked}
+                label={multiDay && !draft.dates_tbd ? "Start" : "Date"} required
+                type={draft.dates_tbd ? "text" : "date"} fullWidth
+                locked={locked || draft.dates_tbd}
                 min={today}
-                value={draft.start_date}
+                value={draft.dates_tbd ? TBD : draft.start_date}
                 // Single-day tracks keep end_date in step with start_date —
                 // the backend requires both on a competition day, and the TD
                 // has said this one doesn't span days.
@@ -65,7 +71,7 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
                 )}
                 error={errors.start_date}
               />
-              {multiDay && (
+              {multiDay && !draft.dates_tbd && (
                 <Input
                   label="End" required type="date" fullWidth locked={locked}
                   min={draft.start_date || today}
@@ -75,10 +81,10 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
                 />
               )}
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked ? "default" : "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked || draft.dates_tbd ? "default" : "pointer" }}>
               <Checkbox
-                checked={multiDay}
-                locked={locked}
+                checked={multiDay && !draft.dates_tbd}
+                locked={locked || draft.dates_tbd}
                 onChange={(checked) => {
                   setSpansDays(checked);
                   if (!checked) onChange({ end_date: draft.start_date });
@@ -88,20 +94,44 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
                 Runs more than one day
               </span>
             </label>
+            <TbdCheckbox
+              label="Date not decided yet"
+              checked={draft.dates_tbd}
+              locked={locked}
+              // Clearing the dates is the point: TBD is stored as their
+              // absence, so leaving stale values behind would save a date the
+              // TD has just said they don't have.
+              onChange={(checked) => {
+                setSpansDays(false);
+                onChange(checked
+                  ? { dates_tbd: true, start_date: "", end_date: "" }
+                  : { dates_tbd: false });
+              }}
+            />
           </div>
-          <Combobox
-            label="Location"
-            required
-            options={universities}
-            getId={(u) => u.id}
-            getLabel={(u) => u.name}
-            getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
-            value={draft.location}
-            onChange={(text, matched) => onChange({ location: text, university_id: matched?.id ?? null })}
-            placeholder="e.g. UCI"
-            locked={locked}
-            error={errors.location}
-          />
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Combobox
+              label="Location"
+              required
+              options={universities}
+              getId={(u) => u.id}
+              getLabel={(u) => u.name}
+              getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
+              value={draft.location_tbd ? TBD : draft.location}
+              onChange={(text, matched) => onChange({ location: text, university_id: matched?.id ?? null })}
+              placeholder="e.g. UCI"
+              locked={locked || draft.location_tbd}
+              error={errors.location}
+            />
+            <TbdCheckbox
+              label="Venue not decided yet"
+              checked={draft.location_tbd}
+              locked={locked}
+              onChange={(checked) => onChange(checked
+                ? { location_tbd: true, location: "", university_id: null }
+                : { location_tbd: false })}
+            />
+          </div>
           <div>
             <div style={{
               fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
@@ -140,6 +170,16 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
       </FieldRow>
 
+      {/* Deliberately not scoped to competition days: a member answers for a
+          cosmetic track like Test Writing too, so it can be closed the same
+          way. */}
+      <FieldRow
+        label="Lock member responses"
+        helper="Closes this track to member edits — availability, lunch, event preferences and status, including opting out."
+      >
+        <Toggle checked={draft.lock_responses} onChange={(v) => onChange({ lock_responses: v })} locked={locked} />
+      </FieldRow>
+
       <FieldRow
         label="Default role"
         helper="The role the assignments board grants when someone is placed on this track with no role picked yet."
@@ -154,6 +194,28 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         />
       </FieldRow>
     </div>
+  );
+}
+
+/**
+ * "Not decided yet" for a date or a venue. Ticking it is how a TD says TBD
+ * out loud — the field it replaces is required otherwise, so a competition
+ * day can never be saved simply blank. The stored form is still absence; see
+ * trackDraftPayload.
+ */
+export function TbdCheckbox({ label, checked, locked, onChange }: {
+  label: string;
+  checked: boolean;
+  locked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked ? "default" : "pointer" }}>
+      <Checkbox checked={checked} locked={locked} onChange={onChange} />
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        {label}
+      </span>
+    </label>
   );
 }
 
@@ -180,8 +242,10 @@ export function FieldRow({ label, helper, children }: { label: string; helper?: 
  */
 export function TrackSummary({ draft }: { draft: TrackDraft }) {
   if (!draft.is_primary) return null;
-  const dates = formatDayRange(draft.start_date || null, draft.end_date || null);
-  const place = draft.location.trim() || null;
+  // TBD reads the same here as it does everywhere else the track is shown, so
+  // collapsing a row the TD has just marked TBD doesn't blank the line out.
+  const dates = draft.dates_tbd ? TBD : formatDayRange(draft.start_date || null, draft.end_date || null);
+  const place = draft.location_tbd ? TBD : (draft.location.trim() || null);
   if (!place && !dates && draft.division.length === 0) return null;
 
   return (

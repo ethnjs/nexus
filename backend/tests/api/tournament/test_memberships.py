@@ -299,7 +299,7 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
     row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/members/").json() if r["id"] == m.id)
     assert row["track_statuses"] == [{
         "track_id": track.id, "name": "Test Writing", "is_archived": False,
-        "status": "confirmed", "allow_confirm": False,
+        "status": "confirmed", "allow_confirm": False, "lock_responses": False,
         "updated_at": row["track_statuses"][0]["updated_at"],
     }]
 
@@ -1777,10 +1777,13 @@ def _make_shift(db, tournament_id, label="Morning", day=1):
     return shift
 
 
-def _make_track(db, tournament_id, name="Test Writing", allow_confirm=False):
+def _make_track(db, tournament_id, name="Test Writing", allow_confirm=False, lock_responses=False):
     from app.models.models import TournamentTrack
 
-    track = TournamentTrack(tournament_id=tournament_id, name=name, allow_confirm=allow_confirm)
+    track = TournamentTrack(
+        tournament_id=tournament_id, name=name,
+        allow_confirm=allow_confirm, lock_responses=lock_responses,
+    )
     db.add(track)
     db.commit()
     db.refresh(track)
@@ -1793,6 +1796,17 @@ def _my_membership(db, tournament, user):
         .filter_by(tournament_id=tournament.id, user_id=user.id)
         .one()
     )
+
+
+def _answered(db, tournament, user, track_id, status="interested"):
+    """Stands in for the member's first answer on a track, which only a form
+    submission can give (see require_track_answered). Every self-service write
+    below needs one before it is allowed at all."""
+    from app.models.models import TournamentMembershipTrackStatus
+
+    m = _my_membership(db, tournament, user)
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track_id, status=status))
+    db.commit()
 
 
 def _lunch_field(db, td_user, tournament, track_id, category, question_type="single_select_radio", options=None):
@@ -1844,6 +1858,7 @@ def test_put_my_availability_replaces_the_whole_set_for_that_track(client, td_us
     morning = _make_shift(db, td_tournament.id, "Morning", day=1)
     afternoon = _make_shift(db, td_tournament.id, "Afternoon", day=2)
     track_id = primary_track_id(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
 
     response = client.put(
@@ -1881,6 +1896,8 @@ def test_put_my_availability_leaves_another_track_alone(client, td_user, td_tour
     db.add(theirs)
     db.commit()
 
+    _answered(db, td_tournament, td_user, other.id)
+    _answered(db, td_tournament, td_user, primary_track_id(db, td_tournament.id))
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/availability"
     client.put(f"{base}/{other.id}/", json={"shift_ids": [theirs.id]})
@@ -1897,6 +1914,7 @@ def test_put_my_availability_rejects_a_shift_from_another_track(
     client, td_user, td_tournament, other_tournament, db,
 ):
     foreign = _make_shift(db, other_tournament.id, "Elsewhere")
+    _answered(db, td_tournament, td_user, primary_track_id(db, td_tournament.id))
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/members/me/availability/{primary_track_id(db, td_tournament.id)}/",
@@ -1910,6 +1928,7 @@ def test_not_available_clears_shifts_and_declines_in_one_call(client, td_user, t
     member can never be left declined with shifts still selected."""
     shift = _make_shift(db, td_tournament.id, "Morning", day=1)
     track_id = primary_track_id(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/"
 
@@ -1927,6 +1946,7 @@ def test_picking_a_group_again_re_opts_in(client, td_user, td_tournament, db):
     what the member's own page has to allow."""
     shift = _make_shift(db, td_tournament.id, "Morning", day=1)
     track_id = primary_track_id(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/"
 
@@ -1997,6 +2017,7 @@ def test_my_options_excludes_draft_and_archived_questions(client, td_user, td_to
 def test_my_options_carries_current_answers(client, td_user, td_tournament, db):
     shift = _make_shift(db, td_tournament.id, "Morning", day=1)
     track_id = primary_track_id(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     client.put(
         f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/",
@@ -2022,6 +2043,7 @@ def test_put_my_lunch_stores_the_option_label(client, td_user, td_tournament, db
             {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
         ],
     )
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
 
     response = client.put(
@@ -2038,6 +2060,7 @@ def test_put_my_lunch_leaves_other_categories_alone(client, td_user, td_tourname
                  options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
     _lunch_field(db, td_user, td_tournament, track_id, "drink",
                  options=[{"option_id": "opt_water", "value": "water", "label": "Water"}])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
 
@@ -2052,6 +2075,7 @@ def test_put_my_lunch_leaves_other_categories_alone(client, td_user, td_tourname
 def test_put_my_lunch_free_text(client, td_user, td_tournament, db):
     track_id = primary_track_id(db, td_tournament.id)
     _lunch_field(db, td_user, td_tournament, track_id, "notes", question_type="short_text")
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
 
     body = client.put(
@@ -2066,6 +2090,7 @@ def test_put_my_lunch_rejects_the_wrong_answer_shape(client, td_user, td_tournam
     _lunch_field(db, td_user, td_tournament, track_id, "notes", question_type="short_text")
     _lunch_field(db, td_user, td_tournament, track_id, "protein",
                  options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
 
@@ -2077,6 +2102,7 @@ def test_put_my_lunch_rejects_unknown_option_and_missing_question(client, td_use
     track_id = primary_track_id(db, td_tournament.id)
     _lunch_field(db, td_user, td_tournament, track_id, "protein",
                  options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
 
@@ -2105,6 +2131,7 @@ def test_put_my_event_preferences_ranked(client, td_user, td_tournament, db):
         {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
         {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
     ])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
 
     response = client.put(
@@ -2126,6 +2153,7 @@ def test_put_my_event_preferences_rejects_non_contiguous_ranks(client, td_user, 
         {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
         {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
     ])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/members/me/event-preferences/{track_id}/"
 
@@ -2147,6 +2175,7 @@ def test_put_my_event_preferences_replaces_the_whole_track(client, td_user, td_t
         {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
         {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
     ])
+    _answered(db, td_tournament, td_user, track_id)
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/members/me/event-preferences/{track_id}/"
 
@@ -2175,9 +2204,135 @@ def test_self_service_writes_reject_a_pending_delete_track(client, td_user, td_t
     ).status_code == 409
 
 
-def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_tournament, db):
-    """Opting out is the member's own call on any track."""
+# ---------------------------------------------------------------------------
+# lock_responses — the TD closing a track to member edits
+# ---------------------------------------------------------------------------
+
+def test_locked_track_refuses_every_member_write(client, td_user, td_tournament, db):
+    """All four per-track member writes, refused on a locked track.
+
+    Checked before each route's own validation, so the payloads here don't
+    need to be otherwise valid — a locked track is closed regardless of what
+    is being sent to it."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me"
+
+    assert client.put(f"{base}/availability/{track.id}/", json={"shift_ids": []}).status_code == 403
+    assert client.put(f"{base}/lunch/{track.id}/protein/", json={"option_ids": []}).status_code == 403
+    assert client.put(f"{base}/event-preferences/{track.id}/", json={"selections": []}).status_code == 403
+    assert client.put(f"{base}/track-statuses/{track.id}/", json={"status": "interested"}).status_code == 403
+
+
+def test_locked_track_refuses_declining_too(client, td_user, td_tournament, db):
+    """The lock covers opting *out*, unlike allow_confirm. A locked track is
+    one people are already staffed on, so leaving is a conversation with the
+    TD rather than a button."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 403
+    assert "locked" in response.json()["detail"]
+
+
+def test_unlocking_a_track_restores_member_writes(client, td_user, td_tournament, db):
+    """The lock is a gate, not a one-way door — the same write succeeds once
+    the TD turns it off."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    _answered(db, td_tournament, td_user, track.id)
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
+    assert client.put(url, json={"status": "declined"}).status_code == 403
+
+    track.lock_responses = False
+    db.commit()
+    assert client.put(url, json={"status": "declined"}).status_code == 200
+
+
+def test_locked_track_stays_readable(client, td_user, td_tournament, db):
+    """Reads are untouched: a member can still see what they answered, and
+    the flag rides along so the page knows to render it read-only."""
+    from app.models.models import TournamentMembershipTrackStatus
+
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    m = _my_membership(db, td_tournament, td_user)
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    entry = next(
+        t for t in client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+        if t["track_id"] == track.id
+    )
+    assert entry["status"] == "confirmed"
+    assert entry["lock_responses"] is True
+
+    options = client.get(f"/tournaments/{td_tournament.id}/members/me/options/").json()
+    assert next(t for t in options["tracks"] if t["track_id"] == track.id)["lock_responses"] is True
+
+
+def test_locked_track_flag_rides_on_a_pending_entry(client, td_user, td_tournament, db):
+    """A track the member hasn't answered is padded in as "pending" — built
+    by hand rather than from a row, so the flag has to be carried explicitly
+    or the overview card offers an Answer button the route will refuse."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+
+    entry = next(
+        t for t in client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+        if t["track_id"] == track.id
+    )
+    assert entry["status"] == "pending"
+    assert entry["lock_responses"] is True
+
+
+def test_unanswered_track_refuses_every_member_write(client, td_user, td_tournament, db):
+    """A member's first answer on a track goes through a form. Until one has,
+    all four self-service writes refuse — status included, so the member
+    can't skip the form by just saying they're interested."""
     track = _make_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me"
+
+    assert client.put(f"{base}/availability/{track.id}/", json={"shift_ids": []}).status_code == 403
+    assert client.put(f"{base}/lunch/{track.id}/protein/", json={"option_ids": []}).status_code == 403
+    assert client.put(f"{base}/event-preferences/{track.id}/", json={"selections": []}).status_code == 403
+    response = client.put(f"{base}/track-statuses/{track.id}/", json={"status": "interested"})
+    assert response.status_code == 403
+    assert "signup form" in response.json()["detail"]
+
+
+def test_a_locked_unanswered_track_reports_the_lock(client, td_user, td_tournament, db):
+    """Both gates fail; the lock is the one worth hearing about, since
+    answering the form wouldn't help."""
+    track = _make_track(db, td_tournament.id, lock_responses=True)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 403
+    assert "locked" in response.json()["detail"]
+
+
+def test_an_unlocked_track_is_the_default(client, td_user, td_tournament, db):
+    track = _make_track(db, td_tournament.id)
+    assert track.lock_responses is False
+    _answered(db, td_tournament, td_user, track.id)
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    ).status_code == 200
+
+
+def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_tournament, db):
+    """Opting out is the member's own call on any *unlocked* track."""
+    track = _make_track(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
@@ -2191,6 +2346,7 @@ def test_put_my_track_status_undeclines_to_interested(client, td_user, td_tourna
     """With allow_confirm off, interested is the way back in — and it's a
     move write-through itself refuses (see can_set_track_status)."""
     track = _make_track(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track.id)
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
     client.put(url, json={"status": "declined"})
@@ -2201,6 +2357,7 @@ def test_put_my_track_status_undeclines_to_interested(client, td_user, td_tourna
 
 def test_put_my_track_status_cannot_self_confirm_by_default(client, td_user, td_tournament, db):
     track = _make_track(db, td_tournament.id)
+    _answered(db, td_tournament, td_user, track.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
@@ -2212,6 +2369,7 @@ def test_put_my_track_status_cannot_self_confirm_by_default(client, td_user, td_
 def test_put_my_track_status_self_confirms_when_allowed(client, td_user, td_tournament, db):
     """With allow_confirm on, declined goes straight to confirmed."""
     track = _make_track(db, td_tournament.id, allow_confirm=True)
+    _answered(db, td_tournament, td_user, track.id)
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
     client.put(url, json={"status": "declined"})
@@ -2226,6 +2384,7 @@ def test_put_my_track_status_rejects_interested_when_confirm_allowed(
     """No step to nowhere: a member who can confirm themselves has no use for
     the middle state."""
     track = _make_track(db, td_tournament.id, allow_confirm=True)
+    _answered(db, td_tournament, td_user, track.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
@@ -2528,6 +2687,22 @@ def test_membership_age_flags_computed_against_start_date_not_today(
     dob = date(start.year - 18, start.month, start.day) + timedelta(days=1)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is False
+
+
+def test_membership_age_flags_fall_back_to_today_when_dates_are_tbd(
+    client, td_user, td_tournament, other_user, db
+):
+    """No dated primary track means no first day — age is judged as of today
+    rather than reported unknown for every member."""
+    for track in td_tournament.primary_tracks:
+        track.start_date = None
+        track.end_date = None
+    db.commit()
+    today = date.today()
+    dob = date(today.year - 19, 1, 1)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is True
+    assert data["is_over_21"] is False
 
 
 # ---------------------------------------------------------------------------
