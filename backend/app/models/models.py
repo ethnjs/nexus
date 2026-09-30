@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
@@ -537,20 +538,27 @@ class TournamentMembership(Base):
     # Age is measured against the tournament's first day, which is derived
     # from its primary tracks rather than stored. `first_day`, not the `dates`
     # list: someone's age on the day the tournament opens is what a minimum-age
-    # rule means. None until a primary track has dates.
+    # rule means. A TBD tournament falls back to today in its own timezone.
+    @property
+    def _age_reference_day(self) -> date:
+        first_day = self.tournament.first_day
+        if first_day is not None:
+            return first_day
+        return datetime.now(ZoneInfo(self.tournament.timezone)).date()
+
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
-        if self.user.date_of_birth is None or self.tournament.first_day is None:
+        if self.user.date_of_birth is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 18)
+        return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 18)
 
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
-        if self.user.date_of_birth is None or self.tournament.first_day is None:
+        if self.user.date_of_birth is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 21)
+        return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 21)
 
     # No .expression variants, so no server-side age filtering — and now
     # doubly so: first_day is a Python-side aggregate over tracks, not a

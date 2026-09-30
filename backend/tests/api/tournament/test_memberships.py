@@ -2689,6 +2689,22 @@ def test_membership_age_flags_computed_against_start_date_not_today(
     assert data["is_over_18"] is False
 
 
+def test_membership_age_flags_fall_back_to_today_when_dates_are_tbd(
+    client, td_user, td_tournament, other_user, db
+):
+    """No dated primary track means no first day — age is judged as of today
+    rather than reported unknown for every member."""
+    for track in td_tournament.primary_tracks:
+        track.start_date = None
+        track.end_date = None
+    db.commit()
+    today = date.today()
+    dob = date(today.year - 19, 1, 1)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is True
+    assert data["is_over_21"] is False
+
+
 # ---------------------------------------------------------------------------
 # is_over_18 / is_over_21 gating — omitted entirely unless the tournament
 # collects that specific flag AND the membership has consented. Never sent
