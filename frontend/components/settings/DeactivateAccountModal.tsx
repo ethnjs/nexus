@@ -10,9 +10,10 @@ const CONFIRM_PHRASE = "DEACTIVATE";
 
 interface DeactivateAccountModalProps {
   onClose: () => void;
+  hasPassword: boolean;
 }
 
-export function DeactivateAccountModal({ onClose }: DeactivateAccountModalProps) {
+export function DeactivateAccountModal({ onClose, hasPassword }: DeactivateAccountModalProps) {
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
@@ -39,6 +40,19 @@ export function DeactivateAccountModal({ onClose }: DeactivateAccountModalProps)
 
   return (
     <Modal title="Deactivate account" onClose={onClose} variant="danger">
+      {!hasPassword ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            Set a password in Security settings first.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
+            <Button type="button" variant="secondary" onClick={onClose}>Close</Button>
+            <Button type="button" variant="primary" onClick={() => { window.location.href = "/settings/security"; }}>
+              Security settings
+            </Button>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           Your account will be deactivated and every session signed out. This is reversible —
@@ -78,6 +92,7 @@ export function DeactivateAccountModal({ onClose }: DeactivateAccountModalProps)
           </Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

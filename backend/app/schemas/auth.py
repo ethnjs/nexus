@@ -178,6 +178,24 @@ class AccountDeactivateRequest(BaseModel):
     password: str
 
 
+class PasswordSetRequest(BaseModel):
+    """POST /auth/password/set — signed-in user who has no password yet."""
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, password: str) -> str:
+        return validate_password_strength(password)
+
+
+class OAuthIdentityResponse(BaseModel):
+    provider: str
+    email_at_provider: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class AccountDeleteRequest(BaseModel):
     """
     DELETE /users/me — authenticated.

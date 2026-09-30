@@ -10,14 +10,19 @@ from app.core.auth import (
 from app.core.users import find_user_by_id, require_not_last_admin
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
-from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
+from app.models.models import (
+    User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession,
+    OAuthIdentity, OAuthProvider,
+)
 from app.schemas.user import (
     UserMeFullResponse, AdminUserSlimResponse,
     AdminUserFullResponse, UserMeSlimResponse, UserUpdate, AdminUserUpdate
 )
-from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
+from app.schemas.auth import (
+    MessageResponse, AccountDeactivateRequest, AccountDeleteRequest, OAuthIdentityResponse,
+)
 from app.schemas.session import SessionResponse
-from app.services.email_service import send_password_reset_request_email
+from app.services.email_service import send_password_reset_request_email, send_identity_unlinked_notice
 
 router = APIRouter(tags=["users"])
 
@@ -212,11 +217,13 @@ def get_me(
         )
         response = UserMeFullResponse.model_validate(user, from_attributes=True)
         response.missing_profile_fields = compute_missing_profile_fields(user)
+        response.has_password = user.hashed_password is not None
         return response
 
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
     response.is_onboarding_complete = is_onboarding_complete(current_user, db=db)
+    response.has_password = current_user.hashed_password is not None
     return response
 
 
@@ -242,6 +249,7 @@ def update_user_me(
 
     response = UserMeFullResponse.model_validate(user, from_attributes=True)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
+    response.has_password = user.hashed_password is not None
     return response
 
 
@@ -301,6 +309,55 @@ def delete_me(
 
     clear_auth_cookie(response)
     return {"detail": "Account successfully deleted"}
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/identities/ — linked OAuth accounts
+# DELETE /users/me/identities/google/ — unlink, unless it's the only way in
+# ---------------------------------------------------------------------------
+
+def _identity_response(row: OAuthIdentity) -> OAuthIdentityResponse:
+    provider = row.provider.value if isinstance(row.provider, OAuthProvider) else row.provider
+    return OAuthIdentityResponse(
+        provider=provider,
+        email_at_provider=row.email_at_provider,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/users/me/identities/", response_model=list[OAuthIdentityResponse])
+def list_my_identities(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.query(OAuthIdentity).filter(OAuthIdentity.user_id == user.id).all()
+    return [_identity_response(row) for row in rows]
+
+
+@router.delete("/users/me/identities/google/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={
+        400: {"description": "No password set, or Google is not connected"},
+    },
+)
+async def unlink_google(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(OAuthIdentity)
+        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
+    if not user.hashed_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google")
+
+    provider_email = row.email_at_provider
+    db.delete(row)
+    db.commit()
+    await send_identity_unlinked_notice(user.email, provider_email)
+    return {"detail": "Google disconnected"}
 
 
 # ---------------------------------------------------------------------------

@@ -10,9 +10,10 @@ const CONFIRM_PHRASE = "DELETE";
 
 interface DeleteAccountModalProps {
   onClose: () => void;
+  hasPassword: boolean;
 }
 
-export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
+export function DeleteAccountModal({ onClose, hasPassword }: DeleteAccountModalProps) {
   const [step, setStep] = useState<"warning" | "confirm">("warning");
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
@@ -36,6 +37,24 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
       setLoading(false);
     }
+  }
+
+  if (!hasPassword) {
+    return (
+      <Modal title="Delete account" onClose={onClose} variant="danger">
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            Set a password in Security settings first.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
+            <Button type="button" variant="secondary" onClick={onClose}>Close</Button>
+            <Button type="button" variant="primary" onClick={() => { window.location.href = "/settings/security"; }}>
+              Security settings
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   if (step === "warning") {

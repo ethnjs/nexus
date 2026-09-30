@@ -35,6 +35,16 @@ API reference (Scalar): [http://localhost:8001/reference](http://localhost:8001/
 
 Both UIs are served only when `APP_ENV` is `development` or `preview`. In production the API serves just the spec at `/openapi.json`, which the docs site renders.
 
+### Google sign-in (optional)
+
+Leave the `GOOGLE_OAUTH_*` variables blank and the button reports that Google sign-in isn't available. To try it, create a Web-application OAuth client (scopes `openid email profile`) and register:
+
+- `http://localhost:8001/auth/oauth/google/callback/` (dev, browser talks to the backend directly)
+- `http://localhost:3000/api/proxy/auth/oauth/google/callback` (dev, once local traffic goes through the proxy)
+- `https://nexus.socalscioly.org/api/proxy/auth/oauth/google/callback`
+
+Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (the URI this environment actually uses), and `OAUTH_STATE_SECRET` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Production refuses to start on the dev default secret.
+
 Dev seed accounts (created automatically on startup):
 - `admin@nexus.dev` / `admin1234` — admin
 - `user1@nexus.dev` .. `user15@nexus.dev` / `user1234` — regular users, no tournament seeded

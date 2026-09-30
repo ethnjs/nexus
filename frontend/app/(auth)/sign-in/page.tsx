@@ -3,10 +3,11 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, authApi } from '@/lib/api'
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
-import { validateEmail, safeRedirectPath } from '@/lib/auth'
+import { validateEmail, safeRedirectPath, googleAuthErrorMessage } from '@/lib/auth'
 
 
 export default function SignInPage() {
@@ -26,6 +27,7 @@ function SignInContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const redirect = safeRedirectPath(searchParams.get('redirect'))
+    const googleError = googleAuthErrorMessage(searchParams.get('error'))
     const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : '/sign-up'
 
     async function handleSubmit(e: React.SyntheticEvent) {
@@ -67,6 +69,31 @@ function SignInContent() {
                 margin: '0 0 30px',
                 textAlign: 'center'
             }}>Sign In</h2>
+
+            {googleError && (
+                <p style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '14px',
+                    color: 'var(--color-danger)',
+                    margin: '0 0 20px',
+                    textAlign: 'center',
+                }}>{googleError}</p>
+            )}
+
+            <GoogleSignInButton href={authApi.googleStartUrl('login', redirect)} />
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                margin: '20px 0',
+                color: 'var(--color-text-tertiary)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: '13px',
+            }}>
+                <span style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+                or
+                <span style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+            </div>
 
             <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <Input

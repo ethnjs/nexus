@@ -19,6 +19,7 @@ async function proxy(
 
   const upstream = await fetch(`${API_URL}/${path}${search}`, {
     method,
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
@@ -31,18 +32,21 @@ async function proxy(
       : undefined,
   })
 
-  const body = upstream.status === 204 ? null : await upstream.text()
-
+  const isRedirect = upstream.status >= 300 && upstream.status < 400
+  const body = isRedirect || upstream.status === 204 ? null : await upstream.text()
   const res = new NextResponse(body, { status: upstream.status })
 
-  // Forward Set-Cookie headers from backend (login / logout)
-  upstream.headers.forEach((value, key) => {
-    if (key.toLowerCase() === 'set-cookie') {
-      res.headers.append('Set-Cookie', value)
-    }
-  })
+  if (isRedirect) {
+    const location = upstream.headers.get('location')
+    if (location) res.headers.set('Location', location)
+  } else {
+    res.headers.set('Content-Type', 'application/json')
+  }
 
-  res.headers.set('Content-Type', 'application/json')
+  // getSetCookie keeps each Set-Cookie intact. forEach collapses them into one.
+  for (const cookie of upstream.headers.getSetCookie()) {
+    res.headers.append('Set-Cookie', cookie)
+  }
 
   return res
 }

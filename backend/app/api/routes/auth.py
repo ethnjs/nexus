@@ -35,6 +35,7 @@ from app.schemas.auth import (
     PasswordResetRequest,
     PasswordResetConfirm,
     AccountSetupConfirm,
+    PasswordSetRequest,
 )
 from app.services.email_service import (
     send_signup_verification_email,
@@ -326,6 +327,26 @@ async def change_password(
     revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
+
+
+@router.post("/auth/password/set/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={
+        400: {"description": "A password is already set"},
+    },
+)
+async def set_password(
+    body: PasswordSetRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """For accounts that signed up with Google and have no password yet."""
+    if user.hashed_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A password is already set")
+
+    user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    await send_password_changed_notice(user.email)
+    return {"detail": "Password successfully set"}
 
 
 @router.post("/auth/password/reset/request/", status_code=status.HTTP_200_OK, response_model=MessageResponse)

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button"
 import { Modal } from "@/components/ui/Modal"
 import { Spinner } from "@/components/ui/Spinner"
 import { CredentialsForm } from "@/components/auth/CredentialsForm"
-import { safeRedirectPath } from "@/lib/auth"
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton"
+import { safeRedirectPath, googleAuthErrorMessage } from "@/lib/auth"
 
 export default function SignUpPage() {
   return (
@@ -27,6 +28,7 @@ function SignUpContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = safeRedirectPath(searchParams.get('redirect'))
+  const googleError = googleAuthErrorMessage(searchParams.get('error'))
   const signInHref = redirect ? `/sign-in?redirect=${encodeURIComponent(redirect)}` : '/sign-in'
   const onboardingHref = redirect ? `/onboarding?redirect=${encodeURIComponent(redirect)}` : '/onboarding'
 
@@ -72,6 +74,31 @@ function SignUpContent() {
         margin: '0 0 30px',
         textAlign: 'center'
       }}>Sign Up</h2>
+
+      {googleError && (
+        <p style={{
+          fontFamily: 'var(--font-sans)',
+          fontSize: '14px',
+          color: 'var(--color-danger)',
+          margin: '0 0 20px',
+          textAlign: 'center',
+        }}>{googleError}</p>
+      )}
+
+      <GoogleSignInButton href={authApi.googleStartUrl('login', redirect)} />
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        margin: '20px 0',
+        color: 'var(--color-text-tertiary)',
+        fontFamily: 'var(--font-sans)',
+        fontSize: '13px',
+      }}>
+        <span style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+        or
+        <span style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+      </div>
 
       <CredentialsForm
         email={email}

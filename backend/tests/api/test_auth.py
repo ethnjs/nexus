@@ -522,3 +522,29 @@ class TestConfirmAccountSetup:
             "password": VALID_PASSWORD,
         })
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/password/set/
+# ---------------------------------------------------------------------------
+
+class TestSetPassword:
+    def test_set_password_then_login(self, client, db, volunteer_no_password):
+        from app.core.auth import create_session
+        client.cookies.set("access_token", create_session(db, volunteer_no_password.id))
+        assert client.get("/users/me/").json()["has_password"] is False
+
+        res = client.post("/auth/password/set/", json={"new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        db.refresh(volunteer_no_password)
+        assert volunteer_no_password.hashed_password is not None
+        assert client.get("/users/me/").json()["has_password"] is True
+
+        client.post("/auth/logout/")
+        assert login(client, "vol@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_set_password_rejected_when_one_exists(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.get("/users/me/").json()["has_password"] is True
+        res = client.post("/auth/password/set/", json={"new_password": VALID_PASSWORD})
+        assert res.status_code == 400
