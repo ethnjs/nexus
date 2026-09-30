@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -372,6 +372,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="add prior competition/volunteer history (default: on)")
     toggles.add_argument("--enroll", action=argparse.BooleanOptionalAction, default=True,
                          help="create a membership for matching accounts that lack one (default: on)")
+    toggles.add_argument("--age-consent", action=argparse.BooleanOptionalAction, default=True,
+                         help="consent to age disclosure when the tournament collects it (default: on)")
 
     shape = parser.add_argument_group("onboarding completion mix")
     shape.add_argument("--stop-every", type=int, default=5, metavar="N",
@@ -433,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
         # Tournament.dates. Profile years are anchored to the tournament's own
         # year so a member's graduation year makes sense relative to it.
         reference_year = (tournament.last_day or date.today()).year
+        collects_age_flag = tournament.collect_is_over_18 or tournament.collect_is_over_21
 
         if forms:
             reset_onboarding(
@@ -451,6 +454,11 @@ def main(argv: list[str] | None = None) -> int:
                 seed_experience(rng, db, user, catalog_event_ids)
 
             membership.notes = rng.choice(MEMBERSHIP_NOTES)
+            # Same rule as redeeming a join code: consent is only recorded
+            # when the tournament collects an age flag.
+            if args.age_consent and collects_age_flag:
+                membership.age_disclosure = "consented"
+                membership.age_disclosure_at = datetime.now(timezone.utc)
 
             submitted = []
             if forms:
