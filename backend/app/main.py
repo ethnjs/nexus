@@ -35,7 +35,7 @@ DEV_DOCS = settings.app_env in ("development", "preview")
 
 
 def _read_app_version() -> str:
-    # backend/VERSION is written by release-please; lives in backend/ so backend-only deploys ship it.
+    # backend/VERSION is written by the Release workflow; lives in backend/ so backend-only deploys ship it.
     version_file = Path(__file__).resolve().parents[1] / "VERSION"
     try:
         return version_file.read_text(encoding="utf-8").strip()

@@ -1,0 +1,26 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}-beta",
+  "plugins": [
+    ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
+    ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "node .github/scripts/set-version.mjs ${nextRelease.gitTag}",
+        "successCmd": "echo \"tag=${nextRelease.gitTag}\" >> \"$GITHUB_OUTPUT\""
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["backend/VERSION", "frontend/package.json"],
+        "message": "chore(release): ${nextRelease.gitTag} [skip ci]"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      { "successComment": false, "failComment": false, "releasedLabels": false }
+    ]
+  ]
+}

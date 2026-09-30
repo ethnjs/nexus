@@ -1,0 +1,72 @@
+name: Release
+
+# Manual only — Actions tab → Release → Run workflow, or `gh workflow run release.yml`.
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    # Empty when there was nothing to release; the jobs below key off it.
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # Majors pinned so a new semantic-release major can't change a release unannounced.
+      - id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          npx --yes
+          -p semantic-release@25
+          -p @semantic-release/exec@7
+          -p @semantic-release/git@11
+          -p conventional-changelog-conventionalcommits@10
+          semantic-release
+
+  link-release-notes:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      # Appends the user-facing notes link under the generated commit list.
+      - name: Link the docs release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          gh release view "$TAG" -R "$REPO" --json body -q .body > notes.md
+          printf '\n\nRelease notes: https://docs.ethanshih.com/docs/nexus/release-notes/%s\n' "$TAG" >> notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md
+
+  dispatch-docs:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-latest
+    # Uses the PAT below, not GITHUB_TOKEN, so this job needs no repo permissions.
+    permissions: {}
+
+    steps:
+      - name: Notify docs site
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        # jq builds the JSON so values are escaped, not spliced into a string.
+        run: |
+          jq -n --arg repo "$REPO" --arg tag "$TAG" --arg version "${TAG#v}" \
+            '{event_type: "project-release", client_payload: {repo: $repo, tag: $tag, version: $version}}' \
+            | gh api repos/ethnjs/docs/dispatches --input -
