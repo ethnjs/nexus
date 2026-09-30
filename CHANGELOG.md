@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1-beta](https://github.com/ethnjs/nexus/compare/v1.2.0-beta...v1.2.1-beta) (2026-09-30)
+
+
+### Bug Fixes
+
+* **members:** fall back to today for age flags when tournament dates are TBD ([ddaf41a](https://github.com/ethnjs/nexus/commit/ddaf41a3c3c09d9e24d467ebc17e8fb96eb6a59c))
+* **members:** fall back to today for age flags when tournament dates are TBD ([b1f353a](https://github.com/ethnjs/nexus/commit/b1f353ac02af845067a6c4c2e2220ff1f40f11be))
+
 ## [1.2.0-beta](https://github.com/ethnjs/nexus/compare/v1.1.0-beta...v1.2.0-beta) (2026-09-29)
 
 
