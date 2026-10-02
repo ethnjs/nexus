@@ -312,8 +312,8 @@ def list_chapter_forms(
 
 
 def _resolve_chapter_creators(
-    db: Session, chapter_id: int, user_ids: set[int],
-) -> dict[int, PersonRefResponse]:
+    db: Session, chapter_id: int, user_ids: set[int | None],
+) -> dict[int | None, PersonRefResponse]:
     """The chapter-side twin of resolve_person_refs — same shape out, so a
     form's creator reads identically whoever owns the form.
 
@@ -344,6 +344,10 @@ def _resolve_chapter_creators(
             u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
             for u in users
         })
+    # A null credit FK — the account was deleted. Keyed on None so callers
+    # can index by the raw column value without special-casing it.
+    if None in user_ids:
+        resolved[None] = PersonRefResponse(user_id=None)
     return resolved
 
 

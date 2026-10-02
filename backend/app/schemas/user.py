@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Literal
 from datetime import datetime, date
-from pydantic import BaseModel, EmailStr, field_validator, computed_field
+from pydantic import BaseModel, EmailStr, Field, field_validator, computed_field
 
 from app.core.phone import normalize_phone as _normalize_phone
 from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
@@ -97,8 +97,19 @@ class UserFullResponse(UserSlimResponse):
     dietary_restriction: Optional[str] = None
 
 
+class OwnedTournamentRef(BaseModel):
+    id: int
+    name: str
+    short_name: Optional[str] = None
+    is_archived: bool
+
+    model_config = {"from_attributes": True}
+
+
 class AdminUserFullResponse(UserFullResponse, AdminUserSlimResponse):
-    pass
+    # Read off User.tournaments. The admin delete confirmation lists these —
+    # they survive the delete but are left without an owner.
+    owned_tournaments: list[OwnedTournamentRef] = Field(default=[], validation_alias="tournaments")
 
 
 class UserMeFullResponse(UserFullResponse, UserMeSlimResponse):

@@ -213,7 +213,7 @@ class User(Base):
         "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
     )
     tournaments = relationship(
-        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
+        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id", passive_deletes=True,
     )
     competition_experience = relationship(
         "UserCompetitionExperience",
@@ -228,10 +228,18 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="users")
-    chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
-    join_codes = relationship("JoinCode", back_populates="creator")
-    created_forms = relationship("Form", back_populates="creator")
-    form_responses = relationship("FormResponse", back_populates="user")
+    # passive_deletes hands deletion to the DB's ON DELETE rules. Without it
+    # the ORM nulls each child's user_id first, which fails on the NOT NULL
+    # ones — that's what made users with form responses undeletable.
+    chapter_membership = relationship(
+        "ChapterMembership", back_populates="user", uselist=False,
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+    join_codes = relationship("JoinCode", back_populates="creator", passive_deletes=True)
+    created_forms = relationship("Form", back_populates="creator", passive_deletes=True)
+    form_responses = relationship(
+        "FormResponse", back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -327,7 +335,9 @@ class Tournament(Base):
     # creator's browser timezone — immutable after, no update path.
     timezone = Column(String(64), nullable=False)
 
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # creator
+    # Null once the owner's account is deleted — the tournament outlives them
+    # as history, and an admin can transfer it to a new owner.
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # TD-controlled — shows in the public directory. False = invite-only.
     is_public = Column(Boolean, nullable=False, default=False)
@@ -637,7 +647,8 @@ class JoinCode(Base):
     id = Column(Integer, primary_key=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Null once the creator's account is deleted; the code keeps working.
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     code = Column(String(8), unique=True, nullable=False)
     label = Column(String(255), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
@@ -668,7 +679,8 @@ class AuditLogEntry(Base):
 
     id = Column(Integer, primary_key=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Null once the actor's account is deleted — the entry stays as history.
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action = Column(String(64), nullable=False)
     target_type = Column(String(64), nullable=True)   # e.g. "membership", "role", "join_code"
     target_id = Column(Integer, nullable=True)
@@ -1161,7 +1173,8 @@ class Form(Base):
     description = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
 
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Null once the creator's account is deleted.
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

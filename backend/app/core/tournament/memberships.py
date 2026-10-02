@@ -57,8 +57,8 @@ def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *optio
     return query.first()
 
 def resolve_person_refs(
-    db: Session, tournament_id: int, user_ids: set[int],
-) -> dict[int, PersonRefResponse]:
+    db: Session, tournament_id: int, user_ids: set[int | None],
+) -> dict[int | None, PersonRefResponse]:
     """
     Resolve a batch of user ids to name-and-roles references, for any response
     that surfaces "who did this" — join-code creators, audit log actors, form
@@ -100,6 +100,10 @@ def resolve_person_refs(
             u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
             for u in users
         })
+    # A null credit FK — the account was deleted. Keyed on None so callers
+    # can index by the raw column value without special-casing it.
+    if None in user_ids:
+        resolved[None] = PersonRefResponse(user_id=None)
     return resolved
 
 

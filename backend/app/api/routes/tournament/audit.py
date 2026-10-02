@@ -29,7 +29,9 @@ def list_audit_log_actors(
 ):
     rows = (
         db.query(AuditLogEntry.actor_id, func.count(AuditLogEntry.id).label("count"))
-        .filter(AuditLogEntry.tournament_id == tournament_id)
+        # A deleted actor can't be filtered on (actor_id is a user id), so
+        # their entries show in the log but not in this dropdown.
+        .filter(AuditLogEntry.tournament_id == tournament_id, AuditLogEntry.actor_id.isnot(None))
         .group_by(AuditLogEntry.actor_id)
         .order_by(func.count(AuditLogEntry.id).desc())
         .all()

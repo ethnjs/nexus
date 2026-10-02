@@ -316,7 +316,8 @@ class FormRead(BaseModel):
     # Null for a chapter form, which has no tournament to be archived.
     tournament_is_archived: bool | None = None
     chapter_id: int | None = None
-    created_by: int
+    # Null once the creator's account is deleted.
+    created_by: int | None = None
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
