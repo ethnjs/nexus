@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.schemas.person import PersonRefResponse
+from app.schemas.person import PersonNameRef, PersonRefResponse
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
@@ -439,3 +439,15 @@ class FormResponseRead(BaseModel):
     pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FormRespondentRead(PersonNameRef):
+    """Who submitted a response. Email rides along for the managers' search
+    and follow-up — this only ever reaches people with manage access."""
+    email: str
+
+
+class FormResponseManagerRead(FormResponseRead):
+    """GET /forms/{form_id}/responses/ — the managers' audience. Adds who
+    answered; a respondent reading their own response already knows."""
+    respondent: FormRespondentRead

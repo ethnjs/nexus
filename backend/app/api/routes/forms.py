@@ -60,6 +60,7 @@ from app.core.tournament.form_prerequisites import member_meets_form_prerequisit
 from app.core.tournament.memberships import get_membership_by_user, is_declined
 from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
 from app.core.tournament.memberships import resolve_person_refs
+from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -84,7 +85,9 @@ from app.schemas.form import (
     FormListRead,
     MemberFormRead,
     FormRead,
+    FormRespondentRead,
     FormResponseCreate,
+    FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
     TournamentFormPrerequisitesUpdate,
@@ -1416,20 +1419,98 @@ def _clear_event_preference_write_through(db: Session, form: Form, field: FormFi
 
 
 # ---------------------------------------------------------------------------
-# GET /forms/{form_id}/responses/ — all responses to a form. Manage access
-# only — this is roster data, not something every member should see.
+# GET /forms/{form_id}/responses/ — all responses to a form, with who gave
+# each. Manage access only — this is roster data, not something every member
+# should see. Search is client-side; a form's responses are a bounded list.
 # ---------------------------------------------------------------------------
-@router.get("/forms/{form_id}/responses/", response_model=list[FormResponseRead])
+@router.get("/forms/{form_id}/responses/", response_model=list[FormResponseManagerRead])
 def list_form_responses(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    return (
+    responses = (
         db.query(FormResponse)
+        .options(
+            selectinload(FormResponse.user),
+            selectinload(FormResponse.answers),
+            selectinload(FormResponse.pending_updates),
+        )
         .filter(FormResponse.form_id == form.id)
-        .order_by(FormResponse.id)
+        .order_by(FormResponse.submitted_at)
         .all()
     )
+
+    membership_ids: dict[int, int] = {}
+    if form.owner_type == "tournament":
+        membership_ids = dict(
+            db.query(TournamentMembership.user_id, TournamentMembership.id).filter(
+                TournamentMembership.tournament_id == form.tournament_id,
+                TournamentMembership.user_id.in_([r.user_id for r in responses]),
+            )
+        )
+
+    return [
+        FormResponseManagerRead(
+            **FormResponseRead.model_validate(response).model_dump(),
+            respondent=FormRespondentRead(
+                user_id=response.user_id,
+                membership_id=membership_ids.get(response.user_id),
+                first_name=response.user.first_name,
+                last_name=response.user.last_name,
+                email=response.user.email,
+            ),
+        )
+        for response in responses
+    ]
+
+
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/responses/{response_id}/ — a manager removes one
+# member's response, answers and pending-update flags with it.
+#
+# Write-through data (availability, lunch, event preferences, track statuses)
+# is deliberately kept: it's the membership's current truth and may have been
+# edited since. Resubmitting re-fires write-through as usual.
+#
+# Blocked on an archived form or tournament — both are read-only history.
+# ---------------------------------------------------------------------------
+@router.delete("/forms/{form_id}/responses/{response_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_form_response(
+    response_id: str,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+    current_user: User = Depends(get_current_user),
+):
+    require_form_not_archived(form)
+    if form.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This form is archived — unarchive it before deleting responses",
+        )
+
+    response = (
+        db.query(FormResponse)
+        .filter(FormResponse.id == response_id, FormResponse.form_id == form.id)
+        .first()
+    )
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    if form.owner_type == "tournament":
+        membership = get_membership_by_user(db, form.tournament_id, response.user_id)
+        log_action(
+            db, form.tournament_id, current_user.id, FORM_RESPONSE_DELETED,
+            target_type="membership", target_id=membership.id if membership else None,
+            extra_data={"form_id": form.id, "form_name": form.name},
+        )
+
+    db.delete(response)
+
+    # An onboarding step losing its response un-onboards that member.
+    if form.tournament_form is not None and form.tournament_form.is_onboarding:
+        recompute_onboarding(db, form.tournament_id)
+
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

@@ -2658,6 +2658,126 @@ class TestListAndMyResponses:
         assert res.status_code == 404
 
 
+class TestListResponsesRespondent:
+    def test_includes_respondent_identity(self, client, db, td_user, td_tournament, other_user):
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament)
+        db.add(FormResponse(form_id=form.id, user_id=other_user.id))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        respondent = client.get(f"/forms/{form.id}/responses/").json()[0]["respondent"]
+        assert respondent["user_id"] == other_user.id
+        assert respondent["membership_id"] == membership.id
+        assert respondent["email"] == other_user.email
+
+    def test_me_has_no_respondent(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.add(FormResponse(form_id=form.id, user_id=td_user.id))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert "respondent" not in client.get(f"/forms/{form.id}/responses/me/").json()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/responses/{response_id}/
+# ---------------------------------------------------------------------------
+
+class TestDeleteResponse:
+    def _response(self, db, td_user, td_tournament, other_user, **form_overrides):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, **form_overrides)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False})
+        response = FormResponse(form_id=form.id, user_id=other_user.id)
+        db.add(response)
+        db.flush()
+        db.add(FormAnswer(response_id=response.id, field_id=field.id, value="blue"))
+        db.add(FormResponsePendingUpdate(response_id=response.id, field_id=field.id, reasons=["text_changed"]))
+        db.commit()
+        return form, response
+
+    def test_manager_deletes_response_and_answers(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        login(client, "td@test.com", "tdpass")
+
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
+        db.expire_all()
+        assert db.query(FormResponse).filter(FormResponse.id == response.id).first() is None
+        assert db.query(FormAnswer).filter(FormAnswer.response_id == response.id).count() == 0
+        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response.id).count() == 0
+
+    def test_draft_form_allowed(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="draft")
+        login(client, "td@test.com", "tdpass")
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
+
+    def test_archived_form_blocked(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="archived")
+        login(client, "td@test.com", "tdpass")
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 409
+        assert db.query(FormResponse).filter(FormResponse.id == response.id).first() is not None
+
+    def test_plain_member_forbidden(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        login(client, "other@test.com", "otherpass")
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 403
+
+    def test_response_from_another_form_404(self, client, db, td_user, td_tournament, other_user):
+        _, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        other_form = _make_form(db, td_user, td_tournament, name="Other")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.delete(f"/forms/{other_form.id}/responses/{response.id}/").status_code == 404
+
+    def test_audited(self, client, db, td_user, td_tournament, other_user):
+        from app.models.models import AuditLogEntry
+        form, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        membership = db.query(TournamentMembership).filter(
+            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
+        ).one()
+        login(client, "td@test.com", "tdpass")
+        client.delete(f"/forms/{form.id}/responses/{response.id}/")
+
+        entry = db.query(AuditLogEntry).filter(AuditLogEntry.action == "form_response_deleted").one()
+        assert entry.actor_id == td_user.id
+        assert entry.target_type == "membership"
+        assert entry.target_id == membership.id
+        assert entry.extra_data == {"form_id": form.id, "form_name": form.name}
+
+    def test_write_through_kept(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        membership = db.query(TournamentMembership).filter(
+            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
+        ).one()
+        now = datetime.now(timezone.utc)
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id),
+                                label="Morning", start=now, end=now + timedelta(hours=2))
+        db.add(shift)
+        db.flush()
+        db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
+        assert db.query(TournamentMembershipAvailability).filter(
+            TournamentMembershipAvailability.membership_id == membership.id,
+        ).count() == 1
+
+    def test_onboarding_step_unonboards_member(self, client, db, td_user, td_tournament, other_user):
+        form, response = self._response(db, td_user, td_tournament, other_user, status="published")
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1))
+        membership = db.query(TournamentMembership).filter(
+            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
+        ).one()
+        membership.onboarded_at = utcnow()
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
+        db.expire_all()
+        assert db.query(TournamentMembership).filter(TournamentMembership.id == membership.id).one().onboarded_at is None
+
+
 # ---------------------------------------------------------------------------
 # Submission-time required enforcement via branching reachability replay
 # ---------------------------------------------------------------------------
