@@ -10,6 +10,7 @@ import table from "@/components/ui/Table.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
 import { formatRelativeTime } from "@/lib/timeFormat";
@@ -57,11 +58,20 @@ function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
       // and forth is worse than an extra tab.
       onClick={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
     >
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {form.name}
+      <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        <span style={{
+          fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {form.name}
+        </span>
+        {!form.allow_response_edits && (
+          <span style={{ flexShrink: 0, display: "flex" }}>
+            <Tooltip variant="info" message="Members can't edit their responses. Turn on Allow response edits in the ⋮ menu." showIcon={false}>
+              <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+            </Tooltip>
+          </span>
+        )}
       </span>
       <Badge variant={STATUS_BADGE_VARIANT[form.status]} style={{ justifySelf: "center" }}>
         {form.status}
@@ -71,19 +81,9 @@ function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
         noMembershipLabel={form.owner_type === "tournament" ? "No membership in this tournament" : "No membership in this chapter"}
         style={{ justifyContent: "flex-start", justifySelf: "start", width: "100%" }}
       />
-      {/* Straight to the responses tab, in a new tab like the builder. */}
-      <button
-        type="button"
-        title="View responses"
-        onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/responses`, "_blank", "noopener,noreferrer"); }}
-        style={{
-          fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-          textAlign: "center", justifySelf: "center", border: "none", background: "transparent",
-          padding: "2px 6px", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px",
-        }}
-      >
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {form.response_count}
-      </button>
+      </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {formatRelativeTime(form.updated_at)}
       </span>
