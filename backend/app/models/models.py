@@ -1176,6 +1176,10 @@ class Form(Base):
     # Null once the creator's account is deleted.
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    # Lets a respondent revise any answer after submitting, not only the ones
+    # a TD flagged. Off by default — see patch_form_response.
+    allow_response_edits = Column(Boolean, nullable=False, default=False)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

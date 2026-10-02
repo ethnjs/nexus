@@ -318,6 +318,7 @@ class FormRead(BaseModel):
     chapter_id: int | None = None
     # Null once the creator's account is deleted.
     created_by: int | None = None
+    allow_response_edits: bool = False
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
@@ -391,6 +392,7 @@ class FormUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
+    allow_response_edits: bool | None = None
 
 
 class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):

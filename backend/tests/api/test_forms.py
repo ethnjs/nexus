@@ -1635,6 +1635,89 @@ class TestPatchResponse:
         assert res.status_code == 404
 
 
+class TestAllowResponseEdits:
+    """allow_response_edits opens every live question to PATCH .../responses/me/,
+    with required/branching validated over the merged response."""
+
+    def _branching_form(self, db, td_user, td_tournament):
+        # opt_1 ends the form; opt_2 falls through to a required question.
+        form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
+        branch = _make_field(db, form, order=1, field_key="branch", question_type="single_select_radio", config={
+            "required": True,
+            "options": [
+                {"option_id": "opt_1", "value": "opt_1", "label": "Done", "action": "submit_form"},
+                {"option_id": "opt_2", "value": "opt_2", "label": "More"},
+            ],
+        })
+        followup = _make_field(db, form, order=2, field_key="followup", question_type="short_text",
+                               config={"required": True, "max_length": 50})
+        db.commit()
+        return form, branch, followup
+
+    def test_toggle_is_settable_and_returned(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.get(f"/forms/{form.id}/").json()["allow_response_edits"] is False
+
+        res = client.patch(f"/forms/{form.id}/", json={"allow_response_edits": True})
+        assert res.status_code == 200
+        assert res.json()["allow_response_edits"] is True
+
+    def test_unflagged_field_editable_when_on(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        response_id = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "red"}]}).json()["id"]
+
+        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        assert res.status_code == 200, res.json()
+        assert db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one().value == "blue"
+
+    def test_newly_reachable_required_question_must_be_answered(self, client, db, td_user, td_tournament):
+        form, branch, followup = self._branching_form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": branch.id, "value": "opt_1"}]}).status_code == 200
+
+        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": branch.id, "value": "opt_2"}]})
+        assert res.status_code == 400
+        assert "followup" in res.json()["detail"]
+
+        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [
+            {"field_id": branch.id, "value": "opt_2"},
+            {"field_id": followup.id, "value": "details"},
+        ]})
+        assert res.status_code == 200, res.json()
+
+    def test_stored_answers_count_toward_required(self, client, db, td_user, td_tournament):
+        """The stored select answer is a snapshot dict; it has to be read back
+        as its option_id or the branch would look unanswered."""
+        form, branch, followup = self._branching_form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": branch.id, "value": "opt_2"},
+            {"field_id": followup.id, "value": "first"},
+        ]}).status_code == 200
+
+        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": followup.id, "value": "second"}]})
+        assert res.status_code == 200, res.json()
+
+    def test_completed_onboarding_form_stays_reachable(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1))
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "red"}]}).status_code == 200
+
+        # No longer their next step — it used to 403 from here on.
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        assert res.status_code == 200, res.json()
+
+
 class TestSubmitResponse:
     def test_first_submission_creates_response(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")

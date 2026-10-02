@@ -571,7 +571,7 @@ def list_archived_fields(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/ — name/description/status.
+# PATCH /forms/{form_id}/ — name/description/status/allow_response_edits.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/", response_model=FormRead)
 def update_form(
@@ -598,6 +598,8 @@ def update_form(
         form.title = payload.title
     if payload.description is not None:
         form.description = payload.description
+    if payload.allow_response_edits is not None:
+        form.allow_response_edits = payload.allow_response_edits
     status_changed = payload.status is not None and payload.status != form.status
     if payload.status is not None:
         form.status = payload.status
@@ -935,6 +937,28 @@ def _stored_answer_option_ids(db: Session, response: FormResponse, active_fields
     return result
 
 
+def _unwrap_snapshot(item):
+    return item.get("option_id") if isinstance(item, dict) and "option_id" in item else item
+
+
+def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
+    """The response's stored answers in the shape a client submits them —
+    bare option_ids where storage holds {option_id, value, label} snapshots —
+    so they can be merged with a PATCH payload and replayed through branching
+    validation, which matches answers against option_ids."""
+    result = {}
+    for answer in db.query(FormAnswer).filter(FormAnswer.response_id == response.id):
+        value = answer.value
+        if isinstance(value, list):
+            value = [_unwrap_snapshot(item) for item in value]
+        elif isinstance(value, dict) and "option_id" not in value:
+            value = {rank: _unwrap_snapshot(item) for rank, item in value.items()}  # ranked_choice
+        else:
+            value = _unwrap_snapshot(value)
+        result[answer.field_id] = value
+    return result
+
+
 def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answers: list) -> None:
     for answer_in in answers:
         field = fields_by_id[answer_in.field_id]
@@ -1021,14 +1045,18 @@ def submit_form_response(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/responses/me/ — edit a submitted response, limited to
-# the questions carrying a pending update. A respondent can't freely revise an
-# old response: replaying answers that didn't change can overwrite state a
-# newer form already set (see the track status ordering note in
-# form-edit-lifecycle.md). The gate is enforced here, not in the UI.
+# PATCH /forms/{form_id}/responses/me/ — edit a submitted response. By default
+# limited to the questions carrying a pending update: replaying answers that
+# didn't change can overwrite state a newer form already set (see the track
+# status ordering note in form-edit-lifecycle.md). A form with
+# allow_response_edits opens every live question instead — the TD has opted
+# into members revising freely, so the client must send only what changed.
+# The gate is enforced here, not in the UI.
 #
-# Only the patched fields are replaced, validated, written through, and
-# cleared; the rest of the response is untouched.
+# Only the patched fields are replaced, written through, and cleared; the
+# rest of the response is untouched. With edits open, required/branching
+# validation runs over the merged response, since changing a branching answer
+# can make a required question reachable that was never answered.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/responses/me/", response_model=FormResponseRead)
 def patch_form_response(
@@ -1061,14 +1089,16 @@ def patch_form_response(
             FormResponsePendingUpdate.response_id == response.id
         )
     }
-    ungated = patched_ids - flagged_ids
+    active_fields = _active_fields(db, form)
+    editable_ids = {f.id for f in active_fields} if form.allow_response_edits else flagged_ids
+    ungated = patched_ids - editable_ids
     if ungated:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"These questions aren't open for editing: {sorted(ungated)}",
         )
 
-    fields_by_id = {f.id: f for f in _active_fields(db, form) if f.id in patched_ids}
+    fields_by_id = {f.id: f for f in active_fields if f.id in patched_ids}
     # A flag should only ever point at a live field; anything missing here
     # means one was archived without its flags being cleaned up.
     missing = patched_ids - set(fields_by_id)
@@ -1079,9 +1109,14 @@ def patch_form_response(
         )
 
     answers_by_field = {answer_in.field_id: answer_in.value for answer_in in payload.answers}
-    # Only over what's being patched — the rest of the response already
-    # satisfied required validation when it was submitted.
-    missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
+    if form.allow_response_edits:
+        merged = {**_stored_answers_as_submitted(db, response), **answers_by_field}
+        missing_required = missing_required_field_keys(active_fields, merged)
+    else:
+        # Only over what's being patched — the rest of the response already
+        # satisfied required validation when it was submitted, and flagged
+        # edits can't move a branching answer the TD didn't flag.
+        missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
     if missing_required:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

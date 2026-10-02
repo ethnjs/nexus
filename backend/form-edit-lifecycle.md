@@ -192,16 +192,22 @@ as branching targets. Unarchiving appends to the end of `order`.
 |---|---|---|
 | `POST /forms/{id}/responses/` | view | **Create only.** `409` if this user already has a response. Validates every required field; writes through every answer. |
 | `PATCH /forms/{id}/responses/me/` | view | **Gated edit.** Body carries `{field_id, value}` for one or more fields. |
-| `GET /forms/{id}/responses/` | manage | all responses |
+| `GET /forms/{id}/responses/` | manage | all responses, with each respondent's name and email |
+| `DELETE /forms/{id}/responses/{response_id}/` | manage | removes one response; write-through rows stay. `409` on an archived form. |
 | `GET /forms/{id}/responses/me/` | view | own response |
 
 `PATCH` rejects with `403` any `field_id` that does not have an open pending
 update for this response. That is the whole gate: a respondent can only touch
 what the TD asked them to revisit, enforced server-side rather than by the UI.
 
+The exception is a form with `allow_response_edits` on: every live question
+is open, and the client sends only the answers that changed.
+
 - Only the patched fields' answers are replaced. Everything else is untouched.
 - Required-field validation applies to the patched fields only — the rest
-  already satisfied it at creation.
+  already satisfied it at creation. With `allow_response_edits` it runs over
+  the merged response instead: a changed branching answer can make a
+  required question reachable that was never answered.
 - Each patched field's pending update is cleared.
 - Write-through is re-derived, bounded by what the patched questions govern —
   see below. It is *not* limited to the patched fields themselves.
