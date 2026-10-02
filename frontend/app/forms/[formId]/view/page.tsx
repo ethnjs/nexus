@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ApiError, Form, FormResponse, formsApi } from "@/lib/api";
-import { FormFillFlow } from "@/components/forms/FormFillFlow";
-import { FormUpdateFlow } from "@/components/forms/FormUpdateFlow";
+import { ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
+import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 
 // Respondent-facing form renderer. `redirect` is optional so this can serve
@@ -23,10 +23,13 @@ export default function FormViewPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // The response this user already gave, if any. A form can only be submitted
-  // once — coming back is an update, and only for the questions the TD
-  // flagged, so which flow renders depends on whether this resolves.
+  // once — coming back is a revision: of every question when the form allows
+  // edits, otherwise only of the ones the TD flagged.
   const [existing, setExisting] = useState<FormResponse | null>(null);
   const [checkedExisting, setCheckedExisting] = useState(false);
+  // Set after a revision saves. The flow remounts on the refreshed response
+  // (its key), so the confirmation lives here rather than inside it.
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     formsApi.get(formId)
@@ -50,6 +53,33 @@ export default function FormViewPage() {
     if (redirect) router.replace(redirect);
   }
 
+  const existingResponse = useMemo<ExistingResponse | null>(() => {
+    if (!form || !existing) return null;
+    const flagged = new Map(existing.pending_updates.map((p) => [p.field_id, p.reasons]));
+    return {
+      stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])),
+      editableIds: form.allow_response_edits
+        ? new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.id))
+        : new Set(flagged.keys()),
+      flagged,
+    };
+  }, [form, existing]);
+
+  async function patchResponse(changed: Record<string, unknown>) {
+    await formsApi.patchResponse(
+      formId,
+      Object.entries(changed).map(([field_id, value]) => ({ field_id, value })),
+    );
+    if (redirect) {
+      router.replace(redirect);
+      return;
+    }
+    setExisting(await formsApi.getMyResponse(formId));
+    setSaved(true);
+  }
+
+  const savedBanner = saved ? <Banner variant="success" message="Your changes were saved." /> : null;
+
   if (loadError) {
     return (
       <div style={{ padding: "80px 24px", textAlign: "center" }}>
@@ -62,11 +92,12 @@ export default function FormViewPage() {
     return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
   }
 
-  // Nothing left to review — the response stands as submitted, and there's
-  // no self-serve way to revise it (see backend/form-edit-lifecycle.md).
-  if (existing && existing.pending_updates.length === 0) {
+  // Nothing to revise — edits are off and nothing is flagged, so the response
+  // stands as submitted (see backend/form-edit-lifecycle.md).
+  if (existing && !form.allow_response_edits && existing.pending_updates.length === 0) {
     return (
-      <div style={{ padding: "80px 24px", textAlign: "center" }}>
+      <div style={{ padding: "80px 24px", textAlign: "center", display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
+        {savedBanner}
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           You&rsquo;ve already completed this form. Ask an organizer if something needs changing.
         </p>
@@ -87,15 +118,27 @@ export default function FormViewPage() {
     );
   }
 
-  if (existing) {
+  if (existingResponse && existing) {
+    const flaggedCount = existing.pending_updates.length;
     return (
-      <FormUpdateFlow
+      <FormFillFlow
+        // A fresh flow per saved version, so its prefilled state can't go stale.
+        key={existing.updated_at}
         form={form}
-        response={existing}
-        onUpdated={() => {
-          if (redirect) router.replace(redirect);
-          else formsApi.getMyResponse(formId).then(setExisting).catch(() => {});
-        }}
+        existing={existingResponse}
+        banner={<>
+          {savedBanner}
+          {flaggedCount > 0 && (
+            <Banner
+              variant="warning"
+              message={flaggedCount === 1
+                ? "One question changed since you answered. Please take another look."
+                : `${flaggedCount} questions changed since you answered. Please take another look.`}
+            />
+          )}
+        </>}
+        successMessage="Your changes were saved."
+        onComplete={patchResponse}
       />
     );
   }
