@@ -89,7 +89,7 @@ async def test_send_builds_ses_request(use_settings, ses_factory):
             "Simple": {
                 "Subject": {"Data": "Subject line", "Charset": "UTF-8"},
                 "Body": {
-                    "Text": {"Data": "plain body", "Charset": "UTF-8"},
+                    "Text": {"Data": f"plain body\n\nQuestions? Email {email_service._SUPPORT_EMAIL}", "Charset": "UTF-8"},
                     "Html": {"Data": "<p>html body</p>", "Charset": "UTF-8"},
                 },
             },
