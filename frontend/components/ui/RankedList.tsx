@@ -71,11 +71,11 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
 
   // Locked with nothing picked is the builder's collapsed-card preview (its
   // value is always {} — there's no respondent answer yet) — falls back to
-  // the options' own configured order so the card shows *something*
-  // instead of an empty box, same as RadioList/CheckboxList previewing
-  // every option unselected. A real answer being viewed read-only (locked
-  // with picks) shows exactly those picks, not this fallback.
-  const displayed = locked && picked.length === 0 ? options.slice(0, ranks).map((o) => o.value) : picked
+  // every option in its configured order, not just the first `ranks`, so the
+  // TD sees the whole list they're asking people to choose from. A real
+  // answer being viewed read-only (locked with picks) shows exactly those
+  // picks, not this fallback.
+  const displayed = locked && picked.length === 0 ? options.map((o) => o.value) : picked
 
   const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v
   const badgeFor = (v: string) => options.find((o) => o.value === v)?.badge
