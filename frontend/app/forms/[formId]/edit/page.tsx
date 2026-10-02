@@ -9,6 +9,7 @@ import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { SubHeader, CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
 import { TitleCard } from "@/components/forms/TitleCard";
 import { FieldList } from "@/components/forms/FieldList";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 
 export default function FormEditPage({ params }: { params: Promise<{ formId: string }> }) {
   const { formId } = use(params);
@@ -16,11 +17,16 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
 
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [noAccess, setNoAccess] = useState(false);
 
   useEffect(() => {
     formsApi.getForEdit(formId)
       .then(setForm)
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load form."));
+      .catch((e) => {
+        // getForEdit is manager-only — a member who lands here gets a 403.
+        if (e instanceof ApiError && e.status === 403) setNoAccess(true);
+        else setLoadError(e instanceof ApiError ? e.message : "Failed to load form.");
+      });
   }, [formId]);
 
   function handleDeleted() {
@@ -30,6 +36,8 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
       router.back();
     }
   }
+
+  if (noAccess) return <NoFormAccess />;
 
   if (loadError) {
     return (

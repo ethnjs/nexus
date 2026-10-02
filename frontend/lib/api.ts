@@ -2012,6 +2012,7 @@ export const formsApi = {
   // which is what the builder needs since it's what PUT .../fields/ expects
   // back. Using `get`'s hydrated shape here would round-trip into a 422 the
   // moment an untouched entity-backed option got saved again.
+  // Manager-only — 403s for anyone without manage access to the form.
   getForEdit: (formId: string) => api.get<Form>(`/forms/${formId}/?raw=true`),
   update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
   // 409s if the form has any responses — check response_count client-side first.

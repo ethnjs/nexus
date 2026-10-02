@@ -431,6 +431,26 @@ class TestMyTournamentForms:
 # GET /forms/{form_id}/
 # ---------------------------------------------------------------------------
 
+class TestGetFormRaw:
+    """?raw=true is the builder's shape — managers only."""
+
+    def test_member_gets_403(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id))
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+        assert client.get(f"/forms/{form.id}/?raw=true").status_code == 403
+
+    def test_manager_gets_200(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.get(f"/forms/{form.id}/?raw=true").status_code == 200
+
+
 class TestGetForm:
     def test_manager_can_view(self, client, td_user, td_tournament, db):
         form = _make_form(db, td_user, td_tournament)

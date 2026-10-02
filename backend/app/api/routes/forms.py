@@ -454,16 +454,20 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 # (availability/event_preference option `value` normally becomes
 # [{id, label, start, end}, ...] instead of the plain ids it's actually
 # stored/submitted as) — the builder needs exactly the round-trippable
-# config it's about to PUT back, not a rendering of it. Same view-access
-# gate either way; there's nothing sensitive in the raw ids a member with
-# view access couldn't already see resolved.
+# config it's about to PUT back, not a rendering of it. raw also keeps
+# archived options. It's the builder's shape, so it takes manage access on
+# top of view access — a member gets 403 rather than the builder's data.
 # ---------------------------------------------------------------------------
 @router.get("/forms/{form_id}/", response_model=FormRead)
 def get_form_for_rendering(
     raw: bool = False,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_view_access),
+    current_user: User = Depends(get_current_user),
 ):
+    if raw:
+        require_form_manage_access(form.id, db, current_user)
+
     active_fields = (
         db.query(FormField)
         .filter(FormField.form_id == form.id, FormField.is_archived == False)

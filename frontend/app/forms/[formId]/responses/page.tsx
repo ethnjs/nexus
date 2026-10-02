@@ -10,6 +10,7 @@ import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { SubHeader, FORM_TABS_HEIGHT } from "@/components/forms/SubHeader";
 import { ResponsesView, respondentName } from "@/components/forms/ResponsesView";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 
 // Two panes need more room than the builder's 800px column.
 const RESPONSES_MAX_WIDTH = 1100;
@@ -27,6 +28,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
   const [fields, setFields] = useState<FormField[]>([]);
   const [responses, setResponses] = useState<FormResponseManager[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [noAccess, setNoAccess] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FormResponseManager | null>(null);
 
   useEffect(() => {
@@ -36,7 +38,11 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
         setFields(loaded.fields.filter((f) => !f.is_archived));
         setResponses(list);
       })
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load responses."));
+      .catch((e) => {
+        // listResponses is manager-only — a member who lands here gets a 403.
+        if (e instanceof ApiError && e.status === 403) setNoAccess(true);
+        else setLoadError(e instanceof ApiError ? e.message : "Failed to load responses.");
+      });
   }, [formId]);
 
   function handleDeleted() {
@@ -51,6 +57,8 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
     setResponses((prev) => (prev ?? []).filter((r) => r.id !== id));
     setForm((prev) => (prev ? { ...prev, response_count: Math.max(0, prev.response_count - 1) } : prev));
   }
+
+  if (noAccess) return <NoFormAccess />;
 
   if (loadError) {
     return (
