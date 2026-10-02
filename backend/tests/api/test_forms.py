@@ -2742,7 +2742,8 @@ class TestDeleteResponse:
         assert entry.actor_id == td_user.id
         assert entry.target_type == "membership"
         assert entry.target_id == membership.id
-        assert entry.extra_data == {"form_id": form.id, "form_name": form.name}
+        expected_name = f"{other_user.first_name or ''} {other_user.last_name or ''}".strip() or other_user.email
+        assert entry.extra_data == {"form_id": form.id, "form_name": form.name, "respondent_name": expected_name}
 
     def test_write_through_kept(self, client, db, td_user, td_tournament, other_user):
         form, response = self._response(db, td_user, td_tournament, other_user, status="published")

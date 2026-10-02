@@ -69,9 +69,19 @@ function FormRow({ form, onAction, lockedReason }: {
         noMembershipLabel={form.owner_type === "tournament" ? "No membership in this tournament" : "No membership in this chapter"}
         style={{ justifyContent: "flex-start", justifySelf: "start", width: "100%" }}
       />
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      {/* Straight to the responses tab, in a new tab like the builder. */}
+      <button
+        type="button"
+        title="View responses"
+        onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/responses`, "_blank", "noopener,noreferrer"); }}
+        style={{
+          fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
+          textAlign: "center", justifySelf: "center", border: "none", background: "transparent",
+          padding: "2px 6px", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px",
+        }}
+      >
         {form.response_count}
-      </span>
+      </button>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {formatRelativeTime(form.updated_at)}
       </span>

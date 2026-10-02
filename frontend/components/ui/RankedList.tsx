@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -15,6 +15,8 @@ import { IconX } from '@/components/ui/Icons'
 export interface RankedListOption {
   value: string
   label: string
+  /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
+  badge?: ReactNode
 }
 
 interface RankedListProps {
@@ -76,6 +78,7 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
   const displayed = locked && picked.length === 0 ? options.slice(0, ranks).map((o) => o.value) : picked
 
   const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v
+  const badgeFor = (v: string) => options.find((o) => o.value === v)?.badge
   const remainingOptions = allowDuplicates ? options : options.filter((o) => !picked.includes(o.value))
 
   function commit(next: string[]) {
@@ -118,7 +121,7 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
       >
         <SortableContext items={displayed} strategy={verticalListSortingStrategy}>
           {displayed.map((v, i) => (
-            <RankedRow key={v} value={v} rank={i + 1} label={labelFor(v)} locked={locked} onRemove={() => removePick(v)} />
+            <RankedRow key={v} value={v} rank={i + 1} label={labelFor(v)} badge={badgeFor(v)} locked={locked} onRemove={() => removePick(v)} />
           ))}
         </SortableContext>
         {/* Rendered in a portal at document.body and positioned via
@@ -178,8 +181,9 @@ function RankBullet({ rank }: { rank: number }) {
 
 // The actual visual pill — shared between a row's in-list placeholder and
 // the DragOverlay clone that follows the cursor, so the two look identical.
-function RowPill({ label, onRemove, locked = false, dragging = false }: {
+function RowPill({ label, badge, onRemove, locked = false, dragging = false }: {
   label: string
+  badge?: ReactNode
   onRemove?: () => void
   locked?: boolean
   dragging?: boolean
@@ -196,8 +200,9 @@ function RowPill({ label, onRemove, locked = false, dragging = false }: {
         cursor: locked ? 'default' : dragging ? 'grabbing' : 'grab',
       }}
     >
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
         {label}
+        {badge}
       </span>
       {onRemove && (
         <Button
@@ -215,10 +220,11 @@ function RowPill({ label, onRemove, locked = false, dragging = false }: {
 // map above) — it marks a fixed rank *slot*, not something that travels
 // with the dragged item, so mid-drag it stays put while the pill under it
 // slides to preview the new order.
-function RankedRow({ value, rank, label, locked, onRemove }: {
+function RankedRow({ value, rank, label, badge, locked, onRemove }: {
   value: string
   rank: number
   label: string
+  badge?: ReactNode
   locked: boolean
   onRemove: () => void
 }) {
@@ -248,7 +254,7 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
         // still suppresses double-tap zoom, which is what we want on a row.
         style={{ ...style, flex: 1, touchAction: 'manipulation' }}
       >
-        <RowPill label={label} onRemove={!locked ? onRemove : undefined} locked={locked} />
+        <RowPill label={label} badge={badge} onRemove={!locked ? onRemove : undefined} locked={locked} />
       </div>
     </div>
   )

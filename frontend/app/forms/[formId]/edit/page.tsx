@@ -55,7 +55,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
 
   return (
     <div>
-      <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} locked={locked} />
+      <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} locked={locked} activeTab="questions" />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
         {locked && (
           <div style={{ marginBottom: "16px" }}>

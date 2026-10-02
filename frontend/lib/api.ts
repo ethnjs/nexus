@@ -1959,6 +1959,16 @@ export interface FormResponse {
   pending_updates: FormPendingUpdate[]
 }
 
+/** Who submitted a response — matches FormRespondentRead. Managers only. */
+export interface FormRespondent extends PersonNameRef {
+  email: string
+}
+
+/** GET /forms/{id}/responses/ — the managers' view, adding who answered. */
+export interface FormResponseManager extends FormResponse {
+  respondent: FormRespondent
+}
+
 // Matches OnboardingFormRead — a tournament form selected into the ordered
 // member onboarding sequence.
 export interface OnboardingForm extends FormListItem {
@@ -2037,7 +2047,11 @@ export const formsApi = {
   // rest of the response is left alone, not overwritten.
   patchResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.patch<FormResponse>(`/forms/${formId}/responses/me/`, { answers }),
-  listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
+  listResponses: (formId: string) => api.get<FormResponseManager[]>(`/forms/${formId}/responses/`),
+  // Manager-only. Answers and pending flags go with it; roster data the
+  // response wrote through (availability, lunch…) stays. 409s on an archived form.
+  deleteResponse: (formId: string, responseId: string) =>
+    api.delete<void>(`/forms/${formId}/responses/${responseId}/`),
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
 }
 

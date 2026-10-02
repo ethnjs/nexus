@@ -1498,10 +1498,14 @@ def delete_form_response(
 
     if form.owner_type == "tournament":
         membership = get_membership_by_user(db, form.tournament_id, response.user_id)
+        respondent = response.user
+        # Stored by value, like ownership_transferred: the log has to read
+        # right even after the member leaves or is deleted.
+        respondent_name = f"{respondent.first_name or ''} {respondent.last_name or ''}".strip() or respondent.email
         log_action(
             db, form.tournament_id, current_user.id, FORM_RESPONSE_DELETED,
             target_type="membership", target_id=membership.id if membership else None,
-            extra_data={"form_id": form.id, "form_name": form.name},
+            extra_data={"form_id": form.id, "form_name": form.name, "respondent_name": respondent_name},
         )
 
     db.delete(response)

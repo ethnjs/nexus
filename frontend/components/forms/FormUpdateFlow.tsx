@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { ApiError, Form, FormResponse, formsApi, PendingUpdateReason } from "@/lib/api";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { REASON_LABELS } from "@/lib/forms/changeClassification";
+import { removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import styles from "@/components/forms/FormFlow.module.css";
 
 // Re-answering a submitted response. Deliberately not FormFillFlow: that one
@@ -97,10 +98,14 @@ export function FormUpdateFlow({ form, response, onUpdated }: {
                 {reasons.map((r: PendingUpdateReason) => REASON_LABELS[r]).join(" · ")}
               </div>
             )}
+            {/* interactive + locked, not interactive={false}: the latter
+                hides the value, which blanked every locked question here. */}
             <QuestionRenderer
               field={field}
-              interactive={editable}
-              value={editable ? answers[field.id] : previousByField.get(field.id)}
+              interactive
+              locked={!editable}
+              value={editable ? answers[field.id] : storedAnswerToInput(previousByField.get(field.id))}
+              removedOptions={editable ? undefined : removedPickedOptions(field, previousByField.get(field.id))}
               onChange={(value) => setAnswers((prev) => ({ ...prev, [field.id]: value }))}
             />
           </Card>

@@ -16,6 +16,7 @@ export const ALL_AUDIT_ACTIONS = [
   "tournament_archived",
   "tournament_unarchived",
   "ownership_transferred",
+  "form_response_deleted",
 ] as const;
 
 // "join_code_*" stays the backend/wire action name — display text says
@@ -32,6 +33,7 @@ export const ACTION_LABELS: Record<string, string> = {
   tournament_archived: "Tournament archived",
   tournament_unarchived: "Tournament unarchived",
   ownership_transferred: "Ownership transferred",
+  form_response_deleted: "Response deleted",
 };
 
 export interface AuditLogDescription {
@@ -367,6 +369,10 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     const newOwner = e.new as { name: string };
     return { summary: `Transferred ownership from ${oldOwner.name} to ${newOwner.name}` };
   },
+
+  form_response_deleted: (e) => ({
+    summary: `Deleted ${e.respondent_name as string}'s response to ${e.form_name as string}`,
+  }),
 };
 
 export function describeAuditLogEntry(entry: AuditLogEntry): AuditLogDescription {
