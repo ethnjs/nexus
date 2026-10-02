@@ -205,7 +205,18 @@ export interface UserFull extends UserSlim {
 }
 
 // GET /admin/users/{id}/ + /admin/users/by-email/{email}/ — matches AdminUserFullResponse
-export interface AdminUserFull extends UserFull, AdminUserSlim {}
+// A tournament the user owns — listed in the admin delete confirmation,
+// since deleting the user leaves these without an owner.
+export interface OwnedTournamentRef {
+  id:          number
+  name:        string
+  short_name:  string | null
+  is_archived: boolean
+}
+
+export interface AdminUserFull extends UserFull, AdminUserSlim {
+  owned_tournaments: OwnedTournamentRef[]
+}
 
 // GET /users/me/?full=true — matches UserMeFullResponse
 export interface UserMeFull extends UserFull, UserMeSlim {
@@ -463,7 +474,8 @@ export interface Tournament extends TournamentPublic {
   is_multi_day: boolean
   is_public:    boolean
   is_archived:  boolean
-  owner_id:     number
+  /** null once the owner deleted their account — an admin can transfer it. */
+  owner_id:     number | null
   roles:        Role[]
   created_at:   string
   updated_at:   string
@@ -908,7 +920,8 @@ export interface PersonRole {
  * own, so the member's whole role list would be noise.
  */
 export interface PersonNameRef {
-  user_id: number
+  /** null when the account was deleted — the name is null with it. */
+  user_id: number | null
   /** null when they hold no membership in this tournament/chapter. */
   membership_id: number | null
   first_name: string | null
@@ -1838,7 +1851,8 @@ export interface Form {
   owner_type:      FormOwnerType
   tournament_id:   number | null
   chapter_id:      number | null
-  created_by:      number
+  /** null once the creator's account is deleted. */
+  created_by:      number | null
   created_at:      string
   updated_at:      string
   response_count:  number

@@ -180,7 +180,8 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
           </span>
         </button>
       ) : (
-        <span style={TEXT_CELL}>—</span>
+        // Owner deleted their account — transfer from the tournament's settings.
+        <span><Badge variant="removed">No owner</Badge></span>
       )}
 
       <VenueCell tournament={tournament} />
