@@ -365,6 +365,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
         tournament_id=form.tournament_id,
         chapter_id=form.chapter_id,
         creator=creator,
+        allow_response_edits=form.allow_response_edits,
         created_at=form.created_at,
         updated_at=form.updated_at,
         response_count=form.response_count,

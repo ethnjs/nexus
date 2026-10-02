@@ -84,7 +84,12 @@ export function SubHeader({
             form={form} onUpdated={onUpdated} onDeleted={onDeleted}
             lockedReason={locked ? ARCHIVED_REASON : undefined}
           />
-          <FormActionsMenu formId={form.id} />
+          <FormActionsMenu
+            form={form}
+            items={["allow-edits", "copy-json"]}
+            onAllowEditsChange={(allow) => onUpdated({ ...form, allow_response_edits: allow })}
+            lockedReason={locked ? ARCHIVED_REASON : undefined}
+          />
         </div>
       </Card>
     </div>

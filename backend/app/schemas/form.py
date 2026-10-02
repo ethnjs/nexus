@@ -346,6 +346,7 @@ class FormListRead(BaseModel):
     # (e.g. a site admin acting without ever joining) — same pattern as
     # JoinCodeResponse.creator.
     creator: PersonRefResponse
+    allow_response_edits: bool = False
     created_at: datetime
     updated_at: datetime
     response_count: int = 0

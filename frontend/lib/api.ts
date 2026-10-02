@@ -1853,6 +1853,8 @@ export interface Form {
   chapter_id:      number | null
   /** null once the creator's account is deleted. */
   created_by:      number | null
+  /** Members may revise any answer after submitting, not just flagged ones. */
+  allow_response_edits: boolean
   created_at:      string
   updated_at:      string
   response_count:  number
@@ -1883,6 +1885,7 @@ export interface FormListItem {
   tournament_id:   number | null
   chapter_id:      number | null
   creator: PersonRef
+  allow_response_edits: boolean
   created_at:      string
   updated_at:      string
   response_count:  number
@@ -1903,6 +1906,7 @@ export interface FormUpdateInput {
   title?:       string
   description?: string
   status?:      FormStatus
+  allow_response_edits?: boolean
 }
 
 export interface FormAnswer {
