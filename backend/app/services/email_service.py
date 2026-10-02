@@ -117,6 +117,7 @@ def _render_email_html(
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
                 <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{footnote}</p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">Questions? Email <a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a></p>
               </td>
             </tr>
           </table>
@@ -134,6 +135,7 @@ def _cta_url(path: str, token: Optional[str] = None) -> str:
     return f"{base}?token={token}" if token else base
 
 
+_SUPPORT_EMAIL = "support@nexus.socalscioly.org"
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
@@ -190,6 +192,7 @@ _rate_limiter = _SendRateLimiter()
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
+    text = f"{text}\n\nQuestions? Email {_SUPPORT_EMAIL}"
     settings = get_settings()
 
     if not (settings.aws_access_key_id and settings.aws_secret_access_key):
@@ -236,7 +239,7 @@ async def send_verification_email(to: str, token: str) -> None:
         ],
         cta_label="Verify email",
         cta_url=url,
-        footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
+        footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Verify your email on NEXUS", f"Please verify your email: {url}", html)
 
@@ -306,7 +309,8 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
         heading="Your email address is being changed",
         body_lines=[
             f"A request was made to change the email on your NEXUS account to {new_email}.",
-            "If you made this request, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
         cta_label="Secure your account",
         cta_url=url,
@@ -334,7 +338,7 @@ async def send_password_reset_email(to: str, token: str) -> None:
         ],
         cta_label="Reset password",
         cta_url=url,
-        footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
+        footnote=f"This link expires in 1 hour. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Reset your password on NEXUS", f"Reset your password: {url}", html)
 
@@ -362,7 +366,8 @@ async def send_password_changed_notice(to: str) -> None:
         heading="Your password was changed",
         body_lines=[
             "The password on your NEXUS account was just changed.",
-            "If you made this change, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
         cta_label="Reset password",
         cta_url=url,
