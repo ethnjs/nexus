@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconChevronLeft, IconMembers, IconSearch, IconTrash } from "@/components/ui/Icons";
-import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
+import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import styles from "@/components/forms/ResponsesView.module.css";
 
 export function respondentName(r: FormRespondent): string {
@@ -18,8 +17,7 @@ export function respondentName(r: FormRespondent): string {
 }
 
 // Two panes: a searchable respondent list, and the picked member's response
-// read-only. Answers render through QuestionRenderer as interactive + locked —
-// non-interactive would hide the value entirely.
+// read-only (ResponseAnswers, shared with a member viewing their own).
 export function ResponsesView({ fields, responses, deleteLockedReason, onDelete }: {
   /** Live questions only, with option values hydrated (formsApi.get). */
   fields: FormField[];
@@ -127,19 +125,10 @@ function ResponseDetail({ fields, response, deleteLockedReason, onBack, onDelete
   onBack: () => void;
   onDelete: () => void;
 }) {
-  // Raw stored values: the input shape and any no-longer-offered picks both
-  // derive from them.
-  const answers = useMemo(
-    () => new Map(response.answers.map((a) => [a.field_id, a.value])),
-    [response.answers]
-  );
   const flagged = useMemo(
     () => new Set(response.pending_updates.map((p) => p.field_id)),
     [response.pending_updates]
   );
-  // Both stamps come from separate utcnow() calls on insert, so they never
-  // match exactly — only a real gap means the response was edited later.
-  const edited = Date.parse(response.updated_at) - Date.parse(response.submitted_at) > 1000;
 
   return (
     <>
@@ -159,7 +148,7 @@ function ResponseDetail({ fields, response, deleteLockedReason, onBack, onDelete
           </div>
           <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
             {response.respondent.email} · Submitted {formatDateTime(response.submitted_at)}
-            {edited && ` · Updated ${formatDateTime(response.updated_at)}`}
+            {wasEdited(response) && ` · Updated ${formatDateTime(response.updated_at)}`}
           </div>
         </div>
         <Button
@@ -173,25 +162,7 @@ function ResponseDetail({ fields, response, deleteLockedReason, onBack, onDelete
         </Button>
       </Card>
 
-      {fields.map((field) => (
-        <Card key={field.id} radius="lg" className={styles.answerCard}>
-          {flagged.has(field.id) && (
-            <div style={{ marginBottom: "10px" }}>
-              <Badge variant="warning">Waiting on an updated answer</Badge>
-            </div>
-          )}
-          <QuestionRenderer
-            field={field} interactive locked
-            value={storedAnswerToInput(answers.get(field.id))}
-            removedOptions={removedPickedOptions(field, answers.get(field.id))}
-            answerNote={isBlankAnswer(answers.get(field.id)) ? (
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontStyle: "italic", color: "var(--color-text-tertiary)" }}>
-                Not answered
-              </span>
-            ) : undefined}
-          />
-        </Card>
-      ))}
+      <ResponseAnswers fields={fields} answers={response.answers} flaggedFieldIds={flagged} />
     </>
   );
 }

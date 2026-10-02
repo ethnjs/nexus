@@ -57,10 +57,6 @@
   min-width: 0;
 }
 
-.answerCard {
-  padding: 20px 24px;
-}
-
 /* Back to the list — only needed once the panes stack. */
 .back {
   display: none;
@@ -87,9 +83,5 @@
 
   .back {
     display: block;
-  }
-
-  .answerCard {
-    padding: 16px;
   }
 }
