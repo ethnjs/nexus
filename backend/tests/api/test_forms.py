@@ -410,6 +410,22 @@ class TestMyTournamentForms:
 
         assert client.get(f"/tournaments/{td_tournament.id}/forms/me/").status_code == 404
 
+    def test_reports_allow_response_edits(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        editable = self._form(db, td_user, td_tournament)
+        editable.allow_response_edits = True
+        locked = self._form(db, td_user, td_tournament)
+        db.add_all([
+            FormResponse(form_id=editable.id, user_id=other_user.id),
+            FormResponse(form_id=locked.id, user_id=other_user.id),
+        ])
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        rows = {row["id"]: row for row in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()}
+        assert rows[editable.id]["allow_response_edits"] is True
+        assert rows[locked.id]["allow_response_edits"] is False
+
 
 # ---------------------------------------------------------------------------
 # GET /forms/{form_id}/

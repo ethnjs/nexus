@@ -256,6 +256,7 @@ def list_my_tournament_forms(
                 is_onboarding=tournament_form.is_onboarding,
                 completed=completed,
                 eligible=eligible,
+                allow_response_edits=form.allow_response_edits,
             ))
     return result
 

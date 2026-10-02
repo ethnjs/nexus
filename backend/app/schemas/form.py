@@ -365,6 +365,8 @@ class MemberFormRead(BaseModel):
     is_onboarding: bool
     completed: bool
     eligible: bool
+    # Whether a completed response can be revised — the overview's Edit button.
+    allow_response_edits: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { IconEdit, IconLock } from "@/components/ui/Icons";
 import styles from "@/components/forms/FormFlow.module.css";
+import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
 
 // Respondent-facing form page, one URL for every state of a member's response:
 // - no response yet: fill the form
@@ -29,9 +30,6 @@ import styles from "@/components/forms/FormFlow.module.css";
 function internalRedirect(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
 }
-
-const NOT_ACCEPTING = "This form isn't accepting changes right now.";
-const EDITS_LOCKED = "Editing is locked. Contact your tournament director if something needs changing.";
 
 export default function FormViewPage() {
   const params = useParams();
@@ -61,13 +59,15 @@ export default function FormViewPage() {
       .finally(() => setCheckedExisting(true));
   }, [formId]);
 
-  // Why Edit is unavailable, or undefined when it's open. Flagged questions
-  // open it even with edits off — the TD asked for those answers again.
+  // Why Edit is unavailable, or undefined when it's open.
   const editLockedReason = useMemo(() => {
     if (!form || !existing) return undefined;
-    if (form.status !== "published" || form.tournament_is_archived) return NOT_ACCEPTING;
-    if (!form.allow_response_edits && existing.pending_updates.length === 0) return EDITS_LOCKED;
-    return undefined;
+    return responseEditLockedReason({
+      status: form.status,
+      allow_response_edits: form.allow_response_edits,
+      tournamentArchived: !!form.tournament_is_archived,
+      hasFlaggedQuestions: existing.pending_updates.length > 0,
+    });
   }, [form, existing]);
 
   const editing = editRequested && !!existing && !editLockedReason;

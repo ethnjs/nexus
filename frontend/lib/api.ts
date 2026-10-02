@@ -1840,6 +1840,8 @@ export interface MemberForm {
   is_onboarding: boolean
   completed:     boolean
   eligible:      boolean
+  /** Whether a completed response can be revised — drives the Edit button. */
+  allow_response_edits: boolean
 }
 
 export interface Form {
