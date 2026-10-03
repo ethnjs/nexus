@@ -24,6 +24,8 @@ jobs:
           node-version: lts/*
 
       # Majors pinned so a new semantic-release major can't change a release unannounced.
+      # The preset stays on 9: v10 needs conventional-changelog-writer 9, but
+      # semantic-release 25's notes generator still ships writer 8.
       - id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -32,7 +34,7 @@ jobs:
           -p semantic-release@25
           -p @semantic-release/exec@7
           -p @semantic-release/git@11
-          -p conventional-changelog-conventionalcommits@10
+          -p conventional-changelog-conventionalcommits@9
           semantic-release
 
   link-release-notes:

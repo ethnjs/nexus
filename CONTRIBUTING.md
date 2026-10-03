@@ -125,11 +125,34 @@ Pick the type by what the change *does for users*, not by what files it touches 
 
 ### Cutting a release
 
-1. **Preview the version.** From an up-to-date `main`: `GITHUB_TOKEN=$(gh auth token) npx -p node@24 -p semantic-release@25 -p @semantic-release/exec@7 -p @semantic-release/git@11 -p conventional-changelog-conventionalcommits@10 semantic-release --dry-run --no-ci` prints the next tag and its notes.
-2. **Write the release notes.** Copy `.github/RELEASE_NOTES_TEMPLATE.mdx` to `docs/release-notes/<tag>.mdx`. Plain language for tournament directors and volunteers; screenshots and videos welcome.
-3. **One page per release.** Several PRs usually ship together and share the page — add to the pending page rather than starting a second one.
-4. **Merge it into `main` first**, so it's there when the release publishes. Re-run the dry run afterwards — another `feat`/`fix` landing in between changes the tag.
-5. **Run the Release workflow** (Actions → Release → Run workflow, or `gh workflow run release.yml`). That tags the release, GitHub shows the generated commit list, and the docs site syncs the release notes page.
+**1. Preview the version** from an up-to-date `main`. Prints the next tag and its notes:
+
+```bash
+GITHUB_TOKEN=$(gh auth token) npx \
+  -p node@24 \
+  -p semantic-release@25 \
+  -p @semantic-release/exec@7 \
+  -p @semantic-release/git@11 \
+  -p conventional-changelog-conventionalcommits@9 \
+  semantic-release --dry-run --no-ci
+```
+
+**2. Write the release notes**, named after that tag. Plain language for tournament directors and volunteers.
+
+```bash
+cp .github/RELEASE_NOTES_TEMPLATE.mdx docs/release-notes/<tag>.mdx
+```
+
+- One page per release. If a page for the pending tag already exists, add to it.
+- Merge it into `main` before releasing, then re-run the preview: a `feat`/`fix` landing in between changes the tag.
+
+**3. Run the Release workflow** (or Actions → Release → Run workflow):
+
+```bash
+gh workflow run release.yml
+```
+
+It tags the release, posts the commit list on GitHub with a link to the release notes page, and syncs the docs site.
 
 ### Before opening a PR
 
