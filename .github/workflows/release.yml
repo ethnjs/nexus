@@ -35,6 +35,12 @@ jobs:
       - id: release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          # The version-bump commit's identity — semantic-release's default
+          # author is a real GitHub account that would show as a contributor.
+          GIT_AUTHOR_NAME: Ethan Shih
+          GIT_AUTHOR_EMAIL: 168794808+ethnjs@users.noreply.github.com
+          GIT_COMMITTER_NAME: Ethan Shih
+          GIT_COMMITTER_EMAIL: 168794808+ethnjs@users.noreply.github.com
         run: >
           npx --yes
           -p semantic-release@25
