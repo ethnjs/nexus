@@ -1,5 +1,6 @@
 'use client'
 
+import { ReactNode } from 'react'
 import { FormFieldOption, FormFieldConfig, FormQuestionType, ResolvedShiftOption, Tournament, TournamentShift } from '@/lib/api'
 import { formatTime } from '@/lib/timeFormat'
 import { Input } from '@/components/ui/Input'
@@ -11,6 +12,7 @@ import { Toggle } from '@/components/ui/Toggle'
 import { RankedList } from '@/components/ui/RankedList'
 import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
+import { Badge } from '@/components/ui/Badge'
 import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
 import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
 import {
@@ -94,6 +96,13 @@ interface QuestionRendererProps {
   /** Forwarded to EntityOptionsEditor — see its own prop. Absent outside the
       form builder, where there is no preset popover to open. */
   onRequireTrack?: () => void
+  /** Read-only answers only — options a past answer picked that are no longer
+      offered (archived, or gone from config). Shown in line with the live
+      ones, marked Removed, so the answer still reads as given. */
+  removedOptions?: FormFieldOption[]
+  /** Rendered in place of the input, under the question — e.g. "Not
+      answered" in a read-only response. */
+  answerNote?: ReactNode
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -134,6 +143,8 @@ export function QuestionRenderer({
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
   allowArchive = false,
   onRequireTrack,
+  removedOptions,
+  answerNote,
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -155,7 +166,9 @@ export function QuestionRenderer({
         </div>
       )}
 
-      {mode === 'edit' ? (
+      {answerNote !== undefined && mode !== 'edit' ? (
+        answerNote
+      ) : mode === 'edit' ? (
         <QuestionEditBody
           field={field}
           onFieldChange={onFieldChange ?? (() => {})}
@@ -168,7 +181,7 @@ export function QuestionRenderer({
           onRequireTrack={onRequireTrack}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} locked={locked} value={value} onChange={onChange} error={error} shifts={shifts} />
+        <QuestionBody field={field} interactive={interactive} locked={locked} value={value} onChange={onChange} error={error} shifts={shifts} removedOptions={removedOptions} />
       )}
     </div>
   )
@@ -218,7 +231,7 @@ function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] 
   return option.label
 }
 
-function QuestionBody({ field, interactive, locked, value, onChange, error, shifts }: {
+function QuestionBody({ field, interactive, locked, value, onChange, error, shifts, removedOptions = [] }: {
   field: QuestionFieldData
   interactive?: boolean
   value?: unknown
@@ -226,6 +239,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
   error?: string
   shifts?: TournamentShift[] | null
   locked?: boolean
+  removedOptions?: FormFieldOption[]
 }) {
   const config = field.config ?? {}
   // Locked keeps the answer on screen but refuses edits, so every input is
@@ -237,7 +251,13 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
   // the backend) — it is storage, never a choice to present. Respondents
   // whose answer pointed at one are asked to re-answer via the
   // "option_archived" pending-update flow instead.
-  const liveOptions: FormFieldOption[] = (config.options ?? []).filter((opt) => !opt.is_archived)
+  const removedIds = new Set(removedOptions.map((opt) => opt.option_id))
+  const liveOptions: FormFieldOption[] = [
+    ...(config.options ?? []).filter((opt) => !opt.is_archived && !removedIds.has(opt.option_id)),
+    ...removedOptions,
+  ]
+  const badgeFor = (optionId: string) =>
+    removedIds.has(optionId) ? <Badge variant="declined">Removed</Badge> : undefined
 
   switch (field.question_type) {
     case 'short_text':
@@ -280,7 +300,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
 
     case 'single_select_radio': {
       const options = liveOptions
-      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
+      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts), badge: badgeFor(opt.option_id) }))
       const selected = interactive ? (value as string | undefined) ?? '' : ''
 
       if (config.display_style === 'buttons') {
@@ -314,7 +334,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
         <Dropdown
           value={interactive ? (value as string | undefined) ?? '' : ''}
           onChange={(v) => editable && onChange?.(v)}
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label, badge: badgeFor(opt.option_id) }))}
           placeholder="Choose"
           locked={!editable}
           fullWidth
@@ -324,7 +344,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
 
     case 'multi_select_checkbox': {
       const options = liveOptions
-      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
+      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts), badge: badgeFor(opt.option_id) }))
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
       function toggle(optionId: string) {
@@ -362,7 +382,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
       const ranks = config.ranks ?? options.length
       return (
         <RankedList
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label, badge: badgeFor(opt.option_id) }))}
           ranks={ranks}
           value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
           onChange={(next) => editable && onChange?.(next)}

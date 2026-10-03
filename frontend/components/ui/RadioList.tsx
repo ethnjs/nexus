@@ -1,10 +1,13 @@
 'use client'
 
+import { ReactNode } from 'react'
 import { RadioCircle } from '@/components/ui/RadioCircle'
 
 export interface RadioListOption {
   value: string
   label: string
+  /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
+  badge?: ReactNode
 }
 
 interface RadioListProps {
@@ -74,6 +77,7 @@ function RadioRow({ option, checked, locked, size, fontSize, onClick }: {
       }}>
         {option.label}
       </span>
+      {option.badge}
     </label>
   )
 }

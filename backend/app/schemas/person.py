@@ -38,7 +38,8 @@ class PersonNameRef(BaseModel):
     """
     # The *user* id, not the membership's — audit-log filtering keys off it,
     # and a field named `id` next to `membership_id` invites picking wrong.
-    user_id: int
+    # Null when the account was deleted; the name is null with it.
+    user_id: int | None
     # None when they hold no membership in this tournament/chapter, e.g. a
     # site admin acting without joining.
     membership_id: int | None = None

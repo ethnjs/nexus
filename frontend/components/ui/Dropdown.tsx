@@ -21,6 +21,8 @@ export interface DropdownOption {
   /** Secondary line rendered under the label, e.g. a location or subtitle. */
   subtitle?: string
   disabled?: boolean
+  /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
+  badge?:    ReactNode
 }
 
 export interface DropdownOptionGroup {
@@ -346,8 +348,11 @@ export function Dropdown({
             boxSizing:      'border-box',
           }}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {displayLabel}
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {displayLabel}
+            </span>
+            {selected?.badge}
           </span>
           <IconChevronDown
             size={14}
@@ -531,7 +536,7 @@ function OptionRow({
       }}
     >
       <div style={{ overflow: 'hidden' }}>
-        <div>{opt.label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>{opt.label}{opt.badge}</div>
         {opt.subtitle && (
           <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
             {opt.subtitle}

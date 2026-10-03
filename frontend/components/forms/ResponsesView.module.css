@@ -1,0 +1,87 @@
+/*
+ * The managers' responses view. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * lib/useIsMobile.ts — keep the two in sync (same as FormFlow.module.css).
+ */
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Stays in view while a long response scrolls past — under the tab row,
+     whose offset the page sets. */
+  position: sticky;
+  top: var(--list-top, 16px);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--list-top, 16px) - 40px);
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.row:hover {
+  background: var(--color-bg);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  background: var(--color-accent-subtle);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Back to the list — only needed once the panes stack. */
+.back {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .list {
+    position: static;
+  }
+
+  .rows {
+    max-height: none;
+  }
+
+  /* One pane at a time: the list until someone is picked, then their response. */
+  .layout[data-selected="true"] .list,
+  .layout[data-selected="false"] .detail {
+    display: none;
+  }
+
+  .back {
+    display: block;
+  }
+}

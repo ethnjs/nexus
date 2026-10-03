@@ -44,5 +44,6 @@ call site — ground truth, not aspirational.
 | `tournament_verified` | `{"is_verified": bool}` |
 | `tournament_archived` | none (`extra_data=None`) — except the daily auto-archive job, which logs `{"auto_archived": true}` to distinguish itself from a manual archive. |
 | `tournament_unarchived` | none (`extra_data=None`) |
-| `ownership_transferred` | `{"old": {"id": int, "name": str}, "new": {"id": int, "name": str}}` |
+| `ownership_transferred` | `{"old": {"id": int | null, "name": str}, "new": {"id": int, "name": str}}` |
+| `form_response_deleted` | `{"form_id": str, "form_name": str, "respondent_name": str}` — `target_type="membership"`, `target_id` the respondent's membership. Chapter forms aren't logged (no tournament log to write to). |
 

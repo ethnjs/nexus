@@ -3,13 +3,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ApiError, Form, FormResponse, formsApi } from "@/lib/api";
-import { FormFillFlow } from "@/components/forms/FormFillFlow";
-import { FormUpdateFlow } from "@/components/forms/FormUpdateFlow";
+import { formatDateTime } from "@/lib/timeFormat";
+import { ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
+import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
+import { Banner } from "@/components/ui/Banner";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { IconEdit, IconLock } from "@/components/ui/Icons";
+import styles from "@/components/forms/FormFlow.module.css";
+import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
 
-// Respondent-facing form renderer. `redirect` is optional so this can serve
-// direct form links too; only an app-relative path is honored to avoid making
-// form submissions an open-redirect vector.
+// Respondent-facing form page, one URL for every state of a member's response:
+// - no response yet: fill the form
+// - responded: read-only view of their answers, with an Edit button
+// - ?edit=true: revise them, when the form allows (otherwise the param is dropped)
+// One page rather than three because all of them load the same form and
+// response behind the same access check, and they hand off to each other —
+// submit or save lands back on the read-only view.
+//
+// `redirect` is optional so this can serve direct form links too; only an
+// app-relative path is honored to avoid making form submissions an
+// open-redirect vector.
 function internalRedirect(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
 }
@@ -20,13 +37,13 @@ export default function FormViewPage() {
   const searchParams = useSearchParams();
   const formId = String(params.formId);
   const redirect = useMemo(() => internalRedirect(searchParams.get("redirect")), [searchParams]);
+  const editRequested = searchParams.get("edit") === "true";
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // The response this user already gave, if any. A form can only be submitted
-  // once — coming back is an update, and only for the questions the TD
-  // flagged, so which flow renders depends on whether this resolves.
   const [existing, setExisting] = useState<FormResponse | null>(null);
   const [checkedExisting, setCheckedExisting] = useState(false);
+  // Shown on the read-only view after a submit or save lands there.
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     formsApi.get(formId)
@@ -42,12 +59,63 @@ export default function FormViewPage() {
       .finally(() => setCheckedExisting(true));
   }, [formId]);
 
+  // Why Edit is unavailable, or undefined when it's open.
+  const editLockedReason = useMemo(() => {
+    if (!form || !existing) return undefined;
+    return responseEditLockedReason({
+      status: form.status,
+      allow_response_edits: form.allow_response_edits,
+      tournamentArchived: !!form.tournament_is_archived,
+      hasFlaggedQuestions: existing.pending_updates.length > 0,
+    });
+  }, [form, existing]);
+
+  const editing = editRequested && !!existing && !editLockedReason;
+
+  // ?edit=true that can't be honored falls back to the read-only view; drop
+  // the param so the URL says what's on screen and a refresh doesn't re-ask.
+  useEffect(() => {
+    if (!form || !checkedExisting || !editRequested || editing) return;
+    router.replace(`/forms/${formId}/view`);
+  }, [form, checkedExisting, editRequested, editing, formId, router]);
+
+  const existingResponse = useMemo<ExistingResponse | null>(() => {
+    if (!form || !existing) return null;
+    const flagged = new Map(existing.pending_updates.map((p) => [p.field_id, p.reasons]));
+    return {
+      stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])),
+      editableIds: form.allow_response_edits
+        ? new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.id))
+        : new Set(flagged.keys()),
+      flagged,
+    };
+  }, [form, existing]);
+
+  // Both writes land back on the read-only view (unless a redirect says otherwise).
+  async function afterWrite(message: string) {
+    if (redirect) {
+      router.replace(redirect);
+      return;
+    }
+    setExisting(await formsApi.getMyResponse(formId));
+    setSavedMessage(message);
+    router.replace(`/forms/${formId}/view`);
+  }
+
   async function submitResponse(answers: Record<string, unknown>) {
     await formsApi.submitResponse(
       formId,
       Object.entries(answers).map(([field_id, value]) => ({ field_id, value })),
     );
-    if (redirect) router.replace(redirect);
+    await afterWrite("Your response was saved.");
+  }
+
+  async function patchResponse(changed: Record<string, unknown>) {
+    await formsApi.patchResponse(
+      formId,
+      Object.entries(changed).map(([field_id, value]) => ({ field_id, value })),
+    );
+    await afterWrite("Your changes were saved.");
   }
 
   if (loadError) {
@@ -62,14 +130,77 @@ export default function FormViewPage() {
     return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
   }
 
-  // Nothing left to review — the response stands as submitted, and there's
-  // no self-serve way to revise it (see backend/form-edit-lifecycle.md).
-  if (existing && existing.pending_updates.length === 0) {
+  if (existing && existingResponse && editing) {
+    const flaggedCount = existing.pending_updates.length;
     return (
-      <div style={{ padding: "80px 24px", textAlign: "center" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-          You&rsquo;ve already completed this form. Ask an organizer if something needs changing.
-        </p>
+      <FormFillFlow
+        // A fresh flow per saved version, so its prefilled state can't go stale.
+        key={existing.updated_at}
+        form={form}
+        existing={existingResponse}
+        banner={flaggedCount > 0 ? (
+          <Banner
+            variant="warning"
+            message={flaggedCount === 1
+              ? "One question changed since you answered. Please take another look."
+              : `${flaggedCount} questions changed since you answered. Please take another look.`}
+          />
+        ) : undefined}
+        successMessage="Your changes were saved."
+        onComplete={patchResponse}
+      />
+    );
+  }
+
+  if (existing) {
+    const fields = form.fields.filter((f) => !f.is_archived);
+    return (
+      <div className={styles.page}>
+        {savedMessage && <Banner variant="success" message={savedMessage} />}
+
+        {(form.title || form.description) && (
+          <Card radius="lg" className={styles.card}>
+            {form.title && (
+              <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)" }}>
+                {form.title}
+              </h1>
+            )}
+            {form.description && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+                {form.description}
+              </p>
+            )}
+          </Card>
+        )}
+
+        <Card radius="lg" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 20px", flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+              Your response
+            </div>
+            <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
+              Submitted {formatDateTime(existing.submitted_at)}
+              {wasEdited(existing) && ` · Updated ${formatDateTime(existing.updated_at)}`}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {editLockedReason && (
+              <Tooltip variant="info" message={editLockedReason} showIcon={false}>
+                <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+              </Tooltip>
+            )}
+            <Button
+              type="button" variant="secondary" size="md"
+              disabled={!!editLockedReason}
+              title={editLockedReason}
+              onClick={() => { setSavedMessage(null); router.push(`/forms/${formId}/view?edit=true`); }}
+            >
+              <IconEdit size={14} /> Edit response
+            </Button>
+          </div>
+        </Card>
+
+        <ResponseAnswers fields={fields} answers={existing.answers} />
       </div>
     );
   }
@@ -84,19 +215,6 @@ export default function FormViewPage() {
           This form isn&rsquo;t accepting responses right now.
         </p>
       </div>
-    );
-  }
-
-  if (existing) {
-    return (
-      <FormUpdateFlow
-        form={form}
-        response={existing}
-        onUpdated={() => {
-          if (redirect) router.replace(redirect);
-          else formsApi.getMyResponse(formId).then(setExisting).catch(() => {});
-        }}
-      />
     );
   }
 

@@ -6,10 +6,12 @@ import { useAuth } from "@/lib/useAuth";
 import { usersApi, adminUsersApi, canonicalEventsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-// AdminUserFull, not UserMeFull: UserMeFull is structurally a subtype of it
-// (both extend UserFull, and UserMeSlim extends AdminUserSlim), so one type
-// holds either fetch. Nothing here reads the me-only fields.
+// AdminUserFull minus its admin-only extras: UserMeFull is structurally a
+// subtype of that (both extend UserFull, and UserMeSlim extends
+// AdminUserSlim), so one type holds either fetch. Nothing here reads the
+// me-only fields.
 import type { AdminUserFull } from "@/lib/api";
+type ProfileUser = Omit<AdminUserFull, "owned_tournaments">;
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
@@ -28,7 +30,7 @@ export default function ProfilePage() {
   const params = useParams();
   const profileId = params.id as string;
 
-  const [profile, setProfile] = useState<AdminUserFull | null>(null);
+  const [profile, setProfile] = useState<ProfileUser | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 

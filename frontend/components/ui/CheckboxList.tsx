@@ -1,10 +1,13 @@
 'use client'
 
+import { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/Checkbox'
 
 export interface CheckboxListOption {
   value: string
   label: string
+  /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
+  badge?: ReactNode
 }
 
 interface CheckboxListProps {
@@ -72,6 +75,7 @@ function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
       }}>
         {option.label}
       </span>
+      {option.badge}
     </label>
   )
 }

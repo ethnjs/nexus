@@ -9,7 +9,7 @@ from app.core.tournament.memberships import get_membership_by_user, has_any_memb
 from app.core.tournament.onboarding import next_required_onboarding_form_id
 from app.core.tournament.permissions import MANAGE_FORMS, has_permission
 from app.db.session import get_db
-from app.models.models import ChapterMembership, Form, User
+from app.models.models import ChapterMembership, Form, FormResponse, User
 
 # ---------------------------------------------------------------------------
 # Form access control. A Form is owned by exactly one tournament or one
@@ -83,7 +83,13 @@ def require_form_view_access(
         if tournament_form is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available")
         if tournament_form.is_onboarding:
-            if next_required_onboarding_form_id(db, membership) != form.id:
+            # Their current step, or one they already completed — a finished
+            # step stays reachable so its response can be read and revised
+            # (flagged updates, allow_response_edits).
+            responded = db.query(FormResponse.id).filter(
+                FormResponse.form_id == form.id, FormResponse.user_id == current_user.id,
+            ).first() is not None
+            if not responded and next_required_onboarding_form_id(db, membership) != form.id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This onboarding form is not currently available")
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not meet this form's prerequisites")

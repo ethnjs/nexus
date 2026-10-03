@@ -260,6 +260,85 @@ class TestAdminDeleteUser:
     def test_unauthenticated_forbidden(self, client):
         assert client.delete("/admin/users/1/").status_code == 401
 
+    def test_deletes_form_responses(self, client, admin_user, td_tournament, db):
+        """Used to 500: the ORM nulled FormResponse.user_id (NOT NULL) instead
+        of letting the DB cascade it."""
+        from app.models.models import Form, FormResponse
+        alice = _db_user(db)
+        grant_role(db, td_tournament, alice, "Volunteer")
+        form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup",
+                    created_by=td_tournament.owner_id, status="published")
+        db.add(form)
+        db.flush()
+        db.add(FormResponse(form_id=form.id, user_id=alice.id))
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{alice.id}/").status_code == 204
+        db.expire_all()
+        assert db.query(FormResponse).filter(FormResponse.user_id == alice.id).count() == 0
+        assert db.query(Form).filter(Form.id == form.id).first() is not None
+
+    def test_owned_tournament_survives_ownerless(self, client, admin_user, td_user, td_tournament, db):
+        from app.models.models import AuditLogEntry, Form, Tournament
+        from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
+        form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup",
+                    created_by=td_user.id)
+        db.add(form)
+        log_action(db, td_tournament.id, td_user.id, TOURNAMENT_ARCHIVED, target_type="tournament")
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{td_user.id}/").status_code == 204
+        db.expire_all()
+        tournament = db.query(Tournament).filter(Tournament.id == td_tournament.id).first()
+        assert tournament is not None
+        assert tournament.owner_id is None
+        assert db.query(Form).filter(Form.id == form.id).one().created_by is None
+        entry = db.query(AuditLogEntry).filter(AuditLogEntry.tournament_id == td_tournament.id).first()
+        assert entry.actor_id is None
+
+    def test_deleted_actor_reads_as_null_ref(self, client, admin_user, td_user, td_tournament, db):
+        from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
+        log_action(db, td_tournament.id, td_user.id, TOURNAMENT_ARCHIVED, target_type="tournament")
+        db.commit()
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{td_user.id}/").status_code == 204
+
+        res = client.get(f"/tournaments/{td_tournament.id}/audit-log/")
+        assert res.status_code == 200
+        assert res.json()["items"][0]["actor"]["user_id"] is None
+        # Not filterable, so not offered as a filter.
+        assert client.get(f"/tournaments/{td_tournament.id}/audit-log/actors/").json() == []
+
+
+class TestAdminGetUserOwnedTournaments:
+    def test_lists_owned_tournaments(self, client, admin_user, td_user, td_tournament):
+        login(client, "admin@test.com", "adminpass")
+        owned = client.get(f"/admin/users/{td_user.id}/").json()["owned_tournaments"]
+        assert [t["id"] for t in owned] == [td_tournament.id]
+
+    def test_empty_for_non_owner(self, client, admin_user, other_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.get(f"/admin/users/{other_user.id}/").json()["owned_tournaments"] == []
+
+
+class TestAdminTransferOwnerless:
+    def test_admin_can_reown_ownerless_tournament(self, client, admin_user, td_user, td_tournament, db):
+        from app.models.models import Tournament
+        alice = _db_user(db)
+        grant_role(db, td_tournament, alice, "Volunteer")
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{td_user.id}/").status_code == 204
+
+        res = client.post(
+            f"/tournaments/{td_tournament.id}/transfer-ownership/", json={"new_owner_id": alice.id},
+        )
+        assert res.status_code == 200
+        assert res.json()["owner_id"] == alice.id
+        db.expire_all()
+        assert db.query(Tournament).filter(Tournament.id == td_tournament.id).one().owner_id == alice.id
+
 
 # ---------------------------------------------------------------------------
 # POST /admin/users/{id}/password-reset/ — admin only
@@ -374,10 +453,6 @@ class TestDeleteMe:
         assert db.query(User).filter(User.id == td_user.id).first() is not None
 
     def test_delete_cascades_membership(self, client, admin_user, td_tournament, db):
-        # admin_user here is a plain member, not the tournament owner — a
-        # user who owns a tournament can't be hard-deleted yet (owner_id is
-        # NOT NULL with no cascade rule defined); tracked separately in
-        # docs/deferred-items.md rather than handled by this route.
         from app.models.models import TournamentMembership
         grant_role(db, td_tournament, admin_user, "Volunteer")
         # A second admin so the last-admin guard doesn't block the delete —
@@ -388,6 +463,13 @@ class TestDeleteMe:
         assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0
         assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
         assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() == 0
+
+    def test_owner_can_delete_and_tournament_survives(self, client, td_user, td_tournament, db):
+        from app.models.models import Tournament
+        login(client, "td@test.com", "tdpass")
+        assert client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
+        db.expire_all()
+        assert db.query(Tournament).filter(Tournament.id == td_tournament.id).one().owner_id is None
 
     def test_last_admin_cannot_delete(self, client, admin_user, db):
         """Nothing outside an admin can create one, so deleting the last admin
