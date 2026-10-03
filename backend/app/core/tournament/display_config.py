@@ -707,8 +707,9 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
             columns = list(DEFAULT_COLUMNS)
         # Name and roles are the row's identity and its controls — they are
         # not columns a TD can turn off (see FIXED_COLUMNS), so the table
-        # always needs roles whatever the saved config says.
-        groups = {"roles"}
+        # always needs roles whatever the saved config says. Contact too: search
+        # matches on email, and the name falls back to it, column or not.
+        groups = {"roles", "contact"}
         for column in columns:
             groups.update(_COLUMN_GROUPS.get(column, ()))
             for namespace, group in _NAMESPACE_GROUPS:
