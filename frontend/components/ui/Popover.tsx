@@ -76,6 +76,10 @@ export function Popover<T>({
   // Keyboard: the row ↑/↓ have moved to, which Enter picks. Reset per opening
   // and per search, so it never points past the visible list.
   const [active, setActive] = useState(0);
+  // The keyboard row's outline only shows once ↑/↓ are in use — a mouse user
+  // shouldn't see a box around a row they never chose. Hover is its own state.
+  const [usingKeys, setUsingKeys] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
   // Stable, so it runs when the panel mounts and not on every render — an
   // inline ref would pull focus back each time anything re-rendered.
   const focusPanelOnMount = useCallback((el: HTMLDivElement | null) => {
@@ -115,7 +119,7 @@ export function Popover<T>({
   // moves as chips are added, and a panel chasing it pulls the rows out from
   // under the cursor mid-selection. Resize still repositions to stay on screen.
   useEffect(() => {
-    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); setActive(0); return; }
+    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); setActive(0); setUsingKeys(false); setHovered(null); return; }
     updatePanelPos();
     window.addEventListener("resize", updatePanelPos);
     return () => {
@@ -190,8 +194,8 @@ export function Popover<T>({
                 if (enabled(i)) { setActive(i); return; }
               }
             };
-            if (e.key === "ArrowDown" && visibleItems.length > 0) { e.preventDefault(); step(1); }
-            else if (e.key === "ArrowUp" && visibleItems.length > 0) { e.preventDefault(); step(-1); }
+            if (e.key === "ArrowDown" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(1); }
+            else if (e.key === "ArrowUp" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(-1); }
             else if (e.key === "Enter" && visibleItems[active] && enabled(active) && !busy) {
               e.preventDefault();
               void handleSelect(visibleItems[active], true);
@@ -260,14 +264,18 @@ export function Popover<T>({
                   control={disabled
                     ? <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
                     : undefined}
-                  onMouseEnter={reason ? (e) => showHoverTip(e, reason) : undefined}
-                  onMouseLeave={reason ? () => setHoverTip(null) : undefined}
+                  // The mouse takes over from the keyboard: its row becomes the
+                  // one Enter would pick, and the keyboard outline steps aside.
+                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
+                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
                   style={{
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
                     cursor: disabled || busy ? "not-allowed" : "pointer",
-                    background: checked ? "var(--color-accent-subtle)" : "transparent",
+                    background: checked
+                      ? "var(--color-accent-subtle)"
+                      : hovered === index && !disabled ? "var(--color-bg)" : "transparent",
                     // The keyboard's row, distinct from ticked.
-                    boxShadow: index === active ? "inset 0 0 0 1px var(--color-border-strong)" : undefined,
+                    boxShadow: usingKeys && index === active ? "inset 0 0 0 1px var(--color-border-strong)" : undefined,
                     opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                   }}
                 />
@@ -286,12 +294,12 @@ export function Popover<T>({
                   type="button"
                   disabled={busy || disabled}
                   onClick={() => handleSelect(item)}
-                  onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--color-bg)"; if (reason) showHoverTip(e, reason); }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; if (reason) setHoverTip(null); }}
+                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
+                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
                   style={{
                     display: "block", width: "100%", textAlign: "left",
                     padding: "7px 10px", border: "none",
-                    background: index === active ? "var(--color-bg)" : "transparent",
+                    background: !disabled && (hovered === index || (usingKeys && index === active)) ? "var(--color-bg)" : "transparent",
                     fontFamily: "var(--font-sans)", fontSize: "13px",
                     color: "var(--color-text-primary)", borderRadius: "var(--radius-sm)",
                     cursor: busy || disabled ? "not-allowed" : "pointer",

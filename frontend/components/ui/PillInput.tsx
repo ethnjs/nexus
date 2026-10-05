@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface PillInputProps {
   value: number
@@ -12,6 +12,8 @@ interface PillInputProps {
   disabled?: boolean
   /** Accessible name — the pill has no visible label. */
   label: string
+  /** Focus (and select) on mount — e.g. the count of a role just added. */
+  autoFocus?: boolean
 }
 
 /**
@@ -19,7 +21,7 @@ interface PillInputProps {
  * count on a staffing chip): no border or fill of its own, mono digits, and
  * just wide enough for its value — it borrows the chip's look.
  */
-export function PillInput({ value, onCommit, min = 1, disabled = false, label }: PillInputProps) {
+export function PillInput({ value, onCommit, min = 1, disabled = false, label, autoFocus = false }: PillInputProps) {
   const [text, setText] = useState(String(value))
   // Adopt a new value from outside (a save landing) during render — the same
   // derived-state pattern CountInput uses.
@@ -28,6 +30,17 @@ export function PillInput({ value, onCommit, min = 1, disabled = false, label }:
     setSeen(value)
     setText(String(value))
   }
+
+  // Once, the first moment it's enabled: a pill mounted mid-save is disabled,
+  // and the native autoFocus attribute would be ignored on a disabled field.
+  const ref = useRef<HTMLInputElement>(null)
+  const focused = useRef(false)
+  useEffect(() => {
+    if (autoFocus && !disabled && !focused.current) {
+      focused.current = true
+      ref.current?.focus()
+    }
+  }, [autoFocus, disabled])
 
   function commit() {
     const next = Number(text)
@@ -40,6 +53,7 @@ export function PillInput({ value, onCommit, min = 1, disabled = false, label }:
       aria-label={label}
       inputMode="numeric"
       value={text}
+      ref={ref}
       disabled={disabled}
       onChange={(e) => setText(e.target.value.replace(/\D/g, ''))}
       onBlur={commit}

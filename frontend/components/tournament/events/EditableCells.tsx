@@ -45,9 +45,9 @@ export interface ConfirmRequest {
 // the table's arrow-key navigation needs to hear them.
 const stop = (e: SyntheticEvent) => e.stopPropagation();
 
-/** Wraps an editable cell's control so its clicks stay in the cell. `editing`
- *  marks it for the table's arrow keys (see gridNav), which leave an open
- *  editor alone. */
+/** Wraps an editable cell's control so its clicks stay in the cell, at the
+ *  height its editor needs. `editing` marks it for the table's arrow keys
+ *  (see gridNav), which leave an open editor alone. */
 export function CellGuard({ children, align = "center", editing = false }: {
   children: ReactNode; align?: "start" | "center"; editing?: boolean;
 }) {
@@ -55,7 +55,12 @@ export function CellGuard({ children, align = "center", editing = false }: {
     <span
       onClick={stop}
       data-editing={editing || undefined}
-      style={{ display: "flex", justifyContent: align === "start" ? "flex-start" : "center", minWidth: 0 }}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: align === "start" ? "flex-start" : "center", minWidth: 0,
+        // The tallest editor (a sm chip field). Reserved at rest too, so
+        // opening an editor never grows the row and shifts its text.
+        minHeight: "28px",
+      }}
     >
       {children}
     </span>
@@ -268,6 +273,13 @@ export function ChipsCell<T>({
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const editor = useCellEditor();
+  // Opening the cell is opening its checklist — chips alone are one more
+  // click from anything you'd want to do. Popover has no open prop, so its
+  // trigger is pressed once the editor mounts.
+  const addRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (editor.editing) addRef.current?.click();
+  }, [editor.editing]);
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
   }
@@ -309,7 +321,7 @@ export function ChipsCell<T>({
               <ChecklistPopover
                 trigger={
                   // Same as the roster's Roles cell add button.
-                  <Button type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                  <Button ref={addRef} type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
                     <IconPlus size={14} />
                   </Button>
                 }
@@ -456,7 +468,9 @@ export function LocationCell({
           }}
           style={{
             display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 6px", minWidth: 0,
-            borderBottom: "1px solid var(--color-border-strong)",
+            // A shadow, not a border: a border adds a pixel of height, and
+            // the text would shift the moment the box opened.
+            boxShadow: "inset 0 -1px 0 var(--color-border-strong)",
             fontFamily: "var(--font-sans)", fontSize: "13px",
           }}
         >
@@ -496,7 +510,9 @@ export function LocationCell({
             style={{
               flex: 1, minWidth: "60px", padding: 0, margin: 0, border: "none", outline: "none",
               background: "transparent", color: "var(--color-text-primary)",
-              fontFamily: "var(--font-sans)", fontSize: "13px", lineHeight: 1.4,
+              // Inherited, so the typed text sits on the same line box as the
+              // resting text it replaced.
+              fontFamily: "var(--font-sans)", fontSize: "13px", lineHeight: "inherit",
             }}
           />
           {matches.length > 0 && (
@@ -535,17 +551,15 @@ export function StaffingCell({
   const [hovered, setHovered] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
-  // The empty state's + should land in the role picker, not in an editor
-  // whose only content is another +. So it opens the editor and asks it to
-  // press its own add button once mounted (Popover has no open prop).
+  // Opening the cell opens its role picker (see ChipsCell for why it presses
+  // the trigger). After a role is added the picker closes and focus goes to
+  // that role's count, since setting it is the next thing to do.
   const addRef = useRef<HTMLButtonElement>(null);
-  const [openPicker, setOpenPicker] = useState(false);
+  const [focusRoleId, setFocusRoleId] = useState<number | null>(null);
   useEffect(() => {
-    if (editor.editing && openPicker) {
-      addRef.current?.click();
-      setOpenPicker(false);
-    }
-  }, [editor.editing, openPicker]);
+    if (editor.editing) addRef.current?.click();
+    else setFocusRoleId(null);
+  }, [editor.editing]);
 
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
@@ -588,6 +602,8 @@ export function StaffingCell({
                 <PillInput
                   value={need.count}
                   label={`${label} needed`}
+                  // Set before the save, so the pill mounts already focused.
+                  autoFocus={need.role_id === focusRoleId}
                   disabled={saving}
                   onCommit={(count) => void save(current.map((n) => (n.role_id === need.role_id ? { ...n, count } : n)))}
                 />
@@ -608,9 +624,12 @@ export function StaffingCell({
                 getKey={(r) => r.id}
                 renderLabel={(r) => r.label}
                 isSelected={(r) => needs.some((n) => n.role_id === r.id)}
-                onToggle={(r) => save(needs.some((n) => n.role_id === r.id)
-                  ? current.filter((n) => n.role_id !== r.id)
-                  : [...current, { role_id: r.id, count: 1 }])}
+                onToggle={async (r) => {
+                  if (needs.some((n) => n.role_id === r.id)) return save(current.filter((n) => n.role_id !== r.id));
+                  setFocusRoleId(r.id);
+                  await save([...current, { role_id: r.id, count: 1 }]);
+                  addRef.current?.click(); // closes the picker
+                }}
                 searchable={roles.length > 8}
                 getSearchText={(r) => r.label}
                 emptyMessage="No roles yet."
@@ -633,7 +652,7 @@ export function StaffingCell({
                     type="button" variant="secondary" size="sm" iconOnly title="Add role"
                     // Not a Tab stop: the cell itself is one, and Enter on it opens the editor.
                     tabIndex={-1}
-                    onClick={(e) => { e.stopPropagation(); editor.open(); setOpenPicker(true); }}
+                    onClick={(e) => { e.stopPropagation(); editor.open(); }}
                     style={{ padding: 0, flexShrink: 0 }}
                   >
                     <IconPlus size={14} />
