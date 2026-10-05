@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Input } from "@/components/ui/Input";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 // Dropdown's value is a string; a track's default_role_id is nullable, so
@@ -26,13 +26,19 @@ const NO_DEFAULT_ROLE = "__none__";
  * field every track carries regardless: a cosmetic track like Test Writing
  * wants its own default just as much as a competition day does.
  */
-export function TrackFields({ draft, errors, universities, roles, locked, onChange }: {
+export function TrackFields({
+  draft, errors, universities, roles, locked, onChange, showPrimaryToggle = true,
+}: {
   draft: TrackDraft;
   errors: Record<string, string>;
   universities: University[];
   roles: Role[];
   locked: boolean;
   onChange: (updates: Partial<TrackDraft>) => void;
+  /** Off in simple mode, where the sole track is necessarily a competition
+   *  day — the backend refuses to leave a tournament without one, so the
+   *  toggle would offer an action that can only 409. */
+  showPrimaryToggle?: boolean;
 }) {
   // An existing multi-day track shows both inputs on its own; the checkbox
   // only has to remember the case where the TD is on their way to entering
@@ -43,9 +49,11 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
-        <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
-      </FieldRow>
+      {showPrimaryToggle && (
+        <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
+          <Switch checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
+        </FieldRow>
+      )}
 
       {draft.is_primary && (
         <>
@@ -167,7 +175,7 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         label="Members can confirm"
         helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
       >
-        <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
+        <Switch checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
       </FieldRow>
 
       {/* Deliberately not scoped to competition days: a member answers for a
@@ -177,7 +185,7 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
         label="Lock member responses"
         helper="Closes this track to member edits — availability, lunch, event preferences and status, including opting out."
       >
-        <Toggle checked={draft.lock_responses} onChange={(v) => onChange({ lock_responses: v })} locked={locked} />
+        <Switch checked={draft.lock_responses} onChange={(v) => onChange({ lock_responses: v })} locked={locked} />
       </FieldRow>
 
       <FieldRow

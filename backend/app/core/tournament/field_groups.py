@@ -118,10 +118,13 @@ GROUPS: dict[str, FieldGroup] = {
         }),
         user_relationships=("competition_experience", "volunteer_experience", "university"),
     ),
+    # Serialized as `roles`, loaded through `track_assignments`: a member's
+    # roles are the distinct roles across those rows rather than a stored list
+    # (#83). The key keeps its name because that is what the response calls it.
     ROLES: FieldGroup(
         name=ROLES,
         keys=frozenset({"roles"}),
-        relationships=("roles",),
+        relationships=("track_assignments",),
     ),
     # How they got here: source, the code they used, and whether they have
     # answered the age prompt. Staff provenance, absent from the Me response.
@@ -273,8 +276,8 @@ def loader_options(requested: frozenset[str] | None) -> list:
     varies with `fields`.
     """
     from app.models.models import (
-        TournamentEvent, TournamentEventAssignment, TournamentMembership,
-        TournamentMembershipAvailability, TournamentMembershipRole, User,
+        TournamentEvent, TournamentMembership, TournamentTrackAssignment,
+        TournamentMembershipAvailability, TournamentTrackAssignment, User,
     )
 
     # Relationships needing further hops to be usable: the role behind a
@@ -282,14 +285,14 @@ def loader_options(requested: frozenset[str] | None) -> list:
     # four an AssignmentRead flattens. Tuples, since one relationship can need
     # several.
     NESTED = {
-        "roles": (joinedload(TournamentMembershipRole.role),),
+        # The role rides along on each assignment via its own lazy="joined".
+        "track_assignments": (),
         "availability_shifts": (joinedload(TournamentMembershipAvailability.tournament_shift),),
         "assignments": (
-            joinedload(TournamentEventAssignment.tournament_event).joinedload(TournamentEvent.event),
-            joinedload(TournamentEventAssignment.tournament_event).selectinload(TournamentEvent.shifts),
-            joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
-            joinedload(TournamentEventAssignment.tournament_shift),
-            joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
+            joinedload(TournamentTrackAssignment.tournament_event).joinedload(TournamentEvent.event),
+            joinedload(TournamentTrackAssignment.tournament_event).selectinload(TournamentEvent.shifts),
+            joinedload(TournamentTrackAssignment.tournament_shift),
+            joinedload(TournamentTrackAssignment.membership).joinedload(TournamentMembership.user),
         ),
     }
 

@@ -21,8 +21,8 @@ class DisplayConfigSection(BaseModel):
 
 
 class DisplayConfigSort(BaseModel):
-    """The members table's sort, remembered per viewer. Sorting is done in
-    the client (the roster is a single page), so this is view state the
+    """One sort key, remembered per viewer. Sorting is done in the client
+    (every sortable surface is a single page), so this is view state the
     server only stores and validates."""
     field: str
     direction: str = "asc"
@@ -65,6 +65,15 @@ class DisplayConfigSurface(BaseModel):
     filters: dict[str, list[str]] | None = None
     # Tables only. Absent means the client's own default sort.
     sort: DisplayConfigSort | None = None
+    # Surfaces that sort by more than one key, in order of precedence: the
+    # first is the sort, the rest break its ties. A separate field rather than
+    # a widened `sort`, so the single-sort tables keep reading exactly what
+    # they wrote and neither shape needs a migration of stored blobs.
+    #
+    # The client appends its own final tiebreak (name, then id) after these —
+    # a sort has to be a total order or rows swap places between renders, and
+    # that is not something a viewer should have to configure.
+    sorts: list[DisplayConfigSort] | None = None
 
 
 class DisplayConfigCatalogItem(BaseModel):

@@ -122,3 +122,18 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/*
+ * For the card around a table: scrolls sideways once the columns' minimum
+ * widths outgrow the viewport, rather than squeezing cells into wraps. On
+ * the card, not .table, so a table can still set its own min-width. The
+ * scrollbar is hidden — trackpad, shift+wheel and touch still scroll.
+ */
+.scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}

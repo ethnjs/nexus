@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { tournamentShiftsApi, TournamentShift, TournamentTrack, ApiError } from "@/lib/api";
 import { fromDayAndTime } from "@/lib/timeFormat";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
+import { TrackPicker, soleTrackId } from "@/components/tournament/TrackPicker";
 
 interface CreateShiftFormProps {
   tournamentId: number;
@@ -23,7 +23,7 @@ interface CreateShiftFormProps {
 }
 
 export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: CreateShiftFormProps) {
-  const [trackId, setTrackId] = useState<number | null>(tracks.length === 1 ? tracks[0].id : null);
+  const [trackId, setTrackId] = useState<number | null>(soleTrackId(tracks));
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -70,26 +70,24 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <Input
-        label="Label" font="sans" size="sm" fullWidth
+        label="Label" required font="sans" size="sm" fullWidth
         value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Morning"
       />
-      <Dropdown
-        label="Track" size="sm" fullWidth
-        value={trackId !== null ? String(trackId) : ""}
-        onChange={(v) => pickTrack(Number(v))}
-        options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
-        placeholder="Select a track"
-        locked={tracks.length === 1}
+      <TrackPicker
+        label="Track" required size="sm" fullWidth
+        value={trackId}
+        onChange={pickTrack}
+        tracks={tracks}
       />
       <TrackDayPicker
-        label="Day" size="sm" fullWidth
+        label="Day" required size="sm" fullWidth
         track={track}
         value={resolvedDay}
         onChange={setDay}
       />
       <div style={{ display: "flex", gap: "8px" }}>
-        <Input label="Start" type="time" size="sm" fullWidth value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <Input label="End" type="time" size="sm" fullWidth value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        <Input label="Start" required type="time" size="sm" fullWidth value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        <Input label="End" required type="time" size="sm" fullWidth value={endTime} onChange={(e) => setEndTime(e.target.value)} />
       </div>
       {error && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{error}</p>

@@ -30,18 +30,49 @@ export function useInitialPanelId(param: string): number | null {
  * Mirrors whichever row's panel is open into `?param=<id>`.
  *
  * replace, not push: this is where you already are, and every row you click
- * would otherwise cost a Back press to undo. Writes the whole query string,
- * so a page carrying other params of its own would need this to merge rather
- * than replace — none of them do; filters and columns live server-side in the
- * viewer's display config, which already survives a refresh.
+ * would otherwise cost a Back press to undo. Only its own param is touched, so
+ * a page with others (the buildings page's ?track=) keeps them.
  */
 export function usePanelUrlSync(param: string, openId: number | null): void {
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    const search = openId !== null ? `?${param}=${openId}` : "";
+    const params = new URLSearchParams(window.location.search);
+    if (openId !== null) params.set(param, String(openId));
+    else params.delete(param);
+    const query = params.toString();
+    const search = query ? `?${query}` : "";
     if (search === window.location.search) return;
     router.replace(`${pathname}${search}`, { scroll: false });
   }, [param, openId, pathname, router]);
+}
+
+/**
+ * The same mirror, for a page whose panels are several at once.
+ *
+ * One write, not one hook call per param: each effect reads
+ * `window.location.search` to merge, and router.replace does not update it
+ * synchronously — so two of them in the same commit race, and whichever runs
+ * second writes a URL that has never seen the first one's param.
+ *
+ * Keyed on the serialised map so a caller can pass an object literal without
+ * re-running this on every render.
+ */
+export function usePanelParamsSync(open: Record<string, number | null>): void {
+  const router = useRouter();
+  const pathname = usePathname();
+  const key = JSON.stringify(open);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [param, id] of Object.entries(JSON.parse(key) as Record<string, number | null>)) {
+      if (id !== null) params.set(param, String(id));
+      else params.delete(param);
+    }
+    const query = params.toString();
+    const search = query ? `?${query}` : "";
+    if (search === window.location.search) return;
+    router.replace(`${pathname}${search}`, { scroll: false });
+  }, [key, pathname, router]);
 }

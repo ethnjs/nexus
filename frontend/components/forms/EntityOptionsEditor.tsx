@@ -10,7 +10,7 @@ import { eventNameWithDivision } from '@/lib/eventDisplay'
 import { formatDayLabel, formatTime, toDateInput } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
 import { ChipInput } from '@/components/ui/ChipInput'
-import { Popover } from '@/components/ui/Popover'
+import { ChecklistPopover } from '@/components/ui/ChecklistPopover'
 import { IconPlus, IconSearch } from '@/components/ui/Icons'
 import { PillMenu, PillTone } from '@/components/ui/PillMenu'
 import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
@@ -266,7 +266,7 @@ function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessag
       <Button type="button" variant="secondary" size="xs" onClick={onRequireTrack}>
         <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
       </Button>
-    ) : <Popover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}</Button>} items={entities} getKey={(entity) => entity.id} renderLabel={(entity) => entityPickerLabel(fieldKey, entity, isMultiDay)} onSelect={(entity) => onToggle(entity.id)} checklist isSelected={(entity) => selectedIds.includes(entity.id)} isDisabled={(entity) => !!disabledReason?.(entity)} disabledReason={disabledReason} emptyMessage={emptyMessage} width={400} />}
+    ) : <ChecklistPopover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}</Button>} items={entities} getKey={(entity) => entity.id} renderLabel={(entity) => entityPickerLabel(fieldKey, entity, isMultiDay)} onToggle={(entity) => onToggle(entity.id)} isSelected={(entity) => selectedIds.includes(entity.id)} isDisabled={(entity) => !!disabledReason?.(entity)} disabledReason={disabledReason} emptyMessage={emptyMessage} width={400} />}
   />
 }
 
@@ -299,7 +299,7 @@ function TrackPicker({ tracks, option, onChange }: { tracks: TournamentTrack[]; 
       const assignment = assignments.find((item) => item.id === track?.id)
       return track && assignment ? <TrackStatusMenu status={assignment.status} onChange={(status) => setStatus(track.id, status)} /> : null
     }}
-    addButton={<Popover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> Tracks</Button>} items={tracks.filter((track) => !track.is_archived)} getKey={(track) => track.id} renderLabel={(track) => track.name} onSelect={toggle} checklist isSelected={(track) => assignments.some((item) => item.id === track.id)} emptyMessage="No active tracks." width={300} />}
+    addButton={<ChecklistPopover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> Tracks</Button>} items={tracks.filter((track) => !track.is_archived)} getKey={(track) => track.id} renderLabel={(track) => track.name} onToggle={toggle} isSelected={(track) => assignments.some((item) => item.id === track.id)} emptyMessage="No active tracks." width={300} />}
   />
 }
 

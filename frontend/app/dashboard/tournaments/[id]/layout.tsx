@@ -5,9 +5,10 @@ import { use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
-import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
+import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
+import { PageCrumbProvider } from "@/lib/usePageCrumb";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
 import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
@@ -16,7 +17,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
 import { tournamentsApi, ApiError } from "@/lib/api";
-import { BoardDndProvider } from "@/components/assignments/BoardDnd";
+import { BoardDndProvider } from "@/components/tournament/assignments/BoardDnd";
 
 function TournamentNotFound() {
   const router = useRouter();
@@ -128,6 +129,10 @@ export default function TournamentLayout({
         {/* Above the shell so Sidebar/Topbar can read the dirty flag a nested
             page (e.g. the roles editor) registers. */}
         <UnsavedChangesProvider>
+          {/* Above the shell for the same reason as the panel provider: a
+              page lends its title to the Topbar, which is <main>'s sibling
+              and so out of reach by nesting. */}
+          <PageCrumbProvider>
           <LayoutPanelProvider>
             {/* Above the shell so the assignments board's drag context
                 reaches both <main> and the panel slot — its member belt is
@@ -143,6 +148,7 @@ export default function TournamentLayout({
               </NavDrawerProvider>
             </BoardDndProvider>
           </LayoutPanelProvider>
+          </PageCrumbProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>
     </TournamentProvider>

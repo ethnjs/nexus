@@ -6,7 +6,7 @@ from app.core.tournament.display_config import MEMBERS_PANEL
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
     Form, FormAnswer, FormField, FormResponse,
-    TournamentMembership, TournamentMembershipRole, TournamentRole,
+    TournamentMembership, TournamentTrackAssignment, TournamentRole,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
@@ -445,6 +445,61 @@ def test_list_memberships_age_column_still_respects_consent(client, td_user, td_
     assert "is_over_18" not in row
 
 
+class TestRosterRoleTracks:
+    """A roster row's roles carry where each is held (#83) — the cell renders
+    one chip per role, with a track pill menu on the ones that aren't
+    tournament-wide."""
+
+    def _roles_for(self, client, tournament_id, email):
+        res = client.get(f"/tournaments/{tournament_id}/members/")
+        assert res.status_code == 200, res.json()
+        row = next(r for r in res.json() if r["user"]["email"] == email)
+        return {r["label"]: r for r in row["roles"]}
+
+    def test_a_track_scoped_role_lists_its_tracks(self, client, db, td_user, td_tournament):
+        from tests.conftest import grant_role
+
+        track = td_tournament.tracks[0]
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer", track_id=track.id)
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is False
+        assert role["track_ids"] == [track.id]
+
+    def test_a_tournament_wide_role_lists_no_tracks(self, client, db, td_user, td_tournament):
+        """Empty, not every track id: the role applies everywhere, and
+        enumerating today's tracks would read as a narrower claim."""
+        from tests.conftest import grant_role
+
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer")
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is True
+        assert role["track_ids"] == []
+
+    def test_one_wide_row_makes_the_role_wide(self, client, db, td_user, td_tournament):
+        """Holding a role tournament-wide *and* on a track is still wide —
+        the per-track row adds nothing the wide one didn't already grant."""
+        from tests.conftest import grant_role
+
+        track = td_tournament.tracks[0]
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer", track_id=track.id)
+        grant_role(db, td_tournament, alice, "Volunteer")
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is True
+        assert role["track_ids"] == []
+
+
 class TestRosterFilters:
     """Filters match against data the roster response doesn't carry, so they
     run in SQL. Different filters AND; values within one OR."""
@@ -464,7 +519,8 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        role_id = volunteer.roles[0].role_id
+        # roles is the distinct TournamentRole list now, not the join rows.
+        role_id = volunteer.roles[0].id
         assert self._roster(client, td_tournament.id, f"?role={role_id}") == {"alice@example.com"}
 
     def test_role_filter_none_finds_members_without_roles(self, client, db, td_user, td_tournament):
@@ -477,6 +533,38 @@ class TestRosterFilters:
         login(client, "td@test.com", "tdpass")
         assert "bob@example.com" in self._roster(client, td_tournament.id, "?role=none")
         assert "alice@example.com" not in self._roster(client, td_tournament.id, "?role=none")
+
+    def test_role_filter_narrows_to_tracks(self, client, db, td_user, td_tournament):
+        """"roleId:trackId" asks who holds that role that day. A tournament-wide
+        grant is held on every track, so it answers too."""
+        from app.models.models import TournamentTrack
+        from tests.conftest import grant_role
+
+        writing = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        db.add(writing)
+        db.flush()
+        day_one = td_tournament.tracks[0]
+
+        alice = grant_role(db, td_tournament, _db_user_for_filter(db, "alice@example.com"),
+                           "Volunteer", track_id=day_one.id)
+        grant_role(db, td_tournament, _db_user_for_filter(db, "bob@example.com"),
+                   "Volunteer", track_id=writing.id)
+        grant_role(db, td_tournament, _db_user_for_filter(db, "carol@example.com"), "Volunteer")
+        db.commit()
+        role_id = alice.roles[0].id
+
+        login(client, "td@test.com", "tdpass")
+        everyone = {"alice@example.com", "bob@example.com", "carol@example.com"}
+        assert self._roster(client, td_tournament.id, f"?role={role_id}") == everyone
+        assert self._roster(client, td_tournament.id, f"?role={role_id}:__any__") == everyone
+        assert self._roster(client, td_tournament.id, f"?role={role_id}:{day_one.id}") == {
+            "alice@example.com", "carol@example.com",
+        }
+        # Several tracks on one role OR together, the way every other filter's
+        # values do.
+        assert self._roster(
+            client, td_tournament.id, f"?role={role_id}:{day_one.id}&role={role_id}:{writing.id}",
+        ) == everyone
 
     def test_track_filter_pairs_track_with_status(self, client, db, td_user, td_tournament):
         """A member confirmed on one track and declined on another must not
@@ -806,7 +894,7 @@ def test_search_memberships_excludes_declined(client, td_user, td_tournament, ot
 
 
 def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
-    """Roles are unwrapped from TournamentMembershipRole to RoleRead in the slim response too."""
+    """Roles are unwrapped from TournamentTrackAssignment to RoleRead in the slim response too."""
     from app.models.models import User as UserModel
     u = _make_user(db, "coach@example.com")
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
@@ -2561,8 +2649,8 @@ def test_delete_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
     pass and let them be deleted. validate_member_target's explicit
     owner check is what actually stops this."""
     owner_membership = _owner_membership(db, other_tournament)
-    db.query(TournamentMembershipRole).filter(
-        TournamentMembershipRole.membership_id == owner_membership.id
+    db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.membership_id == owner_membership.id
     ).delete()
     db.commit()
 
@@ -2582,7 +2670,7 @@ def test_delete_membership_target_outranks_actor_forbidden(client, td_user, othe
     senior_role = _make_low_rank_role(db, other_tournament, "Senior Staff", rank=5)
     u = _make_user(db)
     target_membership = _make_membership(db, other_tournament.id, u["id"])
-    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=senior_role.id))
+    db.add(TournamentTrackAssignment(membership_id=target_membership.id, role_id=senior_role.id, is_tournament_wide=True))
     db.commit()
 
     _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
@@ -2601,7 +2689,7 @@ def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tourn
     peer_role = _make_low_rank_role(db, other_tournament, "Peer Staff", rank=40)
     u = _make_user(db)
     target_membership = _make_membership(db, other_tournament.id, u["id"])
-    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=peer_role.id))
+    db.add(TournamentTrackAssignment(membership_id=target_membership.id, role_id=peer_role.id, is_tournament_wide=True))
     db.commit()
 
     grant_role(db, other_tournament, td_user, "Peer Staff")
@@ -2616,8 +2704,8 @@ def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tourn
 def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(client, td_user, other_tournament, db):
     """Same owner protection applies to the day-of-logistics PATCH, not just delete."""
     owner_membership = _owner_membership(db, other_tournament)
-    db.query(TournamentMembershipRole).filter(
-        TournamentMembershipRole.membership_id == owner_membership.id
+    db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.membership_id == owner_membership.id
     ).delete()
     db.commit()
 
@@ -2870,15 +2958,15 @@ def test_leave_tournament_unauthenticated(client, td_tournament):
 
 
 def test_leave_tournament_drops_role_assignments(client, td_user, other_tournament, db):
-    """Cascade check — leaving must not orphan TournamentMembershipRole rows."""
+    """Cascade check — leaving must not orphan TournamentTrackAssignment rows."""
     membership = grant_role(db, other_tournament, td_user, "Volunteer")
     membership_id = membership.id
     login(client, "td@test.com", "tdpass")
 
     assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 204
     assert (
-        db.query(TournamentMembershipRole)
-        .filter(TournamentMembershipRole.membership_id == membership_id)
+        db.query(TournamentTrackAssignment)
+        .filter(TournamentTrackAssignment.membership_id == membership_id)
         .count()
         == 0
     )

@@ -2,6 +2,7 @@
 
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
+import { TopbarCrumb } from "@/components/layout/TopbarCrumb";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/Button";
 import { IconMenu } from "@/components/ui/Icons";
@@ -88,6 +89,14 @@ export function Topbar({
         </div>
       )}
 
+      {/* A spacer on each side, so the crumb sits in the middle of whatever
+          room is left between the tournament switcher and the avatar rather
+          than at the window's midpoint — the switcher's width is the
+          tournament's name, and a true centre would drift with it. Renders
+          nothing until a page folds its header away, when the two spacers
+          collapse into the one gap this bar has always had. */}
+      <div style={{ flex: 1 }} />
+      <TopbarCrumb />
       <div style={{ flex: 1 }} />
 
       {showAvatar && <UserAvatar logoutOnly={showAvatar === "logout-only"} />}

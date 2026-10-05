@@ -1,0 +1,71 @@
+/*
+ * The header's fold control lives in the gutter above it - the page's own top
+ * padding - rather than inside the header card. It is a control for the
+ * chrome, not for the page, and a button sitting in the header it hides read
+ * as one of that page's actions.
+ *
+ * 22px matches the shell's <main> top padding, so the strip fills the gap
+ * between the topbar and the card and overlaps nothing.
+ */
+.wrap {
+  position: relative;
+}
+
+.gutter {
+  position: absolute;
+  /* Bottom edge at exactly 0 - the card's top border line. */
+  top: -22px;
+  /* --radius-lg, the card's corner: aligned to the card's right edge the
+     caret overhangs the arc and reads as hanging off nothing. Inset by the
+     radius, it meets the flat part of the border. */
+  right: 10px;
+  height: 22px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  /* Wider than the button, so there is somewhere to aim before the button
+     itself has appeared. */
+  width: 64px;
+}
+
+/*
+ * Three-sided, with the open side facing the card below it: the caret is a
+ * tab growing out of the header rather than a button parked above it. Its
+ * side borders stop where the card's top border starts, so the three lines
+ * meet rather than crossing - a negative margin here put the sides a pixel
+ * inside the card, which read as the box overlapping it.
+ */
+.caret {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease, color 120ms ease;
+}
+
+/*
+ * Hovering the gutter or the header itself. An absolutely positioned child
+ * counts as part of its ancestor for :hover even when it is painted outside
+ * the ancestor's box, so the one rule covers both.
+ */
+.wrap:hover .caret,
+.caret:focus-visible {
+  opacity: 1;
+}
+
+.caret:hover {
+  color: var(--color-text-primary);
+}
+
+.caret svg {
+  transform: rotate(180deg);
+}

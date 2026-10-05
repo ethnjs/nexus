@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
+  buildingsApi, rolesApi, assignmentsApi, TournamentBuilding, Role, Assignment,
   displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
   TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
@@ -11,17 +12,25 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
+import { rowActivation } from "@/lib/rowActivation";
+import { assignmentsByEvent } from "@/lib/assignments/flags";
+import {
+  EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
+} from "@/lib/eventSort";
+import { sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule } from "@/lib/sorting";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
 import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -36,19 +45,24 @@ import {
 import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
-  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns,
+  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns, trackFamilyOf,
 } from "@/components/tournament/events/eventColumns";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
-import { eventFirstDay, eventName } from "@/lib/eventDisplay";
+import { eventName } from "@/lib/eventDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { FilterButton } from "@/components/ui/FilterButton";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
 const SELECT_COLUMN_WIDTH = "28px";
+
+// Stable empty list, so an event with no assignments doesn't get a fresh array per cell.
+const NO_ASSIGNMENTS: readonly Assignment[] = [];
 
 // Name and Actions bracket the configured columns: the row's identity and
 // its controls, which is why neither is a column a TD can turn off.
@@ -61,26 +75,17 @@ function eventGridColumns(selectMode: boolean, columns: EventColumn[]) {
   ].join(" ");
 }
 
-type SortField = "name" | "division" | "day";
-type SortDir = "asc" | "desc";
+// Start time first, which is what the table sorted by before it took a chain.
+const DEFAULT_TABLE_SORT: SortRule<EventSortField>[] = [{ field: "start", direction: "asc" }];
 
-// Sentinel for the null case of a nullable field (division/category) so it
-// can sit in the same filter Set as real values.
+// Every field counts every track — the table has no tabs to narrow by.
+const ALL_TRACKS = () => true;
 
-const SORT_FIELD_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "division", label: "Division" },
-  { value: "day", label: "Day" },
-];
-
-function sortValue(e: TournamentEvent, field: SortField): string | number {
-  switch (field) {
-    case "name": return eventName(e).toLowerCase();
-    case "division": return e.division ?? "";
-    // An event has no time of its own — its schedule is its shifts, so
-    // the first day it runs is what there is to sort by.
-    case "day": return eventFirstDay(e);
-  }
+/** The single `sort` this table saved before it took a chain, as one. "division"
+ *  maps to name, which already orders an event's divisions together. */
+function legacySortRules(sort: { field: string; direction?: string } | null | undefined): SortRule<EventSortField>[] | null {
+  const field = sort?.field === "day" ? "start" : sort?.field === "name" || sort?.field === "division" ? "name" : null;
+  return field ? [{ field, direction: sort?.direction === "desc" ? "desc" : "asc" }] : null;
 }
 
 export default function EventsPage() {
@@ -123,9 +128,24 @@ export default function EventsPage() {
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Null until a staffing column asks for them (see the fetch below).
+  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  // The panel's location and staffing editors pick from these: a building is
+  // a catalog row now, and every staffing line names a role.
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   // Bumped when the tab regains focus, so collaborators' changes show up.
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+  // Replace-or-append: tagging an existing building onto a track comes back
+  // as that same row with a longer track_ids.
+  const handleBuildingSaved = useCallback((building: TournamentBuilding) => {
+    setBuildings((cur) => (
+      cur.some((b) => b.id === building.id)
+        ? cur.map((b) => (b.id === building.id ? building : b))
+        : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
+    ));
+  }, []);
   const handleShiftCreated = useCallback(
     (shift: TournamentShift) => setAllShifts((prev) => [...(prev ?? []), shift]),
     [],
@@ -147,8 +167,8 @@ export default function EventsPage() {
   // null = nothing saved, so use DEFAULT_EVENT_COLUMNS. An empty array is a
   // real answer ("show no data columns") and must not fall back.
   const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
-  const [sortField, setSortField] = useState<SortField>("day");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortRules, setSortRules] = useState<SortRule<EventSortField>[]>(DEFAULT_TABLE_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const initialEventId = useInitialPanelId("event");
 
@@ -198,11 +218,10 @@ export default function EventsPage() {
       name: e.event_id ? null : `${e.name ?? "Event"} (copy)`,
       division: e.division,
       event_type: e.event_type,
-      building: e.building,
-      room: e.room,
-      floor: e.floor,
-      volunteers_needed: e.volunteers_needed,
-      track_ids: e.tracks.map((t) => t.id),
+      // Carries the copy's location and staffing needs across with it —
+      // track_details is whole-set, so this is also what keeps the copy on
+      // the same tracks.
+      track_details: e.track_details.map(toTrackDetailInput),
       shift_ids: e.shifts.map((s) => s.id),
     })));
     const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
@@ -249,6 +268,12 @@ export default function EventsPage() {
     tournamentTracksApi.list(tournamentId, { public: true })
       .then((next) => { if (current) setTracks(next); })
       .catch(() => { if (current) setTracks([]); });
+    buildingsApi.list(tournamentId)
+      .then((next) => { if (current) setBuildings(next); })
+      .catch(() => { if (current) setBuildings([]); });
+    rolesApi.list(tournamentId)
+      .then((next) => { if (current) setRoles(next); })
+      .catch(() => { if (current) setRoles([]); });
     return () => { current = false; };
   }, [tournamentId, canManageEvents, refreshKey]);
 
@@ -278,10 +303,9 @@ export default function EventsPage() {
         setViewReady((already) => {
           if (already) return true;
           setFilters(eventsFilterFromStored(surface?.filters));
-          if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
-            setSortField(surface.sort.field as SortField);
-            setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
-          }
+          setSortRules(surface?.sorts
+            ? sortRulesFromStored(surface.sorts, isEventSortField)
+            : legacySortRules(surface?.sort) ?? DEFAULT_TABLE_SORT);
           return true;
         });
       });
@@ -310,18 +334,39 @@ export default function EventsPage() {
     persistView({ filters: eventsFilterToStored(next) });
   }, [persistView]);
 
-  const applySort = useCallback((field: SortField, direction: SortDir) => {
-    setSortField(field);
-    setSortDir(direction);
-    persistView({ sort: { field, direction } });
+  // Clears the legacy `sort` as it writes the chain, so the two never disagree.
+  const applySort = useCallback((next: SortRule<EventSortField>[]) => {
+    setSortRules(next);
+    persistView({ sorts: sortRulesToStored(next), sort: null });
   }, [persistView]);
+
+  // Grouped once per fetch, not per cell — every staffing cell looks its
+  // event up here.
+  const byEvent = useMemo(() => assignmentsByEvent(assignments ?? []), [assignments]);
 
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
     // the defaults, which is why null and [] are kept apart.
-    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS),
-    [columnKeys],
+    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS, {
+      // Live tracks only; each family narrows further (see familyTracks).
+      tracks: tracks.filter((t) => !t.is_archived),
+      assignmentsFor: (eventId) => byEvent.get(eventId) ?? NO_ASSIGNMENTS,
+    }),
+    [columnKeys, tracks, byEvent],
   );
+  const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing")
+    || sortRules.some((rule) => rule.field === "staffing");
+
+  // Only fetched while a staffing column is on screen or sorting by staffing —
+  // the only things that need them, and a whole tournament's assignments isn't free.
+  useEffect(() => {
+    if (!canManageEvents || !showsStaffing) return;
+    let current = true;
+    assignmentsApi.list(tournamentId)
+      .then((next) => { if (current) setAssignments(next); })
+      .catch(() => { if (current) setAssignments([]); });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents, showsStaffing, refreshKey]);
 
   const divisionOptions = useMemo(() => {
     const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));
@@ -340,14 +385,13 @@ export default function EventsPage() {
       if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
       return true;
     });
-    const sorted = [...filtered].sort((a, b) => {
-      const av = sortValue(a, sortField);
-      const bv = sortValue(b, sortField);
-      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return sorted;
-  }, [events, search, filters, sortField, sortDir]);
+    return sortRows(
+      filtered,
+      sortRules,
+      (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? NO_ASSIGNMENTS, ALL_TRACKS),
+      eventSortTiebreak,
+    );
+  }, [events, search, filters, sortRules, byEvent]);
 
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
@@ -379,7 +423,10 @@ export default function EventsPage() {
     // when the render below is the no-access card, and that page has no
     // panel to dock.
     if (!canManageEvents) return;
-    const catalog = { canonicalEvents, allShifts, tracks, onShiftCreated: handleShiftCreated };
+    const catalog = {
+      canonicalEvents, allShifts, tracks, buildings, roles,
+      onShiftCreated: handleShiftCreated, onBuildingSaved: handleBuildingSaved,
+    };
     if (creatingNew) {
       setPanel(
         <EventPanel
@@ -470,7 +517,7 @@ export default function EventsPage() {
   }, [
     canManageEvents,
     creatingNew, createKey, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
-    canonicalEvents, allShifts, tracks, handleShiftCreated,
+    canonicalEvents, allShifts, tracks, buildings, roles, handleShiftCreated, handleBuildingSaved,
     prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);
@@ -520,7 +567,7 @@ export default function EventsPage() {
 
   return (
     <div>
-      <PageHeader heading="Events" />
+      <CollapsibleHeader heading="Events" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -574,8 +621,12 @@ export default function EventsPage() {
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap" }}>
-              <div style={{ width: "300px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+              {/* Grows into whatever the toolbar leaves over, and is the first
+                  thing to give that room back: a small basis with grow means
+                  the search narrows before anything else has to wrap, and
+                  the other controls stay their natural size. */}
+              <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
                 <Input
                   label="Search"
                   value={search}
@@ -589,42 +640,22 @@ export default function EventsPage() {
                   fullWidth
                 />
               </div>
-              <Button
-                type="button" variant="secondary" size="md"
-                onClick={() => setShowFilterModal(true)}
-              >
-                <IconFilter size={16} /> Filter
-              </Button>
-              {isEventsFilterActive(filters) && (
-                <Button
-                  type="button" variant="ghost" size="md"
-                  onClick={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
-                >
-                  <IconX size={16} /> Clear filters
-                </Button>
-              )}
+              <FilterButton
+                active={isEventsFilterActive(filters)}
+                onOpen={() => setShowFilterModal(true)}
+                onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+              />
               <Button
                 type="button" variant="secondary" size="md"
                 onClick={() => setShowColumnsModal(true)}
               >
                 <IconEye size={16} /> Display
               </Button>
-              <Dropdown
-                label="Sort by"
-                value={sortField}
-                onChange={(v) => applySort(v as SortField, sortDir)}
-                options={SORT_FIELD_OPTIONS}
-                size="md"
-                variant="secondary"
-                width={150}
+              <SortButton
+                active={!sameSortRules(sortRules, DEFAULT_TABLE_SORT)}
+                onOpen={() => setShowSortModal(true)}
+                onReset={() => applySort(DEFAULT_TABLE_SORT)}
               />
-              <Button
-                type="button" variant="secondary" size="md" iconOnly
-                title={sortDir === "asc" ? "Ascending" : "Descending"}
-                onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
-              >
-                <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
-              </Button>
               {canManageEvents && (
                 <Button
                   type="button" variant={selectMode ? "primary" : "secondary"} size="md"
@@ -649,7 +680,7 @@ export default function EventsPage() {
             )}
           </div>
 
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
             {/* One grid owns the tracks; header and rows are subgrids of it,
                 so toggling Select mode resolves the template once rather than
                 once per row (which is what this table did before). */}
@@ -682,7 +713,7 @@ export default function EventsPage() {
                   {column.label}
                 </span>
               ))}
-              <span style={{ textAlign: "center" }}>Actions</span>
+              <span />
             </div>
 
             {visibleEvents.length === 0 ? (
@@ -701,7 +732,6 @@ export default function EventsPage() {
                   selected={selectedIds.has(e.id)}
                   selectionLocked={panelDirty}
                   onToggleSelect={() => toggleSelected(e.id)}
-                  focusActive={focusedEventId !== null}
                   focused={focusedEventId === e.id}
                 />
               ))
@@ -709,6 +739,18 @@ export default function EventsPage() {
             </div>
           </Card>
         </>
+      )}
+
+      {showSortModal && (
+        <SortModal
+          title="Sort events"
+          fields={EVENT_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_TABLE_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<EventSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
       )}
 
       {showFilterModal && (
@@ -784,7 +826,7 @@ export default function EventsPage() {
 }
 
 function EventRow({
-  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focused,
 }: {
   event: TournamentEvent;
   /** The viewer's configured columns, between Name and Actions. */
@@ -799,19 +841,15 @@ function EventRow({
   /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
   selectionLocked: boolean;
   onToggleSelect: () => void;
-  /** A single-edit panel is open (for some row, not necessarily this one) — rows become click-to-switch instead of inert. */
-  focusActive: boolean;
   /** This row is the one currently shown in the single-edit panel. */
   focused: boolean;
 }) {
-  // Two different reasons a row might be clickable: toggling a checkbox in
-  // Select mode, or switching which row the single-edit panel shows. Never
-  // both at once — the two flows are mutually exclusive.
+  // The row itself is the way in: a click toggles the box in Select mode and
+  // opens (or switches) the panel otherwise. Frozen while the panel is dirty.
   // This event is one of the references keeping a pending-delete track
   // alive — flagged here so the ones to repoint are findable in the table.
   const isPending = event.tracks.some((t) => t.is_archived);
-  const clickable = (selectMode || focusActive) && !selectionLocked;
-  const handleRowClick = selectMode ? onToggleSelect : onFocus;
+  const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onFocus;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
@@ -820,9 +858,10 @@ function EventRow({
       className={table.row}
       data-active={highlighted ? "true" : undefined}
       data-pending={isPending ? "true" : undefined}
-      onClick={clickable ? handleRowClick : undefined}
-      title={(selectMode || focusActive) ? lockedTitle : undefined}
-      style={{ cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default" }}
+      onClick={handleRowClick}
+      {...rowActivation(handleRowClick)}
+      title={lockedTitle}
+      style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
     >
       <span
         className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
@@ -843,9 +882,6 @@ function EventRow({
         <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
       ))}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>
-          <IconEdit size={13} />
-        </Button>
         {canDelete && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

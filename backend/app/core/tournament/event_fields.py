@@ -74,12 +74,14 @@ GROUPS: dict[str, EventFieldGroup] = {
         keys=frozenset({"tracks"}),
         relationships=("tracks",),
     ),
-    # Where the event physically happens, plus how many people it wants.
-    # Grouped together because they share an audience — this is the day-of
-    # logistics block, and a board that only draws chips needs none of it.
+    # Where the event physically happens, per track it runs on. Still the
+    # day-of logistics block a board drawing chips needs none of — it just
+    # answers per track now, because one event has a different room on each
+    # day it runs.
     LOCATION: EventFieldGroup(
         name=LOCATION,
-        keys=frozenset({"building", "room", "floor", "volunteers_needed"}),
+        keys=frozenset({"track_details"}),
+        relationships=("track_details",),
     ),
 }
 
@@ -142,13 +144,24 @@ def loader_options(requested: frozenset[str] | None) -> list:
     the canonical `event` row, mainly. Routes add those; this only expresses
     what varies with `fields`.
     """
-    from app.models.models import TournamentEvent, TournamentShift, TournamentTrack
+    from app.models.models import (
+        TournamentEvent, TournamentEventTrack, TournamentShift, TournamentTrack,
+    )
 
     # Relationships needing a further hop to be usable: a shift's event_count
     # counts the events attached to it, a track read embeds its university.
+    # A tuple where one hop isn't enough.
     NESTED = {
-        "shifts": joinedload(TournamentShift.tournament_events),
-        "tracks": joinedload(TournamentTrack.university),
+        "shifts": (joinedload(TournamentShift.tournament_events),),
+        "tracks": (joinedload(TournamentTrack.university),),
+        # The link row renders its building's *name* — an explicit join, since
+        # building_id's only FK is the composite one, so nothing loads it
+        # implicitly — and its staffing needs, whose roles ride along on the
+        # need's own lazy="joined".
+        "track_details": (
+            joinedload(TournamentEventTrack.building),
+            selectinload(TournamentEventTrack.needs),
+        ),
     }
 
     options = []
@@ -161,7 +174,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)
-            options.append(option.options(nested) if nested is not None else option)
+            options.append(option.options(*nested) if nested else option)
 
     return options
 

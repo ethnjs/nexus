@@ -18,11 +18,73 @@ EVENTS_TABLE = "events_table"
 # card beside them) because the two are configured by their own controls and
 # share no vocabulary — one describes an event, the other a person.
 ASSIGNMENTS_EVENTS = "assignments_events"
+# The event panel. Its own surface rather than a reuse of EVENTS_TABLE: the
+# table configures columns, the panel which tracks' location and staffing
+# blocks it shows — and hiding Test Writing's block while placing Day 1 events
+# must not drop Tracks from how you read the table.
+EVENT_PANEL = "event_panel"
 
-KNOWN_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD, EVENTS_TABLE,
-    ASSIGNMENTS_EVENTS,
+FLAT_SURFACES = frozenset({
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL,
 })
+
+# ---------------------------------------------------------------------------
+# Per-tab surfaces
+#
+# The assignments board is tabbed per track (#81), and each tab keeps its own
+# columns, filters and sort for both halves of the board. So these two are not
+# one surface each but a family: "assignments_events:all",
+# "assignments_events:track:3", and the same for the card.
+#
+# Encoded in the key rather than as a `tab` field inside the blob because the
+# storage is a flat dict of surface -> config, and every reader (the PUT, the
+# apply step, fields_for_surface) already keys off that string. A nested tab
+# would mean teaching all of them a second level.
+#
+# Track ids are not checked against the catalog — a deleted track's saved tab
+# is inert, the same leniency filter values and hidden items already get.
+# ---------------------------------------------------------------------------
+TAB_ALL = "all"
+TAB_TRACK_PREFIX = "track:"
+TAB_SCOPED_SURFACES = frozenset({ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD})
+
+
+def surface_key(base: str, tab: str = TAB_ALL) -> str:
+    """The stored key for one tab of a tab-scoped surface."""
+    return f"{base}:{tab}"
+
+
+def track_tab(track_id: int) -> str:
+    return f"{TAB_TRACK_PREFIX}{track_id}"
+
+
+def surface_base(surface: str) -> str:
+    """The surface a key belongs to, tab suffix stripped.
+
+    Every surface-scoped rule below asks what *kind* of surface this is, never
+    which tab — a track tab hides and filters exactly what the All tab does.
+    """
+    base, _, _ = surface.partition(":")
+    return base if base in TAB_SCOPED_SURFACES else surface
+
+
+def is_known_surface(surface: str) -> bool:
+    """Whether `surface` is a key the config may store.
+
+    A prefix match rather than a set membership, because the tab-scoped
+    surfaces have one key per track and the track list is per tournament.
+    Note the bare "assignments_events" is *not* accepted: the All tab is
+    spelled ":all", and the migration rewrote existing blobs to it, so a bare
+    key now means a client that never learned about tabs.
+    """
+    if surface in FLAT_SURFACES:
+        return True
+    base, sep, tab = surface.partition(":")
+    if not sep or base not in TAB_SCOPED_SURFACES:
+        return False
+    if tab == TAB_ALL:
+        return True
+    return tab.startswith(TAB_TRACK_PREFIX) and tab[len(TAB_TRACK_PREFIX):].isdigit()
 
 # ---------------------------------------------------------------------------
 # Members table view state
@@ -93,35 +155,50 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # throughout: an event has no email and a member has no division, so nothing
 # is shared between the two surfaces except the storage shape.
 #
-# Every column is a plain scalar on the event, so unlike the roster there are
-# no per-entity columns here: a tournament adding a track adds a track *chip*
-# to the existing Tracks cell, not a column.
+# Most columns are scalars on the event. The exceptions are the per-track
+# families below: shifts, time, location and staffing are all answers a track
+# gives, and a row is per event, so they get one column per track.
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
 EVENT_COLUMN_CATEGORY = "category"
 EVENT_COLUMN_TRACKS = "tracks"
+EVENT_COLUMN_TIME = "time"
 EVENT_COLUMN_SHIFTS = "shifts"
-EVENT_COLUMN_BUILDING = "building"
-EVENT_COLUMN_ROOM = "room"
-EVENT_COLUMN_FLOOR = "floor"
-EVENT_COLUMN_VOLUNTEERS_NEEDED = "volunteers_needed"
+EVENT_COLUMN_LOCATION = "location"
+EVENT_COLUMN_STAFFING = "staffing"
 
+# One column per track, keyed "<family>:<track_id>" ("shifts:3"). Per track
+# rather than one cell, because each answer belongs to a track — a single cell
+# mixing Day 1's building with Day 2's would need a label on every value.
+#
+# The bare family key stays valid and means *every* track's column. That keeps
+# saved configs and the defaults working without a migration, and it is the
+# only spelling under which a track added later appears on its own — an
+# explicit list only names the tracks that existed.
+#
+# Value: whether the family is for competition (primary) tracks only. Shifts,
+# and so time, only exist on a dated track, and a cosmetic track has no place;
+# staffing needs can be declared on any track.
+EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
+    EVENT_COLUMN_TIME: True,
+    EVENT_COLUMN_SHIFTS: True,
+    EVENT_COLUMN_LOCATION: True,
+    EVENT_COLUMN_STAFFING: False,
+}
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
     (EVENT_COLUMN_TYPE, "Type"),
     (EVENT_COLUMN_CATEGORY, "Category"),
     (EVENT_COLUMN_TRACKS, "Tracks"),
+    (EVENT_COLUMN_TIME, "Time"),
     (EVENT_COLUMN_SHIFTS, "Shifts"),
-    (EVENT_COLUMN_BUILDING, "Building"),
-    (EVENT_COLUMN_ROOM, "Room"),
-    (EVENT_COLUMN_FLOOR, "Floor"),
-    (EVENT_COLUMN_VOLUNTEERS_NEEDED, "Volunteers needed"),
+    (EVENT_COLUMN_LOCATION, "Location"),
+    (EVENT_COLUMN_STAFFING, "Staffing"),
 )
 
 # Today's fixed table, so the feature landing doesn't rearrange anyone's
-# events page. Location and staffing target are opt-in: they're blank for
-# most of planning and would be four empty columns until the week of.
+# events page.
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
     EVENT_COLUMN_TRACKS, EVENT_COLUMN_SHIFTS,
@@ -135,7 +212,14 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # as a deleted track is on the roster.
 KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
 
-KNOWN_EVENT_SORT_FIELDS = frozenset({"name", "division", "day"})
+# The table sorts by a chain (`sorts`) over the board's own fields — the
+# same five mean the same thing on both. "division" and "day" are the single
+# `sort` it saved before that: still accepted so an old blob re-PUT by another
+# save doesn't 422, and read by the client as name and start.
+KNOWN_EVENT_SORT_FIELDS = frozenset({
+    "name", "category", "start", "staffing", "location",
+    "division", "day",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +247,28 @@ DEFAULT_ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = ASSIGNMENT_EVENT_COLUMNS
 # events page has no data for.
 KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
     "division", "type", "category", "track", "staffing",
+})
+
+# The board sorts by more than the events table does, for the same reason its
+# filters do: it holds the assignments, so "who still needs people" is a
+# question it can answer and the table cannot. `start` is the first shift on
+# the tab's track rather than a column on the event -- an event has no time of
+# its own, only the shifts under it.
+#
+# Unlike the table's, this surface stores a *list* of these (see `sorts` on
+# DisplayConfigSurface): a board sorted by staffing alone puts a hundred fully
+# staffed events in arbitrary order, so the second key is the one doing the
+# reading.
+#
+# No "division": within one tournament a division is part of an event's
+# identity, not a facet of it -- Crime Busters B and Crime Busters C are two
+# events - so the board sorts them by name with the division on the end, and a
+# separate key could only scatter one event's divisions apart. The events
+# table keeps its own, where Division is a column of its own.
+# "location" is one key, not building/floor/room: the board prints the three
+# as one label ("Kerckhoff 101") and a walking order is that label's order.
+KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
+    "name", "category", "start", "staffing", "location",
 })
 
 # ---------------------------------------------------------------------------
@@ -293,6 +399,7 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     Track ids aren't checked against the catalog — a deleted track's saved
     entry is inert, the same leniency filter values already get.
     """
+    surface = surface_base(surface)
     if surface == ASSIGNMENT_CARD:
         if item.startswith(CARD_FIELD_NAMESPACE):
             return item[len(CARD_FIELD_NAMESPACE):] in ASSIGNMENT_CARD_FIELDS
@@ -304,6 +411,11 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     # drops its shifts from the timeline, or its column from the no-shift
     # area. Its own metadata is `columns`, not `hidden`.
     if surface == ASSIGNMENTS_EVENTS:
+        return item.startswith(TRACK_NAMESPACE)
+    # Likewise only tracks: the panel's other sections are fixed, and hiding
+    # a track here hides only its location and staffing block — the event
+    # still runs on it, and its Tracks chips and shifts still show.
+    if surface == EVENT_PANEL:
         return item.startswith(TRACK_NAMESPACE)
     return is_known_namespace(item)
 
@@ -327,7 +439,13 @@ def is_known_column(surface: str, key: str) -> bool:
     already namespaces — event_preference is excluded deliberately: a ranked
     list of events has no sensible single-cell rendering.
     """
+    surface = surface_base(surface)
     if surface == EVENTS_TABLE:
+        family, sep, track_id = key.partition(":")
+        if sep:
+            # Not checked against the catalog — a deleted track's column is
+            # inert, the same leniency every other saved track id gets.
+            return family in EVENT_TRACK_COLUMN_FAMILIES and track_id.isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
@@ -344,6 +462,7 @@ def known_filter_keys(surface: str) -> frozenset[str]:
     """The filter keys `surface` may store. Empty for a surface that has no
     filters, which makes any saved filter on it a 422 rather than dead
     weight nothing will ever read."""
+    surface = surface_base(surface)
     if surface == MEMBERS_TABLE:
         return KNOWN_FILTER_KEYS
     if surface == EVENTS_TABLE:
@@ -361,10 +480,13 @@ def known_filter_keys(surface: str) -> frozenset[str]:
 def known_sort_fields(surface: str) -> frozenset[str]:
     """The sort fields `surface` may store — same reasoning as
     known_filter_keys."""
+    surface = surface_base(surface)
     if surface == MEMBERS_TABLE:
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_SORT_FIELDS
+    if surface == ASSIGNMENTS_EVENTS:
+        return KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS
     return frozenset()
 
 
@@ -529,11 +651,21 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "event_preferences": event_pref_items,
         "custom_fields": custom_field_items,
         "columns": column_items,
-        # Static, unlike every list above: an events column is a scalar on
-        # the event, so nothing here depends on what this tournament holds.
-        # Still served from the catalog rather than hardcoded in the client,
-        # so the labels have one source.
-        "event_columns": [{"key": key, "label": label} for key, label in EVENT_COLUMNS],
+        # Served from the catalog rather than hardcoded in the client, so the
+        # labels have one source.
+        # Each per-track family's columns stand in for its bare key, in its
+        # place — the alias is for saved state, not something to offer.
+        "event_columns": [
+            item
+            for key, label in EVENT_COLUMNS
+            for item in (
+                [
+                    {"key": f"{key}:{t.id}", "label": t.name}
+                    for t in tracks if t.is_primary or not EVENT_TRACK_COLUMN_FAMILIES[key]
+                ]
+                if key in EVENT_TRACK_COLUMN_FAMILIES else [{"key": key, "label": label}]
+            )
+        ],
         "sections": section_items,
     }
 
@@ -693,7 +825,7 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     """
     # Not driven by saved config, unlike the three below: the card's face is
     # fixed by the issue, so there is nothing per-viewer to read.
-    if surface == ASSIGNMENT_CARD:
+    if surface and surface_base(surface) == ASSIGNMENT_CARD:
         return _ASSIGNMENT_CARD_GROUPS
 
     if surface not in (MEMBERS_TABLE, MEMBERS_PANEL, MEMBER_PAGE):
