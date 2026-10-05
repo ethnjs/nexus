@@ -22,6 +22,7 @@ import {
 } from "@/lib/sorting";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
+import { DisplayButton } from "@/components/ui/DisplayButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
@@ -33,7 +34,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -356,6 +357,18 @@ export default function EventsPage() {
     }),
     [columnKeys, tracks, byEvent],
   );
+  // Off-default is what the Display button reports, compared after expansion
+  // so a saved copy of the defaults doesn't read as a change.
+  const defaultColumnKeys = useMemo(
+    () => resolveEventColumns(DEFAULT_EVENT_COLUMNS, { tracks, assignmentsFor: () => NO_ASSIGNMENTS }).map((c) => c.key).join(),
+    [tracks],
+  );
+  const displayActive = tableColumns.map((c) => c.key).join() !== defaultColumnKeys;
+  const resetDisplay = useCallback(() => {
+    setColumnKeys(null);
+    persistView({ columns: null });
+  }, [persistView]);
+
   const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing")
     || sortRules.some((rule) => rule.field === "staffing")
     || filters.staffing.size > 0;
@@ -668,12 +681,11 @@ export default function EventsPage() {
                 onOpen={() => setShowFilterModal(true)}
                 onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
               />
-              <Button
-                type="button" variant="secondary" size="md"
-                onClick={() => setShowColumnsModal(true)}
-              >
-                <IconEye size={16} /> Display
-              </Button>
+              <DisplayButton
+                active={displayActive}
+                onOpen={() => setShowColumnsModal(true)}
+                onReset={resetDisplay}
+              />
               <SortButton
                 active={!sameSortRules(sortRules, DEFAULT_TABLE_SORT)}
                 onOpen={() => setShowSortModal(true)}

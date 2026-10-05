@@ -197,11 +197,11 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_STAFFING, "Staffing"),
 )
 
-# Today's fixed table, so the feature landing doesn't rearrange anyone's
-# events page.
+# What the table shows until a viewer saves their own, and what Reset returns
+# to: what the event is and when it runs. Mirrored in eventColumns.tsx.
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
-    EVENT_COLUMN_TRACKS, EVENT_COLUMN_SHIFTS,
+    EVENT_COLUMN_TRACKS, EVENT_COLUMN_TIME,
 )
 
 # Unlike the roster's, these filters are applied in the client (the events

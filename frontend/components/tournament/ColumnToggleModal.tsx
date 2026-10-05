@@ -66,6 +66,10 @@ export function ColumnToggleModal({
     const next = new Set(active);
     if (next.has(key)) next.delete(key);
     else next.add(key);
+    write(next);
+  }
+
+  function write(next: Set<string>) {
     // Written back in catalog order, which is what makes the saved list an
     // order as well as a set.
     setDraft({
@@ -108,6 +112,8 @@ export function ColumnToggleModal({
                   size="sm"
                   disableInput
                   fullWidth
+                  // Turns the whole field off in one press.
+                  onClear={() => write(new Set([...active].filter((key) => !group.items.some((item) => item.key === key))))}
                   addButton={
                     <ChecklistPopover
                       trigger={
@@ -145,11 +151,22 @@ export function ColumnToggleModal({
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button type="button" variant="primary" onClick={() => save(onSaved, onClose)} disabled={saving || !draft}>
-          Save
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "8px" }}>
+        {/* null, not the default list: "nothing chosen" keeps following the
+            defaults if they change, where a copy of them would freeze. */}
+        <Button
+          type="button" variant="ghost"
+          onClick={() => setDraft({ ...(draft ?? { hidden: [] }), columns: null })}
+          disabled={saving || !draft}
+        >
+          Reset
         </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="button" variant="primary" onClick={() => save(onSaved, onClose)} disabled={saving || !draft}>
+            Save
+          </Button>
+        </div>
       </div>
     </Modal>
   );

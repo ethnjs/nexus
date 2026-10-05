@@ -11,9 +11,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
 
-// Mirrors the backend's DEFAULT_EVENT_COLUMNS — today's fixed table, so the
-// feature landing doesn't rearrange anyone's events page.
-export const DEFAULT_EVENT_COLUMNS = ["division", "type", "category", "tracks", "shifts"];
+// Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
+// viewer saves their own, and what Reset returns to.
+export const DEFAULT_EVENT_COLUMNS = ["division", "type", "category", "tracks", "time"];
 
 // Grid track per kind of data, not per individual column — same rule as the
 // roster's WIDTHS. Fixed px where the content has a known maximum (a badge, a
