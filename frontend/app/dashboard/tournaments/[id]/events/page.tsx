@@ -13,6 +13,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
+import { useElementWidth } from "@/lib/useElementWidth";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
 import {
   EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
@@ -134,6 +135,8 @@ export default function EventsPage() {
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
   // A table edit that asked first (see EventEditContext.confirm).
   const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
+  // Drives the icon-only toolbar (see compactToolbar).
+  const [toolbarRef, toolbarWidth] = useElementWidth<HTMLDivElement>();
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
@@ -625,6 +628,11 @@ export default function EventsPage() {
 
   const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
 
+  // Below this the labelled toolbar no longer fits on one line (search at its
+  // minimum plus every button), so the buttons drop to icons instead of the
+  // row wrapping. Select keeps its word — it has no icon that says "select".
+  const compactToolbar = toolbarWidth > 0 && toolbarWidth < 900;
+
   // A header that sorts its column. The default chain isn't shown as a
   // header state — it's the absence of a choice, and clicking replaces it.
   const headerSortRules = sameSortRules(sortRules, DEFAULT_TABLE_SORT) ? [] : sortRules;
@@ -696,7 +704,7 @@ export default function EventsPage() {
         </Card>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+          <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
               {/* Grows into whatever the toolbar leaves over, and is the first
                   thing to give that room back: a small basis with grow means
@@ -718,16 +726,19 @@ export default function EventsPage() {
                 />
               </div>
               <FilterButton
+                iconOnly={compactToolbar}
                 active={isEventsFilterActive(filters)}
                 onOpen={() => setShowFilterModal(true)}
                 onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
               />
               <DisplayButton
+                iconOnly={compactToolbar}
                 active={displayActive}
                 onOpen={() => setShowColumnsModal(true)}
                 onReset={resetDisplay}
               />
               <SortButton
+                iconOnly={compactToolbar}
                 active={!sameSortRules(sortRules, DEFAULT_TABLE_SORT)}
                 onOpen={() => setShowSortModal(true)}
                 onReset={() => applySort(DEFAULT_TABLE_SORT)}
@@ -746,12 +757,12 @@ export default function EventsPage() {
 
             {canManageEvents && (
               <Button
-                type="button" variant="primary" size="md"
+                type="button" variant="primary" size="md" iconOnly={compactToolbar}
                 onClick={handleAddEvent}
                 disabled={panelDirty || isArchived}
-                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
+                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : compactToolbar ? "Add event" : undefined)}
               >
-                <IconPlus size={14} /> Add event
+                <IconPlus size={14} />{!compactToolbar && " Add event"}
               </Button>
             )}
           </div>
