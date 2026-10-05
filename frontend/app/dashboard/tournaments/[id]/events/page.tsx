@@ -13,6 +13,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
+import { handleGridArrows } from "@/lib/gridNav";
 import { useElementWidth } from "@/lib/useElementWidth";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
 import {
@@ -775,6 +776,8 @@ export default function EventsPage() {
             <div
               className={`${table.table} ${table.animatedTracks}`}
               style={{ gridTemplateColumns: eventGridColumns(selectMode, tableColumns) }}
+              // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
+              onKeyDown={handleGridArrows}
             >
             <div className={table.header}>
               <span
@@ -970,6 +973,7 @@ function EventRow({
   return (
     <div
       className={table.row}
+      data-nav-row
       data-active={highlighted ? "true" : undefined}
       data-pending={isPending ? "true" : undefined}
       onClick={handleRowClick}
@@ -984,7 +988,7 @@ function EventRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span style={{
+      <span data-nav-col="name" style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
@@ -1007,9 +1011,9 @@ function EventRow({
       {/* Each cell knows how to render itself (see eventColumns) — the row
           only places them, so adding a column is one entry there. */}
       {columns.map((column) => (
-        <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
+        <span key={column.key} data-nav-col={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
       ))}
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+      <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canDelete && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

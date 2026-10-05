@@ -56,6 +56,11 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   const [inputWidth, setInputWidth] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const measureRef = useRef<HTMLSpanElement>(null)
+  // Enter/Esc end editing from the keyboard; focus then goes back to the
+  // resting text so Tab carries on from here, not from the top of the page.
+  // A blur-save doesn't — focus already went where the user clicked.
+  const restRef = useRef<HTMLSpanElement>(null)
+  const refocus = useRef(false)
   // Combobox mode: which suggestion the arrow keys are on (-1 = none), and
   // where the list sits — position: fixed off the input's rect, like
   // Combobox, so a scrolling table or popover can't clip it.
@@ -91,6 +96,10 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   }, [draft, editing])
 
   useEffect(() => {
+    if (!editing && refocus.current) {
+      refocus.current = false
+      restRef.current?.focus()
+    }
     if (editing && inputRef.current) {
       inputRef.current.focus()
       const len = inputRef.current.value.length
@@ -122,6 +131,8 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
       await onSave(trimmed)
       setEditing(false)
     } catch (err) {
+      // Still editing, so nothing to hand focus back to.
+      refocus.current = false
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       inFlight.current = false
@@ -147,11 +158,12 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
             if (e.key === 'ArrowUp' && listOpen) { e.preventDefault(); setHighlight((h) => (h <= 0 ? matches.length - 1 : h - 1)) }
             if (e.key === 'Enter') {
               e.preventDefault()
+              refocus.current = true
               const picked = highlight >= 0 ? matches[highlight] : undefined
               if (picked) setDraft(picked)
               save(picked)
             }
-            if (e.key === 'Escape') { e.preventDefault(); setEditing(false) }
+            if (e.key === 'Escape') { e.preventDefault(); refocus.current = true; setEditing(false) }
           }}
           disabled={saving}
           style={{
@@ -214,6 +226,7 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
 
   return (
     <span
+      ref={restRef}
       onClick={locked ? undefined : startEdit}
       // Reachable by Tab, and Enter starts editing — same as a click.
       tabIndex={locked ? undefined : 0}

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, SyntheticEvent, useEffect, useRef, useState } from "react";
+import { CSSProperties, KeyboardEvent, ReactNode, SyntheticEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
@@ -39,17 +39,106 @@ export interface ConfirmRequest {
   onConfirm: () => Promise<void>;
 }
 
-// A click or keypress inside an editable cell is about the cell — it must not
-// reach the row, which would open the panel (or toggle the Select box).
+// A click inside an editable cell is about the cell — it must not reach the
+// row, which would open the panel (or toggle the Select box). Keys are left
+// to bubble: the row only acts on its own keypresses (see rowActivation), and
+// the table's arrow-key navigation needs to hear them.
 const stop = (e: SyntheticEvent) => e.stopPropagation();
 
-/** Wraps an editable cell's control so its clicks and keys stay in the cell. */
-export function CellGuard({ children, align = "center" }: { children: ReactNode; align?: "start" | "center" }) {
+/** Wraps an editable cell's control so its clicks stay in the cell. `editing`
+ *  marks it for the table's arrow keys (see gridNav), which leave an open
+ *  editor alone. */
+export function CellGuard({ children, align = "center", editing = false }: {
+  children: ReactNode; align?: "start" | "center"; editing?: boolean;
+}) {
   return (
     <span
       onClick={stop}
-      onKeyDown={stop}
+      data-editing={editing || undefined}
       style={{ display: "flex", justifyContent: align === "start" ? "flex-start" : "center", minWidth: 0 }}
+    >
+      {children}
+    </span>
+  );
+}
+
+const ERROR_TEXT: CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" };
+
+/**
+ * Rest/edit switching shared by the cells that swap a plain display for an
+ * editor (chips, rooms, staffing).
+ *
+ * Closes on a press outside the editor rather than on blur: a checklist's rows
+ * aren't focusable, so picking one would blur the cell and unmount the
+ * checklist mid-click. Esc closes too. Closing from the keyboard puts focus
+ * back on the resting control, so Tab and the arrow keys carry on from the
+ * cell rather than from the top of the page.
+ */
+function useCellEditor() {
+  const [editing, setEditing] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const restRef = useRef<HTMLElement | null>(null);
+  const refocus = useRef(false);
+
+  useEffect(() => {
+    if (!editing) {
+      if (refocus.current) {
+        refocus.current = false;
+        restRef.current?.focus();
+      }
+      return;
+    }
+    // Opening from the keyboard leaves focus on the resting control, which
+    // just unmounted — move it into the editor.
+    const wrap = wrapRef.current;
+    if (wrap && !wrap.contains(document.activeElement)) {
+      wrap.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])")?.focus();
+    }
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current?.contains(e.target as Node)) return;
+      // Blur first, so a value typed but not yet entered commits before its
+      // field unmounts.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && wrapRef.current?.contains(active)) active.blur();
+      setEditing(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [editing]);
+
+  return {
+    editing,
+    open: () => setEditing(true),
+    wrapRef,
+    /** For the resting control's `ref`. */
+    restRef: (el: HTMLElement | null) => { restRef.current = el; },
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      refocus.current = true;
+      setEditing(false);
+    },
+  };
+}
+
+/** The resting face of an editable cell: plain content that is a Tab stop and
+ *  opens the editor on click or Enter. */
+function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
+  restRef: (el: HTMLElement | null) => void;
+  onOpen: () => void;
+  title: string;
+  cursor?: "pointer" | "text";
+  children: ReactNode;
+}) {
+  return (
+    <span
+      ref={restRef}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onOpen(); } }}
+      title={title}
+      style={{ cursor, minWidth: 0 }}
     >
       {children}
     </span>
@@ -76,40 +165,51 @@ export function SelectCell({
 }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const Group = divisions ? DivisionButtonGroup : ButtonGroup;
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex" }}>{display}</span>;
   }
+  // Focus was on a button inside the popover, which is about to unmount.
+  const closeAndRefocus = (close: () => void) => {
+    close();
+    triggerRef.current?.focus();
+  };
   return (
-    <CellGuard>
+    <CellGuard editing={open}>
       <FormPopover
         trigger={
           // A Button, so Tab reaches it and Enter/Space open the popover.
           <Button
+            ref={triggerRef}
             type="button" variant="ghost" interactive={false} title="Click to change"
             style={{ height: "auto", padding: 0, border: "none", minWidth: 0 }}
           >
             {display}
           </Button>
         }
-        onOpenChange={() => setError(undefined)}
+        onOpenChange={(next) => { setOpen(next); setError(undefined); }}
         // Wide enough for every button on one row: roughly a label's text
         // plus a small button's padding and border, the gaps, and the panel's own padding.
         width={options.reduce((w, o) => w + o.label.length * 7 + 32, 0) + (options.length - 1) * 8 + 30}
         align="left"
       >
         {(close) => (
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); closeAndRefocus(close); } }}
+          >
             <Group
               options={options}
               value={value}
               locked={saving}
               onChange={async (next) => {
-                if (next === value) { close(); return; }
+                if (next === value) { closeAndRefocus(close); return; }
                 setSaving(true);
                 try {
                   await onPick(next);
-                  close();
+                  closeAndRefocus(close);
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Failed to save");
                 } finally {
@@ -117,9 +217,7 @@ export function SelectCell({
                 }
               }}
             />
-            {error && (
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{error}</span>
-            )}
+            {error && <span style={ERROR_TEXT}>{error}</span>}
           </div>
         )}
       </FormPopover>
@@ -128,9 +226,10 @@ export function SelectCell({
 }
 
 /**
- * A multi-value cell edited as chips: × on a chip removes it, the + opens a
+ * A multi-value cell. At rest it's the read-only `display` (badges); clicked
+ * or Entered, it becomes chips — × on a chip removes it, the + opens a
  * checklist of everything that could be there. Each add/remove saves on its
- * own. Locked, it's the read-only `display`.
+ * own. Locked, it's just the `display`.
  */
 export function ChipsCell<T>({
   display, selected, all, getKey, getLabel, getTooltip, getStatus, lockReason, onAdd, onRemove, addTitle, emptyMessage,
@@ -151,6 +250,7 @@ export function ChipsCell<T>({
 }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
+  const editor = useCellEditor();
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
   }
@@ -169,43 +269,51 @@ export function ChipsCell<T>({
   }
 
   return (
-    <CellGuard align="start">
-      <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-        <ChipInput
-          value={selected.map(getLabel)}
-          onChange={(labels) => {
-            const removed = selected.find((item) => !labels.includes(getLabel(item)));
-            if (removed) void run(() => onRemove(removed));
-          }}
-          getChipTooltip={getTooltip ? (label) => { const item = byLabel(label); return item ? getTooltip(item) : undefined; } : undefined}
-          getChipStatus={getStatus ? (label) => { const item = byLabel(label); return item ? getStatus(item) : "default"; } : undefined}
-          variant="transparent"
-          size="sm"
-          disableInput
-          disabled={saving}
-          addButton={
-            <ChecklistPopover
-              trigger={
-                // Same as the roster's Roles cell add button.
-                <Button type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
-                  <IconPlus size={14} />
-                </Button>
-              }
-              items={all}
-              getKey={getKey}
-              renderLabel={getLabel}
-              isSelected={(item) => selected.some((s) => getKey(s) === getKey(item))}
-              // Popover shows a rejected toggle's error itself and stays open.
-              onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item))}
-              emptyMessage={emptyMessage}
-              width={220}
-              align="left"
-            />
-          }
-        />
-        {error && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{error}</span>
+    <CellGuard align="start" editing={editor.editing}>
+      <span
+        ref={editor.wrapRef}
+        onKeyDown={editor.onKeyDown}
+        style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}
+      >
+        {editor.editing ? (
+          <ChipInput
+            value={selected.map(getLabel)}
+            onChange={(labels) => {
+              const removed = selected.find((item) => !labels.includes(getLabel(item)));
+              if (removed) void run(() => onRemove(removed));
+            }}
+            getChipTooltip={getTooltip ? (label) => { const item = byLabel(label); return item ? getTooltip(item) : undefined; } : undefined}
+            getChipStatus={getStatus ? (label) => { const item = byLabel(label); return item ? getStatus(item) : "default"; } : undefined}
+            variant="transparent"
+            size="sm"
+            disableInput
+            disabled={saving}
+            addButton={
+              <ChecklistPopover
+                trigger={
+                  // Same as the roster's Roles cell add button.
+                  <Button type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                    <IconPlus size={14} />
+                  </Button>
+                }
+                items={all}
+                getKey={getKey}
+                renderLabel={getLabel}
+                isSelected={(item) => selected.some((s) => getKey(s) === getKey(item))}
+                // Popover shows a rejected toggle's error itself and stays open.
+                onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item))}
+                emptyMessage={emptyMessage}
+                width={220}
+                align="left"
+              />
+            }
+          />
+        ) : (
+          <RestControl restRef={editor.restRef} onOpen={editor.open} title={`Click to edit — ${addTitle.toLowerCase()}`}>
+            {display}
+          </RestControl>
         )}
+        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );
@@ -214,9 +322,9 @@ export function ChipsCell<T>({
 /**
  * One track's location, edited in place on one line: the building as
  * EditableCombobox (existing names suggested as you type), then the rooms as
- * chips. Each saves on its own. No floor field — the server derives it from
- * the first room ("210" → 2); an override lives in the panel.
- * Locked, it's the read-only `display`.
+ * plain text that turns into chips when clicked. Each saves on its own. No
+ * floor field — the server derives it from the first room ("210" → 2); an
+ * override lives in the panel. Locked, it's the read-only `display`.
  */
 export function LocationCell({
   display, detail, trackId, buildings, lockReason, onSave, ensureBuilding,
@@ -232,10 +340,9 @@ export function LocationCell({
   /** Finds or creates the named building on this track. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
 }) {
-  // Rooms read as plain text until clicked, like every other cell; the chip
-  // editor only exists while editing them. Saving a new building opens it,
-  // so building then room reads as one gesture.
-  const [editingRooms, setEditingRooms] = useState(false);
+  // The rooms editor. Saving a new building opens it, so building then room
+  // reads as one gesture.
+  const roomsEditor = useCellEditor();
   const [hovered, setHovered] = useState(false);
   const [roomsError, setRoomsError] = useState<string | undefined>(undefined);
   const [savingRooms, setSavingRooms] = useState(false);
@@ -262,14 +369,14 @@ export function LocationCell({
     }
     if (id === buildingId) return;
     await onSave({ building_id: id, floor: null, rooms: [] });
-    setEditingRooms(id !== null);
+    if (id !== null) roomsEditor.open();
   }
 
-  async function saveRooms(rooms: string[]) {
+  async function saveRooms(next: string[]) {
     setSavingRooms(true);
     setRoomsError(undefined);
     try {
-      await onSave({ rooms });
+      await onSave({ rooms: next });
     } catch (err) {
       setRoomsError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -278,7 +385,7 @@ export function LocationCell({
   }
 
   return (
-    <CellGuard align="start">
+    <CellGuard align="start" editing={roomsEditor.editing}>
       <span
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -297,17 +404,8 @@ export function LocationCell({
             />
           </span>
           {/* Rooms only mean something inside a building. */}
-          {buildingId !== null && (editingRooms ? (
-            <span
-              style={{ flex: 1, minWidth: 0 }}
-              // Leaving the editor (not just moving between its chips and
-              // field) puts the rooms back to plain text. ChipInput commits a
-              // half-typed room on its own blur first.
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEditingRooms(false);
-              }}
-              onKeyDown={(e) => { if (e.key === "Escape") setEditingRooms(false); }}
-            >
+          {buildingId !== null && (roomsEditor.editing ? (
+            <span ref={roomsEditor.wrapRef} onKeyDown={roomsEditor.onKeyDown} style={{ flex: 1, minWidth: 0 }}>
               <ChipInput
                 value={rooms}
                 onChange={(next) => void saveRooms(next)}
@@ -321,29 +419,22 @@ export function LocationCell({
               />
             </span>
           ) : (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={() => setEditingRooms(true)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditingRooms(true); } }}
-              title="Click to edit rooms"
-              style={{
-                fontFamily: "var(--font-mono)", fontSize: "12px", cursor: "text", whiteSpace: "nowrap",
-                overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+            <RestControl restRef={roomsEditor.restRef} onOpen={roomsEditor.open} title="Click to edit rooms" cursor="text">
+              <span style={{
+                fontFamily: "var(--font-mono)", fontSize: "12px", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis",
                 color: rooms.length > 0 ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
                 // No rooms: the way in only shows on hover, so a resting
                 // table reads like any other. Still a Tab stop, so it is
                 // never unreachable by keyboard.
                 opacity: rooms.length > 0 || hovered ? 1 : 0,
-              }}
-            >
-              {rooms.length > 0 ? rooms.join(", ") : "Add room"}
-            </span>
+              }}>
+                {rooms.length > 0 ? rooms.join(", ") : "Add room"}
+              </span>
+            </RestControl>
           ))}
         </span>
-        {roomsError && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{roomsError}</span>
-        )}
+        {roomsError && <span style={ERROR_TEXT}>{roomsError}</span>}
       </span>
     </CellGuard>
   );
@@ -365,40 +456,21 @@ export function StaffingCell({
   lockReason?: string;
   onSave: (needs: { role_id: number; count: number }[]) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const editor = useCellEditor();
   const [hovered, setHovered] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
-  const wrapRef = useRef<HTMLSpanElement>(null);
   // The empty state's + should land in the role picker, not in an editor
   // whose only content is another +. So it opens the editor and asks it to
   // press its own add button once mounted (Popover has no open prop).
   const addRef = useRef<HTMLButtonElement>(null);
   const [openPicker, setOpenPicker] = useState(false);
   useEffect(() => {
-    if (editing && openPicker) {
+    if (editor.editing && openPicker) {
       addRef.current?.click();
       setOpenPicker(false);
     }
-  }, [editing, openPicker]);
-
-  // Closes on a press outside the cell rather than on blur: the + checklist's
-  // rows aren't focusable, so picking one would blur the cell and unmount the
-  // checklist mid-click. The checklist renders inside the cell, so a press
-  // there counts as inside.
-  useEffect(() => {
-    if (!editing) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current?.contains(e.target as Node)) return;
-      // Blur first, so a count typed but not yet entered commits before its
-      // field unmounts.
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && wrapRef.current?.contains(active)) active.blur();
-      setEditing(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [editing]);
+  }, [editor.editing, openPicker]);
 
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
@@ -420,15 +492,15 @@ export function StaffingCell({
   const byLabel = (label: string) => needs.find((n) => n.role_label === label);
 
   return (
-    <CellGuard align="start">
+    <CellGuard align="start" editing={editor.editing}>
       <span
-        ref={wrapRef}
+        ref={editor.wrapRef}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+        onKeyDown={editor.onKeyDown}
         style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}
       >
-        {editing ? (
+        {editor.editing ? (
           <ChipInput
             value={needs.map((n) => n.role_label)}
             // Only removal reaches here (disableInput): keep the needs whose chip is left.
@@ -473,14 +545,7 @@ export function StaffingCell({
             }
           />
         ) : (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={() => setEditing(true)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true); } }}
-            title="Click to edit staffing"
-            style={{ cursor: "pointer", minWidth: 0 }}
-          >
+          <RestControl restRef={editor.restRef} onOpen={editor.open} title="Click to edit staffing">
             {needs.length > 0 ? display : (
               // Muted, like the location cell's "No location". The add button
               // only appears on hover, so a resting table reads normally.
@@ -491,7 +556,9 @@ export function StaffingCell({
                 {hovered && (
                   <Button
                     type="button" variant="secondary" size="sm" iconOnly title="Add role"
-                    onClick={(e) => { e.stopPropagation(); setEditing(true); setOpenPicker(true); }}
+                    // Not a Tab stop: the cell itself is one, and Enter on it opens the editor.
+                    tabIndex={-1}
+                    onClick={(e) => { e.stopPropagation(); editor.open(); setOpenPicker(true); }}
                     style={{ padding: 0, flexShrink: 0 }}
                   >
                     <IconPlus size={14} />
@@ -499,11 +566,9 @@ export function StaffingCell({
                 )}
               </span>
             )}
-          </span>
+          </RestControl>
         )}
-        {error && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{error}</span>
-        )}
+        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );
