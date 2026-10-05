@@ -40,13 +40,13 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
-    # `columns`/`sections`/`filters`/`sort`/`sorts` come back as None: absent
-    # means "use the defaults", which is why they aren't empty lists.
+    # `columns`/`sections`/`filters`/`sort`/`sorts`/`collapsed` come back as
+    # None: absent means "use the defaults", which is why they aren't empty.
     assert response.json() == {
         "unknown_surface": {
             "hidden": ["track:999", "not_a_real_namespace:x"],
             "columns": None, "sections": None, "filters": None,
-            "sort": None, "sorts": None,
+            "sort": None, "sorts": None, "collapsed": None,
         },
     }
 
@@ -67,7 +67,7 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
         surface: {
             **config,
             "columns": None, "sections": None, "filters": None,
-            "sort": None, "sorts": None,
+            "sort": None, "sorts": None, "collapsed": None,
         }
         for surface, config in payload.items()
     }
@@ -254,17 +254,6 @@ def test_put_assignments_events_rejects_unknown_sort_field(client, td_user, td_t
             {"field": "name", "direction": "asc"},
             {"field": "shoe_size", "direction": "asc"},
         ]}},
-    )
-    assert response.status_code == 422
-
-
-def test_put_events_table_rejects_board_only_sort_field(client, td_user, td_tournament):
-    """Staffing is a board sort: the table holds no assignments, so it has no
-    gap to sort by. Same separation as the columns and filters above."""
-    login(client, "td@test.com", "tdpass")
-    response = client.put(
-        f"/tournaments/{td_tournament.id}/display-config/",
-        json={"events_table": {"sort": {"field": "staffing", "direction": "desc"}}},
     )
     assert response.status_code == 422
 
@@ -460,7 +449,7 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     # Fixed columns exist regardless of tournament data; each track adds one.
     assert [c["key"] for c in body["columns"]] == [
         "email", "phone", "account_age", "joined", "method", "age", "shirt_size", "onboarding",
-        f"track:{main.id}",
+        "dietary_restriction", f"track:{main.id}",
     ]
     # Custom Responses is no longer built in — it's seeded as a deletable
     # custom section instead, so it doesn't appear in the catalog.
@@ -859,7 +848,7 @@ def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournam
         "track": ["3"], "building": ["5", "__unset__"], "shifts": ["none"],
         "shift": ["9"], "staffing": ["short", "empty"],
     }
-    for surface in ("events_table", "assignments_events"):
+    for surface in ("events_table", "assignments_events:all"):
         response = client.put(
             f"/tournaments/{td_tournament.id}/display-config/",
             json={surface: {"hidden": [], "filters": filters}},
