@@ -23,7 +23,8 @@ import {
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { EditableText } from "@/components/ui/EditableText";
-import { CellGuard, EventEditContext } from "@/components/tournament/events/EditableCells";
+import { CellGuard, ConfirmRequest, EventEditContext } from "@/components/tournament/events/EditableCells";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
@@ -130,6 +131,8 @@ export default function EventsPage() {
   // so fetching them there re-requested all three on every arrow press.
   const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  // A table edit that asked first (see EventEditContext.confirm).
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
@@ -370,7 +373,9 @@ export default function EventsPage() {
     },
     update: updateEvent,
     divisions: selectedTournament?.division ?? [],
-  } : undefined), [canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament]);
+    shifts: allShifts ?? [],
+    confirm: setPendingConfirm,
+  } : undefined), [canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament, allShifts]);
 
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
@@ -879,6 +884,17 @@ export default function EventsPage() {
           </>
         }
       />
+
+      {pendingConfirm && (
+        <ConfirmModal
+          title={pendingConfirm.title}
+          description={pendingConfirm.description}
+          confirmLabel={pendingConfirm.confirmLabel}
+          variant="danger"
+          onConfirm={pendingConfirm.onConfirm}
+          onClose={() => setPendingConfirm(null)}
+        />
+      )}
 
       {deleteTargets && (
         <DeleteEventModal

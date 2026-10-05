@@ -3,14 +3,15 @@
 import { CSSProperties, ReactNode } from "react";
 import { Assignment, TournamentDivision, TournamentEvent, TournamentTrack } from "@/lib/api";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
-import { trackLocationLabel } from "@/lib/eventDisplay";
+import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import { staffedCount } from "@/lib/assignments/staffing";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
 import type { EventSortField } from "@/lib/eventSort";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
-import { EventEditContext, SelectCell } from "@/components/tournament/events/EditableCells";
+import { ChipsCell, EventEditContext, SelectCell } from "@/components/tournament/events/EditableCells";
+import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
 // viewer saves their own, and what Reset returns to.
@@ -139,24 +140,39 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
       // so the hover names the day too; on a one-day track that is noise.
       const multiDay = !!track.start_date && !!track.end_date && track.start_date !== track.end_date;
       const shifts = trackShifts(e, track);
-      if (shifts.length === 0) return EMPTY_CELL;
-      return (
+      const shiftTime = (s: { start: string; end: string }) => {
+        const time = `${formatTime(s.start)} – ${formatTime(s.end)}`;
+        return multiDay ? `${formatDayLabel(toDateInput(s.start))} · ${time}` : time;
+      };
+      const display = shifts.length === 0 ? EMPTY_CELL : (
         <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-          {shifts.map((s) => {
-            const time = `${formatTime(s.start)} – ${formatTime(s.end)}`;
-            // Tooltip, not a native title: title waits a second or so and
-            // is easy to never see — the app's hover detail everywhere
-            // else is this component, and it escapes the cell's clipping.
-            return (
-              <Tooltip
-                key={s.id} variant="info" showIcon={false}
-                message={multiDay ? `${formatDayLabel(toDateInput(s.start))} · ${time}` : time}
-              >
-                <Badge>{s.label}</Badge>
-              </Tooltip>
-            );
-          })}
+          {/* Tooltip, not a native title: title waits a second or so and is
+              easy to never see — the app's hover detail everywhere else is
+              this component, and it escapes the cell's clipping. */}
+          {shifts.map((s) => (
+            <Tooltip key={s.id} variant="info" showIcon={false} message={shiftTime(s)}>
+              <Badge>{s.label}</Badge>
+            </Tooltip>
+          ))}
         </span>
+      );
+      if (!ctx.edit) return display;
+      const { edit } = ctx;
+      const current = e.shifts.map((s) => s.id);
+      return (
+        <ChipsCell
+          display={display}
+          selected={shifts}
+          all={edit.shifts.filter((s) => s.track_id === track.id).sort((a, b) => a.start.localeCompare(b.start))}
+          getKey={(s) => s.id}
+          getLabel={(s) => s.label}
+          getTooltip={shiftTime}
+          lockReason={edit.lockReason(e)}
+          onAdd={(s) => edit.update(e, { shift_ids: [...current, s.id] })}
+          onRemove={(s) => edit.update(e, { shift_ids: current.filter((id) => id !== s.id) })}
+          addTitle={`Edit ${track.name} shifts`}
+          emptyMessage="No shifts on this track yet."
+        />
       );
     }
     case "location": {
@@ -310,17 +326,57 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       // already names — the track is the thing that isn't inferable.
       return {
         key, label: "Tracks", width: WIDTHS.tracks, align: "start",
-        render: (e) => (
-          <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-            {e.tracks.length > 0
-              ? e.tracks.map((t) => (
-                  <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
-                    {t.name}
-                  </Badge>
-                ))
-              : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
-          </span>
-        ),
+        render: (e) => {
+          const display = (
+            <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
+              {e.tracks.length > 0
+                ? e.tracks.map((t) => (
+                    <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
+                      {t.name}
+                    </Badge>
+                  ))
+                : EMPTY_CELL}
+            </span>
+          );
+          if (!ctx.edit) return display;
+          const { edit } = ctx;
+          // Removing a track drops its location and needs; with shifts still
+          // on it, those go too (the server won't unlink a track a shift sits
+          // on), so that case asks first.
+          const removeTrack = (t: TournamentTrack) => {
+            const save = () => edit.update(e, {
+              shift_ids: e.shifts.filter((s) => s.track_id !== t.id).map((s) => s.id),
+              track_details: e.track_details.filter((d) => d.track_id !== t.id).map(toTrackDetailInput),
+            });
+            const onTrack = e.shifts.filter((s) => s.track_id === t.id).length;
+            if (onTrack === 0) return save();
+            edit.confirm({
+              title: `Remove ${t.name}?`,
+              description: `This also removes ${onTrack} shift${onTrack === 1 ? "" : "s"} on ${t.name} from ${eventName(e)}. Anyone assigned to those shifts stays assigned, just without a shift.`,
+              confirmLabel: "Remove track and shifts",
+              onConfirm: save,
+            });
+            return Promise.resolve();
+          };
+          return (
+            <ChipsCell
+              display={display}
+              selected={e.tracks}
+              // Live tracks to add, plus any pending-delete one the event still
+              // holds — it can be removed but not newly added.
+              all={[...ctx.tracks, ...e.tracks.filter((t) => t.is_archived)]}
+              getKey={(t) => t.id}
+              getLabel={(t) => t.name}
+              getStatus={(t) => (t.is_archived ? "warning" : "default")}
+              getTooltip={(t) => (t.is_archived ? PENDING_TRACK_NOTE : undefined)}
+              lockReason={edit.lockReason(e)}
+              onAdd={(t) => edit.update(e, { track_details: withTrackDetail(e, t.id, {}) })}
+              onRemove={removeTrack}
+              addTitle="Edit tracks"
+              emptyMessage="No tracks yet."
+            />
+          );
+        },
       };
     default:
       return null;

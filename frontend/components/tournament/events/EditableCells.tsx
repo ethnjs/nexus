@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { FormPopover } from "@/components/ui/FormPopover";
-import { TournamentDivision, TournamentEvent, TournamentEventInput } from "@/lib/api";
+import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { IconPlus } from "@/components/ui/Icons";
+import { TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
 export interface EventEditContext {
@@ -15,6 +18,17 @@ export interface EventEditContext {
   update: (event: TournamentEvent, patch: Partial<TournamentEventInput>) => Promise<void>;
   /** The tournament's divisions — what the Division cell offers. */
   divisions: TournamentDivision[];
+  /** Every shift in the tournament — what a per-track Shifts cell offers. */
+  shifts: TournamentShift[];
+  /** Asks before a change that takes more with it (a track and its shifts). */
+  confirm: (request: ConfirmRequest) => void;
+}
+
+export interface ConfirmRequest {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
 }
 
 // A click or keypress inside an editable cell is about the cell — it must not
@@ -101,6 +115,90 @@ export function SelectCell({
           </div>
         )}
       </FormPopover>
+    </CellGuard>
+  );
+}
+
+/**
+ * A multi-value cell edited as chips: × on a chip removes it, the + opens a
+ * checklist of everything that could be there. Each add/remove saves on its
+ * own. Locked, it's the read-only `display`.
+ */
+export function ChipsCell<T>({
+  display, selected, all, getKey, getLabel, getTooltip, getStatus, lockReason, onAdd, onRemove, addTitle, emptyMessage,
+}: {
+  display: ReactNode;
+  selected: T[];
+  /** Everything the checklist offers, in the order it should list them. */
+  all: T[];
+  getKey: (item: T) => number;
+  getLabel: (item: T) => string;
+  getTooltip?: (item: T) => string | undefined;
+  getStatus?: (item: T) => ChipStatus;
+  lockReason?: string;
+  onAdd: (item: T) => Promise<void>;
+  onRemove: (item: T) => Promise<void>;
+  addTitle: string;
+  emptyMessage: string;
+}) {
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  if (lockReason) {
+    return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
+  }
+
+  const byLabel = (label: string) => selected.find((item) => getLabel(item) === label);
+  async function run(change: () => Promise<void>) {
+    setSaving(true);
+    setError(undefined);
+    try {
+      await change();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <CellGuard align="start">
+      <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+        <ChipInput
+          value={selected.map(getLabel)}
+          onChange={(labels) => {
+            const removed = selected.find((item) => !labels.includes(getLabel(item)));
+            if (removed) void run(() => onRemove(removed));
+          }}
+          getChipTooltip={getTooltip ? (label) => { const item = byLabel(label); return item ? getTooltip(item) : undefined; } : undefined}
+          getChipStatus={getStatus ? (label) => { const item = byLabel(label); return item ? getStatus(item) : "default"; } : undefined}
+          variant="transparent"
+          size="sm"
+          disableInput
+          disabled={saving}
+          addButton={
+            <ChecklistPopover
+              trigger={
+                // Same as the roster's Roles cell add button.
+                <Button type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                  <IconPlus size={14} />
+                </Button>
+              }
+              items={all}
+              getKey={getKey}
+              renderLabel={getLabel}
+              isSelected={(item) => selected.some((s) => getKey(s) === getKey(item))}
+              // Popover shows a rejected toggle's error itself and stays open.
+              onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item))}
+              emptyMessage={emptyMessage}
+              width={220}
+              align="left"
+            />
+          }
+        />
+        {error && (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{error}</span>
+        )}
+      </span>
     </CellGuard>
   );
 }
