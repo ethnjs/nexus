@@ -586,9 +586,7 @@ export default function ShiftsPage() {
             </span>
             {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
             {sortableHeader("track", "Track")}
-            {/* Not sortable: it would toggle the same `start` rule as Start,
-                and two headers lighting up together reads as two rules. */}
-            <span>Date</span>
+            {sortableHeader("date", "Date")}
             {sortableHeader("start", "Start")}
             {sortableHeader("end", "End")}
             {sortableHeader("duration", "Duration")}

@@ -23,6 +23,7 @@ import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { SortButton } from "@/components/ui/SortButton";
@@ -615,7 +616,7 @@ export default function MembersPage() {
 
   return (
     <div>
-      <PageHeader heading="Members" />
+      <CollapsibleHeader heading="Members" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>

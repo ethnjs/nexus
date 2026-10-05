@@ -1089,3 +1089,52 @@ def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_u
         response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json={"shifts_table": body})
         assert response.status_code == 422, body
 
+
+
+def test_catalog_offers_lunch_column_from_a_published_question_nobody_answered(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    published = Form(
+        owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
+        name="Lunch", title="Lunch", status="published", created_by=td_user.id,
+    )
+    draft = Form(
+        owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
+        name="Lunch draft", title="Lunch draft", status="draft", created_by=td_user.id,
+    )
+    db.add_all([published, draft])
+    db.flush()
+    db.add_all([
+        FormField(
+            form_id=published.id, order=1, label="Entree", question_type="single_select_dropdown",
+            field_key=f"lunch_{track_id}_entree", config={"required": False, "options": []},
+        ),
+        # A draft isn't asking anyone yet, so it offers no column.
+        FormField(
+            form_id=draft.id, order=1, label="Dessert", question_type="single_select_dropdown",
+            field_key=f"lunch_{track_id}_dessert", config={"required": False, "options": []},
+        ),
+    ])
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
+    assert [c["key"] for c in body["columns"] if c["key"].startswith("lunch:")] == [f"lunch:{track_id}:entree"]
+
+
+def test_put_accepts_event_preference_column_on_members_table(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"hidden": [], "columns": ["email", "event_pref:1"]}},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["members_table"]["columns"] == ["email", "event_pref:1"]
+
+
+def test_shifts_table_accepts_date_sort(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"shifts_table": {"hidden": [], "sorts": [{"field": "date", "direction": "asc"}]}},
+    )
+    assert response.status_code == 200, response.json()

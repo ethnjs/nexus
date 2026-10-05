@@ -17,6 +17,7 @@ import { OnboardingProgress } from "@/components/tournament/members/OnboardingPr
 export const TRACK_PREFIX = "track:";
 export const AVAILABILITY_TRACK_PREFIX = "availability_track:";
 export const LUNCH_PREFIX = "lunch:";
+export const EVENT_PREF_PREFIX = "event_pref:";
 export const FORM_FIELD_PREFIX = "form_field:";
 
 // Grid track per kind of data, not per individual column. Width is a property
@@ -53,6 +54,10 @@ const WIDTHS = {
   availabilityDay: "minmax(110px, 0.7fr)",
   lunchCategory: "minmax(90px, 0.8fr)",
   customField: "minmax(100px, 1fr)",
+  // Free text ("Peanut allergy, vegetarian") — open-ended, read left to right.
+  dietary: "minmax(120px, 1fr)",
+  // A ranked list of option labels — open-ended, and read left to right.
+  eventPrefs: "minmax(140px, 1fr)",
   roles: "minmax(110px, 2.6fr)",
   // The collapsed form of `roles`, for when a docked panel narrows the table.
   // Deliberately still a minmax(<length>, <flex>): grid-template-columns only
@@ -155,6 +160,14 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
         key, label: "Shirt", width: WIDTHS.shirtSize,
         render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
       };
+    case "dietary_restriction":
+      return {
+        key, label: "Dietary", width: WIDTHS.dietary, align: "start",
+        render: (m) => {
+          const text = m.user.dietary_restriction;
+          return text ? <span style={LEFT_TEXT_CELL} title={text}>{text}</span> : <Dash />;
+        },
+      };
     case "onboarding":
       return {
         key, label: "Onboarding", width: WIDTHS.onboarding,
@@ -183,8 +196,10 @@ function formatAnswer(value: unknown): string {
 }
 
 // One column per entity — a track, an availability day, a lunch category, a
-// custom field. The label comes from the display-config catalog, which named
-// the key in the first place, so the two can't disagree.
+// track's event preferences, a custom field. The label comes from the
+// display-config catalog, which named the key in the first place, so the two
+// can't disagree. Per-track kinds suffix it ("Day 1 status"), since status,
+// availability and preferences would otherwise all be headed "Day 1".
 // "lunch:{track_id}:{category}" — a category is a slug, so it can never
 // contain a colon of its own; splitting on the first separator is safe.
 function splitLunchKey(key: string): [number, string] {
@@ -199,7 +214,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
-      key, label, width: WIDTHS.track,
+      key, label: `${label} status`, width: WIDTHS.track,
       render: (m) => {
         const status = (m.track_statuses ?? []).find((t) => t.track_id === trackId);
         if (!status) return <Dash />;
@@ -210,7 +225,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
     const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
-      key, label, width: WIDTHS.availabilityDay,
+      key, label: `${label} availability`, width: WIDTHS.availabilityDay,
       render: (m) => {
         // Keyed by track, not by day: two sites running the same Saturday are
         // separate tracks, and pooling their shifts into one column would
@@ -238,6 +253,22 @@ function entityColumn(key: string, label: string): MemberColumn | null {
         if (picks.length === 0) return <Dash />;
         const text = picks.map((p) => p.value).join(", ");
         return <span style={TEXT_CELL} title={text}>{text}</span>;
+      },
+    };
+  }
+  if (key.startsWith(EVENT_PREF_PREFIX)) {
+    const trackId = Number(key.slice(EVENT_PREF_PREFIX.length));
+    return {
+      key, label: `${label} prefs`, width: WIDTHS.eventPrefs, align: "start",
+      render: (m) => {
+        const answer = (m.event_preferences ?? []).find((p) => p.track_id === trackId);
+        if (!answer || answer.options.length === 0) return <Dash />;
+        // Rank order; an unranked pick (a checkbox question) keeps its place after the ranked ones.
+        const options = [...answer.options].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+        // Numbered by the stored rank, so "1." means the member's first choice.
+        const items = options.map((o) => (o.rank !== null ? `${o.rank}. ${o.label}` : o.label));
+        // One line in the cell; the hover lists one per line.
+        return <span style={LEFT_TEXT_CELL} title={items.join("\n")}>{items.join(", ")}</span>;
       },
     };
   }

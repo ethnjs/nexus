@@ -1,10 +1,11 @@
 import type { TournamentShift, TournamentTrack } from '@/lib/api'
+import { toDateInput } from '@/lib/timeFormat'
 import type { SortFieldOption } from '@/components/ui/SortModal'
 import type { SortRule, SortValue } from '@/lib/sorting'
 
 /** Mirrors KNOWN_SHIFT_SORT_FIELDS in display_config.py — the server
  *  validates what it stores against them. */
-export const SHIFT_SORT_FIELDS = ['label', 'track', 'start', 'end', 'duration', 'events'] as const
+export const SHIFT_SORT_FIELDS = ['label', 'track', 'date', 'start', 'end', 'duration', 'events'] as const
 export type ShiftSortField = (typeof SHIFT_SORT_FIELDS)[number]
 
 export function isShiftSortField(field: string): field is ShiftSortField {
@@ -15,6 +16,7 @@ export function isShiftSortField(field: string): field is ShiftSortField {
 export const SHIFT_SORT_OPTIONS: SortFieldOption[] = [
   { value: 'label', label: 'Label', ascLabel: 'A → Z', descLabel: 'Z → A' },
   { value: 'track', label: 'Track', ascLabel: 'Earliest first', descLabel: 'Latest first' },
+  { value: 'date', label: 'Date', ascLabel: 'Earliest first', descLabel: 'Latest first' },
   { value: 'start', label: 'Start time', ascLabel: 'Earliest first', descLabel: 'Latest first' },
   { value: 'end', label: 'End time', ascLabel: 'Earliest first', descLabel: 'Latest first' },
   { value: 'duration', label: 'Duration', ascLabel: 'Shortest first', descLabel: 'Longest first' },
@@ -48,6 +50,9 @@ export function shiftSortValue(
       if (!track) return null
       return track.start_date ? `${track.start_date} ${track.name}` : track.name
     }
+    // The day alone (ISO, so it compares as text): shifts on one day tie and
+    // fall to the next rule, which is what makes this different from start.
+    case 'date': return toDateInput(shift.start)
     case 'start': return new Date(shift.start).getTime()
     case 'end': return new Date(shift.end).getTime()
     case 'duration': return new Date(shift.end).getTime() - new Date(shift.start).getTime()

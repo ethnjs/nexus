@@ -132,6 +132,7 @@ COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
 COLUMN_ONBOARDING = "onboarding"
+COLUMN_DIETARY = "dietary_restriction"
 
 FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_EMAIL, "Email"),
@@ -142,6 +143,7 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
     (COLUMN_ONBOARDING, "Onboarding"),
+    (COLUMN_DIETARY, "Dietary restriction"),
 )
 
 # What a tournament with no saved column config shows — roughly today's table,
@@ -239,7 +241,9 @@ KNOWN_EVENT_SORT_FIELDS = frozenset({
 # event uses yet is the thing worth finding.
 KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "events"})
 
-KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "start", "end", "duration", "events"})
+# "date" is the day alone, so a chain can group by day and order within it by
+# something other than start time.
+KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "date", "start", "end", "duration", "events"})
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +453,8 @@ def is_known_column(surface: str, key: str) -> bool:
     falling through to another surface's set.
 
     On the roster a key is either one of the fixed ids or an entity the panel
-    already namespaces — event_preference is excluded deliberately: a ranked
-    list of events has no sensible single-cell rendering.
+    already namespaces. An event preference column renders its ranked option
+    labels as one line of text, the full list on hover.
     """
     surface = surface_base(surface)
     if surface == EVENTS_TABLE:
@@ -469,7 +473,7 @@ def is_known_column(surface: str, key: str) -> bool:
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
         return True
     return key.startswith((
-        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, FORM_FIELD_NAMESPACE,
+        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, EVENT_PREF_NAMESPACE, FORM_FIELD_NAMESPACE,
     ))
 
 
@@ -535,7 +539,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     something from. Custom fields reuse get_custom_form_answers' reserved-key
     exclusion, but tournament-wide rather than per-user."""
     from sqlalchemy import distinct
-    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+    from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN, TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.core.tournament import tournament_local_date
     from app.models.models import (
         Form, FormField, Tournament, TournamentMembership, TournamentMembershipEventPreference,
@@ -557,12 +561,34 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # The toggle hides a whole category on one track, so that pair is what it
     # must be labelled with — labelling it with one member's selection
     # ("Sofritas (Vegan)") named the wrong thing entirely.
-    lunch_pairs = (
+    #
+    # Asked as well as answered: a published question offers its column before
+    # anyone has replied, and a category only old submissions hold keeps its
+    # column so those answers stay visible.
+    answered_lunch_pairs = (
         db.query(distinct(TournamentMembershipLunch.track_id), TournamentMembershipLunch.category)
         .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
+    asked_lunch_keys = (
+        db.query(FormField.field_key)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            Form.status == "published",
+            FormField.is_archived.is_(False),
+            # A coarse prefilter ("_" is a wildcard); the regex below decides.
+            FormField.field_key.like("lunch_%"),
+        )
+        .all()
+    )
+    lunch_pairs = set(answered_lunch_pairs) | {
+        (int(match.group(1)), match.group(2))
+        for (field_key,) in asked_lunch_keys
+        if (match := LUNCH_FIELD_KEY_PATTERN.match(field_key))
+    }
     lunch_items = [
         {
             "key": lunch_key(track_id, category),
@@ -630,7 +656,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     column_items = (
         [{"key": key, "label": label} for key, label in FIXED_COLUMNS]
         + [{"key": item["key"], "label": item["label"]}
-           for item in track_items + availability_items + lunch_items + custom_field_items]
+           for item in track_items + availability_items + lunch_items + event_pref_items + custom_field_items]
     )
 
     # A section's own toggleable pieces are its static fields plus whatever
@@ -795,6 +821,8 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
     COLUMN_ONBOARDING: ("onboarding",),
+    # On the user profile, like shirt size — not on the lunch rows.
+    COLUMN_DIETARY: ("profile",),
 }
 
 _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
