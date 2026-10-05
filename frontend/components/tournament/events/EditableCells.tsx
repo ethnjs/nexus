@@ -215,13 +215,7 @@ export function SelectCell({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (lockReason) {
-    // Sans, like the trigger Button sets at rest — a Badge inherits its font,
-    // and the body's mono drew it visibly larger.
-    return (
-      <LockedCell title={lockReason}>
-        <span style={{ display: "flex", fontFamily: "var(--font-sans)" }}>{display}</span>
-      </LockedCell>
-    );
+    return <LockedCell title={lockReason}>{display}</LockedCell>;
   }
   // Focus was on a button inside the popover, which is about to unmount.
   const closeAndRefocus = (close: () => void) => {
