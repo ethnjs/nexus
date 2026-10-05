@@ -4,13 +4,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
-  DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
+  DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface, FilterOptionGroup,
 } from "@/lib/api";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import {
-  DEFAULT_MEMBER_SORT, MEMBER_SORT_OPTIONS, MEMBER_SORT_TIEBREAK, isMemberSortField, legacyMemberSortRules,
-  memberSortTiebreak, memberSortValue, type MemberSortField,
+  DEFAULT_MEMBER_SORT, MEMBER_SORT_TIEBREAK, isMemberSortField, legacyMemberSortRules, memberSortDataKey,
+  memberSortOptions, memberSortTiebreak, memberSortValue, type MemberSortField,
 } from "@/lib/memberSort";
 import {
   cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
@@ -279,6 +279,9 @@ export default function MembersPage() {
   // by last name is still sorting by last name tomorrow, on any device.
   const [sortRules, setSortRules] = useState<SortRule<MemberSortField>[]>(DEFAULT_MEMBER_SORT);
   const [showSortModal, setShowSortModal] = useState(false);
+  // Each track's preference events, for the per-event sorts. From the filter
+  // options, fetched the first time the Sort modal opens — nothing else here needs them.
+  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null);
   // Labelled buttons until the toolbar runs out of room, then icons.
   const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(900);
 
@@ -388,10 +391,33 @@ export default function MembersPage() {
   }, [persistView]);
 
   // Clears the legacy `sort` as it writes the chain, so the two never disagree.
+  // The roster only carries the data its saved columns and sorts need, so a
+  // sort by something the rows lack (onboarding with no Onboarding column)
+  // reloads them once the server has the new sort to read.
   const applySort = useCallback((next: SortRule<MemberSortField>[]) => {
     setSortRules(next);
-    persistView({ sorts: sortRulesToStored(next), sort: null });
-  }, [persistView]);
+    const sample = members?.[0];
+    const missing = !!sample && next.some((rule) => {
+      const key = memberSortDataKey(rule.field);
+      return key !== null && sample[key] === undefined;
+    });
+    persistView({ sorts: sortRulesToStored(next), sort: null })
+      .then((saved) => { if (saved && missing) setRefreshKey((k) => k + 1); });
+  }, [persistView, members]);
+
+  const openSortModal = useCallback(() => {
+    setShowSortModal(true);
+    if (eventPrefGroups === null) {
+      membersApi.filterOptions(tournamentId)
+        .then((options) => setEventPrefGroups(options.event_preferences))
+        .catch(() => setEventPrefGroups([]));
+    }
+  }, [eventPrefGroups, tournamentId]);
+
+  const sortFields = useMemo(
+    () => memberSortOptions(columnCatalog, eventPrefGroups ?? []),
+    [columnCatalog, eventPrefGroups],
+  );
 
   const tableColumns = useMemo(() => {
     const labels = new Map(columnCatalog.map((item) => [item.key, item.label]));
@@ -680,7 +706,7 @@ export default function MembersPage() {
             <SortButton
               iconOnly={compactToolbar}
               active={!sameSortRules(sortRules, DEFAULT_MEMBER_SORT)}
-              onOpen={() => setShowSortModal(true)}
+              onOpen={openSortModal}
               onReset={() => applySort(DEFAULT_MEMBER_SORT)}
             />
             {canManageMembers && (
@@ -795,7 +821,7 @@ export default function MembersPage() {
       {showSortModal && (
         <SortModal
           title="Sort members"
-          fields={MEMBER_SORT_OPTIONS}
+          fields={sortFields}
           rules={sortRules}
           defaults={DEFAULT_MEMBER_SORT}
           tiebreakLabel={MEMBER_SORT_TIEBREAK}

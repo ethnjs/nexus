@@ -219,7 +219,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
-      key, label: `${label} status`, width: WIDTHS.track,
+      key, label: `${label} status`, width: WIDTHS.track, sortField: key,
       render: (m) => {
         const status = (m.track_statuses ?? []).find((t) => t.track_id === trackId);
         if (!status) return <Dash />;
@@ -230,7 +230,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
     const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
-      key, label: `${label} availability`, width: WIDTHS.availabilityDay,
+      key, label: `${label} availability`, width: WIDTHS.availabilityDay, sortField: key,
       render: (m) => {
         // Keyed by track, not by day: two sites running the same Saturday are
         // separate tracks, and pooling their shifts into one column would
@@ -250,7 +250,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(LUNCH_PREFIX)) {
     const [trackId, category] = splitLunchKey(key);
     return {
-      key, label, width: WIDTHS.lunchCategory,
+      key, label, width: WIDTHS.lunchCategory, sortField: key,
       render: (m) => {
         // Both halves: Day 1's protein and Day 2's protein are different
         // questions, and the category alone would merge them.

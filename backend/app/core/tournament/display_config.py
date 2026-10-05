@@ -5,6 +5,7 @@ surface's `hidden` list each identify one hideable item, e.g. "track:3".
 Kept here (not inline in the route) so 3.3's apply-the-config step reuses the
 same known sets rather than redefining them."""
 
+import re
 from datetime import datetime
 
 from app.core.tournament import tournament_local_date
@@ -111,7 +112,14 @@ KNOWN_FILTER_KEYS = frozenset({
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
 # by anything can't be written in the first place.
-KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age"})
+KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age", "onboarding"})
+# Plus one sort per track (or per track's event / lunch question), keyed in
+# the same namespaces as the columns so fields_for_surface maps them to data
+# groups the same way. event_pref takes the event too: a sort is by the rank
+# given one event, where a column shows the whole list.
+MEMBER_SORT_FIELD_PATTERN = re.compile(
+    r"^(track:\d+|availability_track:\d+|event_pref:\d+:\d+|lunch:\d+:[a-z0-9_]+)$"
+)
 KNOWN_SORT_DIRECTIONS = frozenset({"asc", "desc"})
 
 # ---------------------------------------------------------------------------
@@ -498,8 +506,17 @@ def known_filter_keys(surface: str) -> frozenset[str]:
     return frozenset()
 
 
+def is_known_sort_field(surface: str, field: str) -> bool:
+    """Whether `surface` may store a sort by `field`: its fixed set, plus the
+    roster's per-track fields (see MEMBER_SORT_FIELD_PATTERN). A deleted
+    track's id isn't checked, the same leniency its column key gets."""
+    if field in known_sort_fields(surface):
+        return True
+    return surface_base(surface) == MEMBERS_TABLE and bool(MEMBER_SORT_FIELD_PATTERN.match(field))
+
+
 def known_sort_fields(surface: str) -> frozenset[str]:
-    """The sort fields `surface` may store — same reasoning as
+    """The fixed sort fields `surface` may store — same reasoning as
     known_filter_keys."""
     surface = surface_base(surface)
     if surface == MEMBERS_TABLE:
@@ -888,7 +905,10 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
         # not columns a TD can turn off (see FIXED_COLUMNS), so the table
         # always needs roles whatever the saved config says.
         groups = {"roles"}
-        for column in columns:
+        # Sorting is client-side, so a sort needs its data on the rows as
+        # much as a column does — and sort keys share the column namespaces.
+        sorts = [rule.get("field") for rule in (saved.get("sorts") or []) if isinstance(rule, dict)]
+        for column in [*columns, *(field for field in sorts if isinstance(field, str))]:
             groups.update(_COLUMN_GROUPS.get(column, ()))
             for namespace, group in _NAMESPACE_GROUPS:
                 if column.startswith(namespace):

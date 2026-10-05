@@ -1138,3 +1138,44 @@ def test_shifts_table_accepts_date_sort(client, td_user, td_tournament):
         json={"shifts_table": {"hidden": [], "sorts": [{"field": "date", "direction": "asc"}]}},
     )
     assert response.status_code == 200, response.json()
+
+
+def test_members_table_accepts_per_track_sorts(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    sorts = [
+        {"field": field, "direction": "asc"}
+        for field in ("onboarding", "track:3", "availability_track:3", "event_pref:3:47", "lunch:3:protein")
+    ]
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"hidden": [], "sorts": sorts}},
+    )
+    assert response.status_code == 200, response.json()
+
+
+def test_members_table_rejects_malformed_per_track_sorts(client, td_user, td_tournament):
+    """A preference sort is by one event's rank, so the bare track (the
+    column key) isn't a sort; and per-track keys are the roster's alone."""
+    login(client, "td@test.com", "tdpass")
+    for surface, field in (
+        ("members_table", "event_pref:3"),
+        ("members_table", "lunch:3:Protein"),
+        ("members_table", "track:abc"),
+        ("events_table", "track:3"),
+    ):
+        response = client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={surface: {"hidden": [], "sorts": [{"field": field, "direction": "asc"}]}},
+        )
+        assert response.status_code == 422, (surface, field)
+
+
+def test_saved_sort_loads_its_data_onto_the_roster(client, td_user, td_tournament, db):
+    """Sorting is client-side, so a sort by onboarding needs the onboarding
+    group on the rows even with no Onboarding column."""
+    set_display_config(db, td_tournament, td_user, {
+        "members_table": {"hidden": [], "columns": ["email"], "sorts": [{"field": "onboarding", "direction": "asc"}]},
+    })
+    login(client, "td@test.com", "tdpass")
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
+    assert rows and all("onboarding" in row for row in rows)
