@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   tournamentShiftsApi, tournamentEventsApi, tournamentTracksApi, displayConfigApi, ApiError,
-  DisplayConfig, TournamentEvent, TournamentShift, TournamentTrack,
+  DisplayConfig, TournamentEvent, TournamentShift, TournamentShiftInput, TournamentTrack,
 } from "@/lib/api";
 import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
@@ -18,7 +18,9 @@ import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
-import { formatDayLabel, formatSpan, formatTimeOfDay, toDateInput, toTimeInput } from "@/lib/timeFormat";
+import {
+  formatDayLabel, formatSpan, formatTimeOfDay, fromDayAndTime, parseLooseTime, toDateInput, toTimeInput,
+} from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
@@ -42,6 +44,9 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournament/events/MassShiftEditor";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { EditableText } from "@/components/ui/EditableText";
+import { CellGuard, LockedCell, SelectCell } from "@/components/tournament/events/EditableCells";
+import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { useToast } from "@/lib/useToast";
 import { IconPlus, IconCalendar, IconTrash, IconLock, IconCopy, IconSearch } from "@/components/ui/Icons";
@@ -258,6 +263,20 @@ export default function ShiftsPage() {
     // Detaching a shift from the last event on a pending track can purge it.
     loadTracks();
   }, [loadTracks]);
+
+  // Inline edits save one field at a time and swap the server's copy in, like
+  // the events table — no optimistic write, so a rejected change never lands.
+  const updateShift = useCallback(async (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => {
+    const saved = await tournamentShiftsApi.update(tournamentId, shift.id, patch);
+    handleSaved([saved]);
+  }, [tournamentId, handleSaved]);
+
+  const editContext = useMemo<ShiftEditContext | undefined>(() => (canManageEvents ? {
+    // Select mode's click toggles the box, so the cells step aside.
+    lockReason: archivedReason ?? (selectMode ? "Leave Select mode to edit in the table" : undefined),
+    update: updateShift,
+    tracks,
+  } : undefined), [canManageEvents, archivedReason, selectMode, updateShift, tracks]);
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -591,6 +610,7 @@ export default function ShiftsPage() {
               selected={selectedIds.has(shift.id)}
               selectionLocked={panelDirty}
               onToggleSelect={() => toggleSelected(shift.id)}
+              edit={editContext}
             />
           ))}
           </div>
@@ -654,12 +674,47 @@ export default function ShiftsPage() {
   );
 }
 
-// Read-only: every edit, including delete, happens in the panel. A row that
-// both previews and edits meant two ways to change the same thing, and only
-// one of them could show a shift's events.
+/** What an editable shift cell needs from the page. Absent = the table is read-only. */
+interface ShiftEditContext {
+  /** Page-wide reason the cells are locked; the row adds "open in the panel" itself. */
+  lockReason?: string;
+  /** Saves one change. Rejects with the server's message, which the cell shows. */
+  update: (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => Promise<void>;
+  /** Every competition day, pending ones included — the row narrows to what it can move to. */
+  tracks: TournamentTrack[];
+}
+
+const LABEL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 } as const;
+const DATE_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "nowrap" } as const;
+const TIME_TEXT = { fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 400, color: "var(--color-text-secondary)" } as const;
+const TIME_HINT = "try 930, 9:30a or 14:15";
+
+/** Both ends moved by whole days so `start` lands on `day`, each keeping its
+ *  own clock time — per end, not by milliseconds, so a DST change between
+ *  the two days can't shift the times by an hour. */
+function moveToDay(shift: TournamentShift, day: string): { start: string; end: string } {
+  const offset = Math.round((Date.parse(day) - Date.parse(toDateInput(shift.start))) / 86400000);
+  const move = (iso: string) => {
+    const d = new Date(`${toDateInput(iso)}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + offset);
+    return fromDayAndTime(d.toISOString().slice(0, 10), toTimeInput(iso))!;
+  };
+  return { start: move(shift.start), end: move(shift.end) };
+}
+
+/** Same rule as ShiftPanel: keep the date if the new track has it, else its first day. */
+function moveToTrack(shift: TournamentShift, track: TournamentTrack): Partial<TournamentShiftInput> {
+  const days = trackDays(track);
+  const day = toDateInput(shift.start);
+  if (days.length === 0 || days.includes(day)) return { track_id: track.id };
+  return { track_id: track.id, ...moveToDay(shift, days[0]) };
+}
+
+// Label, track, date and times edit in place; everything else (events,
+// delete confirm) stays in the panel, which a click outside those cells opens.
 function ShiftRow({
   shift, track, focused, canEdit, deleteLockedReason, onClick, onDelete,
-  selectMode, selected, selectionLocked, onToggleSelect,
+  selectMode, selected, selectionLocked, onToggleSelect, edit,
 }: {
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
@@ -674,11 +729,72 @@ function ShiftRow({
   /** Open panel has unsaved changes — focus and selection are frozen until it resolves. */
   selectionLocked: boolean;
   onToggleSelect: () => void;
+  /** Given, the cells edit in place. */
+  edit?: ShiftEditContext;
 }) {
   // In select mode a click toggles the box; otherwise it opens the panel.
   const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onClick;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
+  // The panel's draft and a cell save would overwrite each other.
+  const lockReason = edit?.lockReason ?? (focused ? "Being edited in the panel" : undefined);
+
+  // Locked keeps the same EditableText, just inert, so text doesn't shift
+  // when the row opens in the panel.
+  const guard = (content: ReactNode) => (lockReason
+    ? <LockedCell align="start">{content}</LockedCell>
+    : <CellGuard align="start">{content}</CellGuard>);
+
+  const labelCell = edit
+    ? guard(
+      <EditableText
+        value={shift.label}
+        onSave={(label) => edit.update(shift, { label })}
+        locked={!!lockReason}
+        textStyle={LABEL_TEXT}
+        title={lockReason ?? "Click to rename"}
+      />,
+    )
+    : shift.label;
+
+  const badge = (
+    <Badge
+      variant={track?.is_archived ? "warning" : "default"}
+      title={track?.is_archived ? PENDING_TRACK_NOTE : undefined}
+    >
+      {track?.name ?? "—"}
+    </Badge>
+  );
+  // A pending-delete track can't take a shift (409), so it's only listed as
+  // the one this shift is already on.
+  const trackOptions = edit?.tracks
+    .filter((t) => !t.is_archived || t.id === shift.track_id)
+    .map((t) => ({ value: String(t.id), label: t.name })) ?? [];
+
+  const days = trackDays(track);
+  const dateText = <span style={DATE_TEXT}>{formatDayLabel(toDateInput(shift.start))}</span>;
+
+  const timeCell = (which: "start" | "end") => {
+    const iso = shift[which];
+    const hhmm = toTimeInput(iso);
+    const display = formatTimeOfDay(hhmm);
+    if (!edit) return <span style={TIME_TEXT}>{display}</span>;
+    return guard(
+      <EditableText
+        value={display}
+        locked={!!lockReason}
+        textStyle={TIME_TEXT}
+        title={lockReason ?? `Click to edit — ${TIME_HINT}`}
+        onSave={async (typed) => {
+          const parsed = parseLooseTime(typed, hhmm);
+          if (!parsed) throw new Error(`Couldn't read that time — ${TIME_HINT}`);
+          if (parsed === hhmm) return;
+          // The day stays the shift's own; Date is its own cell.
+          await edit.update(shift, { [which]: fromDayAndTime(toDateInput(iso), parsed)! });
+        }}
+      />,
+    );
+  };
 
   return (
     <div
@@ -697,25 +813,38 @@ function ShiftRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap" }}>{shift.label}</span>
+      <span style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>{labelCell}</span>
       <span style={{ display: "flex", minWidth: 0 }}>
-        <Badge
-          variant={track?.is_archived ? "warning" : "default"}
-          title={track?.is_archived ? PENDING_TRACK_NOTE : undefined}
-        >
-          {track?.name ?? "—"}
-        </Badge>
+        {edit && track ? (
+          <SelectCell
+            display={badge}
+            value={String(shift.track_id)}
+            options={trackOptions}
+            lockReason={lockReason}
+            align="start"
+            onPick={async (id) => {
+              const next = edit.tracks.find((t) => t.id === Number(id));
+              if (next) await edit.update(shift, moveToTrack(shift, next));
+            }}
+          />
+        ) : badge}
       </span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
-        {formatDayLabel(toDateInput(shift.start))}
+      {/* Only a multi-day track has another day to move to. */}
+      <span style={{ display: "flex", minWidth: 0 }}>
+        {edit && days.length > 1 ? (
+          <SelectCell
+            display={dateText}
+            value={toDateInput(shift.start)}
+            options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+            lockReason={lockReason}
+            align="start"
+            onPick={(day) => edit.update(shift, moveToDay(shift, day))}
+          />
+        ) : dateText}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatTimeOfDay(toTimeInput(shift.start))}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatTimeOfDay(toTimeInput(shift.end))}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+      <span style={{ display: "flex", minWidth: 0 }}>{timeCell("start")}</span>
+      <span style={{ display: "flex", minWidth: 0 }}>{timeCell("end")}</span>
+      <span style={TIME_TEXT}>
         {formatSpan(shift.start, shift.end)}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>

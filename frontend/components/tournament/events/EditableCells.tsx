@@ -194,7 +194,7 @@ function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
  * display with the reason on hover.
  */
 export function SelectCell({
-  display, value, options, lockReason, onPick, divisions = false,
+  display, value, options, lockReason, onPick, divisions = false, align = "center",
 }: {
   display: ReactNode;
   /** "" stands for "none" (e.g. no division) — ButtonGroup values are strings. */
@@ -204,6 +204,7 @@ export function SelectCell({
   onPick: (value: string) => Promise<void>;
   /** Draw the options as a DivisionButtonGroup (A/B/C in their colours). */
   divisions?: boolean;
+  align?: "start" | "center";
 }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
@@ -218,7 +219,7 @@ export function SelectCell({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (lockReason) {
-    return <LockedCell title={lockReason}>{display}</LockedCell>;
+    return <LockedCell title={lockReason} align={align}>{display}</LockedCell>;
   }
   // Focus was on a button inside the popover, which is about to unmount.
   const closeAndRefocus = (close: () => void) => {
@@ -226,7 +227,7 @@ export function SelectCell({
     triggerRef.current?.focus();
   };
   return (
-    <CellGuard editing={open}>
+    <CellGuard editing={open} align={align}>
       <FormPopover
         trigger={
           // A Button, so Tab reaches it and Enter/Space open the popover.

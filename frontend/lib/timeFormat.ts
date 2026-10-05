@@ -59,6 +59,37 @@ export function formatTimeOfDay(hhmm: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`
 }
 
+// Loosely typed time → "HH:mm", or null if it can't be read. Takes "930",
+// "9:30a", "14:15", "2pm". An hour of 1–11 with no am/pm keeps `current`'s
+// half of the day ("230" on a 2:00 PM cell is 2:30 PM); a bare 12 is noon.
+export function parseLooseTime(text: string, current: string): string | null {
+  const t = text.trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "")
+  const m = /^(\d{1,2}):(\d{2})([ap]m?)?$/.exec(t) ?? /^(\d{1,4})([ap]m?)?$/.exec(t)
+  if (!m) return null
+  let hour: number
+  let minute: number
+  let suffix: string | undefined
+  if (m.length === 4) {
+    hour = Number(m[1]); minute = Number(m[2]); suffix = m[3]
+  } else {
+    // Bare digits: the last two are minutes once there are more than two.
+    const digits = m[1]
+    hour = Number(digits.length > 2 ? digits.slice(0, -2) : digits)
+    minute = digits.length > 2 ? Number(digits.slice(-2)) : 0
+    suffix = m[2]
+  }
+  if (minute > 59) return null
+  if (suffix) {
+    if (hour < 1 || hour > 12) return null
+    hour = suffix.startsWith("p") ? (hour % 12) + 12 : hour % 12
+  } else {
+    if (hour > 23) return null
+    const currentIsPm = Number(current.split(":")[0]) >= 12
+    if (hour >= 1 && hour <= 11 && currentIsPm) hour += 12
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+}
+
 // "Wed, Mar 14" — weekday alongside the date so same-named shifts/events on
 // different days of a multi-day tournament aren't ambiguous in a picker.
 export function formatDayLabel(dayISO: string): string {
