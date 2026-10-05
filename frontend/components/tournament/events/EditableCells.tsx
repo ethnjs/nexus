@@ -106,6 +106,9 @@ function useCellEditor() {
   const wrapRef = useRef<HTMLSpanElement>(null);
   const restRef = useRef<HTMLElement | null>(null);
   const refocus = useRef(false);
+  // Stable: a fresh ref callback per render makes React detach and re-attach
+  // it on every render of every cell.
+  const setRestRef = useCallback((el: HTMLElement | null) => { restRef.current = el; }, []);
 
   useEffect(() => {
     if (!editing) {
@@ -140,7 +143,7 @@ function useCellEditor() {
     close: () => setEditing(false),
     wrapRef,
     /** For the resting control's `ref`. */
-    restRef: (el: HTMLElement | null) => { restRef.current = el; },
+    restRef: setRestRef,
     onKeyDown: (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
