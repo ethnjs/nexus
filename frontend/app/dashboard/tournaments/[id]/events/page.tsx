@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
-  buildingsApi, rolesApi, TournamentBuilding, Role,
+  buildingsApi, rolesApi, assignmentsApi, TournamentBuilding, Role, Assignment,
   displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
   TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
@@ -13,6 +13,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
+import { assignmentsByEvent } from "@/lib/assignments/flags";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
@@ -39,7 +40,7 @@ import {
 import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
-  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns,
+  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns, trackFamilyOf,
 } from "@/components/tournament/events/eventColumns";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
@@ -54,6 +55,9 @@ import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
 const SELECT_COLUMN_WIDTH = "28px";
+
+// Stable empty list, so an event with no assignments doesn't get a fresh array per cell.
+const NO_ASSIGNMENTS: readonly Assignment[] = [];
 
 // Name and Actions bracket the configured columns: the row's identity and
 // its controls, which is why neither is a column a TD can turn off.
@@ -128,6 +132,8 @@ export default function EventsPage() {
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Null until a staffing column asks for them (see the fetch below).
+  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   // The panel's location and staffing editors pick from these: a building is
   // a catalog row now, and every staffing line names a role.
   const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
@@ -339,16 +345,32 @@ export default function EventsPage() {
     persistView({ sort: { field, direction } });
   }, [persistView]);
 
+  // Grouped once per fetch, not per cell — every staffing cell looks its
+  // event up here.
+  const byEvent = useMemo(() => assignmentsByEvent(assignments ?? []), [assignments]);
+
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
     // the defaults, which is why null and [] are kept apart.
-    () => resolveEventColumns(
-      columnKeys ?? DEFAULT_EVENT_COLUMNS,
-      // Live competition days only — the only tracks a shift can sit on.
-      tracks.filter((t) => t.is_primary && !t.is_archived),
-    ),
-    [columnKeys, tracks],
+    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS, {
+      // Live tracks only; each family narrows further (see familyTracks).
+      tracks: tracks.filter((t) => !t.is_archived),
+      assignmentsFor: (eventId) => byEvent.get(eventId) ?? NO_ASSIGNMENTS,
+    }),
+    [columnKeys, tracks, byEvent],
   );
+  const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing");
+
+  // Only fetched while a staffing column is on screen — it's the one column
+  // that needs them, and a whole tournament's assignments isn't free.
+  useEffect(() => {
+    if (!canManageEvents || !showsStaffing) return;
+    let current = true;
+    assignmentsApi.list(tournamentId)
+      .then((next) => { if (current) setAssignments(next); })
+      .catch(() => { if (current) setAssignments([]); });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents, showsStaffing, refreshKey]);
 
   const divisionOptions = useMemo(() => {
     const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));

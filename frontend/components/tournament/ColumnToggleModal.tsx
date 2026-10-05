@@ -3,6 +3,9 @@
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { IconPlus } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { DisplayConfigCatalog, DisplayConfigCatalogItem } from "@/lib/api";
 import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
@@ -10,6 +13,10 @@ import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
 export interface ColumnGroup {
   title: string;
   items: DisplayConfigCatalogItem[];
+  /** "chips" shows the items as a chip row with a + checklist instead of a
+   *  toggle each — for one field offered per track, where a dozen tracks is
+   *  a dozen near-identical toggles. No chips means the field is off. */
+  layout?: "toggles" | "chips";
 }
 
 interface ColumnToggleModalProps {
@@ -90,21 +97,49 @@ export function ColumnToggleModal({
               }}>
                 {group.title}
               </span>
-              {/* Two columns: a tournament with a dozen tracks and a dozen
-                  custom fields is a long scroll in a single list. */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
-                {group.items.map((item) => (
-                  <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                    <span style={{
-                      fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }} title={item.label}>
-                      {item.label}
-                    </span>
-                    <Switch checked={active.has(item.key)} onChange={() => toggle(item.key)} />
-                  </div>
-                ))}
-              </div>
+              {group.layout === "chips" ? (
+                <ChipInput
+                  value={group.items.filter((item) => active.has(item.key)).map((item) => item.label)}
+                  onChange={(labels) => {
+                    const removed = group.items.find((item) => active.has(item.key) && !labels.includes(item.label));
+                    if (removed) toggle(removed.key);
+                  }}
+                  variant="transparent"
+                  size="sm"
+                  disableInput
+                  fullWidth
+                  addButton={
+                    <ChecklistPopover
+                      trigger={
+                        <Button type="button" variant="secondary" size="sm" iconOnly title={`Edit ${group.title.toLowerCase()} columns`} style={{ padding: 0, flexShrink: 0 }}>
+                          <IconPlus size={13} />
+                        </Button>
+                      }
+                      items={group.items}
+                      getKey={(item) => item.key}
+                      renderLabel={(item) => item.label}
+                      isSelected={(item) => active.has(item.key)}
+                      onToggle={(item) => toggle(item.key)}
+                    />
+                  }
+                />
+              ) : (
+                /* Two columns: a tournament with a dozen tracks and a dozen
+                   custom fields is a long scroll in a single list. */
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
+                  {group.items.map((item) => (
+                    <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                      <span style={{
+                        fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }} title={item.label}>
+                        {item.label}
+                      </span>
+                      <Switch checked={active.has(item.key)} onChange={() => toggle(item.key)} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

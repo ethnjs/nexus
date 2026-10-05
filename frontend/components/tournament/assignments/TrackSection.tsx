@@ -4,13 +4,13 @@ import type { ReactNode } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
+import { StaffingNeedLine } from '@/components/tournament/assignments/StaffingNeedLine'
 import { TrackShiftGrid } from '@/components/tournament/assignments/TrackShiftGrid'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconBuilding, IconClock, IconLocation } from '@/components/ui/Icons'
 import { PillMenu } from '@/components/ui/PillMenu'
-import { ProgressRing } from '@/components/ui/ProgressRing'
 import type {
-  Assignment, EventStaffingNeedRead, Role, TournamentEvent, TournamentShift, TournamentTrack,
+  Assignment, Role, TournamentEvent, TournamentShift, TournamentTrack,
 } from '@/lib/api'
 import type { Flag } from '@/lib/assignments/flags'
 import type { Lane } from '@/lib/assignments/lanes'
@@ -31,31 +31,6 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
       {icon}
       {children}
     </span>
-  )
-}
-
-/** One role's progress toward one track's need for it. Full role name and a
- *  plain `#/#`, not an abbreviation — the crowding that motivated an
- *  abbreviated line only happens once several tracks' roles share one line,
- *  and this always renders inside its own track's block. Same three-state
- *  colour as the chip warning border: success once filled, warning while
- *  short, muted at zero. */
-function StaffingNeedLine({ need, filled }: { need: EventStaffingNeedRead; filled: number }) {
-  const color = filled >= need.count
-    ? 'var(--color-success)'
-    : filled > 0
-      ? 'var(--color-warning)'
-      : 'var(--color-border-strong)'
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      <ProgressRing completed={filled} total={need.count} size={13} strokeWidth={16} color={color} />
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-        {need.role_label}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-        {filled}/{need.count}
-      </span>
-    </div>
   )
 }
 

@@ -155,36 +155,46 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # throughout: an event has no email and a member has no division, so nothing
 # is shared between the two surfaces except the storage shape.
 #
-# Every column is a plain scalar on the event, so unlike the roster there are
-# no per-entity columns here: a tournament adding a track adds a track *chip*
-# to the existing Tracks cell, not a column.
+# Most columns are scalars on the event. The exceptions are the per-track
+# families below: shifts, time, location and staffing are all answers a track
+# gives, and a row is per event, so they get one column per track.
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
 EVENT_COLUMN_CATEGORY = "category"
 EVENT_COLUMN_TRACKS = "tracks"
+EVENT_COLUMN_TIME = "time"
 EVENT_COLUMN_SHIFTS = "shifts"
-# No building/room/floor/volunteers_needed: location and staffing are per
-# track now (#81), and a table row is per event — there is no single value to
-# print. They live on the event panel and the buildings page instead.
+EVENT_COLUMN_LOCATION = "location"
+EVENT_COLUMN_STAFFING = "staffing"
 
-# One column per competition track, listing that track's shift labels:
-# "shifts:3". Per track rather than one Shifts cell, because a shift belongs
-# to a track and labels are only unique within one — a single cell mixing
-# Day 1's Morning with Day 2's would need a badge on every chip.
+# One column per track, keyed "<family>:<track_id>" ("shifts:3"). Per track
+# rather than one cell, because each answer belongs to a track — a single cell
+# mixing Day 1's building with Day 2's would need a label on every value.
 #
-# The bare EVENT_COLUMN_SHIFTS key stays valid and means *every* competition
-# track's column. That keeps saved configs and the defaults working without a
-# migration, and it is also the only spelling under which a track added later
-# appears on its own — an explicit list only names the tracks that existed.
-EVENT_SHIFTS_NAMESPACE = "shifts:"
-
+# The bare family key stays valid and means *every* track's column. That keeps
+# saved configs and the defaults working without a migration, and it is the
+# only spelling under which a track added later appears on its own — an
+# explicit list only names the tracks that existed.
+#
+# Value: whether the family is for competition (primary) tracks only. Shifts,
+# and so time, only exist on a dated track, and a cosmetic track has no place;
+# staffing needs can be declared on any track.
+EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
+    EVENT_COLUMN_TIME: True,
+    EVENT_COLUMN_SHIFTS: True,
+    EVENT_COLUMN_LOCATION: True,
+    EVENT_COLUMN_STAFFING: False,
+}
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
     (EVENT_COLUMN_TYPE, "Type"),
     (EVENT_COLUMN_CATEGORY, "Category"),
     (EVENT_COLUMN_TRACKS, "Tracks"),
+    (EVENT_COLUMN_TIME, "Time"),
     (EVENT_COLUMN_SHIFTS, "Shifts"),
+    (EVENT_COLUMN_LOCATION, "Location"),
+    (EVENT_COLUMN_STAFFING, "Staffing"),
 )
 
 # Today's fixed table, so the feature landing doesn't rearrange anyone's
@@ -424,10 +434,11 @@ def is_known_column(surface: str, key: str) -> bool:
     """
     surface = surface_base(surface)
     if surface == EVENTS_TABLE:
-        if key.startswith(EVENT_SHIFTS_NAMESPACE):
+        family, sep, track_id = key.partition(":")
+        if sep:
             # Not checked against the catalog — a deleted track's column is
             # inert, the same leniency every other saved track id gets.
-            return key[len(EVENT_SHIFTS_NAMESPACE):].isdigit()
+            return family in EVENT_TRACK_COLUMN_FAMILIES and track_id.isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
@@ -633,18 +644,19 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "event_preferences": event_pref_items,
         "custom_fields": custom_field_items,
         "columns": column_items,
-        # Static, unlike every list above: an events column is a scalar on
-        # the event, so nothing here depends on what this tournament holds.
-        # Still served from the catalog rather than hardcoded in the client,
-        # so the labels have one source.
-        # The per-track shift columns stand in for the bare "shifts" key,
-        # in its place — the alias is for saved state, not something to offer.
+        # Served from the catalog rather than hardcoded in the client, so the
+        # labels have one source.
+        # Each per-track family's columns stand in for its bare key, in its
+        # place — the alias is for saved state, not something to offer.
         "event_columns": [
             item
             for key, label in EVENT_COLUMNS
             for item in (
-                [{"key": f"{EVENT_SHIFTS_NAMESPACE}{t.id}", "label": t.name} for t in tracks if t.is_primary]
-                if key == EVENT_COLUMN_SHIFTS else [{"key": key, "label": label}]
+                [
+                    {"key": f"{key}:{t.id}", "label": t.name}
+                    for t in tracks if t.is_primary or not EVENT_TRACK_COLUMN_FAMILIES[key]
+                ]
+                if key in EVENT_TRACK_COLUMN_FAMILIES else [{"key": key, "label": label}]
             )
         ],
         "sections": section_items,

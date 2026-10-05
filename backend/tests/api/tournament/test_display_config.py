@@ -863,6 +863,27 @@ def test_put_accepts_per_track_shift_columns(client, td_user, td_tournament):
     assert response.status_code == 200
 
 
+def test_put_accepts_every_per_track_column_family(client, td_user, td_tournament):
+    """Time, location and staffing are per track the same way shifts are."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "columns": [
+            "time:7", "location:7", "staffing:7", "time", "location", "staffing",
+        ]}},
+    )
+    assert response.status_code == 200
+
+
+def test_put_rejects_an_unknown_per_track_family(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "columns": ["division:7"]}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_rejects_a_non_numeric_shift_column(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
@@ -959,14 +980,18 @@ def test_put_keeps_unresolvable_events_filter_values(client, td_user, td_tournam
 
 
 def test_catalog_serves_event_columns(client, td_user, td_tournament):
-    """The fixed columns, with one shift column per competition track in the
-    place the bare "shifts" key used to hold."""
+    """The fixed columns, with each per-track family expanded in its bare
+    key's place: competition tracks only, except staffing, which takes all."""
     login(client, "td@test.com", "tdpass")
     body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
-    primary = [t for t in td_tournament.tracks if t.is_primary and not t.is_archived]
+    live = sorted((t for t in td_tournament.tracks if not t.is_archived), key=lambda t: t.name)
+    primary = [t for t in live if t.is_primary]
     assert [c["key"] for c in body["event_columns"]] == [
         "division", "type", "category", "tracks",
-        *[f"shifts:{t.id}" for t in sorted(primary, key=lambda t: t.name)],
+        *[f"time:{t.id}" for t in primary],
+        *[f"shifts:{t.id}" for t in primary],
+        *[f"location:{t.id}" for t in primary],
+        *[f"staffing:{t.id}" for t in live],
     ]
     # Separate universes: no events column leaks into the roster's list.
     assert "division" not in [c["key"] for c in body["columns"]]
