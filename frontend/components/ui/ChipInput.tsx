@@ -207,6 +207,9 @@ export function ChipInput({
           return (
             <span
               key={chip}
+              // Lets a click-through container (a table cell) tell a chip from
+              // the bare field around it.
+              data-chip
               style={{
                 display: "inline-flex", alignItems: "center", gap: "5px",
                 padding: compact

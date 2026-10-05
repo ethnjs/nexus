@@ -196,9 +196,15 @@ const MemberRow = memo(function MemberRow({
           by data-roles-hidden on the table, not from here, so restoring them
           on close doesn't re-render every row. readOnly while collapsed keeps
           the Popover (and its scroll/resize listeners) out of the tree.
-          Stops row clicks (select toggle / focus switch) from firing when the
-          intent was to pick a role chip. */}
-      <div className={styles.rolesCell} onClick={(e) => e.stopPropagation()}>
+          Stops row clicks (select toggle / focus switch) only for a chip, a
+          button or the open picker — the bare space around the chips is still
+          the row's, so a click there opens the panel. */}
+      <div
+        className={styles.rolesCell}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("[data-chip], [data-popover-panel], button")) e.stopPropagation();
+        }}
+      >
         <RolesCell
           tournamentId={tournamentId}
           membership={membership}

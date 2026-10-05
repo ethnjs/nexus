@@ -192,6 +192,9 @@ export function Popover<T>({
           // there is one), so ↑/↓/Enter/Esc work without reaching for the mouse.
           ref={focusPanelOnMount}
           tabIndex={-1}
+          // Rendered inside its trigger's subtree, so its clicks bubble there;
+          // this lets an ancestor recognise them (see the members Roles cell).
+          data-popover-panel
           onKeyDown={(e) => {
             const enabled = (i: number) => !(isDisabled?.(visibleItems[i]) ?? false);
             const step = (dir: 1 | -1) => {
