@@ -216,7 +216,7 @@ export function EventsFilterModal({
   filters, onApply, onClose,
 }: EventsFilterModalProps) {
   const sections: FilterSectionConfig<EventsFilterKey>[] = [
-    { key: "division", title: "Division", options: divisionOptions, control: "buttons" },
+    { key: "division", title: "Division", options: divisionOptions, control: "divisions" },
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
     { key: "track", title: "Track", options: trackOptions ?? [], control: "chips", hidden: (trackOptions?.length ?? 0) < 2 },

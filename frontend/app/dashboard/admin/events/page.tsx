@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -331,7 +331,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
       options: categories.map((c) => ({ value: c.name, label: c.name })),
     },
     {
-      key: "division", title: "Division", control: "buttons",
+      key: "division", title: "Division", control: "divisions",
       options: TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: `Division ${d}` })),
     },
   ];
@@ -478,7 +478,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
                 {/* All three divisions always offered, so a division can be
                     added to an event already in the season without going back
                     through the add modal. */}
-                <ButtonGroup
+                <DivisionButtonGroup
                   options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
                   value={activeDivisions(event)}
                   onChange={(v) => {

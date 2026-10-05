@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/Badge";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
@@ -423,7 +424,7 @@ export function EventPanel({
           )}
 
           <SettingsRow label="Division">
-            <ButtonGroup
+            <DivisionButtonGroup
               options={divisions.map((d) => ({ value: d, label: d }))}
               value={draft.division ?? ""}
               onChange={(v) => patch({ division: v as TournamentDivision })}

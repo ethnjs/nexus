@@ -196,7 +196,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
   }
 
   const sections: FilterSectionConfig<PickerFilterKey>[] = [
-    { key: 'division', title: 'Division', options: divisionOptions as FilterOption[], control: 'buttons' },
+    { key: 'division', title: 'Division', options: divisionOptions as FilterOption[], control: 'divisions' },
     { key: 'type', title: 'Type', options: TYPE_OPTIONS, control: 'buttons' },
     { key: 'category', title: 'Category', options: categoryOptions, control: 'checkbox' },
   ]

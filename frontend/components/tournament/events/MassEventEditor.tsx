@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
@@ -357,7 +358,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
 
         <SettingsSection title="Fields to apply">
           <SettingsRow label="Division">
-            <ButtonGroup
+            <DivisionButtonGroup
               options={divisions.map((d) => ({ value: d, label: d }))}
               value={draft.division ?? ""}
               onChange={(v) => setDraft((d) => ({ ...d, division: v as TournamentDivision }))}

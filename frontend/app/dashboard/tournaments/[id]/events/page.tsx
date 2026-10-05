@@ -6,7 +6,7 @@ import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
   buildingsApi, rolesApi, assignmentsApi, TournamentBuilding, Role, Assignment,
   displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
-  TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
+  TournamentEvent, TournamentEventInput, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
@@ -22,6 +22,8 @@ import {
 } from "@/lib/sorting";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
+import { EditableText } from "@/components/ui/EditableText";
+import { CellGuard, EventEditContext } from "@/components/tournament/events/EditableCells";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
@@ -34,7 +36,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconExpand, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -218,7 +220,8 @@ export default function EventsPage() {
     const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
       tournament_id: tournamentId,
       event_id: e.event_id,
-      name: e.event_id ? null : `${e.name ?? "Event"} (copy)`,
+      // A linked copy keeps any rename override; a custom one is marked as the copy.
+      name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
       division: e.division,
       event_type: e.event_type,
       // Carries the copy's location and staffing needs across with it —
@@ -347,6 +350,28 @@ export default function EventsPage() {
   // event up here.
   const byEvent = useMemo(() => assignmentsByEvent(assignments ?? []), [assignments]);
 
+  // Inline edits save one field at a time and swap the server's copy in. No
+  // optimistic write: each cell shows its own saving/error state, and a
+  // rejected change simply never lands.
+  const updateEvent = useCallback(async (event: TournamentEvent, patch: Partial<TournamentEventInput>) => {
+    const saved = await tournamentEventsApi.update(tournamentId, event.id, patch);
+    setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)));
+  }, [tournamentId]);
+
+  // Locked where the row is already being edited some other way: the panel
+  // open on it (its draft and a cell save would overwrite each other), or
+  // Select mode (a click there toggles the box).
+  const editContext = useMemo<EventEditContext | undefined>(() => (canManageEvents ? {
+    lockReason: (event) => {
+      if (archivedReason) return archivedReason;
+      if (selectMode) return "Leave Select mode to edit in the table";
+      if (focusedEventId === event.id) return "Being edited in the panel";
+      return undefined;
+    },
+    update: updateEvent,
+    divisions: selectedTournament?.division ?? [],
+  } : undefined), [canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament]);
+
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
     // the defaults, which is why null and [] are kept apart.
@@ -354,8 +379,9 @@ export default function EventsPage() {
       // Live tracks only; each family narrows further (see familyTracks).
       tracks: tracks.filter((t) => !t.is_archived),
       assignmentsFor: (eventId) => byEvent.get(eventId) ?? NO_ASSIGNMENTS,
+      edit: editContext,
     }),
-    [columnKeys, tracks, byEvent],
+    [columnKeys, tracks, byEvent, editContext],
   );
   // Off-default is what the Display button reports, compared after expansion
   // so a saved copy of the defaults doesn't read as a change.
@@ -737,7 +763,11 @@ export default function EventsPage() {
               </span>
               {sortableHeader("name", `Events — ${isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}`, "start")}
               {tableColumns.map((column) => column.sortField ? (
-                <span key={column.key} style={{ display: "flex", minWidth: 0 }}>
+                <span
+                  key={column.key}
+                  // Same alignment as the column's cells, so the header sits over them.
+                  style={{ display: "flex", minWidth: 0, justifyContent: column.align === "start" ? "flex-start" : "center" }}
+                >
                   {sortableHeader(column.sortField, column.label, column.align === "start" ? "start" : "center")}
                 </span>
               ) : (
@@ -772,6 +802,7 @@ export default function EventsPage() {
                   selectionLocked={panelDirty}
                   onToggleSelect={() => toggleSelected(e.id)}
                   focused={focusedEventId === e.id}
+                  edit={editContext}
                 />
               ))
             )}
@@ -868,7 +899,7 @@ export default function EventsPage() {
 }
 
 function EventRow({
-  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focused,
+  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focused, edit,
 }: {
   event: TournamentEvent;
   /** The viewer's configured columns, between Name and Actions. */
@@ -885,13 +916,16 @@ function EventRow({
   onToggleSelect: () => void;
   /** This row is the one currently shown in the single-edit panel. */
   focused: boolean;
+  /** Given, the name edits in place (custom events only). */
+  edit?: EventEditContext;
 }) {
-  // The row itself is the way in: a click toggles the box in Select mode and
-  // opens (or switches) the panel otherwise. Frozen while the panel is dirty.
+  // Cells edit in place, so the row is not a click target outside Select
+  // mode (where a click toggles the box) — the panel opens from Expand.
+  // Frozen while the panel is dirty.
   // This event is one of the references keeping a pending-delete track
   // alive — flagged here so the ones to repoint are findable in the table.
   const isPending = event.tracks.some((t) => t.is_archived);
-  const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onFocus;
+  const handleRowClick = selectionLocked || !selectMode ? undefined : onToggleSelect;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
@@ -902,8 +936,8 @@ function EventRow({
       data-pending={isPending ? "true" : undefined}
       onClick={handleRowClick}
       {...rowActivation(handleRowClick)}
-      title={lockedTitle}
-      style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
+      title={selectMode ? lockedTitle : undefined}
+      style={{ cursor: !selectMode ? "default" : selectionLocked ? "not-allowed" : "pointer" }}
     >
       <span
         className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
@@ -916,7 +950,21 @@ function EventRow({
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
-        {eventName(event)}
+        {edit && !edit.lockReason(event) ? (
+          <CellGuard align="start">
+            <EditableText
+              value={eventName(event)}
+              // On a catalog-linked event the name is an override: typing the
+              // catalog's own name back, or clearing it, drops the override.
+              onSave={(name) => edit.update(event, {
+                name: event.event && (!name || name === event.event.name) ? null : name,
+              })}
+              allowEmpty={!!event.event}
+              textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+              title={event.event ? "Click to rename for this tournament — clear to use the catalog name" : "Click to rename"}
+            />
+          </CellGuard>
+        ) : eventName(event)}
       </span>
       {/* Each cell knows how to render itself (see eventColumns) — the row
           only places them, so adding a column is one entry there. */}
@@ -924,6 +972,12 @@ function EventRow({
         <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
       ))}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly onClick={onFocus}
+          disabled={selectionLocked} title={lockedTitle ?? "Open event"}
+        >
+          <IconExpand size={13} />
+        </Button>
         {canDelete && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

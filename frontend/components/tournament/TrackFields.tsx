@@ -6,7 +6,7 @@ import { TrackDraft } from "@/lib/trackDraft";
 import { todayLocalDateString } from "@/lib/date";
 import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
 import { Badge } from "@/components/ui/Badge";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -148,7 +148,7 @@ export function TrackFields({
             }}>
               Division<span style={{ color: "var(--color-danger)" }}> *</span>
             </div>
-            <ButtonGroup
+            <DivisionButtonGroup
               options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
               value={draft.division}
               onChange={(v) => onChange({

@@ -140,6 +140,11 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   return (
     <span
       onClick={locked ? undefined : startEdit}
+      // Reachable by Tab, and Enter starts editing — same as a click.
+      tabIndex={locked ? undefined : 0}
+      onKeyDown={locked ? undefined : (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); startEdit() }
+      }}
       title={title}
       style={{
         ...style,

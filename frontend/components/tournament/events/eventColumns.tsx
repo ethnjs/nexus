@@ -1,7 +1,7 @@
 "use client";
 
 import { CSSProperties, ReactNode } from "react";
-import { Assignment, TournamentEvent, TournamentTrack } from "@/lib/api";
+import { Assignment, TournamentDivision, TournamentEvent, TournamentTrack } from "@/lib/api";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { trackLocationLabel } from "@/lib/eventDisplay";
 import { staffedCount } from "@/lib/assignments/staffing";
@@ -10,6 +10,7 @@ import type { EventSortField } from "@/lib/eventSort";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
+import { EventEditContext, SelectCell } from "@/components/tournament/events/EditableCells";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
 // viewer saves their own, and what Reset returns to.
@@ -36,8 +37,8 @@ const WIDTHS = {
   location: "minmax(130px, 1.2fr)",
   // A ring, role and count per need — two or three needs side by side.
   staffing: "minmax(170px, 1.6fr)",
-  // One icon button (delete) — the header stays blank, "Actions" wouldn't fit.
-  actions: "40px",
+  // Expand + delete — the header stays blank, "Actions" wouldn't fit.
+  actions: "72px",
 } as const;
 
 const TEXT_CELL: CSSProperties = {
@@ -75,6 +76,8 @@ export interface EventColumnContext {
   tracks: TournamentTrack[];
   /** This event's assignments. Empty until they load. */
   assignmentsFor: (eventId: number) => readonly Assignment[];
+  /** Given, editable columns edit in place. */
+  edit?: EventEditContext;
 }
 
 // Mirrors EVENT_TRACK_COLUMN_FAMILIES in core/tournament/display_config.py:
@@ -238,24 +241,49 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
     case "division":
       return {
         key, label: "Division", width: WIDTHS.division, sortField: "division",
-        render: (e) => (
-          <span style={{ display: "flex", justifyContent: "center" }}>
-            {e.division
-              ? <Badge variant={DIVISION_BADGE_VARIANT[e.division]}>{e.division}</Badge>
-              : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
-          </span>
-        ),
+        render: (e) => {
+          const display = e.division
+            ? <Badge variant={DIVISION_BADGE_VARIANT[e.division]}>{e.division}</Badge>
+            : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>;
+          if (!ctx.edit) return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
+          const { edit } = ctx;
+          return (
+            <span style={{ display: "flex", justifyContent: "center" }}>
+              <SelectCell
+                display={display}
+                value={e.division ?? ""}
+                options={[...edit.divisions.map((d) => ({ value: d, label: d })), { value: "", label: "None" }]}
+                lockReason={edit.lockReason(e)}
+                divisions
+                onPick={(division) => edit.update(e, { division: (division || null) as TournamentDivision | null })}
+              />
+            </span>
+          );
+        },
       };
     case "type":
       return {
         key, label: "Type", width: WIDTHS.type,
-        render: (e) => (
-          <span style={{ display: "flex", justifyContent: "center" }}>
+        render: (e) => {
+          const display = (
             <Badge variant={e.event_type === "trial" ? "warning" : "default"}>
               {e.event_type === "trial" ? "Trial" : "Standard"}
             </Badge>
-          </span>
-        ),
+          );
+          if (!ctx.edit) return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
+          const { edit } = ctx;
+          return (
+            <span style={{ display: "flex", justifyContent: "center" }}>
+              <SelectCell
+                display={display}
+                value={e.event_type}
+                options={[{ value: "standard", label: "Standard" }, { value: "trial", label: "Trial" }]}
+                lockReason={edit.lockReason(e)}
+                onPick={(event_type) => edit.update(e, { event_type: event_type as TournamentEvent["event_type"] })}
+              />
+            </span>
+          );
+        },
       };
     case "time":
       return {
