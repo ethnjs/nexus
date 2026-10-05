@@ -229,9 +229,11 @@ export function LocationCell({
   /** Finds or creates the named building on this track. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
 }) {
-  // Set once a building is saved from here, so the room field that appears
-  // next takes focus — building then room reads as one gesture.
-  const [focusRooms, setFocusRooms] = useState(false);
+  // Rooms read as plain text until clicked, like every other cell; the chip
+  // editor only exists while editing them. Saving a new building opens it,
+  // so building then room reads as one gesture.
+  const [editingRooms, setEditingRooms] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [roomsError, setRoomsError] = useState<string | undefined>(undefined);
   const [savingRooms, setSavingRooms] = useState(false);
 
@@ -243,6 +245,7 @@ export function LocationCell({
   const buildingName = buildings.find((b) => b.id === buildingId)?.name ?? "";
   // Only buildings tagged with this track — the other pairing is a 422.
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
+  const rooms = detail?.rooms ?? [];
 
   // An existing name picks it, a new one creates the building, and clearing
   // the text removes the location. A new building clears the rooms (and any
@@ -256,7 +259,7 @@ export function LocationCell({
     }
     if (id === buildingId) return;
     await onSave({ building_id: id, floor: null, rooms: [] });
-    setFocusRooms(id !== null);
+    setEditingRooms(id !== null);
   }
 
   async function saveRooms(rooms: string[]) {
@@ -273,7 +276,11 @@ export function LocationCell({
 
   return (
     <CellGuard align="start">
-      <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}>
+      <span
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}
+      >
         <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
           <span style={{ flexShrink: 0 }}>
             <EditableCombobox
@@ -287,15 +294,22 @@ export function LocationCell({
             />
           </span>
           {/* Rooms only mean something inside a building. */}
-          {buildingId !== null && (
-            <span style={{ flex: 1, minWidth: 0 }}>
+          {buildingId !== null && (editingRooms ? (
+            <span
+              style={{ flex: 1, minWidth: 0 }}
+              // Leaving the editor (not just moving between its chips and
+              // field) puts the rooms back to plain text. ChipInput commits a
+              // half-typed room on its own blur first.
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEditingRooms(false);
+              }}
+              onKeyDown={(e) => { if (e.key === "Escape") setEditingRooms(false); }}
+            >
               <ChipInput
-                // Remounts when a building lands, so autoFocus fires then.
-                key={buildingId}
-                value={detail?.rooms ?? []}
-                onChange={(rooms) => void saveRooms(rooms)}
+                value={rooms}
+                onChange={(next) => void saveRooms(next)}
                 disabled={savingRooms}
-                autoFocus={focusRooms}
+                autoFocus
                 variant="transparent"
                 size="sm"
                 font="mono"
@@ -303,7 +317,26 @@ export function LocationCell({
                 fullWidth
               />
             </span>
-          )}
+          ) : (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => setEditingRooms(true)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditingRooms(true); } }}
+              title="Click to edit rooms"
+              style={{
+                fontFamily: "var(--font-mono)", fontSize: "12px", cursor: "text", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+                color: rooms.length > 0 ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
+                // No rooms: the way in only shows on hover, so a resting
+                // table reads like any other. Still a Tab stop, so it is
+                // never unreachable by keyboard.
+                opacity: rooms.length > 0 || hovered ? 1 : 0,
+              }}
+            >
+              {rooms.length > 0 ? rooms.join(", ") : "Add room"}
+            </span>
+          ))}
         </span>
         {roomsError && (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{roomsError}</span>
