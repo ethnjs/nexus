@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, type MouseEvent as ReactMouseEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
 import { TrackSections } from '@/components/tournament/assignments/TrackSections'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Assignment, Role, TournamentEvent } from '@/lib/api'
 import { buildLanes, type BoardHandlers } from '@/lib/assignments/board'
@@ -38,8 +39,8 @@ export function EventRow({
   simple: boolean
   /** This row's panel is the one open. */
   selected?: boolean
-  /** Opens this event's panel. Omitted for a viewer who can't manage events,
-   *  which is also what leaves the row without a pointer cursor. */
+  /** Opens this event's panel from its name. Omitted for a viewer who can't
+   *  manage events, which leaves the name as plain text. */
   onOpen?: () => void
   handlers: BoardHandlers
 }) {
@@ -66,18 +67,9 @@ export function EventRow({
   // same as an actual track tab does for the same reason.
   const focusedTrackId = activeTrackId ?? (simple ? event.tracks[0]?.id ?? null : null)
 
-  // The name rail is the target, not the whole row: the rest of the row is
-  // where the staffing is worked, and a click there lands on a chip, a pill
-  // or the gap between them rather than on "open this event".
-  //
-  // The origin is still checked, because the rail has its own controls in
-  // reach and will grow more — asking the click where it came from beats
-  // wiring stopPropagation into each one.
-  function openFromRow(e: ReactMouseEvent<HTMLDivElement>) {
-    const from = e.target as HTMLElement
-    if (from.closest('button, a, input, select, textarea, [data-row-click-opaque]')) return
-    onOpen?.()
-  }
+  // Only the name opens the panel — the whole rail did, and stray clicks
+  // while working the board kept popping it open.
+  const [nameHovered, setNameHovered] = useState(false)
 
   return (
     // The event names itself in a column of its own and hands the rest of the
@@ -112,21 +104,35 @@ export function EventRow({
           speaks for every track at once, which on a two-day event is the one
           thing a drop must not be vague about. */}
       <div
-        onClick={onOpen ? openFromRow : undefined}
         style={{
           display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0,
-          cursor: onOpen ? 'pointer' : undefined,
-          // The rail is one grid cell tall by default; stretching it gives
-          // the click the whole column rather than just the line the name
-          // happens to sit on.
           alignSelf: 'stretch', alignContent: 'flex-start', paddingTop: '2px',
         }}
       >
         {/* eventName, not `name`: a catalog-linked event leaves its own
             name column null and carries it on the joined canonical event. */}
-        <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
-          {eventName(event)}
-        </span>
+        {onOpen ? (
+          // Ghost Button stripped to plain text, so the name sits exactly
+          // where the span did; an underline is the only hover cue.
+          <Button
+            type="button" variant="ghost" interactive={false}
+            onClick={onOpen}
+            onMouseEnter={() => setNameHovered(true)}
+            onMouseLeave={() => setNameHovered(false)}
+            title="Open event"
+            style={{
+              height: 'auto', padding: 0, border: 'none', textAlign: 'left', justifyContent: 'flex-start',
+              fontWeight: 500, fontSize: '13px', letterSpacing: 'normal',
+              textDecoration: nameHovered ? 'underline' : 'none', textUnderlineOffset: '2px',
+            }}
+          >
+            {eventName(event)}
+          </Button>
+        ) : (
+          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
+            {eventName(event)}
+          </span>
+        )}
         {event.division && (
           <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
         )}
