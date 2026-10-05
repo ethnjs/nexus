@@ -15,7 +15,9 @@ import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, Tourname
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
 export interface EventEditContext {
-  /** Why this event can't be edited inline right now, or undefined if it can. */
+  /** Why this event can't be edited inline right now, or undefined if it can.
+   *  Page-wide reasons only — the row adds "open in the panel" itself, so a
+   *  focus change doesn't rebuild every column (see EventColumn.render). */
   lockReason: (event: TournamentEvent) => string | undefined;
   /** Saves one change. Rejects with the server's message, which the cell shows. */
   update: (event: TournamentEvent, patch: Partial<TournamentEventInput>) => Promise<void>;

@@ -371,14 +371,13 @@ export default function EventsPage() {
     setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)));
   }, [tournamentId]);
 
-  // Locked where the row is already being edited some other way: the panel
-  // open on it (its draft and a cell save would overwrite each other), or
-  // Select mode (a click there toggles the box).
+  // Locked where the row is already being edited some other way: Select mode
+  // (a click there toggles the box), or the panel open on it — that one is
+  // the row's to add (see EventRow), so focusing a row rebuilds no columns.
   const editContext = useMemo<EventEditContext | undefined>(() => (canManageEvents ? {
-    lockReason: (event) => {
+    lockReason: () => {
       if (archivedReason) return archivedReason;
       if (selectMode) return "Leave Select mode to edit in the table";
-      if (focusedEventId === event.id) return "Being edited in the panel";
       return undefined;
     },
     update: updateEvent,
@@ -393,7 +392,7 @@ export default function EventsPage() {
     },
     confirm: setPendingConfirm,
   } : undefined), [
-    canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament, allShifts,
+    canManageEvents, archivedReason, selectMode, updateEvent, selectedTournament, allShifts,
     roles, buildings, tournamentId, handleBuildingSaved,
   ]);
 
@@ -974,6 +973,8 @@ const EventRow = memo(function EventRow({
     ? undefined
     : selectMode ? () => onToggleSelect(event.id) : () => onFocus(event.id);
   const highlighted = selectMode ? selected : focused;
+  // The panel's draft and a cell save would overwrite each other.
+  const lockReason = edit?.lockReason(event) ?? (focused ? "Being edited in the panel" : undefined);
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
   return (
@@ -998,7 +999,7 @@ const EventRow = memo(function EventRow({
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
-        {edit && !edit.lockReason(event) ? (
+        {edit && !lockReason ? (
           <CellGuard align="start">
             <EditableText
               value={eventName(event)}
@@ -1017,7 +1018,7 @@ const EventRow = memo(function EventRow({
       {/* Each cell knows how to render itself (see eventColumns) — the row
           only places them, so adding a column is one entry there. */}
       {columns.map((column) => (
-        <span key={column.key} data-nav-col={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
+        <span key={column.key} data-nav-col={column.key} style={{ minWidth: 0 }}>{column.render(event, lockReason)}</span>
       ))}
       <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canDelete && (

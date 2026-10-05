@@ -68,7 +68,9 @@ export interface EventColumn {
   /** Clicking the header sorts by this field. Only where the column *is* the
    *  field — a per-track column would sort by every track's value, not its own. */
   sortField?: EventSortField;
-  render: (event: TournamentEvent) => ReactNode;
+  /** `lockReason` comes from the row, which knows whether its event is open
+   *  in the panel — undefined means editable. */
+  render: (event: TournamentEvent, lockReason?: string) => ReactNode;
 }
 
 /** What a per-track cell needs beyond the event itself. Staffing is the
@@ -140,7 +142,9 @@ function trackShifts(e: TournamentEvent, track: TournamentTrack) {
 }
 
 /** One track's cell for one family. */
-function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: TournamentEvent, ctx: EventColumnContext): ReactNode {
+function renderTrackCell(
+  family: TrackFamily, track: TournamentTrack, e: TournamentEvent, ctx: EventColumnContext, lockReason?: string,
+): ReactNode {
   switch (family) {
     case "shifts": {
       // A track running several days has same-time shifts on different dates,
@@ -174,7 +178,7 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
           getKey={(s) => s.id}
           getLabel={(s) => s.label}
           getTooltip={shiftTime}
-          lockReason={edit.lockReason(e)}
+          lockReason={lockReason}
           onAdd={(s) => edit.update(e, { shift_ids: [...current, s.id] })}
           onRemove={(s) => edit.update(e, { shift_ids: current.filter((id) => id !== s.id) })}
           addTitle={`Edit ${track.name} shifts`}
@@ -196,7 +200,7 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
           detail={detail}
           trackId={track.id}
           buildings={edit.buildings}
-          lockReason={edit.lockReason(e)}
+          lockReason={lockReason}
           // Joins the track if the event isn't on it yet (withTrackDetail adds it).
           onSave={(updates) => edit.update(e, { track_details: withTrackDetail(e, track.id, updates) })}
           ensureBuilding={edit.ensureBuilding}
@@ -220,7 +224,7 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
           display={display}
           needs={needs}
           roles={edit.roles}
-          lockReason={edit.lockReason(e)}
+          lockReason={lockReason}
           // Joins the track if the event isn't on it yet (withTrackDetail adds it).
           onSave={(next) => edit.update(e, { track_details: withTrackDetail(e, track.id, { needs: next }) })}
         />
@@ -273,7 +277,7 @@ function trackColumn(key: string, family: TrackFamily, track: TournamentTrack, c
     label: familyTracks(family, ctx.tracks).length === 1 ? label : `${track.name} ${label.toLowerCase()}`,
     width: WIDTHS[family],
     align: "start",
-    render: (e) => renderTrackCell(family, track, e, ctx),
+    render: (e, lockReason) => renderTrackCell(family, track, e, ctx, lockReason),
   };
 }
 
@@ -291,7 +295,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
     case "division":
       return {
         key, label: "Division", width: WIDTHS.division, sortField: "division",
-        render: (e) => {
+        render: (e, lockReason) => {
           const display = e.division
             ? <Badge variant={DIVISION_BADGE_VARIANT[e.division]}>{e.division}</Badge>
             : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>;
@@ -303,7 +307,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
                 display={display}
                 value={e.division ?? ""}
                 options={[...edit.divisions.map((d) => ({ value: d, label: d })), { value: "", label: "None" }]}
-                lockReason={edit.lockReason(e)}
+                lockReason={lockReason}
                 divisions
                 onPick={(division) => edit.update(e, { division: (division || null) as TournamentDivision | null })}
               />
@@ -314,7 +318,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
     case "type":
       return {
         key, label: "Type", width: WIDTHS.type,
-        render: (e) => {
+        render: (e, lockReason) => {
           const display = (
             <Badge variant={e.event_type === "trial" ? "warning" : "default"}>
               {e.event_type === "trial" ? "Trial" : "Standard"}
@@ -328,7 +332,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
                 display={display}
                 value={e.event_type}
                 options={[{ value: "standard", label: "Standard" }, { value: "trial", label: "Trial" }]}
-                lockReason={edit.lockReason(e)}
+                lockReason={lockReason}
                 onPick={(event_type) => edit.update(e, { event_type: event_type as TournamentEvent["event_type"] })}
               />
             </span>
@@ -360,7 +364,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       // already names — the track is the thing that isn't inferable.
       return {
         key, label: "Tracks", width: WIDTHS.tracks, align: "start",
-        render: (e) => {
+        render: (e, lockReason) => {
           const display = (
             <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
               {e.tracks.length > 0
@@ -403,7 +407,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
               getLabel={(t) => t.name}
               getStatus={(t) => (t.is_archived ? "warning" : "default")}
               getTooltip={(t) => (t.is_archived ? PENDING_TRACK_NOTE : undefined)}
-              lockReason={edit.lockReason(e)}
+              lockReason={lockReason}
               onAdd={(t) => edit.update(e, { track_details: withTrackDetail(e, t.id, {}) })}
               onRemove={removeTrack}
               addTitle="Edit tracks"
