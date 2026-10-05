@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, buildingsApi, displayConfigApi, ApiError,
+  tournamentEventsApi, displayConfigApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
   EventTrackDetail, TournamentBuilding, Role,
 } from "@/lib/api";
@@ -11,6 +11,7 @@ import { EventTrackDetails, type DraftTrackDetail } from "@/components/tournamen
 import { EventPanelConfigModal } from "@/components/tournament/events/EventPanelConfigModal";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
@@ -206,26 +207,19 @@ export function EventPanel({
    * Turns every typed-but-uncreated building name into a real building, and
    * returns track details that point at them by id.
    *
-   * An existing name is tagged onto the track rather than created again —
-   * names are unique per tournament, so a second "Rowland Hall" would 409,
-   * and the TD plainly means the same building. The same new name on two
-   * tracks is created once and tagged for the second, via `byName`.
+   * See ensureBuildingOnTrack. The same new name on two tracks is created
+   * once and tagged for the second, because `known` grows as it goes.
    */
   async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
-    const byName = new Map(buildings.map((b) => [b.name.toLowerCase(), b]));
+    const known = [...buildings];
     const resolved: EventTrackDetail[] = [];
     for (const { new_building_name, ...detail } of details) {
       const name = new_building_name?.trim();
       if (!name) { resolved.push(detail); continue; }
-      let building = byName.get(name.toLowerCase());
-      if (!building) {
-        building = await buildingsApi.create(tournamentId, { name, track_ids: [detail.track_id] });
-      } else if (!building.track_ids.includes(detail.track_id)) {
-        building = await buildingsApi.update(tournamentId, building.id, {
-          track_ids: [...building.track_ids, detail.track_id],
-        });
-      }
-      byName.set(building.name.toLowerCase(), building);
+      const building = await ensureBuildingOnTrack(tournamentId, name, detail.track_id, known);
+      const at = known.findIndex((b) => b.id === building.id);
+      if (at >= 0) known[at] = building;
+      else known.push(building);
       onBuildingSaved(building);
       resolved.push({ ...detail, building_id: building.id });
     }

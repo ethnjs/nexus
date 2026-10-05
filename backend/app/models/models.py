@@ -1161,8 +1161,20 @@ class TournamentEventTrack(Base):
     # in a building only Day 2 uses. Same device as the assignment's
     # shift/track pairing.
     building_id = Column(Integer, nullable=True, index=True)
+    # An override: null means "derive it from the rooms" (see effective_floor).
+    # Kept as a column for the building whose numbering doesn't follow the rule.
     floor = Column(String(64), nullable=True)
     rooms = Column(JSON, nullable=True)                        # list of str
+
+    @property
+    def effective_floor(self) -> str | None:
+        """The floor this event is on: the TD's override if set, otherwise the
+        first character of its first room ("210" -> "2") — room numbers lead
+        with the floor almost everywhere, so typing the room is enough."""
+        if self.floor:
+            return self.floor
+        first = next((room.strip() for room in (self.rooms or []) if room and room.strip()), None)
+        return first[0] if first else None
 
     tournament_event = relationship("TournamentEvent", back_populates="track_details")
     # lazy="joined" like TournamentTrackAssignment.role: every

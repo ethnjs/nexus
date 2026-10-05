@@ -32,13 +32,13 @@ def _building(db, tournament_id, track_id, name):
     return building
 
 
-def _event(db, tournament_id, track_id, name, building=None, floor=None):
+def _event(db, tournament_id, track_id, name, building=None, floor=None, rooms=None):
     event = TournamentEvent(tournament_id=tournament_id, name=name, division="C")
     db.add(event)
     db.flush()
     db.add(TournamentEventTrack(
         tournament_event_id=event.id, track_id=track_id,
-        building_id=building.id if building else None, floor=floor,
+        building_id=building.id if building else None, floor=floor, rooms=rooms,
     ))
     db.flush()
     return event
@@ -88,6 +88,25 @@ def test_a_floor_rule_outranks_a_building_rule(db, td_tournament, track):
     resolved = resolve_track_zones(db, track)
     assert resolved[upstairs.id] == south.id
     assert resolved[downstairs.id] == north.id
+
+
+def test_a_floor_rule_matches_the_floor_derived_from_the_first_room(db, td_tournament, track):
+    """No floor typed: room 210 puts the event on floor 2."""
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    derived = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["210", "305"])
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, south, track, "floor", building=rowland, floor="2")
+
+    assert resolve_track_zones(db, track)[derived.id] == south.id
+
+
+def test_a_typed_floor_overrides_the_derived_one(db, td_tournament, track):
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    overridden = _event(db, td_tournament.id, track, "Anatomy", rowland, floor="3", rooms=["210"])
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, south, track, "floor", building=rowland, floor="2")
+
+    assert resolve_track_zones(db, track)[overridden.id] is None
 
 
 def test_an_explicit_event_outranks_both_rules(db, td_tournament, track):

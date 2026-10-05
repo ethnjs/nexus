@@ -1,6 +1,6 @@
 'use client'
 
-import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 interface EditableTextProps {
   value: string
@@ -26,6 +26,8 @@ interface EditableTextProps {
    * otherwise a wrong abbreviation can never be removed.
    */
   allowEmpty?: boolean
+  /** Offered as you type (a native datalist) — free text is still allowed. */
+  suggestions?: string[]
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -45,7 +47,8 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false }: EditableTextProps) {
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false, suggestions }: EditableTextProps) {
+  const listId = useId()
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -101,8 +104,14 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
         <span ref={measureRef} style={{ ...style, ...BOX_STYLE, position: 'absolute', visibility: 'hidden', whiteSpace: 'pre' }}>
           {draft || ' '}
         </span>
+        {suggestions && (
+          <datalist id={listId}>
+            {suggestions.map((s) => <option key={s} value={s} />)}
+          </datalist>
+        )}
         <input
           ref={inputRef}
+          list={suggestions ? listId : undefined}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={save}

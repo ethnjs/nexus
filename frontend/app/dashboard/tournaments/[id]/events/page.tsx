@@ -25,6 +25,7 @@ import { SortButton } from "@/components/ui/SortButton";
 import { EditableText } from "@/components/ui/EditableText";
 import { CellGuard, ConfirmRequest, EventEditContext } from "@/components/tournament/events/EditableCells";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
@@ -374,8 +375,17 @@ export default function EventsPage() {
     update: updateEvent,
     divisions: selectedTournament?.division ?? [],
     shifts: allShifts ?? [],
+    buildings,
+    ensureBuilding: async (name, trackId) => {
+      const building = await ensureBuildingOnTrack(tournamentId, name, trackId, buildings);
+      handleBuildingSaved(building);
+      return building;
+    },
     confirm: setPendingConfirm,
-  } : undefined), [canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament, allShifts]);
+  } : undefined), [
+    canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament, allShifts,
+    buildings, tournamentId, handleBuildingSaved,
+  ]);
 
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to

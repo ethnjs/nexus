@@ -10,7 +10,7 @@ import type { EventSortField } from "@/lib/eventSort";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
-import { ChipsCell, EventEditContext, SelectCell } from "@/components/tournament/events/EditableCells";
+import { ChipsCell, EventEditContext, LocationCell, SelectCell } from "@/components/tournament/events/EditableCells";
 import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
@@ -34,8 +34,8 @@ const WIDTHS = {
   shifts: "minmax(120px, 1.2fr)",
   // A line per day: "Day 1: Sat, Feb 13 10:30 AM – 12:00 PM".
   time: "minmax(260px, 1.6fr)",
-  // A building name plus a room or two.
-  location: "minmax(130px, 1.2fr)",
+  // A building name plus room chips, all editable in place.
+  location: "minmax(220px, 1.6fr)",
   // A ring, role and count per need — two or three needs side by side.
   staffing: "minmax(170px, 1.6fr)",
   // Expand + delete — the header stays blank, "Actions" wouldn't fit.
@@ -176,9 +176,25 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
       );
     }
     case "location": {
-      const label = trackLocationLabel(e.track_details.find((d) => d.track_id === track.id));
-      if (!label) return EMPTY_CELL;
-      return <span style={{ ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px" }} title={label}>{label}</span>;
+      const detail = e.track_details.find((d) => d.track_id === track.id);
+      const label = trackLocationLabel(detail);
+      const display = label
+        ? <span style={{ ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px" }} title={label}>{label}</span>
+        : EMPTY_CELL;
+      if (!ctx.edit) return display;
+      const { edit } = ctx;
+      return (
+        <LocationCell
+          display={display}
+          detail={detail}
+          trackId={track.id}
+          buildings={edit.buildings}
+          lockReason={edit.lockReason(e)}
+          // Joins the track if the event isn't on it yet (withTrackDetail adds it).
+          onSave={(updates) => edit.update(e, { track_details: withTrackDetail(e, track.id, updates) })}
+          ensureBuilding={edit.ensureBuilding}
+        />
+      );
     }
     case "staffing": {
       const needs = e.track_details.find((d) => d.track_id === track.id)?.needs ?? [];

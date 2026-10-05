@@ -40,6 +40,8 @@ interface ChipInputProps {
    *  one chip — for a picker whose chips are unticked one at a time, where
    *  starting over otherwise means as many clicks as there are chips. */
   onClear?: () => void;
+  /** Focus the text field on mount — e.g. right after the step that revealed it. */
+  autoFocus?: boolean;
   /** Optional control rendered inside each chip, e.g. a status dropdown. */
   renderChipTrailing?: (chip: string) => ReactNode;
 }
@@ -120,8 +122,7 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, disabled, chipLockReason,
   getChipTooltip, variant = "primary", size = "md", font = "sans", addButton, onClear,
-  renderChipTrailing,
-}: ChipInputProps) {
+  renderChipTrailing, autoFocus}: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
   const compact = variant === "transparent" ? undefined : COMPACT_CHIPS[size];
@@ -252,6 +253,7 @@ export function ChipInput({
             onPaste={handlePaste}
             onBlur={handleBlur}
             disabled={disabled}
+            autoFocus={autoFocus}
             placeholder={value.length === 0 ? placeholder : undefined}
             style={{
               // 120px only while empty, to fit the placeholder. With chips in

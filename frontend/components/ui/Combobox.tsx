@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useState } from "react"
+import { ReactNode, useLayoutEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/Input"
 
 type ComboboxSize = 'sm' | 'md'
@@ -81,6 +81,27 @@ export function Combobox<T>({
   const showEmptyRow = !!emptyMessage && matches.length === 0 && !showCustomRow
   const dropdownOpen = open && (matches.length > 0 || showCustomRow || showEmptyRow)
 
+  // The list is position: fixed off the field's own rect, like Popover and
+  // Dropdown — an absolute list was clipped by any scrolling ancestor (a
+  // popover, a table's sideways-scrolling card). Re-measured on any scroll or
+  // resize while open, since a fixed box doesn't follow its field by itself.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [listPos, setListPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!dropdownOpen) return
+    const update = () => {
+      const r = wrapRef.current?.querySelector('input')?.getBoundingClientRect()
+      if (r) setListPos({ top: r.bottom, left: r.left, width: r.width })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [dropdownOpen])
+
   function handleTextChange(text: string) {
     if (locked) return
     const t = text.trim().toLowerCase()
@@ -105,7 +126,7 @@ export function Combobox<T>({
   const displayedError = error ?? (showStrictHint ? "No matching option — select one from the list to continue." : undefined)
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={wrapRef} style={{ position: 'relative' }}>
       <Input
         label={label}
         labelExtra={labelExtra}
@@ -122,9 +143,10 @@ export function Combobox<T>({
         locked={locked}
         fullWidth
       />
-      {dropdownOpen && !locked && (
+      {dropdownOpen && !locked && listPos && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+          position: 'fixed', top: listPos.top, left: listPos.left, width: listPos.width, zIndex: 400,
+          boxSizing: 'border-box',
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
           borderTop: 'none',
