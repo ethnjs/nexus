@@ -21,7 +21,7 @@
  * bookkeeping structure.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { type DragEndEvent } from '@dnd-kit/core'
 
 import { DockedPanel } from '@/components/layout/DockedPanel'
@@ -79,7 +79,7 @@ import { roleKey, rolesOf, sameRole, type AssignmentRole } from '@/lib/assignmen
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
 import { eventName } from '@/lib/eventDisplay'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
-import { useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
+import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
@@ -218,8 +218,6 @@ export default function AssignmentsPage() {
   // Which track tab is showing; null is All. Mirrored into ?track= so a
   // reload comes back to the day being staffed, the way the buildings board
   // does. A stale id simply falls back to All below.
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [pickedTrackId, setPickedTrackId] = useState<number | null>(
     () => Number(searchParams.get('track')) || null,
@@ -243,9 +241,8 @@ export default function AssignmentsPage() {
     const params = new URLSearchParams(window.location.search)
     if (next === null) params.delete('track')
     else params.set('track', String(next))
-    const query = params.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }, [pathname, router])
+    replaceSearchParams(params)
+  }, [])
 
   // Each tab keeps its own filters, columns and card fields, stored under its
   // own surface key ("assignments_events:track:3"). The whole config is read

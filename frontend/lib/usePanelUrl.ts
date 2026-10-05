@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 /**
  * Keeping the open docked panel in the page's URL, so a refresh — or a
@@ -17,6 +17,16 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
  * the replace below, since the router hands back the value the effect just
  * wrote.
  */
+
+/** Writes `params` as the query without a navigation. router.replace would
+ *  soft-navigate — an RSC round-trip and a re-render of every
+ *  useSearchParams reader — just to record which panel is open. */
+export function replaceSearchParams(params: URLSearchParams): void {
+  const query = params.toString();
+  const search = query ? `?${query}` : "";
+  if (search === window.location.search) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
+}
 
 /** The panel id this page was loaded with, or null. Read once — the caller
  *  owns it from then on. */
@@ -34,34 +44,25 @@ export function useInitialPanelId(param: string): number | null {
  * a page with others (the buildings page's ?track=) keeps them.
  */
 export function usePanelUrlSync(param: string, openId: number | null): void {
-  const router = useRouter();
-  const pathname = usePathname();
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (openId !== null) params.set(param, String(openId));
     else params.delete(param);
-    const query = params.toString();
-    const search = query ? `?${query}` : "";
-    if (search === window.location.search) return;
-    router.replace(`${pathname}${search}`, { scroll: false });
-  }, [param, openId, pathname, router]);
+    replaceSearchParams(params);
+  }, [param, openId]);
 }
 
 /**
  * The same mirror, for a page whose panels are several at once.
  *
  * One write, not one hook call per param: each effect reads
- * `window.location.search` to merge, and router.replace does not update it
- * synchronously — so two of them in the same commit race, and whichever runs
- * second writes a URL that has never seen the first one's param.
+ * `window.location.search` to merge, so the params have to land together
+ * for neither write to clobber the other.
  *
  * Keyed on the serialised map so a caller can pass an object literal without
  * re-running this on every render.
  */
 export function usePanelParamsSync(open: Record<string, number | null>): void {
-  const router = useRouter();
-  const pathname = usePathname();
   const key = JSON.stringify(open);
 
   useEffect(() => {
@@ -70,9 +71,6 @@ export function usePanelParamsSync(open: Record<string, number | null>): void {
       if (id !== null) params.set(param, String(id));
       else params.delete(param);
     }
-    const query = params.toString();
-    const search = query ? `?${query}` : "";
-    if (search === window.location.search) return;
-    router.replace(`${pathname}${search}`, { scroll: false });
-  }, [key, pathname, router]);
+    replaceSearchParams(params);
+  }, [key]);
 }
