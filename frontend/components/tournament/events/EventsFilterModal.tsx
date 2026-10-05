@@ -1,7 +1,8 @@
 "use client";
 
 import {
-  emptyFilterState, FilterModal, FilterOption, FilterSectionConfig, FilterState, filterAllows, isFilterActive,
+  FilterModal, FilterOption, FilterSectionConfig, FilterState, filterAllows, filterStateFromStored,
+  filterStateToStored, isFilterActive,
 } from "@/components/ui/FilterModal";
 import { Assignment, TournamentEvent } from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
@@ -169,28 +170,13 @@ export function isEventsFilterActive(filters: EventsFilterState): boolean {
 export function eventsFilterFromStored(
   stored: Record<string, string[]> | null | undefined,
 ): EventsFilterState {
-  const state = emptyFilterState(EVENTS_FILTER_KEYS);
-  for (const key of EVENTS_FILTER_KEYS) {
-    const values = stored?.[key];
-    if (Array.isArray(values)) {
-      state[key] = new Set(values.filter((v): v is string => typeof v === "string"
-        // Staffing's values changed (staffed/unstaffed -> four); an old one
-        // would match nothing and hide every event.
-        && (key !== "staffing" || STAFFING_VALUES.has(v))));
-    }
-  }
-  return state;
+  // Staffing's values changed (staffed/unstaffed -> four); an old one would
+  // match nothing and hide every event.
+  return filterStateFromStored(EVENTS_FILTER_KEYS, stored, (key, v) => key !== "staffing" || STAFFING_VALUES.has(v));
 }
 
-/** Filter state as the stored wire shape, empty keys dropped. These are the
-    *selected* values — this table filters in the client, so what's persisted
-    is what the FilterModal deals in rather than query params. */
 export function eventsFilterToStored(filters: EventsFilterState): Record<string, string[]> {
-  return Object.fromEntries(
-    Object.entries(filters)
-      .map(([key, values]): [string, string[]] => [key, [...values]])
-      .filter(([, values]) => values.length > 0),
-  );
+  return filterStateToStored(filters);
 }
 
 interface EventsFilterModalProps {

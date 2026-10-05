@@ -13,6 +13,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { handleGridArrows } from "@/lib/gridNav";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
@@ -331,22 +332,12 @@ export default function EventsPage() {
     return () => { current = false; };
   }, [tournamentId, canManageEvents, displayConfigVersion]);
 
-  // Write-back for the view state this tab owns (filters, sort). Re-reads
-  // before writing because a PUT replaces every surface at once and the
-  // Display modal writes columns into this same surface — see
-  // useDisplayConfigDraft, which merges from the other side for the same
-  // reason. Fire-and-forget: failing to remember a sort order is not worth
-  // interrupting the table over.
-  const persistView = useCallback((patch: Partial<DisplayConfigSurface>) => {
-    displayConfigApi.get(tournamentId)
-      .then((fresh) => displayConfigApi.set(tournamentId, {
-        ...fresh,
-        // A surface that has never been saved still needs its required
-        // `hidden` key, hence the spread order.
-        [EVENTS_TABLE]: { ...{ hidden: [] }, ...fresh[EVENTS_TABLE], ...patch },
-      }))
-      .catch(() => {});
-  }, [tournamentId]);
+  // Write-back for the view state this tab owns (filters, sort, a reset of
+  // columns) — see persistSurfaceView for why it re-reads first.
+  const persistView = useCallback(
+    (patch: Partial<DisplayConfigSurface>) => persistSurfaceView(tournamentId, EVENTS_TABLE, patch),
+    [tournamentId],
+  );
 
   const applyFilters = useCallback((next: EventsFilterState) => {
     setFilters(next);

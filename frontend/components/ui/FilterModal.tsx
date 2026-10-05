@@ -53,6 +53,36 @@ export function sameFilterState(a: FilterState<string>, b: FilterState<string>):
   return true;
 }
 
+/** A table's saved filters (arrays, keyed by filter) back into filter state.
+ *  Unknown keys are dropped — a filter removed in a later release must not
+ *  come back as a narrowing nothing in the modal can clear. `keep` drops
+ *  values a key no longer offers (e.g. one whose vocabulary changed). */
+export function filterStateFromStored<K extends string>(
+  keys: readonly K[],
+  stored: Record<string, string[]> | null | undefined,
+  keep: (key: K, value: string) => boolean = () => true,
+): FilterState<K> {
+  const state = emptyFilterState(keys);
+  for (const key of keys) {
+    const values = stored?.[key];
+    if (Array.isArray(values)) {
+      state[key] = new Set(values.filter((v): v is string => typeof v === "string" && keep(key, v)));
+    }
+  }
+  return state;
+}
+
+/** Filter state as the saved shape, empty keys dropped. The *selected*
+ *  values — these tables filter in the client, so what's stored is what the
+ *  FilterModal deals in, not query params. */
+export function filterStateToStored(filters: FilterState<string>): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(filters)
+      .map(([key, values]): [string, string[]] => [key, [...values]])
+      .filter(([, values]) => values.length > 0),
+  );
+}
+
 /** Whether `value` passes one field's filter. Empty selection = no narrowing,
  *  which is the rule every caller's predicate needs and none should re-derive. */
 export function filterAllows(selected: Set<string>, value: string): boolean {
