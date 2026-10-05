@@ -20,7 +20,7 @@
  * handler can always tell "real" from "still in flight" without a second
  * bookkeeping structure.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation'
 import { type DragEndEvent } from '@dnd-kit/core'
 
@@ -116,6 +116,8 @@ const PANEL_WIDTH: Record<PanelKind, number> = {
  *  within its own row makes the row the click's common ancestor, so the drop
  *  would otherwise open the panel it landed on. */
 const CLICK_AFTER_DRAG_MS = 250
+/** Shared by every unstaffed row — a fresh `[]` per render would defeat EventRow's memo. */
+const NO_ASSIGNMENTS: Assignment[] = []
 
 // ---------------------------------------------------------------------------
 // Board
@@ -894,18 +896,28 @@ export default function AssignmentsPage() {
     })
   }
 
-  // Every write a row can start, in one object. Rebuilt per render like the
-  // functions it holds, so the rows' memoisation behaves exactly as it did
-  // when these were six separate props — what mattered there and still
-  // matters is that the *page* doesn't re-render mid-drag.
-  const boardHandlers: BoardHandlers = {
-    onResize: handleResize,
-    onResizeCommit: handleResizeCommit,
-    onToggleRole: handleToggleRole,
-    onPickRole: handlePickRole,
-    onRemove: handleRemove,
-    onPickDefaultRole: requestDefaultRoleChange,
-  }
+  // Every write a row can start, in one object whose identity never changes,
+  // so the rows' memo survives page re-renders. Each method forwards to this
+  // render's handler through the ref, so none of them reads stale state.
+  const latestHandlers = useRef<BoardHandlers>(null!)
+  useLayoutEffect(() => {
+    latestHandlers.current = {
+      onResize: handleResize,
+      onResizeCommit: handleResizeCommit,
+      onToggleRole: handleToggleRole,
+      onPickRole: handlePickRole,
+      onRemove: handleRemove,
+      onPickDefaultRole: requestDefaultRoleChange,
+    }
+  })
+  const boardHandlers = useMemo<BoardHandlers>(() => ({
+    onResize: (...args) => latestHandlers.current.onResize(...args),
+    onResizeCommit: (...args) => latestHandlers.current.onResizeCommit(...args),
+    onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
+    onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
+    onRemove: (...args) => latestHandlers.current.onRemove(...args),
+    onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
+  }), [])
 
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
@@ -1445,13 +1457,13 @@ export default function AssignmentsPage() {
               <EventRow
                 key={event.id}
                 event={event}
-                rowAssignments={byEvent.get(event.id) ?? []}
+                rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
                 activeTrackId={activeTrackId}
                 simple={simple}
                 selected={event.id === focusedEventId}
-                onOpen={canManageEvents ? () => openEventPanel(event.id) : undefined}
+                onOpen={canManageEvents ? openEventPanel : undefined}
                 handlers={boardHandlers}
               />
             ))}

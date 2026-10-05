@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
@@ -19,7 +19,9 @@ function divisionVariant(division: string | null) {
   return 'divisionC' as const
 }
 
-export function EventRow({
+/** Memoised so a page re-render that changes nothing here — opening a panel —
+ *  doesn't rebuild every row. Keep every prop identity-stable. */
+export const EventRow = memo(function EventRow({
   event, rowAssignments, roleCatalog, flagsFor, activeTrackId, simple,
   selected, onOpen, handlers,
 }: {
@@ -39,9 +41,10 @@ export function EventRow({
   simple: boolean
   /** This row's panel is the one open. */
   selected?: boolean
-  /** Opens this event's panel from its name. Omitted for a viewer who can't
-   *  manage events, which leaves the name as plain text. */
-  onOpen?: () => void
+  /** Opens an event's panel from its name, given this row's id — taking the
+   *  id keeps one callback shared by every row. Omitted for a viewer who
+   *  can't manage events, which leaves the name as plain text. */
+  onOpen?: (eventId: number) => void
   handlers: BoardHandlers
 }) {
   // The bare row is a target only for an event on no track at all. Every
@@ -116,7 +119,7 @@ export function EventRow({
           // where the span did; an underline is the only hover cue.
           <Button
             type="button" variant="ghost" interactive={false}
-            onClick={onOpen}
+            onClick={() => onOpen(event.id)}
             onMouseEnter={() => setNameHovered(true)}
             onMouseLeave={() => setNameHovered(false)}
             title="Open event"
@@ -174,4 +177,4 @@ export function EventRow({
       )}
     </div>
   )
-}
+})
