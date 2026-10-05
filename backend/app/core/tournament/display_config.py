@@ -212,13 +212,12 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # as a deleted track is on the roster.
 KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
 
-# The table sorts by a chain (`sorts`) over the board's own fields — the
-# same five mean the same thing on both. "division" and "day" are the single
-# `sort` it saved before that: still accepted so an old blob re-PUT by another
-# save doesn't 422, and read by the client as name and start.
+# The table sorts by a chain (`sorts`) over the board's own fields — they
+# mean the same thing on both. "day" is from the single `sort` it saved before
+# that: still accepted so an old blob re-PUT by another save doesn't 422, and
+# read by the client as start.
 KNOWN_EVENT_SORT_FIELDS = frozenset({
-    "name", "category", "start", "staffing", "location",
-    "division", "day",
+    "name", "division", "category", "start", "staffing", "location", "day",
 })
 
 
@@ -260,15 +259,12 @@ KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
 # staffed events in arbitrary order, so the second key is the one doing the
 # reading.
 #
-# No "division": within one tournament a division is part of an event's
-# identity, not a facet of it -- Crime Busters B and Crime Busters C are two
-# events - so the board sorts them by name with the division on the end, and a
-# separate key could only scatter one event's divisions apart. The events
-# table keeps its own, where Division is a column of its own.
+# "name" sorts with the division on the end, keeping Crime Busters B and C
+# adjacent; "division" is its own key for grouping every B event together.
 # "location" is one key, not building/floor/room: the board prints the three
 # as one label ("Kerckhoff 101") and a walking order is that label's order.
 KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
-    "name", "category", "start", "staffing", "location",
+    "name", "division", "category", "start", "staffing", "location",
 })
 
 # ---------------------------------------------------------------------------

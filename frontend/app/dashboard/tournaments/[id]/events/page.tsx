@@ -81,10 +81,9 @@ const DEFAULT_TABLE_SORT: SortRule<EventSortField>[] = [{ field: "start", direct
 // Every field counts every track — the table has no tabs to narrow by.
 const ALL_TRACKS = () => true;
 
-/** The single `sort` this table saved before it took a chain, as one. "division"
- *  maps to name, which already orders an event's divisions together. */
+/** The single `sort` this table saved before it took a chain, as one. */
 function legacySortRules(sort: { field: string; direction?: string } | null | undefined): SortRule<EventSortField>[] | null {
-  const field = sort?.field === "day" ? "start" : sort?.field === "name" || sort?.field === "division" ? "name" : null;
+  const field = sort?.field === "day" ? "start" : sort?.field === "name" || sort?.field === "division" ? sort.field : null;
   return field ? [{ field, direction: sort?.direction === "desc" ? "desc" : "asc" }] : null;
 }
 
