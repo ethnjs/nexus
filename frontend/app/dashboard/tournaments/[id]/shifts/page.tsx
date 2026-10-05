@@ -7,6 +7,16 @@ import {
 } from "@/lib/api";
 import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import {
+  DEFAULT_SHIFT_SORT, SHIFT_SORT_OPTIONS, SHIFT_SORT_TIEBREAK, isShiftSortField, shiftSortTiebreak, shiftSortValue,
+  type ShiftSortField,
+} from "@/lib/shiftSort";
+import {
+  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from "@/lib/sorting";
+import { SortableHeader } from "@/components/ui/SortableHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import { formatDayLabel, formatSpan, formatTimeOfDay, toDateInput, toTimeInput } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
@@ -93,6 +103,8 @@ export default function ShiftsPage() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<ShiftsFilterState>(() => emptyFilterState(SHIFTS_FILTER_KEYS));
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [sortRules, setSortRules] = useState<SortRule<ShiftSortField>[]>(DEFAULT_SHIFT_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
   // The table waits for the saved view, so it doesn't render unfiltered and
   // then jump.
   const [viewReady, setViewReady] = useState(false);
@@ -156,7 +168,7 @@ export default function ShiftsPage() {
     loadTracks();
   }, [tournamentId, canManageEvents, loadTracks, refreshKey]);
 
-  // This viewer's saved filters. Read once: later saves come from here.
+  // This viewer's saved filters and sort. Read once: later saves come from here.
   useEffect(() => {
     if (!canManageEvents) return;
     let current = true;
@@ -164,7 +176,11 @@ export default function ShiftsPage() {
       .catch(() => ({} as DisplayConfig))
       .then((config) => {
         if (!current) return;
-        setFilters(shiftsFilterFromStored(config?.[SHIFTS_TABLE]?.filters));
+        const surface = config?.[SHIFTS_TABLE];
+        setFilters(shiftsFilterFromStored(surface?.filters));
+        // A saved chain whose every field has since been dropped is no chain.
+        const stored = sortRulesFromStored(surface?.sorts, isShiftSortField);
+        setSortRules(stored.length > 0 ? stored : DEFAULT_SHIFT_SORT);
         setViewReady(true);
       });
     return () => { current = false; };
@@ -175,6 +191,11 @@ export default function ShiftsPage() {
     persistSurfaceView(tournamentId, SHIFTS_TABLE, { filters: shiftsFilterToStored(next) });
   }, [tournamentId]);
 
+  const applySort = useCallback((next: SortRule<ShiftSortField>[]) => {
+    setSortRules(next);
+    persistSurfaceView(tournamentId, SHIFTS_TABLE, { sorts: sortRulesToStored(next) });
+  }, [tournamentId]);
+
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),
     [tracks],
@@ -183,8 +204,8 @@ export default function ShiftsPage() {
   const visibleShifts = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = (shifts ?? []).filter((s) => (!q || s.label.toLowerCase().includes(q)) && shiftPassesFilters(s, filters));
-    return [...list].sort((a, b) => a.start.localeCompare(b.start));
-  }, [shifts, search, filters]);
+    return sortRows(list, sortRules, (shift, field) => shiftSortValue(shift, field, trackById), shiftSortTiebreak);
+  }, [shifts, search, filters, sortRules, trackById]);
 
   const selectedShifts = useMemo(
     () => (shifts ?? []).filter((s) => selectedIds.has(s.id)),
@@ -418,6 +439,24 @@ export default function ShiftsPage() {
     setDuplicating(false);
   }
 
+  // The default chain isn't shown as a header state — it's the absence of a
+  // choice, and clicking replaces it (see cycleSortRule).
+  const headerSortRules = sameSortRules(sortRules, DEFAULT_SHIFT_SORT) ? [] : sortRules;
+  const sortableHeader = (field: ShiftSortField, label: string, align: "start" | "center" = "start") => {
+    const index = headerSortRules.findIndex((rule) => rule.field === field);
+    return (
+      <span style={{ display: "flex", minWidth: 0, justifyContent: align === "start" ? "flex-start" : "center" }}>
+        <SortableHeader
+          label={label}
+          align={align}
+          rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+          showPosition={headerSortRules.length > 1}
+          onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_SHIFT_SORT))}
+        />
+      </span>
+    );
+  };
+
   return (
     <div>
       <CollapsibleHeader heading="Shifts" />
@@ -456,6 +495,12 @@ export default function ShiftsPage() {
               active={isFilterActive(filters)}
               onOpen={() => setShowFilterModal(true)}
               onClear={() => applyFilters(emptyFilterState(SHIFTS_FILTER_KEYS))}
+            />
+            <SortButton
+              iconOnly={compactToolbar}
+              active={!sameSortRules(sortRules, DEFAULT_SHIFT_SORT)}
+              onOpen={() => setShowSortModal(true)}
+              onReset={() => applySort(DEFAULT_SHIFT_SORT)}
             />
             {canEdit && (
               <Button
@@ -517,13 +562,15 @@ export default function ShiftsPage() {
                 onChange={(checked) => toggleSelectAll(visibleShifts.map((s) => s.id), checked)}
               />
             </span>
-            <span>Shifts — {visibleShifts.length}</span>
-            <span>Track</span>
+            {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
+            {sortableHeader("track", "Track")}
+            {/* Not sortable: it would toggle the same `start` rule as Start,
+                and two headers lighting up together reads as two rules. */}
             <span>Date</span>
-            <span>Start</span>
-            <span>End</span>
-            <span>Duration</span>
-            <span style={{ textAlign: "center" }}>Events</span>
+            {sortableHeader("start", "Start")}
+            {sortableHeader("end", "End")}
+            {sortableHeader("duration", "Duration")}
+            {sortableHeader("events", "Events", "center")}
             <span />
           </div>
 
@@ -573,6 +620,18 @@ export default function ShiftsPage() {
           </>
         }
       />
+
+      {showSortModal && (
+        <SortModal
+          title="Sort shifts"
+          fields={SHIFT_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_SHIFT_SORT}
+          tiebreakLabel={SHIFT_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<ShiftSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
+      )}
 
       {showFilterModal && (
         <ShiftsFilterModal
