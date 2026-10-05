@@ -38,7 +38,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconExpand, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -945,13 +945,13 @@ function EventRow({
   /** Given, the name edits in place (custom events only). */
   edit?: EventEditContext;
 }) {
-  // Cells edit in place, so the row is not a click target outside Select
-  // mode (where a click toggles the box) — the panel opens from Expand.
-  // Frozen while the panel is dirty.
+  // A click toggles the box in Select mode and opens (or switches) the panel
+  // otherwise. Editable cells keep their own clicks (CellGuard), so only a
+  // click outside them reaches the row. Frozen while the panel is dirty.
   // This event is one of the references keeping a pending-delete track
   // alive — flagged here so the ones to repoint are findable in the table.
   const isPending = event.tracks.some((t) => t.is_archived);
-  const handleRowClick = selectionLocked || !selectMode ? undefined : onToggleSelect;
+  const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onFocus;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
@@ -962,8 +962,8 @@ function EventRow({
       data-pending={isPending ? "true" : undefined}
       onClick={handleRowClick}
       {...rowActivation(handleRowClick)}
-      title={selectMode ? lockedTitle : undefined}
-      style={{ cursor: !selectMode ? "default" : selectionLocked ? "not-allowed" : "pointer" }}
+      title={lockedTitle}
+      style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
     >
       <span
         className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
@@ -998,12 +998,6 @@ function EventRow({
         <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
       ))}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button
-          type="button" variant="secondary" size="sm" iconOnly onClick={onFocus}
-          disabled={selectionLocked} title={lockedTitle ?? "Open event"}
-        >
-          <IconExpand size={13} />
-        </Button>
         {canDelete && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

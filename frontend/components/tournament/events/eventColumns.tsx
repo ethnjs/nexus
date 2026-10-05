@@ -39,8 +39,8 @@ const WIDTHS = {
   location: "minmax(220px, 1.6fr)",
   // A ring, role and count per need — two or three needs side by side.
   staffing: "minmax(170px, 1.6fr)",
-  // Expand + delete — the header stays blank, "Actions" wouldn't fit.
-  actions: "72px",
+  // One icon button (delete) — the header stays blank, "Actions" wouldn't fit.
+  actions: "40px",
 } as const;
 
 const TEXT_CELL: CSSProperties = {
