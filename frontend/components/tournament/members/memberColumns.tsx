@@ -58,7 +58,8 @@ const WIDTHS = {
   // interpolates track-for-track between matching value types, so a bare
   // "0px" here would make the whole template snap instead of animating.
   rolesCollapsed: "minmax(0px, 0fr)",
-  actions: "70px",
+  // One icon button (delete) — the header stays blank, "Actions" wouldn't fit.
+  actions: "40px",
 } as const;
 
 // Applied to every text cell. minWidth:0 is the load-bearing part: a grid

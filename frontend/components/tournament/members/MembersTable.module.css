@@ -58,9 +58,9 @@
 }
 
 /* Actions collapses on the same signal: while a panel is open the row's
-   Remove lives in the panel header and Expand has nothing left to do, so the
-   70px it costs goes back to Name and Email instead. Same zero-width track
-   trick as above — the cell stays mounted so the template can interpolate. */
+   Remove lives in the panel header, so its width goes back to Name and Email
+   instead. Same zero-width track trick as above — the cell stays mounted so
+   the template can interpolate. */
 .actionsCell {
   min-width: 0;
   overflow: hidden;

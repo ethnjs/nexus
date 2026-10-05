@@ -25,16 +25,17 @@ import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournamen
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { useToast } from "@/lib/useToast";
-import { IconPlus, IconCalendar, IconEdit, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconPlus, IconCalendar, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { rowActivation } from "@/lib/rowActivation";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 // Select / Label / Track / Start / End / Events / Actions. The select track is
 // always present (0px when off) so its width can animate, like the events table.
 function shiftGridColumns(selectMode: boolean) {
-  return `${selectMode ? "28px" : "0px"} 1.6fr 1fr 0.8fr 0.8fr 70px 80px`;
+  return `${selectMode ? "28px" : "0px"} 1.6fr 1fr 0.8fr 0.8fr 70px 40px`;
 }
 
 const ALL_TRACKS = "all";
@@ -457,7 +458,7 @@ export default function ShiftsPage() {
             <span>Start</span>
             <span>End</span>
             <span style={{ textAlign: "center" }}>Events</span>
-            <span style={{ textAlign: "center" }}>Actions</span>
+            <span />
           </div>
 
           {visibleShifts.map((shift) => (
@@ -538,6 +539,7 @@ function ShiftRow({
   onToggleSelect: () => void;
 }) {
   // In select mode a click toggles the box; otherwise it opens the panel.
+  const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onClick;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
@@ -546,7 +548,8 @@ function ShiftRow({
       className={table.row}
       data-active={highlighted ? "true" : undefined}
       data-pending={track?.is_archived ? "true" : undefined}
-      onClick={selectionLocked ? undefined : selectMode ? onToggleSelect : onClick}
+      onClick={handleRowClick}
+      {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
     >
@@ -575,12 +578,8 @@ function ShiftRow({
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {shift.event_count}
       </span>
-      {/* Edit is the same thing clicking the row does — spelled out so the
-          row's one action isn't invisible. Delete keeps its own confirm. */}
+      {/* Opening is the row's own click; delete keeps its own confirm. */}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit shift"} onClick={onClick}>
-          <IconEdit size={13} />
-        </Button>
         {canEdit && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

@@ -29,7 +29,8 @@ const WIDTHS = {
   tracks: "minmax(140px, 1.6fr)",
   // One track's shift labels — usually two or three short words.
   shifts: "minmax(120px, 1.2fr)",
-  actions: "70px",
+  // One icon button (delete) — the header stays blank, "Actions" wouldn't fit.
+  actions: "40px",
 } as const;
 
 const TEXT_CELL: CSSProperties = {
