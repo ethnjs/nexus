@@ -116,6 +116,14 @@ const PANEL_WIDTH: Record<PanelKind, number> = {
  *  within its own row makes the row the click's common ancestor, so the drop
  *  would otherwise open the panel it landed on. */
 const CLICK_AFTER_DRAG_MS = 250
+/** An event with only the shifts and tracks the current tab shows. */
+function filterEventTracks(event: TournamentEvent, showsTrack: (id: number) => boolean): TournamentEvent {
+  return {
+    ...event,
+    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
+    tracks: event.tracks.filter((t) => showsTrack(t.id)),
+  }
+}
 /** Shared by every unstaffed row — a fresh `[]` per render would defeat EventRow's memo. */
 const NO_ASSIGNMENTS: Assignment[] = []
 
@@ -397,11 +405,22 @@ export default function AssignmentsPage() {
     [activeTrackId],
   )
 
-  const boardEvents = useMemo(() => (events ?? []).map((event) => ({
-    ...event,
-    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
-    tracks: event.tracks.filter((t) => showsTrack(t.id)),
-  })), [events, showsTrack])
+  // Each event's copy is reused while its source is unchanged, so replacing
+  // one event rebuilds only that copy — fresh objects for all of them would
+  // bust every row's memo. Kept in state and adjusted during render (the
+  // pattern React documents for derived state), since a render-time cache
+  // mutation is what the compiler rules forbid. A new tab rebuilds them all.
+  const [board, setBoard] = useState(() => ({
+    events, showsTrack, boardEvents: (events ?? []).map((e) => filterEventTracks(e, showsTrack)),
+  }))
+  let boardEvents = board.boardEvents
+  if (board.events !== events || board.showsTrack !== showsTrack) {
+    const reuse = board.showsTrack === showsTrack
+      ? new Map((board.events ?? []).map((e, i) => [e, board.boardEvents[i]]))
+      : null
+    boardEvents = (events ?? []).map((e) => reuse?.get(e) ?? filterEventTracks(e, showsTrack))
+    setBoard({ events, showsTrack, boardEvents })
+  }
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -441,9 +460,13 @@ export default function AssignmentsPage() {
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
   // carries a default role. See TournamentEvent.tracks.
+  //
+  // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
+  // every row takes flagsFor, so a new Map per event edit re-rendered them all.
+  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]))
   const eventTrackIds = useMemo(
-    () => new Map((boardEvents ?? []).map((e) => [e.id, e.tracks.map((t) => t.id)])),
-    [boardEvents],
+    () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
+    [eventTrackKey],
   )
 
   const divisionOptions = useMemo(() => {

@@ -70,6 +70,19 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
   };
 }
 
+/** Same event, ignoring list order — the server guarantees none, so a
+ *  reordered round trip mustn't read as a change. A false "changed" only
+ *  costs a redundant push, so inner lists are left as they come. */
+function sameEvent(a: TournamentEvent, b: TournamentEvent): boolean {
+  const norm = (e: TournamentEvent) => JSON.stringify({
+    ...e,
+    shifts: [...e.shifts].sort((x, y) => x.id - y.id),
+    tracks: [...e.tracks].sort((x, y) => x.id - y.id),
+    track_details: [...e.track_details].sort((x, y) => x.track_id - y.track_id),
+  });
+  return norm(a) === norm(b);
+}
+
 interface EventPanelProps {
   tournamentId: number;
   /** null = creating a new event. */
@@ -174,6 +187,9 @@ export function EventPanel({
     tournamentEventsApi.get(tournamentId, eventId)
       .then((fresh) => {
         if (!active || dirtyRef.current) return;
+        // Unchanged is the usual answer. Pushing it anyway hands the caller a
+        // new object, which re-rendered the whole assignments board per open.
+        if (seenEventRef.current && sameEvent(seenEventRef.current, fresh)) return;
         setCurrent(fresh);
         setDraft(draftFromEvent(fresh));
         onSaved(fresh);
