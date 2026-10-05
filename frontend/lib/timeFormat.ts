@@ -150,3 +150,13 @@ export function formatCountdown(msRemaining: number): string {
   parts.push(`${seconds}s`)
   return parts.join(" ")
 }
+
+// How long a start→end window lasts: "45m", "2h", "1h 30m". Not
+// formatDuration, which is how long *ago* something was.
+export function formatSpan(startIso: string, endIso: string): string {
+  const minutes = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000))
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}m`
+  return m === 0 ? `${h}h` : `${h}h ${m}m`
+}

@@ -8,7 +8,7 @@ import {
 import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
-import { formatTimeOfDay, toTimeInput } from "@/lib/timeFormat";
+import { formatDayLabel, formatSpan, formatTimeOfDay, toDateInput, toTimeInput } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
@@ -42,10 +42,22 @@ import { rowActivation } from "@/lib/rowActivation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
-// Select / Label / Track / Start / End / Events / Actions. The select track is
-// always present (0px when off) so its width can animate, like the events table.
+// Select / Label / Track / Date / Start / End / Duration / Events / Actions —
+// every column, always (no picker: a shift has few enough fields to show them
+// all). The select track is always present (0px when off) so its width can
+// animate, like the events table. Label never truncates — the table scrolls
+// sideways instead (see table.scroll).
 function shiftGridColumns(selectMode: boolean) {
-  return `${selectMode ? "28px" : "0px"} 1.6fr 1fr 0.8fr 0.8fr 70px 40px`;
+  return [
+    selectMode ? "28px" : "0px",
+    "minmax(max-content, 1.6fr)",  // label
+    "minmax(100px, 1fr)",          // track
+    "110px",                       // date — "Sat, Feb 13"
+    "90px", "90px",                // start, end
+    "80px",                        // duration — "1h 30m"
+    "70px",                        // events
+    "40px",                        // actions
+  ].join(" ");
 }
 
 // Its own route rather than a tab under Events: a shift belongs to a track,
@@ -502,8 +514,10 @@ export default function ShiftsPage() {
             </span>
             <span>Shifts — {visibleShifts.length}</span>
             <span>Track</span>
+            <span>Date</span>
             <span>Start</span>
             <span>End</span>
+            <span>Duration</span>
             <span style={{ textAlign: "center" }}>Events</span>
             <span />
           </div>
@@ -619,7 +633,7 @@ function ShiftRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{shift.label}</span>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap" }}>{shift.label}</span>
       <span style={{ display: "flex", minWidth: 0 }}>
         <Badge
           variant={track?.is_archived ? "warning" : "default"}
@@ -628,11 +642,17 @@ function ShiftRow({
           {track?.name ?? "—"}
         </Badge>
       </span>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
+        {formatDayLabel(toDateInput(shift.start))}
+      </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
         {formatTimeOfDay(toTimeInput(shift.start))}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
         {formatTimeOfDay(toTimeInput(shift.end))}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+        {formatSpan(shift.start, shift.end)}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {shift.event_count}
