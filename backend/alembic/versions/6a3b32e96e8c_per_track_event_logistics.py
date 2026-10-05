@@ -1,7 +1,7 @@
 """per-track event logistics
 
 Revision ID: 6a3b32e96e8c
-Revises: c5f1a9e3d2b7
+Revises: d3b71a4c9e02
 Create Date: 2026-09-15 14:35:01.345747
 
 The single migration for the event-logistics branch (#81). Every step of that
@@ -26,7 +26,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '6a3b32e96e8c'
-down_revision: Union[str, None] = 'c5f1a9e3d2b7'
+down_revision: Union[str, None] = 'd3b71a4c9e02'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
