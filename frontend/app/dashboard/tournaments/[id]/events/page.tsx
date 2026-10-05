@@ -226,36 +226,6 @@ export default function EventsPage() {
     });
   }
 
-  // Exact copies, tracks and shifts included. A custom event gets "(copy)" on
-  // its name; a catalog event keeps its link, so the backend refuses a copy in
-  // the same division (one per division) and the toast says so.
-  async function duplicateSelected() {
-    setDuplicating(true);
-    const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
-      tournament_id: tournamentId,
-      event_id: e.event_id,
-      // A linked copy keeps any rename override; a custom one is marked as the copy.
-      name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
-      division: e.division,
-      event_type: e.event_type,
-      // Carries the copy's location and staffing needs across with it —
-      // track_details is whole-set, so this is also what keeps the copy on
-      // the same tracks.
-      track_details: e.track_details.map(toTrackDetailInput),
-      shift_ids: e.shifts.map((s) => s.id),
-    })));
-    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
-    if (created.length > 0) setEvents((prev) => [...(prev ?? []), ...created]);
-    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
-    if (failure) {
-      const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong.";
-      show(`Duplicated ${created.length}, ${outcomes.length - created.length} failed: ${reason}`, "error");
-    } else {
-      show(`Duplicated ${created.length} event${created.length === 1 ? "" : "s"}.`);
-    }
-    setDuplicating(false);
-  }
-
   // Gated on the permission, and re-run when it lands: the table used to be a
   // child that only mounted once the check had passed, so unmounted meant
   // unfetched. Inlined, this effect runs on the first render too — while
@@ -464,6 +434,36 @@ export default function EventsPage() {
     () => (events ?? []).filter((e) => selectedIds.has(e.id)),
     [events, selectedIds]
   );
+
+  // Exact copies, tracks and shifts included. A custom event gets "(copy)" on
+  // its name; a catalog event keeps its link, so the backend refuses a copy in
+  // the same division (one per division) and the toast says so.
+  async function duplicateSelected() {
+    setDuplicating(true);
+    const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
+      tournament_id: tournamentId,
+      event_id: e.event_id,
+      // A linked copy keeps any rename override; a custom one is marked as the copy.
+      name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
+      division: e.division,
+      event_type: e.event_type,
+      // Carries the copy's location and staffing needs across with it —
+      // track_details is whole-set, so this is also what keeps the copy on
+      // the same tracks.
+      track_details: e.track_details.map(toTrackDetailInput),
+      shift_ids: e.shifts.map((s) => s.id),
+    })));
+    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
+    if (created.length > 0) setEvents((prev) => [...(prev ?? []), ...created]);
+    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+    if (failure) {
+      const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong.";
+      show(`Duplicated ${created.length}, ${outcomes.length - created.length} failed: ${reason}`, "error");
+    } else {
+      show(`Duplicated ${created.length} event${created.length === 1 ? "" : "s"}.`);
+    }
+    setDuplicating(false);
+  }
 
   // Deduped across every event — the same pending track can hold dozens.
   const eventTracks = useMemo(() => {
