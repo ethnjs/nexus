@@ -30,7 +30,7 @@ const WIDTHS = {
   // Never truncated, like name — the table scrolls sideways instead.
   category: "minmax(max-content, 1.1fr)",
   // Holds a chip per track, and an event on three tracks is normal.
-  tracks: "minmax(140px, 1.6fr)",
+  tracks: "minmax(220px, 2fr)",
   // One track's shift labels — usually two or three short words.
   shifts: "minmax(120px, 1.2fr)",
   // A line per day: "Day 1: Sat, Feb 13 10:30 AM – 12:00 PM".

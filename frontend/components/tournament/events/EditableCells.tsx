@@ -139,7 +139,8 @@ function useCellEditor() {
 }
 
 /** The resting face of an editable cell: plain content that is a Tab stop and
- *  opens the editor on click or Enter. */
+ *  opens the editor on click or Enter. It fills the whole cell, so a click on
+ *  the empty space beside short text still opens it. */
 function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
   restRef: (el: HTMLElement | null) => void;
   onOpen: () => void;
@@ -155,7 +156,7 @@ function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onOpen(); } }}
       title={title}
-      style={{ cursor, minWidth: 0 }}
+      style={{ cursor, minWidth: 0, flex: 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}
     >
       {children}
     </span>
