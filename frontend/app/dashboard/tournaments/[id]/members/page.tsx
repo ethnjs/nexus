@@ -48,7 +48,7 @@ import {
 } from "@/components/tournament/members/MembersFilterModal";
 import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { TableColumnsModal } from "@/components/tournament/members/TableColumnsModal";
-import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/members/memberColumns";
+import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns } from "@/components/tournament/members/memberColumns";
 import styles from "@/components/tournament/members/MembersTable.module.css";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { rowActivation } from "@/lib/rowActivation";
@@ -83,7 +83,7 @@ function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberC
     selectMode ? SELECT_COLUMN_WIDTH : "0px",
     track(COLUMN_WIDTHS.name),
     ...columns.map((column) => track(column.width)),
-    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : rolesWidth(columns.length),
+    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : COLUMN_WIDTHS.roles,
     // Actions collapses with the panel too: its Remove lives in the panel
     // header while one is open. Plain length either way so the track still animates.
     panelOpen ? "0px" : COLUMN_WIDTHS.actions,

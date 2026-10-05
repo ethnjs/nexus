@@ -17,12 +17,42 @@ function StaleTag() {
   return <Badge variant="warning">Out of date</Badge>;
 }
 
-function Rank({ rank }: { rank: number | null }) {
+function Rank({ rank, compact }: { rank: number | null; compact: boolean }) {
   if (rank === null) return null;
   return (
-    <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
+    <span style={{
+      fontFamily: compact ? "var(--font-mono)" : "var(--font-sans)", fontSize: compact ? "12px" : "14px",
+      fontWeight: 500, color: "var(--color-text-primary)",
+    }}>
       {rank}.
     </span>
+  );
+}
+
+/**
+ * One picked option's line: its rank, then the event (a single-event option)
+ * or the option's label and how many events it groups. Shared with the
+ * members table's preference columns, so the two read the same. `compact` is
+ * the table's type size. Lay it out in a flex row — this is only the parts.
+ */
+export function PreferenceOptionLine({ option, compact = false }: {
+  option: MembershipEventPreferenceOption;
+  compact?: boolean;
+}) {
+  const label = compact
+    ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-primary)" }}>{option.label}</span>
+    : <FieldValue>{option.label}</FieldValue>;
+  return (
+    <>
+      <Rank rank={option.rank} compact={compact} />
+      {option.events.length === 1 ? <Badge variant="default">{eventNameWithDivision(option.events[0])}</Badge> : label}
+      {option.events.length > 1 && (
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+          {option.events.length}
+        </span>
+      )}
+      {option.is_archived && <StaleTag />}
+    </>
   );
 }
 
@@ -39,11 +69,7 @@ function OptionRow({ option, open, onToggle }: {
   if (option.events.length <= 1) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <Rank rank={option.rank} />
-        {option.events.length === 1
-          ? <Badge variant="default">{eventNameWithDivision(option.events[0])}</Badge>
-          : <FieldValue>{option.label}</FieldValue>}
-        {option.is_archived && <StaleTag />}
+        <PreferenceOptionLine option={option} />
       </div>
     );
   }
@@ -63,12 +89,7 @@ function OptionRow({ option, open, onToggle }: {
           transition: "background 120ms ease",
         }}
       >
-        <Rank rank={option.rank} />
-        <FieldValue>{option.label}</FieldValue>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-          {option.events.length}
-        </span>
-        {option.is_archived && <StaleTag />}
+        <PreferenceOptionLine option={option} />
       </div>
       {/* 0fr -> 1fr animates to the content's natural height, which a
           max-height transition can't do without a hardcoded guess. */}

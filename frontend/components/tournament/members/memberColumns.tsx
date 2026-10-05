@@ -11,6 +11,8 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
 import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
 import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
+import { PreferenceOptionLine } from "@/components/tournament/members/sections/EventPreferencesSection";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 
 // Namespaces shared with the backend's display_config — a column key means
 // the same thing here as it does on the panel.
@@ -33,10 +35,10 @@ const WIDTHS = {
   // Floor is higher than a plain text column's: the avatar and its gap take
   // ~32px before a single character of the name is drawn.
   name: "minmax(160px, 1.1fr)",
-  // Low flex on purpose: 190px already holds a typical address, so the extra
-  // space of a full-width table is better spent on Roles than on padding out
-  // an already-fitting email.
-  email: "minmax(190px, 0.7fr)",
+  // Free-text columns are never narrower than their longest value: nothing is
+  // cut off, and the table scrolls sideways instead (see Table.module.css's
+  // .scroll). Low flex on email, since the spare width is better spent on Roles.
+  email: "minmax(max-content, 0.7fr)",
   // Fixed, and sized to the widest formatted number — "(555) 123-4567" is
   // ~101px at 12px mono. This is the one column that must never shrink: it
   // has no useful truncation, and squeezing it is what made it wrap.
@@ -52,13 +54,16 @@ const WIDTHS = {
   onboarding: "96px",
   track: "104px",
   availabilityDay: "minmax(110px, 0.7fr)",
-  lunchCategory: "minmax(90px, 0.8fr)",
-  customField: "minmax(100px, 1fr)",
+  lunchCategory: "minmax(max-content, 0.8fr)",
+  customField: "minmax(max-content, 1fr)",
   // Free text ("Peanut allergy, vegetarian") — open-ended, read left to right.
-  dietary: "minmax(120px, 1fr)",
-  // A ranked list of option labels — open-ended, and read left to right.
-  eventPrefs: "minmax(140px, 1fr)",
-  roles: "minmax(110px, 2.6fr)",
+  dietary: "minmax(max-content, 1fr)",
+  // Never narrower than its longest line: the list is shown whole, and the
+  // table scrolls sideways instead of cutting a choice off (see table.scroll).
+  eventPrefs: "minmax(max-content, 1fr)",
+  // A floor that holds a few chips before they wrap. It no longer gives way
+  // as data columns are added — those scroll sideways instead.
+  roles: "minmax(240px, 2.6fr)",
   // The collapsed form of `roles`, for when a docked panel narrows the table.
   // Deliberately still a minmax(<length>, <flex>): grid-template-columns only
   // interpolates track-for-track between matching value types, so a bare
@@ -265,10 +270,21 @@ function entityColumn(key: string, label: string): MemberColumn | null {
         if (!answer || answer.options.length === 0) return <Dash />;
         // Rank order; an unranked pick (a checkbox question) keeps its place after the ranked ones.
         const options = [...answer.options].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
-        // Numbered by the stored rank, so "1." means the member's first choice.
-        const items = options.map((o) => (o.rank !== null ? `${o.rank}. ${o.label}` : o.label));
-        // One line in the cell; the hover lists one per line.
-        return <span style={LEFT_TEXT_CELL} title={items.join("\n")}>{items.join(", ")}</span>;
+        // One choice per line, as in the panel. A grouped option can't open
+        // here, so its events are on hover instead.
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "2px 0" }}>
+            {options.map((option, i) => (
+              <div
+                key={option.option_id ?? `orphan-${i}`}
+                style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
+                title={option.events.length > 1 ? option.events.map(eventNameWithDivision).join("\n") : undefined}
+              >
+                <PreferenceOptionLine option={option} compact />
+              </div>
+            ))}
+          </div>
+        );
       },
     };
   }
@@ -312,41 +328,17 @@ export const COLUMN_WIDTHS = WIDTHS;
 // table has left — the grid overflows and the last column (Actions) is
 // clipped by the card's edge. Select mode makes it worse by another 28px.
 //
-// Name and email are the columns a coordinator actually reads, so they hold
-// floors that stay legible (~17 and ~20 mono characters) and the other
-// ellipsing text columns give instead. Phone and the badge columns are left
-// alone — phone has no useful truncation, and badges wrap (ballooning the row
-// height) rather than ellipse.
+// Only Name gives: the free-text columns are content-sized so they're never
+// cut off, and a max-content floor can't animate to a px one anyway — the
+// table scrolls sideways while the panel is open instead.
 //
 // Safe by construction: a floor only binds when space is scarce, so this is
 // identical to the full-width table whenever the table actually fits.
 const COMPACT_TRACKS: Record<string, string> = {
   [WIDTHS.name]: "minmax(132px, 1.4fr)",
-  [WIDTHS.email]: "minmax(150px, 0.7fr)",
-  // Free-text answers: shorter than name/email are worth, and they keep their
-  // hover title, so these are the cheapest characters in the row to spend.
-  [WIDTHS.lunchCategory]: "minmax(70px, 0.5fr)",
-  [WIDTHS.customField]: "minmax(76px, 0.6fr)",
 };
 
 /** The panel-open form of a track, or the track itself if it can't give. */
 export function compactTrack(width: string): string {
   return COMPACT_TRACKS[width] ?? width;
-}
-
-// Roles is the elastic column: it holds wrapping chips, so it can give space
-// back as data columns are added, and it's the only track wide enough to be
-// worth taking from. Shrinks per configured column past the default five,
-// with a floor that still fits two chips before wrapping.
-const ROLES_BASE_FR = 2.6;
-const ROLES_FR_PER_COLUMN = 0.3;
-const ROLES_MIN_FR = 0.8;
-const ROLES_FREE_COLUMNS = 5;
-
-export function rolesWidth(columnCount: number): string {
-  const share = Math.max(
-    ROLES_MIN_FR,
-    ROLES_BASE_FR - Math.max(0, columnCount - ROLES_FREE_COLUMNS) * ROLES_FR_PER_COLUMN,
-  );
-  return `minmax(110px, ${share}fr)`;
 }
