@@ -64,3 +64,28 @@ export function handleGridArrows(e: KeyboardEvent<HTMLElement>) {
   e.preventDefault();
   next.focus();
 }
+
+/**
+ * Tab out of a cell whose editor or popover is open: focus the next cell's
+ * stop in the row (previous, with Shift), and past the row's last cell, the
+ * next row — the same order plain Tab walks. Returns whether it moved focus.
+ * The open cell itself is skipped, so its editor can close behind the move.
+ */
+export function focusAdjacentCell(from: HTMLElement, backwards: boolean): boolean {
+  const row = from.closest<HTMLElement>("[data-nav-row]");
+  const cell = from.closest<HTMLElement>("[data-nav-col]");
+  if (!row || !cell) return false;
+  const after = (el: HTMLElement) => !!(cell.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !cell.contains(el);
+  const before = (el: HTMLElement) => !!(cell.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) && !cell.contains(el);
+  const stops = stopsIn(row);
+  let next: HTMLElement | null | undefined = backwards
+    ? stops.filter(before).pop() ?? (row.tabIndex >= 0 ? row : null)
+    : stops.find(after);
+  if (!next && !backwards) {
+    const other = navRow(row, 1);
+    next = other && (other.tabIndex >= 0 ? other : stopsIn(other)[0]);
+  }
+  if (!next) return false;
+  next.focus();
+  return true;
+}

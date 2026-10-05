@@ -203,6 +203,11 @@ export function Popover<T>({
               e.preventDefault();
               e.stopPropagation();
               closeToTrigger();
+            } else if (e.key === "Tab") {
+              // Not a way around the panel — arrows are. Tab leaves it: back
+              // to the trigger first, so the default Tab carries on from
+              // there (a cell further up may take over and move on itself).
+              closeToTrigger();
             }
           }}
           style={{

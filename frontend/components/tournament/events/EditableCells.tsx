@@ -10,6 +10,7 @@ import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
 import { PillInput } from "@/components/ui/PillInput";
 import { SuggestionList } from "@/components/ui/SuggestionList";
+import { focusAdjacentCell } from "@/lib/gridNav";
 import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
@@ -120,10 +121,19 @@ function useCellEditor() {
     /** For the resting control's `ref`. */
     restRef: (el: HTMLElement | null) => { restRef.current = el; },
     onKeyDown: (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      refocus.current = true;
-      setEditing(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        refocus.current = true;
+        setEditing(false);
+      } else if (e.key === "Tab" && !e.defaultPrevented && wrapRef.current) {
+        // Tab leaves the cell (popover and all) for the next one, rather than
+        // stepping through the editor's own controls — arrows do that.
+        // Moving focus first blurs anything half-typed, which commits it.
+        e.preventDefault();
+        // Nowhere to go (the table's last cell): stay on this one.
+        if (!focusAdjacentCell(wrapRef.current, e.shiftKey)) refocus.current = true;
+        setEditing(false);
+      }
     },
   };
 }
@@ -215,6 +225,13 @@ export function SelectCell({
             style={{ display: "flex", flexDirection: "column", gap: "6px" }}
             onKeyDown={(e) => {
               if (e.key === "Escape") { e.preventDefault(); closeAndRefocus(close); return; }
+              // Tab leaves for the next cell; ←/→ move between the choices.
+              if (e.key === "Tab") {
+                e.preventDefault();
+                close();
+                if (triggerRef.current) focusAdjacentCell(triggerRef.current, e.shiftKey);
+                return;
+              }
               if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
               const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
               const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
