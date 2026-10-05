@@ -45,17 +45,22 @@ import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 // Select / Label / Track / Date / Start / End / Duration / Events / Actions —
 // every column, always (no picker: a shift has few enough fields to show them
 // all). The select track is always present (0px when off) so its width can
-// animate, like the events table. Label never truncates — the table scrolls
-// sideways instead (see table.scroll).
+// animate, like the events table.
+//
+// Every data column flexes from a floor that fits its content, so spare
+// width spreads across the row instead of pooling in Label and Track —
+// neither holds more than a word or two. Label never truncates; the table
+// scrolls sideways instead (see table.scroll).
 function shiftGridColumns(selectMode: boolean) {
   return [
     selectMode ? "28px" : "0px",
-    "minmax(max-content, 1.6fr)",  // label
-    "minmax(100px, 1fr)",          // track
-    "110px",                       // date — "Sat, Feb 13"
-    "90px", "90px",                // start, end
-    "80px",                        // duration — "1h 30m"
-    "70px",                        // events
+    "minmax(max-content, 1.2fr)",  // label
+    "minmax(80px, 0.8fr)",         // track — one badge
+    "minmax(110px, 1fr)",          // date — "Sat, Feb 13"
+    "minmax(90px, 1fr)",           // start
+    "minmax(90px, 1fr)",           // end
+    "minmax(80px, 0.8fr)",         // duration — "1h 30m"
+    "minmax(70px, 0.6fr)",         // events
     "40px",                        // actions
   ].join(" ");
 }
