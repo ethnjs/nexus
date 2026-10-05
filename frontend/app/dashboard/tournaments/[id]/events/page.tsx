@@ -17,7 +17,10 @@ import { assignmentsByEvent } from "@/lib/assignments/flags";
 import {
   EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
 } from "@/lib/eventSort";
-import { sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule } from "@/lib/sorting";
+import {
+  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from "@/lib/sorting";
+import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
@@ -568,6 +571,22 @@ export default function EventsPage() {
 
   const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
 
+  // A header that sorts its column. The default chain isn't shown as a
+  // header state — it's the absence of a choice, and clicking replaces it.
+  const headerSortRules = sameSortRules(sortRules, DEFAULT_TABLE_SORT) ? [] : sortRules;
+  const sortableHeader = (field: EventSortField, label: string, align: "start" | "center") => {
+    const index = headerSortRules.findIndex((rule) => rule.field === field);
+    return (
+      <SortableHeader
+        label={label}
+        align={align}
+        rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+        showPosition={headerSortRules.length > 1}
+        onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_TABLE_SORT))}
+      />
+    );
+  };
+
   return (
     <div>
       <CollapsibleHeader heading="Events" />
@@ -704,8 +723,12 @@ export default function EventsPage() {
                   onChange={(checked) => toggleSelectAll(visibleEvents.map((e) => e.id), checked)}
                 />
               </span>
-              <span>Events — {isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}</span>
-              {tableColumns.map((column) => (
+              {sortableHeader("name", `Events — ${isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}`, "start")}
+              {tableColumns.map((column) => column.sortField ? (
+                <span key={column.key} style={{ display: "flex", minWidth: 0 }}>
+                  {sortableHeader(column.sortField, column.label, column.align === "start" ? "start" : "center")}
+                </span>
+              ) : (
                 <span
                   key={column.key}
                   style={{

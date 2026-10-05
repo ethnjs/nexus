@@ -6,6 +6,7 @@ import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { trackLocationLabel } from "@/lib/eventDisplay";
 import { staffedCount } from "@/lib/assignments/staffing";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
+import type { EventSortField } from "@/lib/eventSort";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
@@ -61,6 +62,9 @@ export interface EventColumn {
   width: string;
   /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
   align?: "start";
+  /** Clicking the header sorts by this field. Only where the column *is* the
+   *  field — a per-track column would sort by every track's value, not its own. */
+  sortField?: EventSortField;
   render: (event: TournamentEvent) => ReactNode;
 }
 
@@ -205,7 +209,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
   switch (key) {
     case "division":
       return {
-        key, label: "Division", width: WIDTHS.division,
+        key, label: "Division", width: WIDTHS.division, sortField: "division",
         render: (e) => (
           <span style={{ display: "flex", justifyContent: "center" }}>
             {e.division
@@ -227,7 +231,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       };
     case "category":
       return {
-        key, label: "Category", width: WIDTHS.category, align: "start",
+        key, label: "Category", width: WIDTHS.category, align: "start", sortField: "category",
         render: (e) => {
           const name = e.event?.category.name ?? "";
           return (
