@@ -47,6 +47,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -548,7 +549,7 @@ export default function EventsPage() {
 
   return (
     <div>
-      <PageHeader heading="Events" />
+      <CollapsibleHeader heading="Events" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
