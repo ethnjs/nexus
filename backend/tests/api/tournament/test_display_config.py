@@ -901,7 +901,8 @@ def test_put_accepts_per_track_shift_columns(client, td_user, td_tournament):
 
 
 def test_put_accepts_every_per_track_column_family(client, td_user, td_tournament):
-    """Time, location and staffing are per track the same way shifts are."""
+    """Location and staffing are per track the same way shifts are. Time is
+    one column now, but its old per-track keys still save."""
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
@@ -1025,7 +1026,7 @@ def test_catalog_serves_event_columns(client, td_user, td_tournament):
     primary = [t for t in live if t.is_primary]
     assert [c["key"] for c in body["event_columns"]] == [
         "division", "type", "category", "tracks",
-        *[f"time:{t.id}" for t in primary],
+        "time",
         *[f"shifts:{t.id}" for t in primary],
         *[f"location:{t.id}" for t in primary],
         *[f"staffing:{t.id}" for t in live],

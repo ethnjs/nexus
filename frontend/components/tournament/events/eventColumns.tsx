@@ -30,8 +30,8 @@ const WIDTHS = {
   tracks: "minmax(140px, 1.6fr)",
   // One track's shift labels — usually two or three short words.
   shifts: "minmax(120px, 1.2fr)",
-  // "10:30 AM – 12:00 PM" at most.
-  time: "150px",
+  // A line per day: "Day 1: Sat, Feb 13 10:30 AM – 12:00 PM".
+  time: "minmax(260px, 1.6fr)",
   // A building name plus a room or two.
   location: "minmax(130px, 1.2fr)",
   // A ring, role and count per need — two or three needs side by side.
@@ -78,10 +78,9 @@ export interface EventColumnContext {
 }
 
 // Mirrors EVENT_TRACK_COLUMN_FAMILIES in core/tournament/display_config.py:
-// shifts and time only exist on a dated track and a cosmetic track has no
-// place, so those are competition (primary) tracks only; needs go on any.
+// shifts only exist on a dated track and a cosmetic track has no place, so
+// those are competition (primary) tracks only; needs go on any.
 const TRACK_FAMILIES = {
-  time: { label: "Time", primaryOnly: true },
   shifts: { label: "Shifts", primaryOnly: true },
   location: { label: "Location", primaryOnly: true },
   staffing: { label: "Staffing", primaryOnly: false },
@@ -111,7 +110,9 @@ export function trackFamilyOf(key: string): TrackFamily | null {
  */
 export function expandTrackColumns(keys: readonly string[], tracks: readonly TournamentTrack[]): string[] {
   const out: string[] = [];
-  for (const key of keys) {
+  for (const raw of keys) {
+    // Time was briefly per track ("time:2"); it's one column now.
+    const key = raw.startsWith("time:") ? "time" : raw;
     const expanded = isTrackFamily(key) ? familyTracks(key, tracks).map((t) => `${key}:${t.id}`) : [key];
     for (const k of expanded) if (!out.includes(k)) out.push(k);
   }
@@ -155,13 +156,6 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
         </span>
       );
     }
-    case "time": {
-      // First shift's start to last one's end — an event has no times of its
-      // own, same derivation as the board's clock line.
-      const shifts = trackShifts(e, track);
-      if (shifts.length === 0) return EMPTY_CELL;
-      return <span style={TEXT_CELL}>{`${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`}</span>;
-    }
     case "location": {
       const label = trackLocationLabel(e.track_details.find((d) => d.track_id === track.id));
       if (!label) return EMPTY_CELL;
@@ -182,6 +176,40 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
   }
 }
 
+/**
+ * When an event runs, a line per day: "Day 1: Sat, Feb 13 9:00 AM – 12:00 PM",
+ * first shift's start to last one's end — an event has no times of its own.
+ * One column rather than one per track, so a day the event isn't on costs
+ * no width. The track name is dropped when there's only one competition track.
+ */
+function EventTimeLines({ event, tracks }: { event: TournamentEvent; tracks: readonly TournamentTrack[] }) {
+  const named = tracks.filter((t) => t.is_primary).length > 1;
+  const days = new Map<string, { trackId: number; start: string; end: string }>();
+  for (const s of [...event.shifts].sort((a, b) => a.start.localeCompare(b.start))) {
+    const key = `${s.track_id}|${toDateInput(s.start)}`;
+    const day = days.get(key);
+    if (!day) days.set(key, { trackId: s.track_id, start: s.start, end: s.end });
+    else if (s.end > day.end) day.end = s.end;
+  }
+  if (days.size === 0) return EMPTY_CELL;
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+      {[...days.values()].map((day) => {
+        const trackName = tracks.find((t) => t.id === day.trackId)?.name;
+        const line = `${formatDayLabel(toDateInput(day.start))} ${formatTime(day.start)} – ${formatTime(day.end)}`;
+        return (
+          <span key={`${day.trackId}${day.start}`} style={LEFT_TEXT_CELL} title={named && trackName ? `${trackName}: ${line}` : line}>
+            {named && trackName && (
+              <span style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>{trackName}: </span>
+            )}
+            {line}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 /** One track's column for one family. */
 function trackColumn(key: string, family: TrackFamily, track: TournamentTrack, ctx: EventColumnContext): EventColumn {
   const { label } = TRACK_FAMILIES[family];
@@ -191,7 +219,7 @@ function trackColumn(key: string, family: TrackFamily, track: TournamentTrack, c
     // field name says more than "Main location" would.
     label: familyTracks(family, ctx.tracks).length === 1 ? label : `${track.name} ${label.toLowerCase()}`,
     width: WIDTHS[family],
-    align: family === "time" ? undefined : "start",
+    align: "start",
     render: (e) => renderTrackCell(family, track, e, ctx),
   };
 }
@@ -228,6 +256,11 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
             </Badge>
           </span>
         ),
+      };
+    case "time":
+      return {
+        key, label: "Time", width: WIDTHS.time, align: "start",
+        render: (e) => <EventTimeLines event={e} tracks={ctx.tracks} />,
       };
     case "category":
       return {

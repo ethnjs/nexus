@@ -156,8 +156,9 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # is shared between the two surfaces except the storage shape.
 #
 # Most columns are scalars on the event. The exceptions are the per-track
-# families below: shifts, time, location and staffing are all answers a track
-# gives, and a row is per event, so they get one column per track.
+# families below: shifts, location and staffing are all answers a track gives,
+# and a row is per event, so they get one column per track. Time is one
+# column, a line per day, so a day the event isn't on costs no width.
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
@@ -177,11 +178,10 @@ EVENT_COLUMN_STAFFING = "staffing"
 # only spelling under which a track added later appears on its own — an
 # explicit list only names the tracks that existed.
 #
-# Value: whether the family is for competition (primary) tracks only. Shifts,
-# and so time, only exist on a dated track, and a cosmetic track has no place;
-# staffing needs can be declared on any track.
+# Value: whether the family is for competition (primary) tracks only. Shifts
+# only exist on a dated track, and a cosmetic track has no place; staffing
+# needs can be declared on any track.
 EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
-    EVENT_COLUMN_TIME: True,
     EVENT_COLUMN_SHIFTS: True,
     EVENT_COLUMN_LOCATION: True,
     EVENT_COLUMN_STAFFING: False,
@@ -441,7 +441,9 @@ def is_known_column(surface: str, key: str) -> bool:
         if sep:
             # Not checked against the catalog — a deleted track's column is
             # inert, the same leniency every other saved track id gets.
-            return family in EVENT_TRACK_COLUMN_FAMILIES and track_id.isdigit()
+            # "time:<id>" is from when time was per track; the client reads it
+            # as "time", and it stays valid so an old blob still re-saves.
+            return (family in EVENT_TRACK_COLUMN_FAMILIES or family == EVENT_COLUMN_TIME) and track_id.isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
