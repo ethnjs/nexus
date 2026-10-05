@@ -198,6 +198,8 @@ export default function AssignmentsPage() {
   // the browser fires a click on it once the drag ends — and the row would
   // open the panel for a gesture that was never a click.
   const lastDropAt = useRef(0)
+  // Stable, so the belt's memoised cards survive a page re-render.
+  const openMemberPanel = useCallback((id: number) => openPanel('member', id), [openPanel])
   const openEventPanel = useCallback((id: number) => {
     if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return
     openPanel('event', id)
@@ -951,6 +953,10 @@ export default function AssignmentsPage() {
             tournamentId={tournamentId}
             membershipId={focused.id}
             allRoles={roleCatalog}
+            // The board's own copies, so stepping through members doesn't
+            // re-fetch both on every open.
+            shifts={allShifts}
+            tracks={tracks}
             canTouchRole={canTouchRole}
             canEditMember={canEditMember}
             collectIsOver18={!!selectedTournament?.collect_is_over_18}
@@ -1084,7 +1090,7 @@ export default function AssignmentsPage() {
                   selected={focusedId === member.id}
                   display={memberDisplay}
                   allShifts={allShifts}
-                  onOpen={() => openPanel('member', member.id)}
+                  onOpen={openMemberPanel}
                 />
               ))
             )}
@@ -1123,6 +1129,7 @@ export default function AssignmentsPage() {
     memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
     applyMemberFilters,
     canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
+    openMemberPanel,
     setPanel, clearPanel,
   ])
 

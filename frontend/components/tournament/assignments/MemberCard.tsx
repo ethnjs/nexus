@@ -570,7 +570,9 @@ const MemberCardBody = memo(function MemberCardBody({
   )
 })
 
-export function MemberCard({
+/** Memoised so the belt's cards skip the re-render every panel open causes —
+ *  keep every prop identity-stable. */
+export const MemberCard = memo(function MemberCard({
   member, selected, display, allShifts, onOpen,
 }: {
   member: MembershipFull
@@ -580,7 +582,8 @@ export function MemberCard({
    *  so hours the member was offered but declined read as unavailable rather
    *  than as absent. */
   allShifts: TournamentShift[]
-  onOpen: () => void
+  /** Opens a member's panel, given this card's id — one callback for every card. */
+  onOpen: (membershipId: number) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `member:${member.id}`,
@@ -597,7 +600,7 @@ export function MemberCard({
       // A click opens the detail panel, a drag assigns. The PointerSensor's
       // 4px threshold keeps the two apart — below it nothing drags, so
       // onClick still fires.
-      onClick={onOpen}
+      onClick={() => onOpen(member.id)}
       // Composed with dnd-kit's own handler: {...listeners} already sets
       // onPointerDown, and a second one beside the spread replaces it
       // outright, which silently kills the drag.
@@ -627,4 +630,4 @@ export function MemberCard({
       <MemberCardBody member={member} display={display} allShifts={allShifts} />
     </div>
   )
-}
+})
