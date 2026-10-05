@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, KeyboardEvent, ReactNode, SyntheticEvent, useEffect, useRef, useState } from "react";
+import { CSSProperties, KeyboardEvent, ReactNode, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
@@ -168,6 +168,13 @@ export function SelectCell({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const Group = divisions ? DivisionButtonGroup : ButtonGroup;
+  // On open, focus lands on the current choice, so Enter keeps it and ←/→
+  // move to the others. Stable so it runs once per opening, not per render.
+  const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
+  const focusSelected = useCallback((el: HTMLDivElement | null) => {
+    el?.querySelectorAll<HTMLButtonElement>("button")[selectedIndex]?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex" }}>{display}</span>;
   }
@@ -197,8 +204,16 @@ export function SelectCell({
       >
         {(close) => (
           <div
+            ref={focusSelected}
             style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-            onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); closeAndRefocus(close); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.preventDefault(); closeAndRefocus(close); return; }
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+              const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+              const next = buttons[(at + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length];
+              if (next) { e.preventDefault(); next.focus(); }
+            }}
           >
             <Group
               options={options}
