@@ -14,7 +14,7 @@ import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
 import { handleGridArrows } from "@/lib/gridNav";
-import { useElementWidth } from "@/lib/useElementWidth";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
 import {
   EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
@@ -136,8 +136,10 @@ export default function EventsPage() {
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
   // A table edit that asked first (see EventEditContext.confirm).
   const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
-  // Drives the icon-only toolbar (see compactToolbar).
-  const [toolbarRef, toolbarWidth] = useElementWidth<HTMLDivElement>();
+  // Below this the labelled toolbar no longer fits on one line (search at its
+  // minimum plus every button), so the buttons drop to icons instead of the
+  // row wrapping. Select keeps its word — it has no icon that says "select".
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(900);
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
@@ -630,10 +632,6 @@ export default function EventsPage() {
 
   const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
 
-  // Below this the labelled toolbar no longer fits on one line (search at its
-  // minimum plus every button), so the buttons drop to icons instead of the
-  // row wrapping. Select keeps its word — it has no icon that says "select".
-  const compactToolbar = toolbarWidth > 0 && toolbarWidth < 900;
 
   // A header that sorts its column. The default chain isn't shown as a
   // header state — it's the absence of a choice, and clicking replaces it.
