@@ -1,6 +1,6 @@
 'use client'
 
-import { CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 interface EditableTextProps {
   value: string
@@ -26,7 +26,8 @@ interface EditableTextProps {
    * otherwise a wrong abbreviation can never be removed.
    */
   allowEmpty?: boolean
-  /** Offered as you type (a native datalist) — free text is still allowed. */
+  /** Offered in a list as you type — free text is still allowed. Use
+   *  EditableCombobox, which requires it, rather than passing it here. */
   suggestions?: string[]
 }
 
@@ -48,7 +49,6 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
 export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false, suggestions }: EditableTextProps) {
-  const listId = useId()
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -56,6 +56,31 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   const [inputWidth, setInputWidth] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const measureRef = useRef<HTMLSpanElement>(null)
+  // Combobox mode: which suggestion the arrow keys are on (-1 = none), and
+  // where the list sits — position: fixed off the input's rect, like
+  // Combobox, so a scrolling table or popover can't clip it.
+  const [highlight, setHighlight] = useState(-1)
+  const [listPos, setListPos] = useState<{ top: number; left: number } | null>(null)
+  const needle = draft.trim().toLowerCase()
+  const matches = editing && suggestions
+    ? suggestions.filter((s) => s.toLowerCase().includes(needle) && s !== draft).slice(0, 8)
+    : []
+  const listOpen = matches.length > 0
+
+  useLayoutEffect(() => {
+    if (!listOpen) return
+    const update = () => {
+      const r = inputRef.current?.getBoundingClientRect()
+      if (r) setListPos({ top: r.bottom + 4, left: r.left })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [listOpen])
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
   // draft is already `value`, so `draft` alone wouldn't change on the
@@ -76,15 +101,22 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   function startEdit() {
     setDraft(value)
     setError(undefined)
+    setHighlight(-1)
     setEditing(true)
   }
 
-  async function save() {
-    const trimmed = draft.trim()
+  // A ref, not the `saving` state: Enter disables the input, and a browser
+  // that blurs it on disable would otherwise start a second save in the same tick.
+  const inFlight = useRef(false)
+
+  async function save(text: string = draft) {
+    if (inFlight.current) return
+    const trimmed = text.trim()
     if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false)
       return
     }
+    inFlight.current = true
     setSaving(true)
     try {
       await onSave(trimmed)
@@ -92,6 +124,7 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
+      inFlight.current = false
       setSaving(false)
     }
   }
@@ -104,26 +137,29 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
         <span ref={measureRef} style={{ ...style, ...BOX_STYLE, position: 'absolute', visibility: 'hidden', whiteSpace: 'pre' }}>
           {draft || ' '}
         </span>
-        {suggestions && (
-          <datalist id={listId}>
-            {suggestions.map((s) => <option key={s} value={s} />)}
-          </datalist>
-        )}
         <input
           ref={inputRef}
-          list={suggestions ? listId : undefined}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={save}
+          onChange={(e) => { setDraft(e.target.value); setHighlight(-1) }}
+          onBlur={() => save()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); save() }
+            if (e.key === 'ArrowDown' && listOpen) { e.preventDefault(); setHighlight((h) => (h + 1) % matches.length) }
+            if (e.key === 'ArrowUp' && listOpen) { e.preventDefault(); setHighlight((h) => (h <= 0 ? matches.length - 1 : h - 1)) }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              const picked = highlight >= 0 ? matches[highlight] : undefined
+              if (picked) setDraft(picked)
+              save(picked)
+            }
             if (e.key === 'Escape') { e.preventDefault(); setEditing(false) }
           }}
           disabled={saving}
           style={{
             ...style,
             ...BOX_STYLE,
-            width: `${Math.max(inputWidth, 20)}px`,
+            // Wider floor with suggestions: an empty field there is the
+            // normal start, and a 20px one hides what is being typed.
+            width: `${Math.max(inputWidth, suggestions ? 80 : 20)}px`,
             boxSizing: 'content-box',
             color: 'var(--color-text-primary)',
             background: 'transparent',
@@ -134,6 +170,36 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
             margin: 0,
           }}
         />
+        {listOpen && listPos && (
+          <div
+            role="listbox"
+            style={{
+              position: 'fixed', top: listPos.top, left: listPos.left, zIndex: 400,
+              minWidth: '160px', padding: '4px', boxSizing: 'border-box',
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+            }}
+          >
+            {matches.map((option, i) => (
+              <div
+                key={option}
+                role="option"
+                aria-selected={i === highlight}
+                // mousedown + preventDefault keeps focus in the input, so the
+                // pick isn't preceded by a blur that saves the half-typed text.
+                onMouseDown={(e) => { e.preventDefault(); setDraft(option); save(option) }}
+                onMouseEnter={() => setHighlight(i)}
+                style={{
+                  padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', fontSize: '13px', whiteSpace: 'nowrap',
+                  background: i === highlight ? 'var(--color-accent-subtle)' : undefined,
+                }}
+              >
+                {option}
+              </div>
+            ))}
+          </div>
+        )}
         {error && (
           <span style={{
             position: 'absolute', top: '100%', left: 0, marginTop: '4px', whiteSpace: 'nowrap',
@@ -169,4 +235,14 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
       {value || placeholder}
     </span>
   )
+}
+
+/**
+ * EditableText with suggestions: reads as plain text, and while editing
+ * offers matching options under the field (up/down to move, Enter or a click
+ * to pick). Free text still saves — the caller decides what an unknown value
+ * means (e.g. create the building).
+ */
+export function EditableCombobox(props: EditableTextProps & { suggestions: string[] }) {
+  return <EditableText {...props} />
 }

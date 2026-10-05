@@ -8,7 +8,7 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
-import { EditableText } from "@/components/ui/EditableText";
+import { EditableCombobox } from "@/components/ui/EditableText";
 import { TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
@@ -210,7 +210,7 @@ export function ChipsCell<T>({
 
 /**
  * One track's location, edited in place on one line: the building as
- * EditableText (existing names suggested as you type), then the rooms as
+ * EditableCombobox (existing names suggested as you type), then the rooms as
  * chips. Each saves on its own. No floor field — the server derives it from
  * the first room ("210" → 2); an override lives in the panel.
  * Locked, it's the read-only `display`.
@@ -276,7 +276,7 @@ export function LocationCell({
       <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}>
         <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
           <span style={{ flexShrink: 0 }}>
-            <EditableText
+            <EditableCombobox
               value={buildingName}
               onSave={saveBuilding}
               allowEmpty
