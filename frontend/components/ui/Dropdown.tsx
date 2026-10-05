@@ -307,7 +307,10 @@ export function Dropdown({
           data-select-trigger="true"
           onClick={(e) => { e.stopPropagation(); if (!locked) setOpen((v) => !v) }}
           onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
+          // A transparent trigger only counts keyboard focus: a click leaves
+          // the button focused after its menu closes, and its border would
+          // stay up until you clicked somewhere else.
+          onFocus={(e) => setFocused(variant !== 'transparent' || e.currentTarget.matches(':focus-visible'))}
           onBlur={() => setFocused(false)}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}

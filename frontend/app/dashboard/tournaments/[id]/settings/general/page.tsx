@@ -11,7 +11,7 @@ import {
   TOURNAMENT_STATES, TOURNAMENT_LEVELS,
   ApiError,
 } from "@/lib/api";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
@@ -213,7 +213,7 @@ export default function GeneralSettingsPage() {
 
   return (
     <div style={{ paddingBottom: `${saveBarHeight}px` }}>
-      <PageHeader heading="General" subheading="Tournament Settings" />
+      <SettingsPageHeader page="general" heading="General" />
 
       {canEdit && (
         <SettingsSection title="Details">

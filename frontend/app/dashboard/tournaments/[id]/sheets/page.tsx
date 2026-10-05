@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { useArchiveLock } from "@/lib/useArchiveLock";
@@ -490,7 +490,7 @@ export default function SheetsPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      <PageHeader
+      <CollapsibleHeader
         heading="Sheets"
         subheading="Connect Google Sheets to sync volunteer data into NEXUS."
         action={

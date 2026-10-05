@@ -9,6 +9,7 @@ import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosur
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { PageCrumbProvider } from "@/lib/usePageCrumb";
+import { HeaderCollapseProvider } from "@/lib/useHeaderCollapse";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
 import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
@@ -133,6 +134,8 @@ export default function TournamentLayout({
               page lends its title to the Topbar, which is <main>'s sibling
               and so out of reach by nesting. */}
           <PageCrumbProvider>
+          {/* One fold state for every page of the tournament (see useHeaderCollapse). */}
+          <HeaderCollapseProvider tournamentId={Number(tournamentId)}>
           <LayoutPanelProvider>
             {/* Above the shell so the assignments board's drag context
                 reaches both <main> and the panel slot — its member belt is
@@ -148,6 +151,7 @@ export default function TournamentLayout({
               </NavDrawerProvider>
             </BoardDndProvider>
           </LayoutPanelProvider>
+          </HeaderCollapseProvider>
           </PageCrumbProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>

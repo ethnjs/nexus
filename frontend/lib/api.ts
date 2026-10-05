@@ -2387,6 +2387,8 @@ export interface DisplayConfigSurface {
   // sorts, the rest break its ties. Separate from `sort` so the single-sort
   // tables keep reading exactly what they wrote.
   sorts?: DisplayConfigSort[] | null
+  /** page_header only: the page header is folded into the Topbar. */
+  collapsed?: boolean | null
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>

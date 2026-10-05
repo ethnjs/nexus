@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
-    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, build_catalog, is_known_surface,
+    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, PAGE_HEADER, build_catalog, is_known_surface,
     is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
     is_known_sort_field, section_field_ids,
 )
@@ -106,6 +106,11 @@ def update_display_config(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown surface '{surface}'",
+            )
+        if config.collapsed is not None and surface != PAGE_HEADER:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Surface '{surface}' cannot be collapsed",
             )
         for item in config.hidden:
             if not is_known_hidden_item(surface, item):

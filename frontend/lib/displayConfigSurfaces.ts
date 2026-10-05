@@ -25,3 +25,6 @@ export const ASSIGNMENTS_EVENTS = "assignments_events";
 export const EVENT_PANEL = "event_panel";
 // The shifts table — filters and sort only (it always shows every column).
 export const SHIFTS_TABLE = "shifts_table";
+// Whether the page header is folded into the Topbar — one setting for every
+// page of the tournament, stored as `collapsed` and nothing else.
+export const PAGE_HEADER = "page_header";

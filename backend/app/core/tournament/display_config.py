@@ -27,9 +27,13 @@ EVENT_PANEL = "event_panel"
 # The shifts table — its filters and sort, in its own vocabulary: a shift has
 # a time and a track, not a division. No columns: the table shows them all.
 SHIFTS_TABLE = "shifts_table"
+# Whether this viewer keeps the page header folded into the Topbar. One
+# setting for every page of the tournament, so it is a surface of its own
+# that holds only `collapsed` rather than a field repeated on each table's.
+PAGE_HEADER = "page_header"
 
 FLAT_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL, SHIFTS_TABLE,
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL, SHIFTS_TABLE, PAGE_HEADER,
 })
 
 # ---------------------------------------------------------------------------

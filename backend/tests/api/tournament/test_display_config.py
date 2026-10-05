@@ -1204,3 +1204,22 @@ def test_assignment_card_rejects_a_malformed_custom_hide(client, td_user, td_tou
         json={"assignment_card:all": {"hidden": ["card_custom:"]}},
     )
     assert response.status_code == 422
+
+
+def test_page_header_saves_collapsed(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"page_header": {"hidden": [], "collapsed": True}},
+    )
+    assert response.status_code == 200, response.json()
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["page_header"]["collapsed"] is True
+
+
+def test_collapsed_is_page_header_only(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"hidden": [], "collapsed": True}},
+    )
+    assert response.status_code == 422

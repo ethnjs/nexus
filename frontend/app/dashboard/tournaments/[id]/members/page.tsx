@@ -22,7 +22,6 @@ import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { DisplayButton } from "@/components/ui/DisplayButton";
@@ -606,7 +605,7 @@ export default function MembersPage() {
   if (!canManageMembers) {
     return (
       <div>
-        <PageHeader heading="Members" />
+        <CollapsibleHeader heading="Members" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -621,7 +620,7 @@ export default function MembersPage() {
   if (members === null) {
     return (
       <div>
-        <PageHeader heading="Members" />
+        <CollapsibleHeader heading="Members" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>

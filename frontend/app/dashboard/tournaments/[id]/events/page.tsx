@@ -64,7 +64,6 @@ import { eventName } from "@/lib/eventDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Always present as a grid track (never conditionally added/removed) so its
@@ -600,7 +599,7 @@ export default function EventsPage() {
   if (!canManageEvents) {
     return (
       <div>
-        <PageHeader heading="Events" />
+        <CollapsibleHeader heading="Events" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -615,7 +614,7 @@ export default function EventsPage() {
   if (events === null || !viewReady) {
     return (
       <div>
-        <PageHeader heading="Events" />
+        <CollapsibleHeader heading="Events" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>

@@ -14,6 +14,7 @@ import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import { Permission } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useSettingsPages } from "@/lib/useSettingsPages";
 
 interface TournamentSidebarProps {
   onExpandedChange?: (expanded: boolean) => void;
@@ -39,7 +40,7 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
 
   const canManageEvents = can("manage_events");
   const canManageMembers = can("manage_members");
-  const canManageTournament = can("manage_tournament");
+  const settingsPages = useSettingsPages(tournamentId);
 
   const items: SidebarItem[] = [
     { key: "overview",    href: `${base}/overview`,    icon: <IconHome />,             label: "Overview" },
@@ -63,12 +64,8 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
       match: settingsBase,
       icon: <IconSettings size={18} />,
       label: "Settings",
-      subitems: [
-        { href: `${settingsBase}/general`, label: "General" },
-        ...(can("manage_roles")   ? [{ href: `${settingsBase}/roles`,     label: "Roles" }]     : []),
-        ...(can("manage_invites") ? [{ href: `${settingsBase}/invites`,   label: "Invites" }]   : []),
-        ...(canManageTournament   ? [{ href: `${settingsBase}/audit-log`, label: "Audit Log" }] : []),
-      ],
+      // Shared with the folded settings header's Topbar dropdown.
+      subitems: settingsPages.map((page) => ({ href: page.href, label: page.label })),
     },
   ];
 

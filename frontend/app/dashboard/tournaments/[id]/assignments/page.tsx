@@ -59,7 +59,6 @@ import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { CollapsibleHeader } from '@/components/ui/CollapsibleHeader'
 import { Spinner } from '@/components/ui/Spinner'
 import {
@@ -1435,7 +1434,7 @@ export default function AssignmentsPage() {
   if (!canView) {
     return (
       <div>
-        <PageHeader heading="Assignments" />
+        <CollapsibleHeader heading="Assignments" />
         <Card radius="lg" style={{ padding: '8px' }}>
           <EmptyState
             icon={<IconLock size={28} />}

@@ -55,7 +55,6 @@ import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { rowActivation } from "@/lib/rowActivation";
 import { handleGridArrows } from "@/lib/gridNav";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Select / Label / Track / Date / Start / End / Duration / Events / Actions —
@@ -411,7 +410,7 @@ export default function ShiftsPage() {
   if (!canManageEvents) {
     return (
       <div>
-        <PageHeader heading="Shifts" />
+        <CollapsibleHeader heading="Shifts" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -426,7 +425,7 @@ export default function ShiftsPage() {
   if (shifts === null || !viewReady) {
     return (
       <div>
-        <PageHeader heading="Shifts" />
+        <CollapsibleHeader heading="Shifts" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>

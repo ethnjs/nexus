@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { TabStrip } from '@/components/ui/TabStrip'
 import { IconChevronDown } from '@/components/ui/Icons'
 import { useSetPageCrumb, type PageCrumbTab } from '@/lib/usePageCrumb'
+import { useHeaderCollapse } from '@/lib/useHeaderCollapse'
 import styles from '@/components/ui/CollapsibleHeader.module.css'
 
 interface CollapsibleHeaderProps {
@@ -21,6 +22,10 @@ interface CollapsibleHeaderProps {
   tabs?: PageCrumbTab[]
   activeKey?: string
   onChange?: (key: string) => void
+  /** What the Topbar shows while folded, when that isn't this header — a
+   *  settings page reads "Settings / General", with the other settings pages
+   *  in the dropdown, though its header has no tabs. Keep it memoised. */
+  crumb?: { title: string; tabs: PageCrumbTab[]; activeKey: string; onChange: (key: string) => void }
 }
 
 /**
@@ -34,9 +39,14 @@ interface CollapsibleHeaderProps {
  * and pass the tabs it was rendering itself. Nothing below has to know.
  */
 export function CollapsibleHeader({
-  heading, subheading, metadata, action, tabs, activeKey, onChange,
+  heading, subheading, metadata, action, tabs, activeKey, onChange, crumb,
 }: CollapsibleHeaderProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  // The tournament's shared fold (see useHeaderCollapse), so every page
+  // opens the way the last one was left. Local state only outside one.
+  const shared = useHeaderCollapse()
+  const [localCollapsed, setLocalCollapsed] = useState(false)
+  const collapsed = shared ? shared.collapsed : localCollapsed
+  const setCollapsed = shared ? shared.setCollapsed : setLocalCollapsed
   const { setCrumb, clearCrumb } = useSetPageCrumb()
 
   // Re-registered whenever the tab or the tab list moves, so the bar's menu
@@ -45,11 +55,11 @@ export function CollapsibleHeader({
   useEffect(() => {
     if (!collapsed) return
     setCrumb({
-      title: heading, tabs, activeKey, onChange,
+      ...(crumb ?? { title: heading, tabs, activeKey, onChange }),
       onExpand: () => setCollapsed(false),
     })
     return () => clearCrumb()
-  }, [collapsed, heading, tabs, activeKey, onChange, setCrumb, clearCrumb])
+  }, [collapsed, setCollapsed, heading, tabs, activeKey, onChange, crumb, setCrumb, clearCrumb])
 
   return (
     <div className={styles.wrap}>

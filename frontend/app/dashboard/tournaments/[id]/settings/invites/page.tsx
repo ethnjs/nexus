@@ -6,7 +6,7 @@ import { invitesApi, Invite, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
@@ -177,7 +177,7 @@ export default function InvitesSettingsPage() {
   if (!canManageInvites) {
     return (
       <div>
-        <PageHeader heading="Invites" subheading="Tournament Settings" />
+        <SettingsPageHeader page="invites" heading="Invites" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -192,7 +192,7 @@ export default function InvitesSettingsPage() {
   if (invites === null) {
     return (
       <div>
-        <PageHeader heading="Invites" subheading="Tournament Settings" />
+        <SettingsPageHeader page="invites" heading="Invites" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>
@@ -216,9 +216,9 @@ export default function InvitesSettingsPage() {
 
   return (
     <div>
-      <PageHeader
+      <SettingsPageHeader
+        page="invites"
         heading="Invites"
-        subheading="Tournament Settings"
         action={
           <Button type="button" variant="primary" size="md" disabled={isArchived} onClick={() => setCreating(true)}>
             <IconPlus size={14} /> Add invite

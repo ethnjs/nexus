@@ -8,7 +8,7 @@ import { rolesApi, ApiError, Permission, Role, RoleWithMemberCount } from "@/lib
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { defaultNewRoleLabel, isTempRole, isTempRoleId, nextBottomRank, rankChanges } from "@/lib/roles/roleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -283,7 +283,7 @@ export default function RoleEditorPage() {
 
   return (
     <div>
-      <PageHeader heading="Roles" subheading="Tournament Settings" />
+      <SettingsPageHeader page="roles" heading="Roles" />
 
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
         <Card radius="lg" style={{ width: "260px", flexShrink: 0, padding: "8px" }}>

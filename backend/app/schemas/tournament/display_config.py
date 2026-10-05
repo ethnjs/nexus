@@ -74,6 +74,8 @@ class DisplayConfigSurface(BaseModel):
     # a sort has to be a total order or rows swap places between renders, and
     # that is not something a viewer should have to configure.
     sorts: list[DisplayConfigSort] | None = None
+    # page_header only: the page header is folded into the Topbar.
+    collapsed: bool | None = None
 
 
 class DisplayConfigCatalogItem(BaseModel):
