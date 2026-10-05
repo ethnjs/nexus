@@ -799,6 +799,45 @@ class TestRosterFilters:
         assert self._roster(client, td_tournament.id, "?lunch=dietary:__none__") == {"alice@example.com"}
         assert self._roster(client, td_tournament.id, "?lunch=dietary:__not_none__") == set()
 
+    def test_event_preference_rank_condition(self, client, db, td_user, td_tournament):
+        """The rank is checked on the same row as the event: Alice ranked
+        Chess 3rd, which must not let her Anatomy pass "Anatomy = 3"."""
+        from app.models.models import TournamentEvent, TournamentMembershipEventPreference
+
+        track_id = primary_track_id(db, td_tournament.id)
+        anatomy = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy")
+        chess = TournamentEvent(tournament_id=td_tournament.id, name="Chess")
+        db.add_all([anatomy, chess])
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        bob = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        carol = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "carol@example.com").id)
+        db.flush()
+        db.add_all([
+            TournamentMembershipEventPreference(membership_id=alice.id, track_id=track_id, tournament_event_id=anatomy.id, rank=1),
+            TournamentMembershipEventPreference(membership_id=alice.id, track_id=track_id, tournament_event_id=chess.id, rank=3),
+            TournamentMembershipEventPreference(membership_id=bob.id, track_id=track_id, tournament_event_id=anatomy.id, rank=3),
+            # A checkbox question stores no rank.
+            TournamentMembershipEventPreference(membership_id=carol.id, track_id=track_id, tournament_event_id=anatomy.id, rank=None),
+        ])
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        anatomy_pref = f"event_pref={track_id}:{anatomy.id}"
+        roster = lambda rank: self._roster(client, td_tournament.id, f"?{anatomy_pref}&event_pref={track_id}:rank:{rank}")  # noqa: E731
+        assert roster("le:2") == {"alice@example.com"}
+        assert roster("eq:3") == {"bob@example.com"}
+        assert roster("gt:1") == {"bob@example.com"}
+        # An unranked row fails every comparison.
+        assert roster("ge:1") == {"alice@example.com", "bob@example.com"}
+        # No events picked: any event at that rank.
+        assert self._roster(client, td_tournament.id, f"?event_pref={track_id}:rank:eq:3") == {
+            "alice@example.com", "bob@example.com",
+        }
+        # A malformed condition is ignored, like any bad filter value.
+        assert self._roster(client, td_tournament.id, f"?{anatomy_pref}&event_pref={track_id}:rank:near:2") == {
+            "alice@example.com", "bob@example.com", "carol@example.com",
+        }
+
     def test_track_any_status_matches_any_answer(self, client, db, td_user, td_tournament):
         from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 

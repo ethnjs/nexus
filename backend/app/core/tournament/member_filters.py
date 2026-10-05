@@ -16,6 +16,8 @@ three of the named roles is returned once, not three times.
 """
 from __future__ import annotations
 
+import operator
+
 from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
@@ -36,6 +38,14 @@ NO_ROLES = "none"
 # half first (a track, a day, a lunch category) and only then narrows it, so
 # a chip has to mean something before its pill is touched.
 ANY = "__any__"
+
+# An event-preference chip's rank condition, carried as one more value under
+# its track: "trackId:rank:{op}:{n}" — e.g. "3:rank:le:3", top three on track 3.
+RANK_PREFIX = "rank:"
+RANK_OPS = {
+    "lt": operator.lt, "le": operator.le, "eq": operator.eq,
+    "ge": operator.ge, "gt": operator.gt,
+}
 
 # Lunch-only right-hand sentinels. "Unanswered" is the one thing an EXISTS
 # over stored rows can't say by naming a value, and none/not-none exist
@@ -190,16 +200,39 @@ def apply_member_filters(
     if event_preferences:
         # "trackId:tournamentEventId" — an event ranked for one track says
         # nothing about another, so the track has to travel with the event.
-        clauses = [
-            exists().where(
+        # A track's rank condition (see RANK_PREFIX) is checked on the same
+        # row as its events, so "Anatomy ranked < 3" can't be met by Anatomy
+        # unranked plus some other event at 1.
+        events_by_track: dict[int, set[str]] = {}
+        rank_by_track: dict[int, tuple[str, int]] = {}
+        for track_id, right in _split_pairs(event_preferences):
+            if not track_id.isdigit():
+                continue
+            if right.startswith(RANK_PREFIX):
+                op, _, n = right[len(RANK_PREFIX):].partition(":")
+                if op in RANK_OPS and n.isdigit():
+                    rank_by_track[int(track_id)] = (op, int(n))
+            elif right == ANY or right.isdigit():
+                events_by_track.setdefault(int(track_id), set()).add(right)
+
+        clauses = []
+        # A rank alone, with no events picked, means any event at that rank.
+        for track_id in events_by_track.keys() | rank_by_track.keys():
+            events = events_by_track.get(track_id, {ANY})
+            condition = (
                 (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
-                & (TournamentMembershipEventPreference.track_id == int(track_id))
-                & (true() if event_id == ANY
-                   else TournamentMembershipEventPreference.tournament_event_id == int(event_id))
+                & (TournamentMembershipEventPreference.track_id == track_id)
             )
-            for track_id, event_id in _split_pairs(event_preferences)
-            if track_id.isdigit() and (event_id == ANY or event_id.isdigit())
-        ]
+            if ANY not in events:
+                condition &= TournamentMembershipEventPreference.tournament_event_id.in_(
+                    [int(event_id) for event_id in events]
+                )
+            if track_id in rank_by_track:
+                op, n = rank_by_track[track_id]
+                # An unranked row's NULL rank fails every comparison, so it
+                # never matches a rank condition.
+                condition &= RANK_OPS[op](TournamentMembershipEventPreference.rank, n)
+            clauses.append(exists().where(condition))
         if clauses:
             query = query.filter(or_(*clauses))
 

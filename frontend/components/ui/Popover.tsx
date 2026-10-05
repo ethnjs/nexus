@@ -37,11 +37,16 @@ export interface PopoverProps<T> {
 
 // Anchored from the top (below the trigger) normally; flips to bottom
 // (above the trigger) when there isn't room underneath.
-type PanelPos = { left: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
+// maxHeight is the room on whichever side it opened: the rows cap at
+// PANEL_MAX_HEIGHT, but a search box and header sit on top of them, so the
+// whole panel could otherwise run past the viewport edge.
+type PanelPos = { left: number; maxHeight: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
 type HoverTip = { text: string; top: number; left: number };
 
 const PANEL_GAP = 6;
 const PANEL_MAX_HEIGHT = 260;
+// Kept clear between the panel and the viewport edge.
+const VIEWPORT_MARGIN = 8;
 
 // Generic click-to-open panel of selectable items, anchored to a trigger —
 // outside-click closes it. In default "list" mode, selecting an item runs
@@ -110,9 +115,10 @@ export function Popover<T>({
     const flip = spaceBelow < PANEL_MAX_HEIGHT + PANEL_GAP && spaceAbove > spaceBelow;
     // Rounded: an unrounded rect puts the whole panel on a subpixel, and
     // every row's checkbox then rasterises at that same offset phase.
+    const maxHeight = Math.round((flip ? spaceAbove : spaceBelow) - PANEL_GAP - VIEWPORT_MARGIN);
     setPanelPos(flip
-      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left) }
-      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left) });
+      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left), maxHeight }
+      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left), maxHeight });
   }
 
   // Positioned once per opening, not on scroll: a chip input's add button
@@ -214,7 +220,7 @@ export function Popover<T>({
             outline: "none",
             position: "fixed",
             ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
-            left: panelPos.left, zIndex: 300,
+            left: panelPos.left, zIndex: 300, maxHeight: `${panelPos.maxHeight}px`,
             width: `${width}px`, padding: "6px", boxSizing: "border-box",
             display: "flex", flexDirection: "column", overflow: "hidden",
             background: "var(--color-surface)", border: "1px solid var(--color-border)",
@@ -247,7 +253,8 @@ export function Popover<T>({
           {/* The rows scroll, the search box above them doesn't — a sticky
               box inside the scroller leaves rows sliding through the gap
               between it and the panel's padded edge. */}
-          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto" }}>
+          {/* Shrinks below its cap when the panel is clamped to the viewport. */}
+          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, minHeight: 0, flex: "0 1 auto", overflowY: "auto" }}>
           {visibleItems.length === 0 ? (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "6px 10px" }}>
               {needle ? "No matches" : emptyMessage}
