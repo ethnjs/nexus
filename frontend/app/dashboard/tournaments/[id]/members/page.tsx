@@ -40,6 +40,7 @@ import { RolesCell } from "@/components/tournament/roles/RolesCell";
 import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/members/MemberPanel";
 import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/roles/MassRoleEditor";
 import { RemoveMemberModal } from "@/components/tournament/members/RemoveMemberModal";
+import { RemoveMembersModal } from "@/components/tournament/members/RemoveMembersModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/members/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
@@ -277,6 +278,7 @@ export default function MembersPage() {
 
   const [removeTarget, setRemoveTarget] = useState<MembershipFull | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipFull | null>(null);
+  const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
 
   // The two mutually-exclusive panel flows ("Expand" a single member vs.
   // Select mode) and the dirty gate that freezes both — shared with the
@@ -596,6 +598,10 @@ export default function MembersPage() {
   }
 
   const total = totalMembers ?? members.length;
+  // The toolbar's Remove skips yourself (leaving has its own flow) and
+  // anyone the per-row Remove would refuse.
+  const selfSelected = selectedMembers.some((m) => m.user.id === currentUser?.id);
+  const removableSelected = selectedMembers.filter((m) => m.user.id !== currentUser?.id && canEditMember(m));
   const isFiltered = search.trim() !== "" || isFilterActive(filters);
 
   // The default chain isn't shown as a header state — it's the absence of a
@@ -810,7 +816,33 @@ export default function MembersPage() {
         count={selectedIds.size}
         onEdit={openMassPanel}
         onCancel={toggleSelectMode}
+        actions={
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly
+            title={isArchived ? ARCHIVED_REASON : "Remove selected"}
+            disabled={isArchived || removableSelected.length === 0}
+            onClick={() => setBulkRemoveOpen(true)}
+          >
+            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+          </Button>
+        }
       />
+
+      {bulkRemoveOpen && (
+        <RemoveMembersModal
+          tournamentId={tournamentId}
+          members={removableSelected}
+          lockedCount={selectedMembers.length - removableSelected.length - (selfSelected ? 1 : 0)}
+          includesSelf={selfSelected}
+          onClose={() => setBulkRemoveOpen(false)}
+          onRemoved={(ids) => {
+            const gone = new Set(ids);
+            setMembers((prev) => prev && prev.filter((m) => !gone.has(m.id)));
+            setTotalMembers((n) => (n === null ? n : n - ids.length));
+            forgetItem(ids);
+          }}
+        />
+      )}
 
       {removeTarget && (
         <RemoveMemberModal
