@@ -310,18 +310,23 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
 # ---------------------------------------------------------------------------
 CARD_FIELD_NAMESPACE = "card_field:"
 CARD_TRACK_NAMESPACE = "card_track:"
+# One custom question hidden by its form field id ("card_custom:{field_id}") —
+# the custom_fields field shows every answer the member gave unless hidden.
+CARD_CUSTOM_NAMESPACE = "card_custom:"
 
 ASSIGNMENT_CARD_FIELDS = frozenset({
-    "roles", "age", "track_status", "event_preferences", "availability",
+    "roles", "age", "onboarding", "dietary_restriction",
+    "track_status", "event_preferences", "availability", "lunch",
     "competition_school", "competition_event",
     "volunteer_tournament", "volunteer_event", "volunteer_role",
+    "custom_fields",
 })
 
 # The fields that are a per-track list, and so can be hidden one track at a
 # time ("card_track:{field}:{track_id}"). Scoped per field, not shared: a TD
 # may well want Day 1's preferences beside every track's availability.
 ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset({
-    "track_status", "event_preferences", "availability",
+    "track_status", "event_preferences", "availability", "lunch",
 })
 
 
@@ -431,6 +436,10 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
         if item.startswith(CARD_TRACK_NAMESPACE):
             field, _, track = item[len(CARD_TRACK_NAMESPACE):].partition(":")
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
+        if item.startswith(CARD_CUSTOM_NAMESPACE):
+            # Not checked against the forms: a deleted question's entry is inert.
+            field_id = item[len(CARD_CUSTOM_NAMESPACE):]
+            return bool(field_id) and ":" not in field_id
         return False
     # An event row's hideable items are the tracks it runs on: hiding one
     # drops its shifts from the timeline, or its column from the no-shift
@@ -512,14 +521,15 @@ def is_known_sort_field(surface: str, field: str) -> bool:
     track's id isn't checked, the same leniency its column key gets."""
     if field in known_sort_fields(surface):
         return True
-    return surface_base(surface) == MEMBERS_TABLE and bool(MEMBER_SORT_FIELD_PATTERN.match(field))
+    return surface_base(surface) in (MEMBERS_TABLE, ASSIGNMENT_CARD) and bool(MEMBER_SORT_FIELD_PATTERN.match(field))
 
 
 def known_sort_fields(surface: str) -> frozenset[str]:
     """The fixed sort fields `surface` may store — same reasoning as
     known_filter_keys."""
     surface = surface_base(surface)
-    if surface == MEMBERS_TABLE:
+    # The belt sorts members the same ways the roster does.
+    if surface in (MEMBERS_TABLE, ASSIGNMENT_CARD):
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_SORT_FIELDS
@@ -877,7 +887,7 @@ _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
 #
 # Identity (the name) is not a group, so it needs no entry here — see rule 3
 # in field_groups.py.
-_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile"})
+_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile", "lunch", "onboarding", "custom"})
 
 
 def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[str] | None:

@@ -1179,3 +1179,28 @@ def test_saved_sort_loads_its_data_onto_the_roster(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
     assert rows and all("onboarding" in row for row in rows)
+
+
+def test_assignment_card_accepts_new_fields_custom_hides_and_member_sorts(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    body = {
+        "hidden": [
+            "card_field:onboarding", "card_field:dietary_restriction", "card_field:custom_fields",
+            "card_track:lunch:3", "card_custom:abc123",
+        ],
+        "sorts": [
+            {"field": "first_name", "direction": "asc"},
+            {"field": "event_pref:3:47", "direction": "asc"},
+        ],
+    }
+    response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json={"assignment_card:all": body})
+    assert response.status_code == 200, response.json()
+
+
+def test_assignment_card_rejects_a_malformed_custom_hide(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card:all": {"hidden": ["card_custom:"]}},
+    )
+    assert response.status_code == 422

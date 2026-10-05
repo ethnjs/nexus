@@ -189,7 +189,7 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
 
 // Same option-snapshot unwrapping the panel's Custom Responses does — a
 // select answer is stored as {option_id, value, label}, not a bare string.
-function formatAnswer(value: unknown): string {
+export function formatAnswer(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) return value.length ? value.map(formatAnswer).join(", ") : "—";
   if (typeof value === "object") {

@@ -66,7 +66,8 @@ import {
   ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
   ApiError, assignmentsApi, buildingsApi, canonicalEventsApi, displayConfigApi, membersApi,
   rolesApi, tabSurface, tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type CanonicalEvent, type DisplayConfig, type MembershipFull, type Role,
+  type Assignment, type CanonicalEvent, type DisplayConfig, type DisplayConfigCatalog,
+  type FilterOptionGroup, type MembershipFull, type Role,
   type TournamentBuilding, type TournamentEvent, type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
@@ -89,6 +90,10 @@ import {
 import {
   sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
 } from '@/lib/sorting'
+import {
+  MEMBER_SORT_TIEBREAK, isMemberSortField, memberSortOptions, memberSortTiebreak, memberSortValue,
+  type MemberSortField,
+} from '@/lib/memberSort'
 import {
   DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
   memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
@@ -130,6 +135,10 @@ const NO_ASSIGNMENTS: Assignment[] = []
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
+// A belt is scanned for a person, so alphabetical is the order you can
+// predict without reading. The members table defaults to newest joins instead.
+const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: 'first_name', direction: 'asc' }]
+
 export default function AssignmentsPage() {
   const params = useParams()
   const tournamentId = Number(params.id)
@@ -224,6 +233,14 @@ export default function AssignmentsPage() {
   const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY)
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
+  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT)
+  const [showMemberSortModal, setShowMemberSortModal] = useState(false)
+  // Names every track, lunch question and custom question — what the card
+  // display and sort modals offer. Same catalog the members page reads.
+  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null)
+  // Each track's preference events, for the per-event sort. Fetched the
+  // first time the sort modal opens — nothing else on the board needs them.
+  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null)
 
   // Which track tab is showing; null is All. Mirrored into ?track= so a
   // reload comes back to the day being staffed, the way the buildings board
@@ -285,6 +302,9 @@ export default function AssignmentsPage() {
       // No saved view (or no permission to read one) is not an error — the
       // board's defaults are a perfectly good board.
       .catch(() => { if (current) setSavedConfig({}) })
+    displayConfigApi.getCatalog(tournamentId)
+      .then((data) => { if (current) setCatalog(data) })
+      .catch(() => {})
     return () => { current = false }
   }, [tournamentId, canView])
 
@@ -309,6 +329,9 @@ export default function AssignmentsPage() {
     setMemberDisplay(Array.isArray(card?.hidden)
       ? memberDisplayFromHidden(card.hidden)
       : memberDisplayDefaults)
+    setMemberSort(card?.sorts
+      ? sortRulesFromStored(card.sorts, isMemberSortField)
+      : DEFAULT_BELT_SORT)
   }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults])
 
   /** Persists one surface and keeps the local copy in step, so switching away
@@ -340,6 +363,27 @@ export default function AssignmentsPage() {
     setMemberDisplay(next)
     persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) })
   }, [persistSurface, cardSurface])
+
+  // Per tab, with the tab's filters and card fields. The belt is fetched with
+  // every data group, so no sort here ever waits on a reload.
+  const applyMemberSort = useCallback((next: SortRule<MemberSortField>[]) => {
+    setMemberSort(next)
+    persistSurface(cardSurface, { sorts: sortRulesToStored(next) })
+  }, [persistSurface, cardSurface])
+
+  const openMemberSortModal = useCallback(() => {
+    setShowMemberSortModal(true)
+    if (eventPrefGroups === null) {
+      membersApi.filterOptions(tournamentId)
+        .then((options) => setEventPrefGroups(options.event_preferences))
+        .catch(() => setEventPrefGroups([]))
+    }
+  }, [eventPrefGroups, tournamentId])
+
+  const memberSortFields = useMemo(
+    () => memberSortOptions(catalog?.columns ?? [], eventPrefGroups ?? []),
+    [catalog, eventPrefGroups],
+  )
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
@@ -528,13 +572,14 @@ export default function AssignmentsPage() {
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
 
-    return members.filter((member) => {
+    const matching = members.filter((member) => {
       if (text && !fullName(member.user ?? { first_name: null, last_name: null })
         .toLowerCase().includes(text)) return false
       if (filterMatchIds && !filterMatchIds.has(member.id)) return false
       return true
     })
-  }, [filterMatchIds, members, memberQuery])
+    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak)
+  }, [filterMatchIds, members, memberQuery, memberSort])
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>()
@@ -1070,6 +1115,12 @@ export default function AssignmentsPage() {
                 // unfiltered state *is* the day it is staffing.
                 onClear={() => applyMemberFilters(memberFilterDefaults)}
               />
+              <SortButton
+                size="sm" iconOnly label="Sort members"
+                active={!sameSortRules(memberSort, DEFAULT_BELT_SORT)}
+                onOpen={openMemberSortModal}
+                onReset={() => applyMemberSort(DEFAULT_BELT_SORT)}
+              />
             </>
           }
         >
@@ -1150,7 +1201,7 @@ export default function AssignmentsPage() {
     belt, members, allShifts, memberQuery,
     memberFilters, memberFilterDefaults, panelAssignmentsVersion, memberFilterActive,
     memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
-    applyMemberFilters,
+    applyMemberFilters, memberSort, applyMemberSort, openMemberSortModal,
     canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
     openMemberPanel,
     setPanel, clearPanel,
@@ -1542,8 +1593,21 @@ export default function AssignmentsPage() {
           display={memberDisplay}
           defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
+          // "form_field:{id}" in the catalog; the card hides by the bare id.
+          customFields={(catalog?.custom_fields ?? []).map((f) => ({ id: f.key.split(':')[1], label: f.label }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
+        />
+      )}
+      {showMemberSortModal && (
+        <SortModal
+          title="Sort members"
+          fields={memberSortFields}
+          rules={memberSort}
+          defaults={DEFAULT_BELT_SORT}
+          tiebreakLabel={MEMBER_SORT_TIEBREAK}
+          onApply={(next) => applyMemberSort(next as SortRule<MemberSortField>[])}
+          onClose={() => setShowMemberSortModal(false)}
         />
       )}
       {pendingRoleChange && (
