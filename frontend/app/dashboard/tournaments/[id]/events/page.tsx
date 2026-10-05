@@ -631,7 +631,8 @@ export default function EventsPage() {
                   the other controls stay their natural size. */}
               <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
                 <Input
-                  label="Search"
+                  // No visible label — the placeholder and icon say it; aria-label keeps it named for screen readers.
+                  aria-label="Search events"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onClear={() => setSearch("")}

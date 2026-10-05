@@ -19,7 +19,9 @@ export const DEFAULT_EVENT_COLUMNS = ["division", "type", "category", "tracks", 
 // count), minmax() only where it's open-ended; the min half is what stops a
 // narrow window from squeezing a cell until it wraps.
 const WIDTHS = {
-  name: "minmax(150px, 1.3fr)",
+  // Never narrower than the longest name: the table scrolls sideways instead
+  // of truncating the one column a row is found by.
+  name: "minmax(max-content, 1.3fr)",
   division: "90px",
   type: "100px",
   category: "minmax(110px, 1.1fr)",
