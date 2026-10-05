@@ -40,6 +40,8 @@ export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
       items={roleCatalog}
       getKey={(role) => role.id}
       renderLabel={(role) => role.label}
+      searchable
+      getSearchText={(role) => role.label}
       header={
         <label style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

@@ -6,7 +6,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { MemberChip } from '@/components/tournament/assignments/MemberChip'
 import { TrackShiftGrid } from '@/components/tournament/assignments/TrackShiftGrid'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { IconClock, IconLocation } from '@/components/ui/Icons'
+import { IconBuilding, IconClock, IconLocation } from '@/components/ui/Icons'
 import { PillMenu } from '@/components/ui/PillMenu'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import type {
@@ -17,6 +17,7 @@ import type { Lane } from '@/lib/assignments/lanes'
 import type { BoardHandlers } from '@/lib/assignments/board'
 import { staffedCount } from '@/lib/assignments/staffing'
 import { trackLocationLabel } from '@/lib/eventDisplay'
+import { placeOfTrack } from '@/lib/tournamentDisplay'
 import { formatTime } from '@/lib/timeFormat'
 
 
@@ -78,6 +79,8 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
       items={roleCatalog}
       getKey={(r) => r.id}
       renderLabel={(r) => r.label}
+      searchable
+      getSearchText={(r) => r.label}
       isSelected={(r) => role !== null && role.id === r.id}
       onSelect={(r) => onPickDefaultRole(track, r)}
       width={180}
@@ -132,6 +135,9 @@ export function TrackSection({
 
   const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
   const location = trackLocationLabel(detail)
+  // The track's venue (campus), vs. `location` — this event's building and rooms on it.
+  // Neither applies to a cosmetic (non-competition-day) track, which has no place.
+  const venue = track.is_primary ? placeOfTrack(track, { short: true }) : null
   // The track's window: its first shift's start to its last one's end.
   // Derived, not stored — an event has no times of its own, only the union of
   // the shifts on it (see TournamentEvent in models.py).
@@ -174,13 +180,20 @@ export function TrackSection({
             {track.name}
           </span>
         )}
+        {/* Shown even when the label is hidden — a track tab names the track,
+            not where it runs. */}
+        {venue && <MetaLine icon={<IconLocation size={12} />}>{venue}</MetaLine>}
         <DefaultRolePillMenu
           track={track}
           roleCatalog={roleCatalog}
           onPickDefaultRole={handlers.onPickDefaultRole}
         />
         {span && <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>}
-        {location && <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>}
+        {/* Always shown on a competition day, so a missing room reads as
+            missing rather than as a line that isn't there. */}
+        {track.is_primary && (
+          <MetaLine icon={<IconBuilding size={12} />}>{location ?? 'No location'}</MetaLine>
+        )}
       </div>
 
       {/* Across, not down: a track wants a handful of roles at most, and a

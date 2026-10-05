@@ -10,7 +10,8 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Button } from "@/components/ui/Button";
 import styles from "@/components/settings/Settings.module.css";
-import { IconPlus, IconTrash } from "@/components/ui/Icons";
+import { IconLocation, IconPlus, IconTrash } from "@/components/ui/Icons";
+import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
  * Where an event happens and how many of each role it wants, per track.
@@ -77,6 +78,10 @@ export function EventTrackDetails({
           patchTrack(track.id, { needs: next });
         }
 
+        // The track's campus, as context for the building picked below.
+        // A cosmetic (non-competition-day) track has no place to show.
+        const venue = track.is_primary ? placeOfTrack(track) : null;
+
         return (
           <div
             key={track.id}
@@ -88,12 +93,24 @@ export function EventTrackDetails({
             }}
           >
             {!simple && (
-              <div style={{
-                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                textTransform: "uppercase", letterSpacing: "0.07em",
-                color: "var(--color-text-tertiary)", marginBottom: "4px",
-              }}>
-                {track.name}
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "4px" }}>
+                <span style={{
+                  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                  textTransform: "uppercase", letterSpacing: "0.07em",
+                  color: "var(--color-text-tertiary)",
+                }}>
+                  {track.name}
+                </span>
+                {venue && (
+                  <span style={{
+                    display: "flex", alignItems: "center", gap: "4px",
+                    fontFamily: "var(--font-sans)", fontSize: "11px",
+                    color: "var(--color-text-tertiary)",
+                  }}>
+                    <IconLocation size={12} />
+                    {venue}
+                  </span>
+                )}
               </div>
             )}
 
