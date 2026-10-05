@@ -1,6 +1,7 @@
 'use client'
 
 import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { SuggestionList } from '@/components/ui/SuggestionList'
 
 interface EditableTextProps {
   value: string
@@ -61,31 +62,13 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   // A blur-save doesn't — focus already went where the user clicked.
   const restRef = useRef<HTMLSpanElement>(null)
   const refocus = useRef(false)
-  // Combobox mode: which suggestion the arrow keys are on (-1 = none), and
-  // where the list sits — position: fixed off the input's rect, like
-  // Combobox, so a scrolling table or popover can't clip it.
+  // Combobox mode: which suggestion the arrow keys are on (-1 = none).
   const [highlight, setHighlight] = useState(-1)
-  const [listPos, setListPos] = useState<{ top: number; left: number } | null>(null)
   const needle = draft.trim().toLowerCase()
   const matches = editing && suggestions
     ? suggestions.filter((s) => s.toLowerCase().includes(needle) && s !== draft).slice(0, 8)
     : []
   const listOpen = matches.length > 0
-
-  useLayoutEffect(() => {
-    if (!listOpen) return
-    const update = () => {
-      const r = inputRef.current?.getBoundingClientRect()
-      if (r) setListPos({ top: r.bottom + 4, left: r.left })
-    }
-    update()
-    window.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
-    }
-  }, [listOpen])
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
   // draft is already `value`, so `draft` alone wouldn't change on the
@@ -182,35 +165,14 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
             margin: 0,
           }}
         />
-        {listOpen && listPos && (
-          <div
-            role="listbox"
-            style={{
-              position: 'fixed', top: listPos.top, left: listPos.left, zIndex: 400,
-              minWidth: '160px', padding: '4px', boxSizing: 'border-box',
-              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
-            }}
-          >
-            {matches.map((option, i) => (
-              <div
-                key={option}
-                role="option"
-                aria-selected={i === highlight}
-                // mousedown + preventDefault keeps focus in the input, so the
-                // pick isn't preceded by a blur that saves the half-typed text.
-                onMouseDown={(e) => { e.preventDefault(); setDraft(option); save(option) }}
-                onMouseEnter={() => setHighlight(i)}
-                style={{
-                  padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)', fontSize: '13px', whiteSpace: 'nowrap',
-                  background: i === highlight ? 'var(--color-accent-subtle)' : undefined,
-                }}
-              >
-                {option}
-              </div>
-            ))}
-          </div>
+        {listOpen && (
+          <SuggestionList
+            anchorRef={inputRef}
+            options={matches}
+            highlight={highlight}
+            onHighlight={setHighlight}
+            onPick={(option) => { setDraft(option); save(option) }}
+          />
         )}
         {error && (
           <span style={{

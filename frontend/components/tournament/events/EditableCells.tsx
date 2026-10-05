@@ -9,7 +9,7 @@ import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
 import { PillInput } from "@/components/ui/PillInput";
-import { EditableCombobox } from "@/components/ui/EditableText";
+import { SuggestionList } from "@/components/ui/SuggestionList";
 import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
@@ -109,6 +109,8 @@ function useCellEditor() {
   return {
     editing,
     open: () => setEditing(true),
+    /** Close without moving focus — it has already gone somewhere. */
+    close: () => setEditing(false),
     wrapRef,
     /** For the resting control's `ref`. */
     restRef: (el: HTMLElement | null) => { restRef.current = el; },
@@ -335,11 +337,14 @@ export function ChipsCell<T>({
 }
 
 /**
- * One track's location, edited in place on one line: the building as
- * EditableCombobox (existing names suggested as you type), then the rooms as
- * plain text that turns into chips when clicked. Each saves on its own. No
- * floor field — the server derives it from the first room ("210" → 2); an
- * override lives in the panel. Locked, it's the read-only `display`.
+ * One track's location. At rest it's the same one line of text as the locked
+ * cell ("RH 110, 210"). Editing, it's one text box: type the building and
+ * press Enter or Tab to set it, then keep typing rooms, each added on Enter or
+ * Tab. Backspace on an empty box takes the last room off, and with no rooms
+ * left it pulls the building back into the box to edit. Tab on an empty box
+ * moves on to the next cell. No floor field — the server derives it from the
+ * first room ("210" → 2); an override lives in the panel.
+ * Locked, it's just the `display`.
  */
 export function LocationCell({
   display, detail, trackId, buildings, lockReason, onSave, ensureBuilding,
@@ -355,12 +360,17 @@ export function LocationCell({
   /** Finds or creates the named building on this track. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
 }) {
-  // The rooms editor. Saving a new building opens it, so building then room
-  // reads as one gesture.
-  const roomsEditor = useCellEditor();
-  const [hovered, setHovered] = useState(false);
-  const [roomsError, setRoomsError] = useState<string | undefined>(undefined);
-  const [savingRooms, setSavingRooms] = useState(false);
+  const { editing, open: openEditor, close: closeEditor, wrapRef, restRef, onKeyDown: editorKeys } = useCellEditor();
+  const [text, setText] = useState("");
+  // The saved building, pulled back into the box by Backspace. Not unset on
+  // the server until Enter/Tab commits whatever the box then says.
+  const [buildingInBox, setBuildingInBox] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const [error, setError] = useState<string | undefined>(undefined);
+  // Until a building save lands, the box would still read the next keystrokes
+  // as a building name — so it pauses (read-only keeps focus; disabled wouldn't).
+  const [savingBuilding, setSavingBuilding] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   if (lockReason) {
     return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
@@ -371,85 +381,135 @@ export function LocationCell({
   // Only buildings tagged with this track — the other pairing is a 422.
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
   const rooms = detail?.rooms ?? [];
+  const typingBuilding = buildingId === null || buildingInBox;
+  const needle = text.trim().toLowerCase();
+  const matches = editing && typingBuilding
+    ? onTrack.map((b) => b.name).filter((name) => name.toLowerCase().includes(needle) && name !== text).slice(0, 8)
+    : [];
 
-  // An existing name picks it, a new one creates the building, and clearing
-  // the text removes the location. A new building clears the rooms (and any
-  // floor override): they described a place inside the old one. Throws on
-  // failure, which EditableText shows under the field.
-  async function saveBuilding(name: string) {
-    let id: number | null = null;
-    if (name) {
-      const match = onTrack.find((b) => b.name.toLowerCase() === name.toLowerCase());
-      id = match ? match.id : (await ensureBuilding(name, trackId)).id;
-    }
-    if (id === buildingId) return;
-    await onSave({ building_id: id, floor: null, rooms: [] });
-    if (id !== null) roomsEditor.open();
+  function open() {
+    setText("");
+    setBuildingInBox(false);
+    setHighlight(-1);
+    setError(undefined);
+    openEditor();
   }
 
-  async function saveRooms(next: string[]) {
-    setSavingRooms(true);
-    setRoomsError(undefined);
+  async function run(change: () => Promise<void>) {
+    setError(undefined);
     try {
-      await onSave({ rooms: next });
+      await change();
     } catch (err) {
-      setRoomsError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSavingRooms(false);
+      setError(err instanceof Error ? err.message : "Failed to save");
     }
+  }
+
+  // Enter/Tab: set the building (an existing name picks it, a new one creates
+  // it, an emptied box clears the location) or add a room. A new building
+  // clears the rooms and any floor override — they described a place inside
+  // the old one. Returns whether there was anything to commit.
+  function commit(picked?: string): boolean {
+    if (typingBuilding) {
+      const name = (picked ?? text).trim();
+      if (!name && !buildingInBox) return false;
+      setText("");
+      setHighlight(-1);
+      setSavingBuilding(true);
+      void run(async () => {
+        let id: number | null = null;
+        if (name) {
+          const match = onTrack.find((b) => b.name.toLowerCase() === name.toLowerCase());
+          id = match ? match.id : (await ensureBuilding(name, trackId)).id;
+        }
+        if (id !== buildingId) await onSave({ building_id: id, floor: null, rooms: [] });
+        setBuildingInBox(false);
+      }).finally(() => setSavingBuilding(false));
+      return true;
+    }
+    const room = text.trim();
+    if (!room) return false;
+    setText("");
+    if (!rooms.includes(room)) void run(() => onSave({ rooms: [...rooms, room] }));
+    return true;
+  }
+
+  if (!editing) {
+    return (
+      <CellGuard align="start">
+        <RestControl restRef={restRef} onOpen={open} title="Click to edit location" cursor="text">
+          {display}
+        </RestControl>
+      </CellGuard>
+    );
   }
 
   return (
-    <CellGuard align="start" editing={roomsEditor.editing}>
-      <span
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-          <span style={{ flexShrink: 0 }}>
-            <EditableCombobox
-              value={buildingName}
-              onSave={saveBuilding}
-              allowEmpty
-              placeholder="No location"
-              suggestions={onTrack.map((b) => b.name)}
-              title="Click to change building"
-              textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400, whiteSpace: "nowrap" }}
-            />
-          </span>
-          {/* Rooms only mean something inside a building. */}
-          {buildingId !== null && (roomsEditor.editing ? (
-            <span ref={roomsEditor.wrapRef} onKeyDown={roomsEditor.onKeyDown} style={{ flex: 1, minWidth: 0 }}>
-              <ChipInput
-                value={rooms}
-                onChange={(next) => void saveRooms(next)}
-                disabled={savingRooms}
-                autoFocus
-                variant="transparent"
-                size="sm"
-                font="mono"
-                placeholder="Add room"
-                fullWidth
-              />
+    <CellGuard align="start" editing>
+      <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}>
+        <span
+          ref={wrapRef}
+          onKeyDown={editorKeys}
+          // Tab out of an empty box moves focus on; the editor follows it out.
+          onBlur={(e) => {
+            const to = e.relatedTarget as Node | null;
+            if (to && !e.currentTarget.contains(to)) closeEditor();
+          }}
+          style={{
+            display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 6px", minWidth: 0,
+            borderBottom: "1px solid var(--color-border-strong)",
+            fontFamily: "var(--font-sans)", fontSize: "13px",
+          }}
+        >
+          {!typingBuilding && <span style={{ color: "var(--color-text-primary)", whiteSpace: "nowrap" }}>{buildingName}</span>}
+          {!typingBuilding && rooms.map((room) => (
+            <span key={room} style={{
+              padding: "0 5px", borderRadius: "var(--radius-sm)", whiteSpace: "nowrap",
+              background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)", fontSize: "12px",
+            }}>
+              {room}
             </span>
-          ) : (
-            <RestControl restRef={roomsEditor.restRef} onOpen={roomsEditor.open} title="Click to edit rooms" cursor="text">
-              <span style={{
-                fontFamily: "var(--font-mono)", fontSize: "12px", whiteSpace: "nowrap",
-                overflow: "hidden", textOverflow: "ellipsis",
-                color: rooms.length > 0 ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
-                // No rooms: the way in only shows on hover, so a resting
-                // table reads like any other. Still a Tab stop, so it is
-                // never unreachable by keyboard.
-                opacity: rooms.length > 0 || hovered ? 1 : 0,
-              }}>
-                {rooms.length > 0 ? rooms.join(", ") : "Add room"}
-              </span>
-            </RestControl>
           ))}
+          <input
+            ref={inputRef}
+            value={text}
+            aria-label={typingBuilding ? "Building" : "Room"}
+            readOnly={savingBuilding}
+            placeholder={typingBuilding ? "Building" : "Room"}
+            onChange={(e) => { setText(e.target.value); setHighlight(-1); }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" && matches.length > 0) { e.preventDefault(); setHighlight((h) => (h + 1) % matches.length); return; }
+              if (e.key === "ArrowUp" && matches.length > 0) { e.preventDefault(); setHighlight((h) => (h <= 0 ? matches.length - 1 : h - 1)); return; }
+              if (e.key === "Enter" || e.key === "Tab") {
+                const picked = highlight >= 0 ? matches[highlight] : undefined;
+                // Tab with nothing to commit is a plain Tab: focus moves on.
+                if (commit(picked) || e.key === "Enter") e.preventDefault();
+                return;
+              }
+              if (e.key === "Backspace" && text === "" && !typingBuilding) {
+                e.preventDefault();
+                if (rooms.length > 0) void run(() => onSave({ rooms: rooms.slice(0, -1) }));
+                // No rooms left: the building comes back into the box, minus
+                // the character this Backspace was for.
+                else { setBuildingInBox(true); setText(buildingName.slice(0, -1)); }
+              }
+            }}
+            style={{
+              flex: 1, minWidth: "60px", padding: 0, margin: 0, border: "none", outline: "none",
+              background: "transparent", color: "var(--color-text-primary)",
+              fontFamily: "var(--font-sans)", fontSize: "13px", lineHeight: 1.4,
+            }}
+          />
+          {matches.length > 0 && (
+            <SuggestionList
+              anchorRef={inputRef}
+              options={matches}
+              highlight={highlight}
+              onHighlight={setHighlight}
+              onPick={(option) => { commit(option); inputRef.current?.focus(); }}
+            />
+          )}
         </span>
-        {roomsError && <span style={ERROR_TEXT}>{roomsError}</span>}
+        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );

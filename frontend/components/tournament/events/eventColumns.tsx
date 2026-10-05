@@ -124,6 +124,12 @@ export function expandTrackColumns(keys: readonly string[], tracks: readonly Tou
   return out;
 }
 
+// An absent value worth naming ("No location"), muted like the editable
+// cells' own placeholders so locked and editable rows read the same.
+const noValue = (text: string) => (
+  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>{text}</span>
+);
+
 const EMPTY_CELL = (
   <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>
 );
@@ -181,7 +187,7 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
       const label = trackLocationLabel(detail);
       const display = label
         ? <span style={{ ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px" }} title={label}>{label}</span>
-        : EMPTY_CELL;
+        : noValue("No location");
       if (!ctx.edit) return display;
       const { edit } = ctx;
       return (
@@ -200,7 +206,7 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
     case "staffing": {
       const needs = e.track_details.find((d) => d.track_id === track.id)?.needs ?? [];
       const rows = ctx.assignmentsFor(e.id);
-      const display = needs.length === 0 ? EMPTY_CELL : (
+      const display = needs.length === 0 ? noValue("No staffing") : (
         <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
           {needs.map((need) => (
             <StaffingNeedLine key={need.role_id} need={need} filled={staffedCount(rows, need.role_id, track.id)} />
