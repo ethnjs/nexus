@@ -70,6 +70,25 @@ export function CellGuard({ children, align = "center", editing = false }: {
   );
 }
 
+/** A locked cell's box: CellGuard's layout, so locking a row never changes
+ *  its height, but without stopping clicks — a locked cell belongs to the row
+ *  (Select mode toggles through it). */
+export function LockedCell({ title, align = "center", children }: {
+  title?: string; align?: "start" | "center"; children: ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: align === "start" ? "flex-start" : "center",
+        minWidth: 0, minHeight: "28px",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 const ERROR_TEXT: CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" };
 
 /**
@@ -196,7 +215,13 @@ export function SelectCell({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (lockReason) {
-    return <span title={lockReason} style={{ display: "flex" }}>{display}</span>;
+    // Sans, like the trigger Button sets at rest — a Badge inherits its font,
+    // and the body's mono drew it visibly larger.
+    return (
+      <LockedCell title={lockReason}>
+        <span style={{ display: "flex", fontFamily: "var(--font-sans)" }}>{display}</span>
+      </LockedCell>
+    );
   }
   // Focus was on a button inside the popover, which is about to unmount.
   const closeAndRefocus = (close: () => void) => {
@@ -301,7 +326,7 @@ export function ChipsCell<T>({
     if (editor.editing) addRef.current?.click();
   }, [editor.editing]);
   if (lockReason) {
-    return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
+    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
   }
 
   const byLabel = (label: string) => selected.find((item) => getLabel(item) === label);
@@ -405,7 +430,7 @@ export function LocationCell({
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (lockReason) {
-    return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
+    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
   }
 
   const buildingId = detail?.building_id ?? null;
@@ -583,7 +608,7 @@ export function StaffingCell({
   }, [editor.editing]);
 
   if (lockReason) {
-    return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
+    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
   }
 
   async function save(next: { role_id: number; count: number }[]) {

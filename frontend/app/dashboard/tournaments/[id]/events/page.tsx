@@ -26,7 +26,7 @@ import {
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { EditableText } from "@/components/ui/EditableText";
-import { CellGuard, ConfirmRequest, EventEditContext } from "@/components/tournament/events/EditableCells";
+import { CellGuard, ConfirmRequest, EventEditContext, LockedCell } from "@/components/tournament/events/EditableCells";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { DisplayButton } from "@/components/ui/DisplayButton";
@@ -968,6 +968,28 @@ const EventRow = memo(function EventRow({
   const lockReason = edit?.lockReason(event) ?? (focused ? "Being edited in the panel" : undefined);
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
+  // Locked keeps the same EditableText, just inert, so the name doesn't shift
+  // when its row opens in the panel.
+  const nameText = edit && (
+    <EditableText
+      value={eventName(event)}
+      // On a catalog-linked event the name is an override: typing the
+      // catalog's own name back, or clearing it, drops the override.
+      onSave={(name) => edit.update(event, {
+        name: event.event && (!name || name === event.event.name) ? null : name,
+      })}
+      allowEmpty={!!event.event}
+      locked={!!lockReason}
+      textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+      title={lockReason ?? (event.event ? "Click to rename for this tournament — clear to use the catalog name" : "Click to rename")}
+    />
+  );
+  const nameCell = !nameText
+    ? eventName(event)
+    : lockReason
+      ? <LockedCell align="start">{nameText}</LockedCell>
+      : <CellGuard align="start">{nameText}</CellGuard>;
+
   return (
     <div
       className={table.row}
@@ -990,21 +1012,7 @@ const EventRow = memo(function EventRow({
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
-        {edit && !lockReason ? (
-          <CellGuard align="start">
-            <EditableText
-              value={eventName(event)}
-              // On a catalog-linked event the name is an override: typing the
-              // catalog's own name back, or clearing it, drops the override.
-              onSave={(name) => edit.update(event, {
-                name: event.event && (!name || name === event.event.name) ? null : name,
-              })}
-              allowEmpty={!!event.event}
-              textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
-              title={event.event ? "Click to rename for this tournament — clear to use the catalog name" : "Click to rename"}
-            />
-          </CellGuard>
-        ) : eventName(event)}
+        {nameCell}
       </span>
       {/* Each cell knows how to render itself (see eventColumns) — the row
           only places them, so adding a column is one entry there. */}
