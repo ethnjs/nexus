@@ -6,6 +6,15 @@ import {
   membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
 } from "@/lib/api";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+import {
+  DEFAULT_MEMBER_SORT, MEMBER_SORT_OPTIONS, MEMBER_SORT_TIEBREAK, isMemberSortField, legacyMemberSortRules,
+  memberSortTiebreak, memberSortValue, type MemberSortField,
+} from "@/lib/memberSort";
+import {
+  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from "@/lib/sorting";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -15,13 +24,16 @@ import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterButton } from "@/components/ui/FilterButton";
+import { DisplayButton } from "@/components/ui/DisplayButton";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { SortableHeader } from "@/components/ui/SortableHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { RolesCell } from "@/components/tournament/roles/RolesCell";
 import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/members/MemberPanel";
@@ -40,7 +52,7 @@ import styles from "@/components/tournament/members/MembersTable.module.css";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { rowActivation } from "@/lib/rowActivation";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
-import { IconLock, IconSearch, IconArrowDown, IconTrash, IconMembers, IconEye } from "@/components/ui/Icons";
+import { IconLock, IconSearch, IconTrash, IconMembers } from "@/components/ui/Icons";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -83,27 +95,8 @@ const ROLES_REVEAL_MS = 220;
 
 const DIRTY_TITLE = "Save or discard your changes first";
 
-type SortField = "first_name" | "last_name" | "joined" | "account_age";
-type SortDir = "asc" | "desc";
-
-const SORT_FIELD_OPTIONS = [
-  { value: "first_name", label: "First name" },
-  { value: "last_name", label: "Last name" },
-  { value: "joined", label: "Joined" },
-  { value: "account_age", label: "Account age" },
-];
-
 function memberName(m: MembershipFull): string {
   return `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
-}
-
-function sortValue(m: MembershipFull, field: SortField): string | number {
-  switch (field) {
-    case "first_name": return (m.user.first_name ?? "").toLowerCase();
-    case "last_name": return (m.user.last_name ?? "").toLowerCase();
-    case "joined": return new Date(m.created_at).getTime();
-    case "account_age": return new Date(m.user.created_at).getTime();
-  }
 }
 
 // memo'd because the parent re-renders on every keystroke in Search, every
@@ -276,8 +269,10 @@ export default function MembersPage() {
   const [columnCatalog, setColumnCatalog] = useState<DisplayConfigCatalogItem[]>([]);
   // Saved with the filters, and for the same reason: a coordinator who sorts
   // by last name is still sorting by last name tomorrow, on any device.
-  const [sortField, setSortField] = useState<SortField>("joined");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortRules, setSortRules] = useState<SortRule<MemberSortField>[]>(DEFAULT_MEMBER_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
+  // Labelled buttons until the toolbar runs out of room, then icons.
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(900);
 
   const [removeTarget, setRemoveTarget] = useState<MembershipFull | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipFull | null>(null);
@@ -358,31 +353,22 @@ export default function MembersPage() {
       setViewReady((already) => {
         if (already) return true;
         setFilters(membersFilterFromStored(surface?.filters));
-        if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
-          setSortField(surface.sort.field as SortField);
-          setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
-        }
+        // A chain whose every field has since been dropped is no chain.
+        const stored = surface?.sorts ? sortRulesFromStored(surface.sorts, isMemberSortField) : null;
+        setSortRules(stored && stored.length > 0
+          ? stored
+          : legacyMemberSortRules(surface?.sort) ?? DEFAULT_MEMBER_SORT);
         return true;
       });
     });
   }, [tournamentId, canManageMembers, displayConfigVersion]);
 
-  // Write-back for the view state this page owns (filters, sort). Re-reads
-  // before writing because a PUT replaces every surface at once and the
-  // Display modal writes columns into this same surface — see
-  // useDisplayConfigDraft, which merges from the other side for the same
-  // reason. Fire-and-forget: failing to remember a sort order is not worth
-  // interrupting the table over.
-  const persistView = useCallback((patch: Partial<DisplayConfigSurface>) => {
-    displayConfigApi.get(tournamentId)
-      .then((fresh) => displayConfigApi.set(tournamentId, {
-        ...fresh,
-        // A surface that has never been saved still needs its required
-        // `hidden` key, hence the spread order.
-        [MEMBERS_TABLE]: { ...{ hidden: [] }, ...fresh[MEMBERS_TABLE], ...patch },
-      }))
-      .catch(() => {});
-  }, [tournamentId]);
+  // Write-back for the view state this page owns (filters, sort, a reset of
+  // columns) — see persistSurfaceView for why it re-reads first.
+  const persistView = useCallback(
+    (patch: Partial<DisplayConfigSurface>) => persistSurfaceView(tournamentId, MEMBERS_TABLE, patch),
+    [tournamentId],
+  );
 
   const applyFilters = useCallback((next: MembersFilterState) => {
     setFilters(next);
@@ -392,10 +378,10 @@ export default function MembersPage() {
     persistView({ filters: membersFilterToStored(next) });
   }, [persistView]);
 
-  const applySort = useCallback((field: SortField, direction: SortDir) => {
-    setSortField(field);
-    setSortDir(direction);
-    persistView({ sort: { field, direction } });
+  // Clears the legacy `sort` as it writes the chain, so the two never disagree.
+  const applySort = useCallback((next: SortRule<MemberSortField>[]) => {
+    setSortRules(next);
+    persistView({ sorts: sortRulesToStored(next), sort: null });
   }, [persistView]);
 
   const tableColumns = useMemo(() => {
@@ -410,6 +396,19 @@ export default function MembersPage() {
     );
   }, [columnKeys, columnCatalog, selectedTournament]);
 
+  // Off-default is what the Display button reports, compared after resolving
+  // so a saved copy of the defaults doesn't read as a change.
+  const displayActive = useMemo(() => {
+    const keys = (cols: string[]) => resolveColumns(
+      cols, new Map(), !!selectedTournament?.collect_is_over_18, !!selectedTournament?.collect_is_over_21,
+    ).map((c) => c.key).join();
+    return keys(columnKeys ?? DEFAULT_TABLE_COLUMNS) !== keys(DEFAULT_TABLE_COLUMNS);
+  }, [columnKeys, selectedTournament]);
+  const resetDisplay = useCallback(() => {
+    setColumnKeys(null);
+    persistView({ columns: null });
+  }, [persistView]);
+
   const visibleMembers = useMemo(() => {
     if (!members) return [];
     const q = search.trim().toLowerCase();
@@ -420,14 +419,8 @@ export default function MembersPage() {
       // reads fields already on the row.
       return true;
     });
-    const sorted = [...filtered].sort((a, b) => {
-      const av = sortValue(a, sortField);
-      const bv = sortValue(b, sortField);
-      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return sorted;
-  }, [members, search, filters, sortField, sortDir]);
+    return sortRows(filtered, sortRules, memberSortValue, memberSortTiebreak);
+  }, [members, search, sortRules]);
 
   const roleFilterOptions = useMemo(
     () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),
@@ -602,6 +595,23 @@ export default function MembersPage() {
   }
 
   const total = totalMembers ?? members.length;
+  const isFiltered = search.trim() !== "" || isFilterActive(filters);
+
+  // The default chain isn't shown as a header state — it's the absence of a
+  // choice, and clicking replaces it (see cycleSortRule).
+  const headerSortRules = sameSortRules(sortRules, DEFAULT_MEMBER_SORT) ? [] : sortRules;
+  const sortableHeader = (field: MemberSortField, label: string, align: "start" | "center") => {
+    const index = headerSortRules.findIndex((rule) => rule.field === field);
+    return (
+      <SortableHeader
+        label={label}
+        align={align}
+        rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+        showPosition={headerSortRules.length > 1}
+        onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_MEMBER_SORT))}
+      />
+    );
+  };
 
   return (
     <div>
@@ -623,13 +633,14 @@ export default function MembersPage() {
         </Card>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+          <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
             {/* Grows into the room the toolbar leaves and is the first thing to
                 give it back — a small basis with grow narrows the search before
                 anything else has to wrap. */}
             <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
               <Input
-                label="Search"
+                // No visible label — the placeholder and icon say it.
+                aria-label="Search members"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onClear={() => setSearch("")}
@@ -642,32 +653,23 @@ export default function MembersPage() {
               />
             </div>
             <FilterButton
+              iconOnly={compactToolbar}
               active={isFilterActive(filters)}
               onOpen={() => setShowFilterModal(true)}
               onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
             />
-            <Button
-              type="button" variant="secondary" size="md"
-              onClick={() => setShowTableColumnsModal(true)}
-            >
-              <IconEye size={16} /> Display
-            </Button>
-            <Dropdown
-              label="Sort by"
-              value={sortField}
-              onChange={(v) => applySort(v as SortField, sortDir)}
-              options={SORT_FIELD_OPTIONS}
-              size="md"
-              variant="secondary"
-              width={150}
+            <DisplayButton
+              iconOnly={compactToolbar}
+              active={displayActive}
+              onOpen={() => setShowTableColumnsModal(true)}
+              onReset={resetDisplay}
             />
-            <Button
-              type="button" variant="secondary" size="md" iconOnly
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
-              onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
-            >
-              <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
-            </Button>
+            <SortButton
+              iconOnly={compactToolbar}
+              active={!sameSortRules(sortRules, DEFAULT_MEMBER_SORT)}
+              onOpen={() => setShowSortModal(true)}
+              onReset={() => applySort(DEFAULT_MEMBER_SORT)}
+            />
             {canManageMembers && (
               <Button
                 type="button" variant={selectMode ? "primary" : "secondary"} size="md"
@@ -703,8 +705,16 @@ export default function MembersPage() {
                     onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
                   />
                 </span>
-                <span>Members — {visibleMembers.length}/{total}</span>
-                {tableColumns.map((column) => (
+                {sortableHeader("first_name", `Members — ${isFiltered ? `${visibleMembers.length} of ${total}` : total}`, "start")}
+                {tableColumns.map((column) => column.sortField ? (
+                  <span
+                    key={column.key}
+                    // Same alignment as the column's cells, so the header sits over them.
+                    style={{ display: "flex", minWidth: 0, justifyContent: column.align === "start" ? "flex-start" : "center" }}
+                  >
+                    {sortableHeader(column.sortField, column.label, column.align === "start" ? "start" : "center")}
+                  </span>
+                ) : (
                   <span
                     key={column.key}
                     style={{
@@ -766,6 +776,18 @@ export default function MembersPage() {
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
+        />
+      )}
+
+      {showSortModal && (
+        <SortModal
+          title="Sort members"
+          fields={MEMBER_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_MEMBER_SORT}
+          tiebreakLabel={MEMBER_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<MemberSortField>[])}
+          onClose={() => setShowSortModal(false)}
         />
       )}
 

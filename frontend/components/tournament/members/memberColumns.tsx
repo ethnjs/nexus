@@ -2,6 +2,7 @@
 
 import { ReactNode, CSSProperties } from "react";
 import { MembershipFull } from "@/lib/api";
+import type { MemberSortField } from "@/lib/memberSort";
 import { formatPhone } from "@/lib/auth";
 import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
@@ -87,6 +88,8 @@ export interface MemberColumn {
   /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
   align?: "start";
   render: (membership: MembershipFull) => ReactNode;
+  /** Set when the header sorts by this column (see SortableHeader). */
+  sortField?: MemberSortField;
 }
 
 // The coarse duration ("3mo") with the exact moment behind it on hover —
@@ -121,12 +124,12 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "account_age":
       return {
-        key, label: "Account Age", width: WIDTHS.accountAge,
+        key, label: "Account Age", width: WIDTHS.accountAge, sortField: "account_age",
         render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
       return {
-        key, label: "Joined", width: WIDTHS.duration,
+        key, label: "Joined", width: WIDTHS.duration, sortField: "joined",
         render: (m) => <DurationCell iso={m.created_at} />,
       };
     case "method":
