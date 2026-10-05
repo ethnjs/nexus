@@ -39,10 +39,10 @@ import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/Ev
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import {
   EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
-  EVENT_FILTER_UNSET, eventCategoryKey, eventCategoryOptions,
-  eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
+  EVENT_FILTER_UNSET, eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
+  eventPassesFilters, eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
 } from "@/components/tournament/events/EventsFilterModal";
-import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
+import { emptyFilterState } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
   DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns, trackFamilyOf,
@@ -354,10 +354,11 @@ export default function EventsPage() {
     [columnKeys, tracks, byEvent],
   );
   const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing")
-    || sortRules.some((rule) => rule.field === "staffing");
+    || sortRules.some((rule) => rule.field === "staffing")
+    || filters.staffing.size > 0;
 
-  // Only fetched while a staffing column is on screen or sorting by staffing —
-  // the only things that need them, and a whole tournament's assignments isn't free.
+  // Only fetched while something staffing-shaped is on (a column, the sort,
+  // the filter) — a whole tournament's assignments isn't free.
   useEffect(() => {
     if (!canManageEvents || !showsStaffing) return;
     let current = true;
@@ -373,16 +374,19 @@ export default function EventsPage() {
   }, [selectedTournament, events]);
 
   const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events]);
+  const trackOptions = useMemo(() => eventTrackOptions(events ?? []), [events]);
+  const buildingOptions = useMemo(() => eventBuildingOptions(events ?? []), [events]);
+  const shiftOptions = useMemo(() => eventShiftOptions(events ?? []), [events]);
 
   const visibleEvents = useMemo(() => {
     if (!events) return [];
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (!filterAllows(filters.division, e.division ?? EVENT_FILTER_UNSET)) return false;
-      if (!filterAllows(filters.type, e.event_type)) return false;
-      if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
-      return true;
+      return eventPassesFilters(e, filters, {
+        assignmentsFor: (id) => byEvent.get(id) ?? NO_ASSIGNMENTS,
+        showsTrack: ALL_TRACKS,
+      });
     });
     return sortRows(
       filtered,
@@ -757,6 +761,9 @@ export default function EventsPage() {
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
+          trackOptions={trackOptions}
+          buildingOptions={buildingOptions}
+          shiftOptions={shiftOptions}
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}

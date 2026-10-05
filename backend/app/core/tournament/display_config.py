@@ -210,7 +210,11 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # query params — an empty list for a key means that key narrows nothing.
 # Opaque here either way: a category that no longer exists is inert, exactly
 # as a deleted track is on the roster.
-KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
+# Shared with the board (see EVENTS_FILTER_KEYS in EventsFilterModal.tsx):
+# both pages filter with the same predicate, so they store the same keys.
+KNOWN_EVENT_FILTER_KEYS = frozenset({
+    "division", "type", "category", "track", "building", "shifts", "shift", "staffing",
+})
 
 # The table sorts by a chain (`sorts`) over the board's own fields — they
 # mean the same thing on both. "day" is from the single `sort` it saved before
@@ -240,13 +244,9 @@ ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = (
 # is "show what you have" and a TD trims from there.
 DEFAULT_ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = ASSIGNMENT_EVENT_COLUMNS
 
-# Filtered in the client like the events table, so these store the *selected*
-# values too. Two keys more than that table: the board loads assignments and
-# per-event tracks, so it can offer staffed/unstaffed and track sections the
-# events page has no data for.
-KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
-    "division", "type", "category", "track", "staffing",
-})
+# Filtered in the client like the events table, with the same keys — so
+# these store the *selected* values too.
+KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = KNOWN_EVENT_FILTER_KEYS
 
 # The board sorts by more than the events table does, for the same reason its
 # filters do: it holds the assignments, so "who still needs people" is a

@@ -852,6 +852,21 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
     assert saved["sort"] == {"field": "day", "direction": "asc"}
 
 
+def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournament):
+    """The table and the board filter with one predicate, so they share keys."""
+    login(client, "td@test.com", "tdpass")
+    filters = {
+        "track": ["3"], "building": ["5", "__unset__"], "shifts": ["none"],
+        "shift": ["9"], "staffing": ["short", "empty"],
+    }
+    for surface in ("events_table", "assignments_events"):
+        response = client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={surface: {"hidden": [], "filters": filters}},
+        )
+        assert response.status_code == 200, surface
+
+
 def test_events_table_saves_a_sort_chain(client, td_user, td_tournament):
     """The table sorts by the board's fields, as an ordered chain."""
     login(client, "td@test.com", "tdpass")

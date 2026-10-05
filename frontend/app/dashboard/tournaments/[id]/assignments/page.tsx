@@ -37,11 +37,12 @@ import {
 } from '@/components/tournament/members/MembersFilterModal'
 import {
   EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
-  eventCategoryKey, eventCategoryOptions, eventsFilterFromStored,
+  eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
+  eventPassesFilters, eventsFilterFromStored,
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, filterAllows, sameFilterState } from '@/components/ui/FilterModal'
+import { emptyFilterState, sameFilterState } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
@@ -455,29 +456,21 @@ export default function AssignmentsPage() {
       : options
   }, [boardEvents])
   const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
+  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents])
+  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents])
+  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents])
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
     const matching = (boardEvents ?? []).filter((event) => {
       if (text && !eventName(event).toLowerCase().includes(text)) return false
-      if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
-      if (!filterAllows(eventFilters.type, event.event_type)) return false
-      if (!filterAllows(eventFilters.category, eventCategoryKey(event))) return false
-      // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
-      // of its tracks is picked — filtering to Day 1 shouldn't hide an event
-      // that runs on both Day 1 and Day 2.
-      // A track tab narrows to its own track; the All tab honours whatever
-      // the saved filter says.
-      const wantedTracks = activeTrackId === null
-        ? eventFilters.track
-        : new Set([String(activeTrackId)])
-      if (wantedTracks.size > 0) {
-        const ids = (eventTrackIds.get(event.id) ?? []).map(String)
-        if (!ids.some((id) => wantedTracks.has(id))) return false
-      }
-      const staffed = (byEvent.get(event.id)?.length ?? 0) > 0
-      if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
-      return true
+      return eventPassesFilters(event, eventFilters, {
+        assignmentsFor: (id) => byEvent.get(id) ?? [],
+        showsTrack,
+        // A track tab narrows to its own track; the All tab honours whatever
+        // the saved filter says.
+        trackOverride: activeTrackId === null ? undefined : new Set([String(activeTrackId)]),
+      })
     })
     // Sorted after filtering, not before: the staffing key costs a pass over
     // each event's assignments, and there is no reason to pay it for rows the
@@ -488,7 +481,7 @@ export default function AssignmentsPage() {
       (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
       eventSortTiebreak,
     )
-  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds, eventSort, showsTrack])
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack])
 
 
   // Members matching the filters, from the same server filter the members
@@ -1473,7 +1466,10 @@ export default function AssignmentsPage() {
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
-          showStaffing
+          // The tab already picked a track; only the All tab offers the choice.
+          trackOptions={activeTrackId === null ? trackOptions : undefined}
+          buildingOptions={buildingOptions}
+          shiftOptions={shiftOptions}
           filters={eventFilters}
           onApply={applyEventFilters}
           onClose={() => setShowEventFilterModal(false)}
