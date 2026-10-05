@@ -100,6 +100,26 @@
 }
 
 /*
+ * Centres the folded page header on the bar. left/right 0 with auto margins
+ * and a fit-content width, not left: 50% + translateX(-50%): a transform makes
+ * this box the containing block for its position: fixed descendants, and the
+ * crumb's tab Dropdown panel is one (see TopbarCrumb). The bar is sticky, so
+ * it is the positioned ancestor this resolves against. Capped so a long title
+ * can't run under the switcher or the avatar.
+ */
+.crumbSlot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: 40%;
+  display: flex;
+}
+
+/*
  * The collapsed page header's way back: a caret hanging off the bar's bottom
  * edge, centred on the crumb it belongs to.
  *
