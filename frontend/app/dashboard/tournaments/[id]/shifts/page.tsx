@@ -54,6 +54,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { rowActivation } from "@/lib/rowActivation";
+import { handleGridArrows } from "@/lib/gridNav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
@@ -568,6 +569,8 @@ export default function ShiftsPage() {
           <div
             className={`${table.table} ${table.animatedTracks}`}
             style={{ gridTemplateColumns: shiftGridColumns(selectMode) }}
+            // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
+            onKeyDown={handleGridArrows}
           >
           <div className={table.header}>
             <span
@@ -811,6 +814,7 @@ function ShiftRow({
   return (
     <div
       className={table.row}
+      data-nav-row
       data-active={highlighted ? "true" : undefined}
       data-pending={track?.is_archived ? "true" : undefined}
       onClick={handleRowClick}
@@ -825,8 +829,8 @@ function ShiftRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>{labelCell}</span>
-      <span style={{ display: "flex", minWidth: 0 }}>
+      <span data-nav-col="label" style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>{labelCell}</span>
+      <span data-nav-col="track" style={{ display: "flex", minWidth: 0 }}>
         {edit && track ? (
           <SelectCell
             display={badge}
@@ -842,7 +846,7 @@ function ShiftRow({
         ) : badge}
       </span>
       {/* Only a multi-day track has another day to move to. */}
-      <span style={{ display: "flex", minWidth: 0 }}>
+      <span data-nav-col="date" style={{ display: "flex", minWidth: 0 }}>
         {edit && days.length > 1 ? (
           <SelectCell
             display={dateText}
@@ -854,16 +858,16 @@ function ShiftRow({
           />
         ) : dateText}
       </span>
-      <span style={{ display: "flex", minWidth: 0 }}>{timeCell("start")}</span>
-      <span style={{ display: "flex", minWidth: 0 }}>{timeCell("end")}</span>
-      <span style={TIME_TEXT}>
+      <span data-nav-col="start" style={{ display: "flex", minWidth: 0 }}>{timeCell("start")}</span>
+      <span data-nav-col="end" style={{ display: "flex", minWidth: 0 }}>{timeCell("end")}</span>
+      <span data-nav-col="duration" style={TIME_TEXT}>
         {formatSpan(shift.start, shift.end)}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+      <span data-nav-col="events" style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {shift.event_count}
       </span>
       {/* Opening is the row's own click; delete keeps its own confirm. */}
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+      <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canEdit && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
