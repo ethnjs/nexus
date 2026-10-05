@@ -9,8 +9,11 @@ type NameableEvent = {
   event?: { name: string | null } | null;
 };
 
+/** The event's own name wins: on a custom event it's the only name, and on a
+ *  catalog-linked one it's this tournament's override of the catalog's.
+ *  Same order as TournamentEvent.display_name on the server. */
 export function eventName(e: NameableEvent): string {
-  return e.event?.name ?? e.name ?? "—";
+  return e.name ?? e.event?.name ?? "—";
 }
 
 // Name alone can collide across divisions (e.g. two "Chess" events, one per

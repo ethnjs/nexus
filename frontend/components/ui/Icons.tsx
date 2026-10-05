@@ -449,6 +449,15 @@ export function IconArrowDown({ size = 22, ...props }: IconProps) {
 // Status / Feedback
 // -------------------------------------------------------------------------
 
+/** A bare tick — the "selected" mark on a list row. */
+export function IconCheck({ size = 12, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconCheckCircle({ size = 16, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>

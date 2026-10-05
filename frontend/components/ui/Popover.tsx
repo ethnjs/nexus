@@ -1,6 +1,6 @@
 "use client";
 
-import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState, useCallback } from "react";
 import { CheckboxRow } from "@/components/ui/CheckboxRow";
 import { IconLock } from "@/components/ui/Icons";
 
@@ -37,11 +37,16 @@ export interface PopoverProps<T> {
 
 // Anchored from the top (below the trigger) normally; flips to bottom
 // (above the trigger) when there isn't room underneath.
-type PanelPos = { left: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
+// maxHeight is the room on whichever side it opened: the rows cap at
+// PANEL_MAX_HEIGHT, but a search box and header sit on top of them, so the
+// whole panel could otherwise run past the viewport edge.
+type PanelPos = { left: number; maxHeight: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
 type HoverTip = { text: string; top: number; left: number };
 
 const PANEL_GAP = 6;
 const PANEL_MAX_HEIGHT = 260;
+// Kept clear between the panel and the viewport edge.
+const VIEWPORT_MARGIN = 8;
 
 // Generic click-to-open panel of selectable items, anchored to a trigger —
 // outside-click closes it. In default "list" mode, selecting an item runs
@@ -73,6 +78,18 @@ export function Popover<T>({
   const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  // Keyboard: the row ↑/↓ have moved to, which Enter picks. Reset per opening
+  // and per search, so it never points past the visible list.
+  const [active, setActive] = useState(0);
+  // The keyboard row's outline only shows once ↑/↓ are in use — a mouse user
+  // shouldn't see a box around a row they never chose. Hover is its own state.
+  const [usingKeys, setUsingKeys] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
+  // Stable, so it runs when the panel mounts and not on every render — an
+  // inline ref would pull focus back each time anything re-rendered.
+  const focusPanelOnMount = useCallback((el: HTMLDivElement | null) => {
+    if (el && !searchable) el.focus({ preventScroll: true });
+  }, [searchable]);
 
   // Fixed-position, computed from the row's own bounding rect on hover —
   // a Tooltip anchored via position:absolute to a wrapper nested inside
@@ -98,16 +115,17 @@ export function Popover<T>({
     const flip = spaceBelow < PANEL_MAX_HEIGHT + PANEL_GAP && spaceAbove > spaceBelow;
     // Rounded: an unrounded rect puts the whole panel on a subpixel, and
     // every row's checkbox then rasterises at that same offset phase.
+    const maxHeight = Math.round((flip ? spaceAbove : spaceBelow) - PANEL_GAP - VIEWPORT_MARGIN);
     setPanelPos(flip
-      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left) }
-      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left) });
+      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left), maxHeight }
+      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left), maxHeight });
   }
 
   // Positioned once per opening, not on scroll: a chip input's add button
   // moves as chips are added, and a panel chasing it pulls the rows out from
   // under the cursor mid-selection. Resize still repositions to stay on screen.
   useEffect(() => {
-    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); return; }
+    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); setActive(0); setUsingKeys(false); setHovered(null); return; }
     updatePanelPos();
     window.addEventListener("resize", updatePanelPos);
     return () => {
@@ -125,13 +143,23 @@ export function Popover<T>({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  async function handleSelect(item: T) {
+  // Back to the trigger's own control, so keyboard focus isn't dropped on the
+  // page when the panel it was in unmounts.
+  function closeToTrigger() {
+    setOpen(false);
+    triggerRef.current?.querySelector<HTMLElement>("button, [tabindex]")?.focus();
+  }
+
+  async function handleSelect(item: T, fromKeyboard = false) {
     setError(undefined);
     const key = getKey(item);
     setPendingKey(key);
     try {
       await onSelect(item);
-      if (!checklist) setOpen(false);
+      if (!checklist) {
+        if (fromKeyboard) closeToTrigger();
+        else setOpen(false);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -159,21 +187,55 @@ export function Popover<T>({
       </div>
 
       {open && panelPos && (
-        <div style={{
-          position: "fixed",
-          ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
-          left: panelPos.left, zIndex: 300,
-          width: `${width}px`, padding: "6px", boxSizing: "border-box",
-          display: "flex", flexDirection: "column", overflow: "hidden",
-          background: "var(--color-surface)", border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-        }}>
+        <div
+          // The panel itself takes focus on open (the search box does when
+          // there is one), so ↑/↓/Enter/Esc work without reaching for the mouse.
+          ref={focusPanelOnMount}
+          tabIndex={-1}
+          // Rendered inside its trigger's subtree, so its clicks bubble there;
+          // this lets an ancestor recognise them (see the members Roles cell).
+          data-popover-panel
+          onKeyDown={(e) => {
+            const enabled = (i: number) => !(isDisabled?.(visibleItems[i]) ?? false);
+            const step = (dir: 1 | -1) => {
+              for (let n = 1; n <= visibleItems.length; n++) {
+                const i = (active + dir * n + visibleItems.length) % visibleItems.length;
+                if (enabled(i)) { setActive(i); return; }
+              }
+            };
+            if (e.key === "ArrowDown" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(1); }
+            else if (e.key === "ArrowUp" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(-1); }
+            else if (e.key === "Enter" && visibleItems[active] && enabled(active) && !busy) {
+              e.preventDefault();
+              void handleSelect(visibleItems[active], true);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              closeToTrigger();
+            } else if (e.key === "Tab") {
+              // Not a way around the panel — arrows are. Tab leaves it: back
+              // to the trigger first, so the default Tab carries on from
+              // there (a cell further up may take over and move on itself).
+              closeToTrigger();
+            }
+          }}
+          style={{
+            outline: "none",
+            position: "fixed",
+            ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
+            left: panelPos.left, zIndex: 300, maxHeight: `${panelPos.maxHeight}px`,
+            width: `${width}px`, padding: "6px", boxSizing: "border-box",
+            display: "flex", flexDirection: "column", overflow: "hidden",
+            background: "var(--color-surface)", border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
+          }}
+        >
           {searchable && (
             <input
               ref={searchRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setActive(0); }}
               placeholder="Search..."
               // Focused on mount rather than through an effect: the panel
               // only renders once its position is measured, so a focus()
@@ -194,13 +256,14 @@ export function Popover<T>({
           {/* The rows scroll, the search box above them doesn't — a sticky
               box inside the scroller leaves rows sliding through the gap
               between it and the panel's padded edge. */}
-          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto" }}>
+          {/* Shrinks below its cap when the panel is clamped to the viewport. */}
+          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, minHeight: 0, flex: "0 1 auto", overflowY: "auto" }}>
           {visibleItems.length === 0 ? (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "6px 10px" }}>
               {needle ? "No matches" : emptyMessage}
             </p>
           ) : checklist ? (
-            visibleItems.map((item) => {
+            visibleItems.map((item, index) => {
               const key = getKey(item);
               const checked = isSelected?.(item) ?? false;
               const disabled = isDisabled?.(item) ?? false;
@@ -216,33 +279,42 @@ export function Popover<T>({
                   control={disabled
                     ? <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
                     : undefined}
-                  onMouseEnter={reason ? (e) => showHoverTip(e, reason) : undefined}
-                  onMouseLeave={reason ? () => setHoverTip(null) : undefined}
+                  // The mouse takes over from the keyboard: its row becomes the
+                  // one Enter would pick, and the keyboard outline steps aside.
+                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
+                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
                   style={{
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
                     cursor: disabled || busy ? "not-allowed" : "pointer",
-                    background: checked ? "var(--color-accent-subtle)" : "transparent",
+                    background: checked
+                      ? "var(--color-accent-subtle)"
+                      : hovered === index && !disabled ? "var(--color-bg)" : "transparent",
+                    // The keyboard's row, distinct from ticked.
+                    boxShadow: usingKeys && index === active ? "inset 0 0 0 1px var(--color-border-strong)" : undefined,
                     opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                   }}
                 />
               );
             })
           ) : (
-            visibleItems.map((item) => {
+            visibleItems.map((item, index) => {
               const key = getKey(item);
               const disabled = isDisabled?.(item) ?? false;
               const reason = disabled ? disabledReason?.(item) : undefined;
               return (
                 <button
+                  // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
+                  tabIndex={-1}
                   key={key}
                   type="button"
                   disabled={busy || disabled}
                   onClick={() => handleSelect(item)}
-                  onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--color-bg)"; if (reason) showHoverTip(e, reason); }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; if (reason) setHoverTip(null); }}
+                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
+                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
                   style={{
                     display: "block", width: "100%", textAlign: "left",
-                    padding: "7px 10px", border: "none", background: "transparent",
+                    padding: "7px 10px", border: "none",
+                    background: !disabled && (hovered === index || (usingKeys && index === active)) ? "var(--color-bg)" : "transparent",
                     fontFamily: "var(--font-sans)", fontSize: "13px",
                     color: "var(--color-text-primary)", borderRadius: "var(--radius-sm)",
                     cursor: busy || disabled ? "not-allowed" : "pointer",

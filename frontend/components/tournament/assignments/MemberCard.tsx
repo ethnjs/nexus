@@ -29,8 +29,13 @@ import type {
 } from '@/lib/api'
 import { formatDayLabel, toDateInput } from '@/lib/timeFormat'
 import { eventNameWithDivision } from '@/lib/eventDisplay'
+import { unslug } from '@/lib/textFormat'
+import { OnboardingProgress } from '@/components/tournament/members/OnboardingProgress'
+import { formatAnswer } from '@/components/tournament/members/memberColumns'
 
-import { fieldShown, trackShown, type MemberDisplayState } from '@/components/tournament/assignments/MemberDisplayModal'
+import {
+  customShown, fieldShown, trackShown, type MemberDisplayState,
+} from '@/components/tournament/assignments/MemberDisplayModal'
 
 const HOUR_MS = 3600000
 
@@ -123,6 +128,32 @@ function AgeField({ member }: FieldProps) {
         compact
       />
     </Field>
+  )
+}
+
+function OnboardingField({ member }: FieldProps) {
+  return (
+    <Field label="Onboarding">
+      {member.onboarding ? <OnboardingProgress progress={member.onboarding} /> : <Muted>No steps</Muted>}
+    </Field>
+  )
+}
+
+function DietaryField({ member }: FieldProps) {
+  const text = member.user?.dietary_restriction
+  return (
+    <Field label="Dietary Restriction">
+      {text ? <Value>{text}</Value> : <Muted>None given</Muted>}
+    </Field>
+  )
+}
+
+/** A plain answer line — the same 11px the card's other compressed values use. */
+function Value({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ fontFamily: 'var(--font-sans)', fontSize: '11px', color: 'var(--color-text-primary)' }}>
+      {children}
+    </span>
   )
 }
 
@@ -468,6 +499,58 @@ function AvailabilityDay({ day, trackName, slots, offered }: {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Lunch — one block per track, a line per question
+// ---------------------------------------------------------------------------
+function LunchField({ member, display }: FieldProps) {
+  const byTrack = new Map<number, { name: string; rows: { category: string; value: string }[] }>()
+  for (const row of member.lunch ?? []) {
+    if (!trackShown(display, 'lunch', row.track_id)) continue
+    const track = byTrack.get(row.track_id) ?? { name: row.track_name, rows: [] }
+    track.rows.push({ category: row.category, value: row.value })
+    byTrack.set(row.track_id, track)
+  }
+  return (
+    <Field label="Lunch">
+      {byTrack.size === 0 ? <Muted>No lunch answers</Muted> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {[...byTrack].map(([trackId, track]) => (
+            <div key={trackId} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{
+                fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+                color: 'var(--color-text-secondary)',
+              }}>
+                {track.name}
+              </span>
+              {track.rows.map((row, i) => (
+                <Value key={`${row.category}-${i}`}>{unslug(row.category)}: {row.value}</Value>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Field>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Custom fields — the tournament's own questions, by their key like the panel
+// ---------------------------------------------------------------------------
+function CustomFieldsField({ member, display }: FieldProps) {
+  const answers = (member.custom_responses ?? []).filter((a) => customShown(display, a.field_id))
+  return (
+    <Field label="Custom Fields">
+      {answers.length === 0 ? <Muted>No answers</Muted> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {answers.map((answer) => (
+            <Value key={answer.field_id}>{unslug(answer.field_key)}: {formatAnswer(answer.value)}</Value>
+          ))}
+        </div>
+      )}
+    </Field>
+  )
+}
+
 function AvailabilityField({ member, display, allShifts }: FieldProps) {
   const slots = (member.availability ?? [])
     .filter((slot) => trackShown(display, 'availability', slot.track_id))
@@ -522,6 +605,7 @@ const FIELDS: {
 }[] = [
   { key: 'roles', shownWhen: (d) => fieldShown(d, 'roles'), render: RolesField },
   { key: 'age', shownWhen: (d) => fieldShown(d, 'age'), render: AgeField },
+  { key: 'onboarding', shownWhen: (d) => fieldShown(d, 'onboarding'), render: OnboardingField },
   { key: 'track_status', shownWhen: (d) => fieldShown(d, 'track_status'), render: TrackStatusField },
   { key: 'event_preferences', shownWhen: (d) => fieldShown(d, 'event_preferences'), render: PreferencesField },
   // Above the experience tables: availability is what a coordinator staffing
@@ -529,6 +613,8 @@ const FIELDS: {
   // background. The two tables are the long half of the card, so anything
   // under them is a scroll away.
   { key: 'availability', shownWhen: (d) => fieldShown(d, 'availability'), render: AvailabilityField },
+  { key: 'lunch', shownWhen: (d) => fieldShown(d, 'lunch'), render: LunchField },
+  { key: 'dietary_restriction', shownWhen: (d) => fieldShown(d, 'dietary_restriction'), render: DietaryField },
   {
     key: 'competition',
     shownWhen: (d) => fieldShown(d, 'competition_school') || fieldShown(d, 'competition_event'),
@@ -540,6 +626,7 @@ const FIELDS: {
       || fieldShown(d, 'volunteer_event') || fieldShown(d, 'volunteer_role'),
     render: VolunteerField,
   },
+  { key: 'custom_fields', shownWhen: (d) => fieldShown(d, 'custom_fields'), render: CustomFieldsField },
 ]
 
 /**
@@ -570,7 +657,9 @@ const MemberCardBody = memo(function MemberCardBody({
   )
 })
 
-export function MemberCard({
+/** Memoised so the belt's cards skip the re-render every panel open causes —
+ *  keep every prop identity-stable. */
+export const MemberCard = memo(function MemberCard({
   member, selected, display, allShifts, onOpen,
 }: {
   member: MembershipFull
@@ -580,7 +669,8 @@ export function MemberCard({
    *  so hours the member was offered but declined read as unavailable rather
    *  than as absent. */
   allShifts: TournamentShift[]
-  onOpen: () => void
+  /** Opens a member's panel, given this card's id — one callback for every card. */
+  onOpen: (membershipId: number) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `member:${member.id}`,
@@ -597,7 +687,7 @@ export function MemberCard({
       // A click opens the detail panel, a drag assigns. The PointerSensor's
       // 4px threshold keeps the two apart — below it nothing drags, so
       // onClick still fires.
-      onClick={onOpen}
+      onClick={() => onOpen(member.id)}
       // Composed with dnd-kit's own handler: {...listeners} already sets
       // onPointerDown, and a second one beside the spread replaces it
       // outright, which silently kills the drag.
@@ -627,4 +717,4 @@ export function MemberCard({
       <MemberCardBody member={member} display={display} allShifts={allShifts} />
     </div>
   )
-}
+})

@@ -26,6 +26,10 @@ interface MemberPanelProps {
   tournamentId: number;
   membershipId: number;
   allRoles: Role[];
+  /** The tournament's shifts and tracks, when the caller already holds them —
+   *  given, the panel skips fetching its own. */
+  shifts?: TournamentShift[];
+  tracks?: TournamentTrack[];
   canTouchRole: (role: Role) => boolean;
   canEditMember: (target: MembershipFull) => boolean;
   /** Tournament's age-disclosure toggles — the Age field is dropped entirely when neither is on, since there's nothing to show for any member. */
@@ -59,7 +63,8 @@ interface MemberPanelProps {
 // page that lists members (roster, event rosters, etc.) behind an
 // "expand" action.
 export function MemberPanel({
-  tournamentId, membershipId, allRoles, canTouchRole, canEditMember,
+  tournamentId, membershipId, allRoles, shifts: shiftsProp, tracks: tracksProp,
+  canTouchRole, canEditMember,
   collectIsOver18, collectIsOver21, onClose, onUpdated, onAssignmentsChanged, assignmentsVersion,
   isArchived, isSelf, onRemove, onSelfRemove,
   onPrev, onNext, hasPrev, hasNext,
@@ -71,10 +76,12 @@ export function MemberPanel({
   const [full, setFull] = useState<MembershipFull | null>(null);
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
-  const [shifts, setShifts] = useState<TournamentShift[]>([]);
+  const [fetchedShifts, setShifts] = useState<TournamentShift[]>([]);
+  const shifts = shiftsProp ?? fetchedShifts;
   // The assignments section draws one timeline per competition day, so it
   // needs the tracks themselves — a shift names its track by id only.
-  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  const [fetchedTracks, setTracks] = useState<TournamentTrack[]>([]);
+  const tracks = tracksProp ?? fetchedTracks;
   // Which tracks this viewer turned off, read from the same surface config
   // the section list comes from.
   const [hiddenItems, setHiddenItems] = useState<string[]>([]);
@@ -108,16 +115,20 @@ export function MemberPanel({
     return () => { current = false; };
   }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion, focusVersion]);
 
+  // Keyed on whether the caller supplies them, not on the arrays, so a prop
+  // update doesn't re-run the config fetch beside them.
+  const ownShifts = shiftsProp === undefined;
+  const ownTracks = tracksProp === undefined;
   useEffect(() => {
-    tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
-    tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
+    if (ownShifts) tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
+    if (ownTracks) tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
     displayConfigApi.get(tournamentId)
       .then((config) => startTransition(() => {
         setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null);
         setHiddenItems(config?.[MEMBERS_PANEL]?.hidden ?? []);
       }))
       .catch(() => {});
-  }, [tournamentId, membershipId, reloadKey]);
+  }, [tournamentId, membershipId, reloadKey, ownShifts, ownTracks]);
 
   // "track:3" is the panel surface's own vocabulary for a hidden track — the
   // same keys the config modal writes.

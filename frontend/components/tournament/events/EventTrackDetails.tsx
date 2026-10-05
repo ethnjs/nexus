@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import styles from "@/components/settings/Settings.module.css";
 import { IconLocation, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
+import { derivedFloor } from "@/lib/eventTrackDetails";
 
 /**
  * Where an event happens and how many of each role it wants, per track.
@@ -145,9 +146,13 @@ export function EventTrackDetails({
                   them made the row reflow the moment a building was picked.
                   A floor of nowhere is still not a place, so they stay inert
                   rather than accepting input. */}
+              {/* An override: left empty, the floor comes from the first room
+                  (see derivedFloor), which the placeholder shows. */}
               <StackedField label="Floor" basis="80px" grow={0.5}>
                 <Input
-                  size="sm" font="mono" fullWidth placeholder="e.g. 2"
+                  size="sm" font="mono" fullWidth
+                  placeholder={derivedFloor(detail.rooms) ?? "Auto"}
+                  title="Taken from the first room unless you type one"
                   locked={locked || !hasBuilding}
                   value={detail.floor ?? ""}
                   // Raw, not trimmed per keystroke — that ate the space in

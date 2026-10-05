@@ -89,15 +89,15 @@ export function Topbar({
         </div>
       )}
 
-      {/* A spacer on each side, so the crumb sits in the middle of whatever
-          room is left between the tournament switcher and the avatar rather
-          than at the window's midpoint — the switcher's width is the
-          tournament's name, and a true centre would drift with it. Renders
-          nothing until a page folds its header away, when the two spacers
-          collapse into the one gap this bar has always had. */}
+      {/* Pushes the avatar to the far end. */}
       <div style={{ flex: 1 }} />
-      <TopbarCrumb />
-      <div style={{ flex: 1 }} />
+      {/* The folded page header, centred on the bar itself rather than in
+          the gap between the switcher and the avatar, which drifted with the
+          tournament's name. Out of flow, so it moves nothing else; renders
+          nothing until a page folds its header away. */}
+      <div className={styles.crumbSlot}>
+        <TopbarCrumb />
+      </div>
 
       {showAvatar && <UserAvatar logoutOnly={showAvatar === "logout-only"} />}
     </header>

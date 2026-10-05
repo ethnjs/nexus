@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconArrowLeft, IconForms, IconLock } from "@/components/ui/Icons";
 
@@ -110,7 +110,7 @@ export default function MemberEditPage() {
   if (!isSelf) {
     return (
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-        <PageHeader heading="Edit your member profile" />
+        <CollapsibleHeader heading="Edit your member profile" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -133,7 +133,7 @@ export default function MemberEditPage() {
         </Button>
       </div>
 
-      <PageHeader
+      <CollapsibleHeader
         heading="Edit your member profile"
         subheading="Change your availability, lunch, and event preference."
       />

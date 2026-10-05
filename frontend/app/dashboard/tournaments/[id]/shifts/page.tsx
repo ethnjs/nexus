@@ -1,11 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  tournamentShiftsApi, tournamentEventsApi, tournamentTracksApi, ApiError,
-  TournamentEvent, TournamentShift, TournamentTrack,
+  tournamentShiftsApi, tournamentEventsApi, tournamentTracksApi, displayConfigApi, ApiError,
+  DisplayConfig, TournamentEvent, TournamentShift, TournamentShiftInput, TournamentTrack,
 } from "@/lib/api";
-import { formatTimeOfDay, toTimeInput } from "@/lib/timeFormat";
+import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import {
+  DEFAULT_SHIFT_SORT, SHIFT_SORT_OPTIONS, SHIFT_SORT_TIEBREAK, isShiftSortField, shiftSortTiebreak, shiftSortValue,
+  type ShiftSortField,
+} from "@/lib/shiftSort";
+import {
+  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from "@/lib/sorting";
+import { SortableHeader } from "@/components/ui/SortableHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+import {
+  formatDayLabel, formatSpan, formatTimeOfDay, fromDayAndTime, parseLooseTime, toDateInput, toTimeInput,
+} from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
@@ -15,7 +30,13 @@ import table from "@/components/ui/Table.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Input } from "@/components/ui/Input";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
+import {
+  ShiftsFilterModal, ShiftsFilterState, SHIFTS_FILTER_KEYS, shiftPassesFilters, shiftTrackOptions,
+  shiftsFilterFromStored, shiftsFilterToStored,
+} from "@/components/tournament/events/ShiftsFilterModal";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ShiftPanel, SHIFT_PANEL_WIDTH } from "@/components/tournament/events/ShiftPanel";
@@ -23,22 +44,41 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournament/events/MassShiftEditor";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { EditableText } from "@/components/ui/EditableText";
+import { CellGuard, LockedCell, SelectCell } from "@/components/tournament/events/EditableCells";
+import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { useToast } from "@/lib/useToast";
-import { IconPlus, IconCalendar, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconPlus, IconCalendar, IconTrash, IconLock, IconCopy, IconSearch } from "@/components/ui/Icons";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { rowActivation } from "@/lib/rowActivation";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { handleGridArrows } from "@/lib/gridNav";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
-// Select / Label / Track / Start / End / Events / Actions. The select track is
-// always present (0px when off) so its width can animate, like the events table.
+// Select / Label / Track / Date / Start / End / Duration / Events / Actions —
+// every column, always (no picker: a shift has few enough fields to show them
+// all). The select track is always present (0px when off) so its width can
+// animate, like the events table.
+//
+// Every data column flexes from a floor that fits its content, so spare
+// width spreads across the row instead of pooling in Label and Track —
+// neither holds more than a word or two. Label never truncates; the table
+// scrolls sideways instead (see table.scroll).
 function shiftGridColumns(selectMode: boolean) {
-  return `${selectMode ? "28px" : "0px"} 1.6fr 1fr 0.8fr 0.8fr 70px 40px`;
+  return [
+    selectMode ? "28px" : "0px",
+    "minmax(max-content, 1.2fr)",  // label
+    "minmax(80px, 0.8fr)",         // track — one badge
+    "minmax(110px, 1fr)",          // date — "Sat, Feb 13"
+    "minmax(90px, 1fr)",           // start
+    "minmax(90px, 1fr)",           // end
+    "minmax(80px, 0.8fr)",         // duration — "1h 30m"
+    "minmax(70px, 0.6fr)",         // events
+    "40px",                        // actions
+  ].join(" ");
 }
-
-const ALL_TRACKS = "all";
 
 // Its own route rather than a tab under Events: a shift belongs to a track,
 // not to an event, and it is the thing availability is collected against —
@@ -65,7 +105,16 @@ export default function ShiftsPage() {
   // a round-trip per shift.
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
-  const [trackFilter, setTrackFilter] = useState<string>(ALL_TRACKS);
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<ShiftsFilterState>(() => emptyFilterState(SHIFTS_FILTER_KEYS));
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [sortRules, setSortRules] = useState<SortRule<ShiftSortField>[]>(DEFAULT_SHIFT_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
+  // The table waits for the saved view, so it doesn't render unfiltered and
+  // then jump.
+  const [viewReady, setViewReady] = useState(false);
+  // Labelled buttons until the toolbar runs out of room, then icons.
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(900);
   const [creatingNew, setCreatingNew] = useState(false);
   // Bumped per Add click and used as the create panel's key. After a save the
   // panel stays open on the new shift, so without a remount Add is a no-op.
@@ -124,17 +173,44 @@ export default function ShiftsPage() {
     loadTracks();
   }, [tournamentId, canManageEvents, loadTracks, refreshKey]);
 
+  // This viewer's saved filters and sort. Read once: later saves come from here.
+  useEffect(() => {
+    if (!canManageEvents) return;
+    let current = true;
+    displayConfigApi.get(tournamentId)
+      .catch(() => ({} as DisplayConfig))
+      .then((config) => {
+        if (!current) return;
+        const surface = config?.[SHIFTS_TABLE];
+        setFilters(shiftsFilterFromStored(surface?.filters));
+        // A saved chain whose every field has since been dropped is no chain.
+        const stored = sortRulesFromStored(surface?.sorts, isShiftSortField);
+        setSortRules(stored.length > 0 ? stored : DEFAULT_SHIFT_SORT);
+        setViewReady(true);
+      });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents]);
+
+  const applyFilters = useCallback((next: ShiftsFilterState) => {
+    setFilters(next);
+    persistSurfaceView(tournamentId, SHIFTS_TABLE, { filters: shiftsFilterToStored(next) });
+  }, [tournamentId]);
+
+  const applySort = useCallback((next: SortRule<ShiftSortField>[]) => {
+    setSortRules(next);
+    persistSurfaceView(tournamentId, SHIFTS_TABLE, { sorts: sortRulesToStored(next) });
+  }, [tournamentId]);
+
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),
     [tracks],
   );
 
   const visibleShifts = useMemo(() => {
-    const list = (shifts ?? []).filter(
-      (s) => trackFilter === ALL_TRACKS || s.track_id === Number(trackFilter),
-    );
-    return [...list].sort((a, b) => a.start.localeCompare(b.start));
-  }, [shifts, trackFilter]);
+    const q = search.trim().toLowerCase();
+    const list = (shifts ?? []).filter((s) => (!q || s.label.toLowerCase().includes(q)) && shiftPassesFilters(s, filters));
+    return sortRows(list, sortRules, (shift, field) => shiftSortValue(shift, field, trackById), shiftSortTiebreak);
+  }, [shifts, search, filters, sortRules, trackById]);
 
   const selectedShifts = useMemo(
     () => (shifts ?? []).filter((s) => selectedIds.has(s.id)),
@@ -188,6 +264,20 @@ export default function ShiftsPage() {
     loadTracks();
   }, [loadTracks]);
 
+  // Inline edits save one field at a time and swap the server's copy in, like
+  // the events table — no optimistic write, so a rejected change never lands.
+  const updateShift = useCallback(async (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => {
+    const saved = await tournamentShiftsApi.update(tournamentId, shift.id, patch);
+    handleSaved([saved]);
+  }, [tournamentId, handleSaved]);
+
+  const editContext = useMemo<ShiftEditContext | undefined>(() => (canManageEvents ? {
+    // Select mode's click toggles the box, so the cells step aside.
+    lockReason: archivedReason ?? (selectMode ? "Leave Select mode to edit in the table" : undefined),
+    update: updateShift,
+    tracks,
+  } : undefined), [canManageEvents, archivedReason, selectMode, updateShift, tracks]);
+
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // The editor doesn't render here — it's pushed into the layout shell's
@@ -209,9 +299,9 @@ export default function ShiftsPage() {
           shift={null}
           tracks={tracks}
           events={events}
-          // A tab filtered to one track creates shifts on it — the filter is
-          // already the TD saying which day they're working on.
-          defaultTrackId={trackFilter === ALL_TRACKS ? (tracks.length === 1 ? tracks[0].id : null) : Number(trackFilter)}
+          // Filtered to one day, new shifts go on it — the filter is already
+          // the TD saying which day they're working on.
+          defaultTrackId={filters.track.size === 1 ? Number([...filters.track][0]) : tracks.length === 1 ? tracks[0].id : null}
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
@@ -296,7 +386,7 @@ export default function ShiftsPage() {
     clearPanel();
   }, [
     creatingNew, createKey, focusedId, massPanelOpen, selectedShifts, clearSelection,
-    shifts, events, tracks, trackFilter, tournamentId,
+    shifts, events, tracks, filters.track, tournamentId,
     canManageEvents, isArchived, prevId, nextId, hasPrev, hasNext,
     focusItem, clearFocus, clearCreatingNew, setPanelDirty,
     handleSaved, handleDeleted, handleEventUpdated, setPanel, clearPanel,
@@ -320,7 +410,7 @@ export default function ShiftsPage() {
   if (!canManageEvents) {
     return (
       <div>
-        <PageHeader heading="Shifts" />
+        <CollapsibleHeader heading="Shifts" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -332,10 +422,10 @@ export default function ShiftsPage() {
     );
   }
 
-  if (shifts === null) {
+  if (shifts === null || !viewReady) {
     return (
       <div>
-        <PageHeader heading="Shifts" />
+        <CollapsibleHeader heading="Shifts" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>
@@ -368,9 +458,27 @@ export default function ShiftsPage() {
     setDuplicating(false);
   }
 
+  // The default chain isn't shown as a header state — it's the absence of a
+  // choice, and clicking replaces it (see cycleSortRule).
+  const headerSortRules = sameSortRules(sortRules, DEFAULT_SHIFT_SORT) ? [] : sortRules;
+  const sortableHeader = (field: ShiftSortField, label: string, align: "start" | "center" = "start") => {
+    const index = headerSortRules.findIndex((rule) => rule.field === field);
+    return (
+      <span style={{ display: "flex", minWidth: 0, justifyContent: align === "start" ? "flex-start" : "center" }}>
+        <SortableHeader
+          label={label}
+          align={align}
+          rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+          showPosition={headerSortRules.length > 1}
+          onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_SHIFT_SORT))}
+        />
+      </span>
+    );
+  };
+
   return (
     <div>
-      <PageHeader heading="Shifts" />
+      <CollapsibleHeader heading="Shifts" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -381,46 +489,66 @@ export default function ShiftsPage() {
       {/* Only the tracks these shifts are actually on. */}
       <PendingTrackBanner tracks={shiftTracks} subject="shifts" />
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-        {/* Only shown with more than one competition day — with a single
-            track every shift is on it, and the filter would be a no-op. */}
-        {/* Live tracks only — `tracks` keeps pending-delete ones so their
-            shifts can still name them, but they are not a view to switch to. */}
-        {tracks.filter((t) => !t.is_archived).length > 1 ? (
-          <ButtonGroup
-            options={[
-              { value: ALL_TRACKS, label: "All" },
-              ...tracks.filter((t) => !t.is_archived).map((t) => ({ value: String(t.id), label: t.name })),
-            ]}
-            value={trackFilter}
-            onChange={setTrackFilter}
-          />
-        ) : <span />}
-        {canEdit && shifts.length > 0 && (
-          <div style={{ display: "flex", gap: "8px" }}>
-            <Button
-              type="button" variant={selectMode ? "primary" : "secondary"} size="md"
-              onClick={toggleSelectMode}
-              disabled={panelDirty || isArchived}
-              title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
-            >
-              Select
-            </Button>
-            <Button
-              type="button" variant="primary" size="md" onClick={addShift}
-              disabled={isArchived} title={archivedReason}
-            >
-              <IconPlus size={14} /> Add shift
-            </Button>
+      {/* Same layout as the events toolbar: search and view controls on the
+          left, the one create action on the right. */}
+      {shifts.length > 0 && (
+        <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+            {/* Grows into the room the toolbar leaves, and gives it back first. */}
+            <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+              <Input
+                aria-label="Search shifts"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
+                placeholder="Search shift name"
+                icon={<IconSearch size={14} />}
+                font="sans"
+                size="md"
+                variant="secondary"
+                fullWidth
+              />
+            </div>
+            <FilterButton
+              iconOnly={compactToolbar}
+              active={isFilterActive(filters)}
+              onOpen={() => setShowFilterModal(true)}
+              onClear={() => applyFilters(emptyFilterState(SHIFTS_FILTER_KEYS))}
+            />
+            <SortButton
+              iconOnly={compactToolbar}
+              active={!sameSortRules(sortRules, DEFAULT_SHIFT_SORT)}
+              onOpen={() => setShowSortModal(true)}
+              onReset={() => applySort(DEFAULT_SHIFT_SORT)}
+            />
+            {canEdit && (
+              <Button
+                type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+                onClick={toggleSelectMode}
+                disabled={panelDirty || isArchived}
+                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
+              >
+                Select
+              </Button>
+            )}
           </div>
-        )}
-      </div>
+          {canEdit && (
+            <Button
+              type="button" variant="primary" size="md" iconOnly={compactToolbar} onClick={addShift}
+              disabled={isArchived}
+              title={archivedReason ?? (compactToolbar ? "Add shift" : undefined)}
+            >
+              <IconPlus size={14} />{!compactToolbar && " Add shift"}
+            </Button>
+          )}
+        </div>
+      )}
 
-      {visibleShifts.length === 0 ? (
+      {shifts.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconCalendar size={28} />}
-            title={shifts.length === 0 ? "No shifts yet" : "No shifts on this track"}
+            title="No shifts yet"
             description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;. Each one belongs to a competition day."
             action={canEdit ? (
               <Button
@@ -440,6 +568,8 @@ export default function ShiftsPage() {
           <div
             className={`${table.table} ${table.animatedTracks}`}
             style={{ gridTemplateColumns: shiftGridColumns(selectMode) }}
+            // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
+            onKeyDown={handleGridArrows}
           >
           <div className={table.header}>
             <span
@@ -453,14 +583,19 @@ export default function ShiftsPage() {
                 onChange={(checked) => toggleSelectAll(visibleShifts.map((s) => s.id), checked)}
               />
             </span>
-            <span>Shifts — {visibleShifts.length}</span>
-            <span>Track</span>
-            <span>Start</span>
-            <span>End</span>
-            <span style={{ textAlign: "center" }}>Events</span>
+            {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
+            {sortableHeader("track", "Track")}
+            {sortableHeader("date", "Date")}
+            {sortableHeader("start", "Start")}
+            {sortableHeader("end", "End")}
+            {sortableHeader("duration", "Duration")}
+            {sortableHeader("events", "Events", "center")}
             <span />
           </div>
 
+          {visibleShifts.length === 0 && (
+            <EmptyState title="No matching shifts" description="Try adjusting your search or filters." />
+          )}
           {visibleShifts.map((shift) => (
             <ShiftRow
               key={shift.id}
@@ -475,6 +610,7 @@ export default function ShiftsPage() {
               selected={selectedIds.has(shift.id)}
               selectionLocked={panelDirty}
               onToggleSelect={() => toggleSelected(shift.id)}
+              edit={editContext}
             />
           ))}
           </div>
@@ -505,6 +641,27 @@ export default function ShiftsPage() {
         }
       />
 
+      {showSortModal && (
+        <SortModal
+          title="Sort shifts"
+          fields={SHIFT_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_SHIFT_SORT}
+          tiebreakLabel={SHIFT_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<ShiftSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
+      )}
+
+      {showFilterModal && (
+        <ShiftsFilterModal
+          trackOptions={shiftTrackOptions(tracks)}
+          filters={filters}
+          onApply={applyFilters}
+          onClose={() => setShowFilterModal(false)}
+        />
+      )}
+
       {deleteTargets && (
         <DeleteShiftModal
           tournamentId={tournamentId}
@@ -517,12 +674,47 @@ export default function ShiftsPage() {
   );
 }
 
-// Read-only: every edit, including delete, happens in the panel. A row that
-// both previews and edits meant two ways to change the same thing, and only
-// one of them could show a shift's events.
+/** What an editable shift cell needs from the page. Absent = the table is read-only. */
+interface ShiftEditContext {
+  /** Page-wide reason the cells are locked; the row adds "open in the panel" itself. */
+  lockReason?: string;
+  /** Saves one change. Rejects with the server's message, which the cell shows. */
+  update: (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => Promise<void>;
+  /** Every competition day, pending ones included — the row narrows to what it can move to. */
+  tracks: TournamentTrack[];
+}
+
+const LABEL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 } as const;
+const DATE_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "nowrap" } as const;
+const TIME_TEXT = { fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 400, color: "var(--color-text-secondary)" } as const;
+const TIME_HINT = "try 930, 9:30a or 14:15";
+
+/** Both ends moved by whole days so `start` lands on `day`, each keeping its
+ *  own clock time — per end, not by milliseconds, so a DST change between
+ *  the two days can't shift the times by an hour. */
+function moveToDay(shift: TournamentShift, day: string): { start: string; end: string } {
+  const offset = Math.round((Date.parse(day) - Date.parse(toDateInput(shift.start))) / 86400000);
+  const move = (iso: string) => {
+    const d = new Date(`${toDateInput(iso)}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + offset);
+    return fromDayAndTime(d.toISOString().slice(0, 10), toTimeInput(iso))!;
+  };
+  return { start: move(shift.start), end: move(shift.end) };
+}
+
+/** Same rule as ShiftPanel: keep the date if the new track has it, else its first day. */
+function moveToTrack(shift: TournamentShift, track: TournamentTrack): Partial<TournamentShiftInput> {
+  const days = trackDays(track);
+  const day = toDateInput(shift.start);
+  if (days.length === 0 || days.includes(day)) return { track_id: track.id };
+  return { track_id: track.id, ...moveToDay(shift, days[0]) };
+}
+
+// Label, track, date and times edit in place; everything else (events,
+// delete confirm) stays in the panel, which a click outside those cells opens.
 function ShiftRow({
   shift, track, focused, canEdit, deleteLockedReason, onClick, onDelete,
-  selectMode, selected, selectionLocked, onToggleSelect,
+  selectMode, selected, selectionLocked, onToggleSelect, edit,
 }: {
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
@@ -537,15 +729,89 @@ function ShiftRow({
   /** Open panel has unsaved changes — focus and selection are frozen until it resolves. */
   selectionLocked: boolean;
   onToggleSelect: () => void;
+  /** Given, the cells edit in place. */
+  edit?: ShiftEditContext;
 }) {
   // In select mode a click toggles the box; otherwise it opens the panel.
   const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onClick;
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
+  // The panel's draft and a cell save would overwrite each other.
+  const lockReason = edit?.lockReason ?? (focused ? "Being edited in the panel" : undefined);
+
+  // Locked keeps the same EditableText, just inert, so text doesn't shift
+  // when the row opens in the panel.
+  const guard = (content: ReactNode) => (lockReason
+    ? <LockedCell align="start">{content}</LockedCell>
+    : <CellGuard align="start">{content}</CellGuard>);
+
+  const labelCell = edit
+    ? guard(
+      <EditableText
+        value={shift.label}
+        // Empty reaches onSave so it can say Required, like the panel, rather
+        // than silently reverting.
+        allowEmpty
+        onSave={(label) => {
+          if (!label) throw new Error("Required");
+          return edit.update(shift, { label });
+        }}
+        locked={!!lockReason}
+        errorToast
+        textStyle={LABEL_TEXT}
+        title={lockReason ?? "Click to rename"}
+      />,
+    )
+    : shift.label;
+
+  const badge = (
+    <Badge
+      variant={track?.is_archived ? "warning" : "default"}
+      title={track?.is_archived ? PENDING_TRACK_NOTE : undefined}
+    >
+      {track?.name ?? "—"}
+    </Badge>
+  );
+  // A pending-delete track can't take a shift (409), so it's only listed as
+  // the one this shift is already on.
+  const trackOptions = edit?.tracks
+    .filter((t) => !t.is_archived || t.id === shift.track_id)
+    .map((t) => ({ value: String(t.id), label: t.name })) ?? [];
+
+  const days = trackDays(track);
+  const dateText = <span style={DATE_TEXT}>{formatDayLabel(toDateInput(shift.start))}</span>;
+
+  const timeCell = (which: "start" | "end") => {
+    const iso = shift[which];
+    const hhmm = toTimeInput(iso);
+    const display = formatTimeOfDay(hhmm);
+    if (!edit) return <span style={TIME_TEXT}>{display}</span>;
+    return guard(
+      <EditableText
+        value={display}
+        locked={!!lockReason}
+        errorToast
+        textStyle={TIME_TEXT}
+        title={lockReason ?? `Click to edit — ${TIME_HINT}`}
+        onSave={async (typed) => {
+          const parsed = parseLooseTime(typed, hhmm);
+          if (!parsed) throw new Error(`Couldn't read that time — ${TIME_HINT}`);
+          if (parsed === hhmm) return;
+          // The day stays the shift's own; Date is its own cell.
+          const next = fromDayAndTime(toDateInput(iso), parsed)!;
+          // The panel's check, against the end this edit leaves alone.
+          if (which === "start" && new Date(next) >= new Date(shift.end)) throw new Error("Must be before the end.");
+          if (which === "end" && new Date(next) <= new Date(shift.start)) throw new Error("Must be after the start.");
+          await edit.update(shift, { [which]: next });
+        }}
+      />,
+    );
+  };
 
   return (
     <div
       className={table.row}
+      data-nav-row
       data-active={highlighted ? "true" : undefined}
       data-pending={track?.is_archived ? "true" : undefined}
       onClick={handleRowClick}
@@ -560,26 +826,45 @@ function ShiftRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{shift.label}</span>
-      <span style={{ display: "flex", minWidth: 0 }}>
-        <Badge
-          variant={track?.is_archived ? "warning" : "default"}
-          title={track?.is_archived ? PENDING_TRACK_NOTE : undefined}
-        >
-          {track?.name ?? "—"}
-        </Badge>
+      <span data-nav-col="label" style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>{labelCell}</span>
+      <span data-nav-col="track" style={{ display: "flex", minWidth: 0 }}>
+        {edit && track ? (
+          <SelectCell
+            display={badge}
+            value={String(shift.track_id)}
+            options={trackOptions}
+            lockReason={lockReason}
+            align="start"
+            onPick={async (id) => {
+              const next = edit.tracks.find((t) => t.id === Number(id));
+              if (next) await edit.update(shift, moveToTrack(shift, next));
+            }}
+          />
+        ) : badge}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatTimeOfDay(toTimeInput(shift.start))}
+      {/* Only a multi-day track has another day to move to. */}
+      <span data-nav-col="date" style={{ display: "flex", minWidth: 0 }}>
+        {edit && days.length > 1 ? (
+          <SelectCell
+            display={dateText}
+            value={toDateInput(shift.start)}
+            options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+            lockReason={lockReason}
+            align="start"
+            onPick={(day) => edit.update(shift, moveToDay(shift, day))}
+          />
+        ) : dateText}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatTimeOfDay(toTimeInput(shift.end))}
+      <span data-nav-col="start" style={{ display: "flex", minWidth: 0 }}>{timeCell("start")}</span>
+      <span data-nav-col="end" style={{ display: "flex", minWidth: 0 }}>{timeCell("end")}</span>
+      <span data-nav-col="duration" style={TIME_TEXT}>
+        {formatSpan(shift.start, shift.end)}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+      <span data-nav-col="events" style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {shift.event_count}
       </span>
       {/* Opening is the row's own click; delete keeps its own confirm. */}
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+      <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canEdit && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}

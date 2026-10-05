@@ -78,8 +78,9 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     for link in links:
         zone_id = by_event.get(link.tournament_event_id)
         if zone_id is None and link.building_id is not None:
-            if link.floor is not None:
-                zone_id = by_floor.get((link.building_id, link.floor))
+            floor = link.effective_floor
+            if floor is not None:
+                zone_id = by_floor.get((link.building_id, floor))
             if zone_id is None:
                 zone_id = by_building.get(link.building_id)
         resolved[link.tournament_event_id] = zone_id

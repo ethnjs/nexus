@@ -13,7 +13,6 @@ interface EventsColumnsModalProps {
 // What the event *is*, then one group per per-track field — families that
 // grow with the schedule rather than a fixed set.
 const FAMILY_GROUPS = [
-  { family: "time", title: "Time" },
   { family: "shifts", title: "Shifts" },
   { family: "location", title: "Location" },
   { family: "staffing", title: "Staffing" },
@@ -46,7 +45,7 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
       // A bare family key ("shifts") in the defaults and older saved configs
       // means every track's column; without expanding it they'd read as off.
       // The catalog already lists exactly the per-track keys each family has.
-      expandKeys={(keys, columns) => keys.flatMap((key) => (
+      expandKeys={(keys, columns) => keys.map((key) => (key.startsWith("time:") ? "time" : key)).flatMap((key) => (
         FAMILY_GROUPS.some((g) => g.family === key)
           ? columns.filter((c) => trackFamilyOf(c.key) === key).map((c) => c.key)
           : [key]

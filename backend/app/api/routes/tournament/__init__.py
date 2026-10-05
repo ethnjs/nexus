@@ -10,6 +10,7 @@ from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIV
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived, tournament_counts
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership
+from app.core.tournament.tracks import sync_sole_track_name
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
@@ -156,6 +157,9 @@ def update_tournament(
 
     for field, value in update_data.items():
         setattr(tournament, field, value)
+    # A renamed simple tournament renames its one track with it.
+    if "name" in update_data or "short_name" in update_data:
+        sync_sole_track_name(db, tournament)
 
     try:
         db.commit()

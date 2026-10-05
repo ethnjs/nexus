@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, buildingsApi, displayConfigApi, ApiError,
+  tournamentEventsApi, displayConfigApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
   EventTrackDetail, TournamentBuilding, Role,
 } from "@/lib/api";
@@ -11,6 +11,7 @@ import { EventTrackDetails, type DraftTrackDetail } from "@/components/tournamen
 import { EventPanelConfigModal } from "@/components/tournament/events/EventPanelConfigModal";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
@@ -20,6 +21,7 @@ import { Badge } from "@/components/ui/Badge";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
@@ -66,6 +68,19 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
       .sort((a, b) => a.track_id - b.track_id)
       .map((d) => ({ ...d, needs: [...(d.needs ?? [])].sort((x, y) => x.role_id - y.role_id) })),
   };
+}
+
+/** Same event, ignoring list order — the server guarantees none, so a
+ *  reordered round trip mustn't read as a change. A false "changed" only
+ *  costs a redundant push, so inner lists are left as they come. */
+function sameEvent(a: TournamentEvent, b: TournamentEvent): boolean {
+  const norm = (e: TournamentEvent) => JSON.stringify({
+    ...e,
+    shifts: [...e.shifts].sort((x, y) => x.id - y.id),
+    tracks: [...e.tracks].sort((x, y) => x.id - y.id),
+    track_details: [...e.track_details].sort((x, y) => x.track_id - y.track_id),
+  });
+  return norm(a) === norm(b);
 }
 
 interface EventPanelProps {
@@ -172,6 +187,9 @@ export function EventPanel({
     tournamentEventsApi.get(tournamentId, eventId)
       .then((fresh) => {
         if (!active || dirtyRef.current) return;
+        // Unchanged is the usual answer. Pushing it anyway hands the caller a
+        // new object, which re-rendered the whole assignments board per open.
+        if (seenEventRef.current && sameEvent(seenEventRef.current, fresh)) return;
         setCurrent(fresh);
         setDraft(draftFromEvent(fresh));
         onSaved(fresh);
@@ -205,26 +223,19 @@ export function EventPanel({
    * Turns every typed-but-uncreated building name into a real building, and
    * returns track details that point at them by id.
    *
-   * An existing name is tagged onto the track rather than created again —
-   * names are unique per tournament, so a second "Rowland Hall" would 409,
-   * and the TD plainly means the same building. The same new name on two
-   * tracks is created once and tagged for the second, via `byName`.
+   * See ensureBuildingOnTrack. The same new name on two tracks is created
+   * once and tagged for the second, because `known` grows as it goes.
    */
   async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
-    const byName = new Map(buildings.map((b) => [b.name.toLowerCase(), b]));
+    const known = [...buildings];
     const resolved: EventTrackDetail[] = [];
     for (const { new_building_name, ...detail } of details) {
       const name = new_building_name?.trim();
       if (!name) { resolved.push(detail); continue; }
-      let building = byName.get(name.toLowerCase());
-      if (!building) {
-        building = await buildingsApi.create(tournamentId, { name, track_ids: [detail.track_id] });
-      } else if (!building.track_ids.includes(detail.track_id)) {
-        building = await buildingsApi.update(tournamentId, building.id, {
-          track_ids: [...building.track_ids, detail.track_id],
-        });
-      }
-      byName.set(building.name.toLowerCase(), building);
+      const building = await ensureBuildingOnTrack(tournamentId, name, detail.track_id, known);
+      const at = known.findIndex((b) => b.id === building.id);
+      if (at >= 0) known[at] = building;
+      else known.push(building);
       onBuildingSaved(building);
       resolved.push({ ...detail, building_id: building.id });
     }
@@ -423,7 +434,7 @@ export function EventPanel({
           )}
 
           <SettingsRow label="Division">
-            <ButtonGroup
+            <DivisionButtonGroup
               options={divisions.map((d) => ({ value: d, label: d }))}
               value={draft.division ?? ""}
               onChange={(v) => patch({ division: v as TournamentDivision })}

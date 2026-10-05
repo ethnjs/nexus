@@ -5,6 +5,7 @@ surface's `hidden` list each identify one hideable item, e.g. "track:3".
 Kept here (not inline in the route) so 3.3's apply-the-config step reuses the
 same known sets rather than redefining them."""
 
+import re
 from datetime import datetime
 
 from app.core.tournament import tournament_local_date
@@ -23,9 +24,16 @@ ASSIGNMENTS_EVENTS = "assignments_events"
 # blocks it shows — and hiding Test Writing's block while placing Day 1 events
 # must not drop Tracks from how you read the table.
 EVENT_PANEL = "event_panel"
+# The shifts table — its filters and sort, in its own vocabulary: a shift has
+# a time and a track, not a division. No columns: the table shows them all.
+SHIFTS_TABLE = "shifts_table"
+# Whether this viewer keeps the page header folded into the Topbar. One
+# setting for every page of the tournament, so it is a surface of its own
+# that holds only `collapsed` rather than a field repeated on each table's.
+PAGE_HEADER = "page_header"
 
 FLAT_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL,
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL, SHIFTS_TABLE, PAGE_HEADER,
 })
 
 # ---------------------------------------------------------------------------
@@ -108,7 +116,14 @@ KNOWN_FILTER_KEYS = frozenset({
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
 # by anything can't be written in the first place.
-KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age"})
+KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age", "onboarding"})
+# Plus one sort per track (or per track's event / lunch question), keyed in
+# the same namespaces as the columns so fields_for_surface maps them to data
+# groups the same way. event_pref takes the event too: a sort is by the rank
+# given one event, where a column shows the whole list.
+MEMBER_SORT_FIELD_PATTERN = re.compile(
+    r"^(track:\d+|availability_track:\d+|event_pref:\d+:\d+|lunch:\d+:[a-z0-9_]+)$"
+)
 KNOWN_SORT_DIRECTIONS = frozenset({"asc", "desc"})
 
 # ---------------------------------------------------------------------------
@@ -129,6 +144,7 @@ COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
 COLUMN_ONBOARDING = "onboarding"
+COLUMN_DIETARY = "dietary_restriction"
 
 FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_EMAIL, "Email"),
@@ -139,6 +155,7 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
     (COLUMN_ONBOARDING, "Onboarding"),
+    (COLUMN_DIETARY, "Dietary restriction"),
 )
 
 # What a tournament with no saved column config shows — roughly today's table,
@@ -156,8 +173,9 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # is shared between the two surfaces except the storage shape.
 #
 # Most columns are scalars on the event. The exceptions are the per-track
-# families below: shifts, time, location and staffing are all answers a track
-# gives, and a row is per event, so they get one column per track.
+# families below: shifts, location and staffing are all answers a track gives,
+# and a row is per event, so they get one column per track. Time is one
+# column, a line per day, so a day the event isn't on costs no width.
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
@@ -177,11 +195,10 @@ EVENT_COLUMN_STAFFING = "staffing"
 # only spelling under which a track added later appears on its own — an
 # explicit list only names the tracks that existed.
 #
-# Value: whether the family is for competition (primary) tracks only. Shifts,
-# and so time, only exist on a dated track, and a cosmetic track has no place;
-# staffing needs can be declared on any track.
+# Value: whether the family is for competition (primary) tracks only. Shifts
+# only exist on a dated track, and a cosmetic track has no place; staffing
+# needs can be declared on any track.
 EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
-    EVENT_COLUMN_TIME: True,
     EVENT_COLUMN_SHIFTS: True,
     EVENT_COLUMN_LOCATION: True,
     EVENT_COLUMN_STAFFING: False,
@@ -197,11 +214,11 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_STAFFING, "Staffing"),
 )
 
-# Today's fixed table, so the feature landing doesn't rearrange anyone's
-# events page.
+# What the table shows until a viewer saves their own, and what Reset returns
+# to: what the event is and when it runs. Mirrored in eventColumns.tsx.
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
-    EVENT_COLUMN_TRACKS, EVENT_COLUMN_SHIFTS,
+    EVENT_COLUMN_TRACKS, EVENT_COLUMN_TIME,
 )
 
 # Unlike the roster's, these filters are applied in the client (the events
@@ -210,16 +227,35 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # query params — an empty list for a key means that key narrows nothing.
 # Opaque here either way: a category that no longer exists is inert, exactly
 # as a deleted track is on the roster.
-KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
-
-# The table sorts by a chain (`sorts`) over the board's own fields — the
-# same five mean the same thing on both. "division" and "day" are the single
-# `sort` it saved before that: still accepted so an old blob re-PUT by another
-# save doesn't 422, and read by the client as name and start.
-KNOWN_EVENT_SORT_FIELDS = frozenset({
-    "name", "category", "start", "staffing", "location",
-    "division", "day",
+# Shared with the board (see EVENTS_FILTER_KEYS in EventsFilterModal.tsx):
+# both pages filter with the same predicate, so they store the same keys.
+KNOWN_EVENT_FILTER_KEYS = frozenset({
+    "division", "type", "category", "track", "building", "shifts", "shift", "staffing",
 })
+
+# The table sorts by a chain (`sorts`) over the board's own fields — they
+# mean the same thing on both. "day" is from the single `sort` it saved before
+# that: still accepted so an old blob re-PUT by another save doesn't 422, and
+# read by the client as start.
+KNOWN_EVENT_SORT_FIELDS = frozenset({
+    "name", "division", "category", "start", "staffing", "location", "day",
+})
+
+
+# ---------------------------------------------------------------------------
+# Shifts table
+#
+# Filters and sort only — the table always shows every column, so there is
+# no column vocabulary and a saved `columns` list is rejected. Filtered and
+# sorted in the client, like the events table.
+# ---------------------------------------------------------------------------
+# Track narrows to one or more days; events is "has" / "none" — a shift no
+# event uses yet is the thing worth finding.
+KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "events"})
+
+# "date" is the day alone, so a chain can group by day and order within it by
+# something other than start time.
+KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "date", "start", "end", "duration", "events"})
 
 
 # ---------------------------------------------------------------------------
@@ -241,13 +277,9 @@ ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = (
 # is "show what you have" and a TD trims from there.
 DEFAULT_ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = ASSIGNMENT_EVENT_COLUMNS
 
-# Filtered in the client like the events table, so these store the *selected*
-# values too. Two keys more than that table: the board loads assignments and
-# per-event tracks, so it can offer staffed/unstaffed and track sections the
-# events page has no data for.
-KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
-    "division", "type", "category", "track", "staffing",
-})
+# Filtered in the client like the events table, with the same keys — so
+# these store the *selected* values too.
+KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = KNOWN_EVENT_FILTER_KEYS
 
 # The board sorts by more than the events table does, for the same reason its
 # filters do: it holds the assignments, so "who still needs people" is a
@@ -260,15 +292,12 @@ KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
 # staffed events in arbitrary order, so the second key is the one doing the
 # reading.
 #
-# No "division": within one tournament a division is part of an event's
-# identity, not a facet of it -- Crime Busters B and Crime Busters C are two
-# events - so the board sorts them by name with the division on the end, and a
-# separate key could only scatter one event's divisions apart. The events
-# table keeps its own, where Division is a column of its own.
+# "name" sorts with the division on the end, keeping Crime Busters B and C
+# adjacent; "division" is its own key for grouping every B event together.
 # "location" is one key, not building/floor/room: the board prints the three
 # as one label ("Kerckhoff 101") and a walking order is that label's order.
 KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
-    "name", "category", "start", "staffing", "location",
+    "name", "division", "category", "start", "staffing", "location",
 })
 
 # ---------------------------------------------------------------------------
@@ -285,18 +314,23 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
 # ---------------------------------------------------------------------------
 CARD_FIELD_NAMESPACE = "card_field:"
 CARD_TRACK_NAMESPACE = "card_track:"
+# One custom question hidden by its form field id ("card_custom:{field_id}") —
+# the custom_fields field shows every answer the member gave unless hidden.
+CARD_CUSTOM_NAMESPACE = "card_custom:"
 
 ASSIGNMENT_CARD_FIELDS = frozenset({
-    "roles", "age", "track_status", "event_preferences", "availability",
+    "roles", "age", "onboarding", "dietary_restriction",
+    "track_status", "event_preferences", "availability", "lunch",
     "competition_school", "competition_event",
     "volunteer_tournament", "volunteer_event", "volunteer_role",
+    "custom_fields",
 })
 
 # The fields that are a per-track list, and so can be hidden one track at a
 # time ("card_track:{field}:{track_id}"). Scoped per field, not shared: a TD
 # may well want Day 1's preferences beside every track's availability.
 ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset({
-    "track_status", "event_preferences", "availability",
+    "track_status", "event_preferences", "availability", "lunch",
 })
 
 
@@ -406,6 +440,10 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
         if item.startswith(CARD_TRACK_NAMESPACE):
             field, _, track = item[len(CARD_TRACK_NAMESPACE):].partition(":")
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
+        if item.startswith(CARD_CUSTOM_NAMESPACE):
+            # Not checked against the forms: a deleted question's entry is inert.
+            field_id = item[len(CARD_CUSTOM_NAMESPACE):]
+            return bool(field_id) and ":" not in field_id
         return False
     # An event row's hideable items are the tracks it runs on: hiding one
     # drops its shifts from the timeline, or its column from the no-shift
@@ -436,8 +474,8 @@ def is_known_column(surface: str, key: str) -> bool:
     falling through to another surface's set.
 
     On the roster a key is either one of the fixed ids or an entity the panel
-    already namespaces — event_preference is excluded deliberately: a ranked
-    list of events has no sensible single-cell rendering.
+    already namespaces. An event preference column renders its ranked option
+    labels as one line of text, the full list on hover.
     """
     surface = surface_base(surface)
     if surface == EVENTS_TABLE:
@@ -445,7 +483,9 @@ def is_known_column(surface: str, key: str) -> bool:
         if sep:
             # Not checked against the catalog — a deleted track's column is
             # inert, the same leniency every other saved track id gets.
-            return family in EVENT_TRACK_COLUMN_FAMILIES and track_id.isdigit()
+            # "time:<id>" is from when time was per track; the client reads it
+            # as "time", and it stays valid so an old blob still re-saves.
+            return (family in EVENT_TRACK_COLUMN_FAMILIES or family == EVENT_COLUMN_TIME) and track_id.isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
@@ -454,7 +494,7 @@ def is_known_column(surface: str, key: str) -> bool:
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
         return True
     return key.startswith((
-        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, FORM_FIELD_NAMESPACE,
+        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, EVENT_PREF_NAMESPACE, FORM_FIELD_NAMESPACE,
     ))
 
 
@@ -469,6 +509,8 @@ def known_filter_keys(surface: str) -> frozenset[str]:
         return KNOWN_EVENT_FILTER_KEYS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS
+    if surface == SHIFTS_TABLE:
+        return KNOWN_SHIFT_FILTER_KEYS
     # The belt is filtered by the roster's own modal, so it stores the roster's
     # keys — see the note on ASSIGNMENT_CARD_FIELDS about why it is still its
     # own surface.
@@ -477,16 +519,28 @@ def known_filter_keys(surface: str) -> frozenset[str]:
     return frozenset()
 
 
+def is_known_sort_field(surface: str, field: str) -> bool:
+    """Whether `surface` may store a sort by `field`: its fixed set, plus the
+    roster's per-track fields (see MEMBER_SORT_FIELD_PATTERN). A deleted
+    track's id isn't checked, the same leniency its column key gets."""
+    if field in known_sort_fields(surface):
+        return True
+    return surface_base(surface) in (MEMBERS_TABLE, ASSIGNMENT_CARD) and bool(MEMBER_SORT_FIELD_PATTERN.match(field))
+
+
 def known_sort_fields(surface: str) -> frozenset[str]:
-    """The sort fields `surface` may store — same reasoning as
+    """The fixed sort fields `surface` may store — same reasoning as
     known_filter_keys."""
     surface = surface_base(surface)
-    if surface == MEMBERS_TABLE:
+    # The belt sorts members the same ways the roster does.
+    if surface in (MEMBERS_TABLE, ASSIGNMENT_CARD):
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_SORT_FIELDS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS
+    if surface == SHIFTS_TABLE:
+        return KNOWN_SHIFT_SORT_FIELDS
     return frozenset()
 
 
@@ -516,7 +570,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     something from. Custom fields reuse get_custom_form_answers' reserved-key
     exclusion, but tournament-wide rather than per-user."""
     from sqlalchemy import distinct
-    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+    from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN, TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.core.tournament import tournament_local_date
     from app.models.models import (
         Form, FormField, Tournament, TournamentMembership, TournamentMembershipEventPreference,
@@ -538,12 +592,34 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # The toggle hides a whole category on one track, so that pair is what it
     # must be labelled with — labelling it with one member's selection
     # ("Sofritas (Vegan)") named the wrong thing entirely.
-    lunch_pairs = (
+    #
+    # Asked as well as answered: a published question offers its column before
+    # anyone has replied, and a category only old submissions hold keeps its
+    # column so those answers stay visible.
+    answered_lunch_pairs = (
         db.query(distinct(TournamentMembershipLunch.track_id), TournamentMembershipLunch.category)
         .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
+    asked_lunch_keys = (
+        db.query(FormField.field_key)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            Form.status == "published",
+            FormField.is_archived.is_(False),
+            # A coarse prefilter ("_" is a wildcard); the regex below decides.
+            FormField.field_key.like("lunch_%"),
+        )
+        .all()
+    )
+    lunch_pairs = set(answered_lunch_pairs) | {
+        (int(match.group(1)), match.group(2))
+        for (field_key,) in asked_lunch_keys
+        if (match := LUNCH_FIELD_KEY_PATTERN.match(field_key))
+    }
     lunch_items = [
         {
             "key": lunch_key(track_id, category),
@@ -611,7 +687,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     column_items = (
         [{"key": key, "label": label} for key, label in FIXED_COLUMNS]
         + [{"key": item["key"], "label": item["label"]}
-           for item in track_items + availability_items + lunch_items + custom_field_items]
+           for item in track_items + availability_items + lunch_items + event_pref_items + custom_field_items]
     )
 
     # A section's own toggleable pieces are its static fields plus whatever
@@ -776,6 +852,8 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
     COLUMN_ONBOARDING: ("onboarding",),
+    # On the user profile, like shirt size — not on the lunch rows.
+    COLUMN_DIETARY: ("profile",),
 }
 
 _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
@@ -813,7 +891,7 @@ _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
 #
 # Identity (the name) is not a group, so it needs no entry here — see rule 3
 # in field_groups.py.
-_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile"})
+_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile", "lunch", "onboarding", "custom"})
 
 
 def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[str] | None:
@@ -842,7 +920,10 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
         # always needs roles whatever the saved config says. Contact too: search
         # matches on email, and the name falls back to it, column or not.
         groups = {"roles", "contact"}
-        for column in columns:
+        # Sorting is client-side, so a sort needs its data on the rows as
+        # much as a column does — and sort keys share the column namespaces.
+        sorts = [rule.get("field") for rule in (saved.get("sorts") or []) if isinstance(rule, dict)]
+        for column in [*columns, *(field for field in sorts if isinstance(field, str))]:
             groups.update(_COLUMN_GROUPS.get(column, ()))
             for namespace, group in _NAMESPACE_GROUPS:
                 if column.startswith(namespace):

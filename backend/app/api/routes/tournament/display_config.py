@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
-    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, build_catalog, is_known_surface,
+    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, PAGE_HEADER, build_catalog, is_known_surface,
     is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
-    known_sort_fields, section_field_ids,
+    is_known_sort_field, section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.permissions import (
@@ -107,6 +107,11 @@ def update_display_config(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown surface '{surface}'",
             )
+        if config.collapsed is not None and surface != PAGE_HEADER:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Surface '{surface}' cannot be collapsed",
+            )
         for item in config.hidden:
             if not is_known_hidden_item(surface, item):
                 raise HTTPException(
@@ -128,7 +133,7 @@ def update_display_config(
         # Both shapes, same vocabulary: `sort` is one key, `sorts` an
         # ordered chain of them. A surface stores whichever suits it.
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
-            if rule.field not in known_sort_fields(surface):
+            if not is_known_sort_field(surface, rule.field):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Unknown sort field '{rule.field}'",

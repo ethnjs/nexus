@@ -32,9 +32,13 @@ import { Switch } from "@/components/ui/Switch";
 export type MemberFieldId =
   | "roles"
   | "age"
+  | "onboarding"
+  | "dietary_restriction"
   | "track_status"
   | "event_preferences"
   | "availability"
+  | "lunch"
+  | "custom_fields"
   | "competition_school"
   | "competition_event"
   | "volunteer_tournament"
@@ -48,7 +52,12 @@ export const TRACK_SCOPED_FIELDS: { id: MemberFieldId; label: string }[] = [
   { id: "track_status", label: "Track status" },
   { id: "event_preferences", label: "Event preferences" },
   { id: "availability", label: "Availability" },
+  { id: "lunch", label: "Lunch" },
 ];
+
+/** The per-track fields a tab turns on for its own track by default — what a
+ *  day is staffed from. Lunch is per track too, but background. */
+const TAB_DEFAULT_FIELDS: MemberFieldId[] = ["track_status", "event_preferences", "availability"];
 
 /**
  * Hidden-by-exception: anything not named in a `hidden*` array is shown, so a
@@ -58,6 +67,8 @@ export interface MemberDisplayState {
   hiddenFields: MemberFieldId[];
   /** "{fieldId}:{trackId}". */
   hiddenTracks: string[];
+  /** Form field ids of custom questions hidden from the custom_fields field. */
+  hiddenCustom: string[];
 }
 
 export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
@@ -68,8 +79,11 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
     "availability",
     "competition_school", "competition_event",
     "volunteer_tournament", "volunteer_event", "volunteer_role",
+    // Off until asked for, same reasoning: background, not staffing.
+    "onboarding", "dietary_restriction", "lunch", "custom_fields",
   ],
   hiddenTracks: [],
+  hiddenCustom: [],
 };
 
 /**
@@ -83,12 +97,13 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
 export function defaultMemberDisplayForTab(
   trackIds: number[], activeTrackId: number | null,
 ): MemberDisplayState {
-  const perTrack = new Set<MemberFieldId>(TRACK_SCOPED_FIELDS.map((f) => f.id));
+  const perTrack = new Set<MemberFieldId>(TAB_DEFAULT_FIELDS);
   return {
     hiddenFields: DEFAULT_MEMBER_DISPLAY.hiddenFields.filter((id) => !perTrack.has(id)),
     hiddenTracks: activeTrackId === null ? [] : trackIds
       .filter((id) => id !== activeTrackId)
       .flatMap((id) => TRACK_SCOPED_FIELDS.map((field) => `${field.id}:${id}`)),
+    hiddenCustom: [],
   };
 }
 
@@ -98,6 +113,7 @@ export function defaultMemberDisplayForTab(
 // apart by prefix rather than by two columns.
 const CARD_FIELD_PREFIX = "card_field:";
 const CARD_TRACK_PREFIX = "card_track:";
+const CARD_CUSTOM_PREFIX = "card_custom:";
 
 /** The saved wire shape into display state. `hidden` is one flat namespaced
     list on the server (a whole-field entry, or one field's track slice), so
@@ -110,13 +126,15 @@ export function memberDisplayFromHidden(
   // Never saved — not "nothing hidden". An empty saved list is a real state
   // (everything shown), and it must not spring back to the default.
   if (!Array.isArray(hidden)) return DEFAULT_MEMBER_DISPLAY;
-  const state: MemberDisplayState = { hiddenFields: [], hiddenTracks: [] };
+  const state: MemberDisplayState = { hiddenFields: [], hiddenTracks: [], hiddenCustom: [] };
   for (const item of hidden) {
     if (typeof item !== "string") continue;
     if (item.startsWith(CARD_FIELD_PREFIX)) {
       state.hiddenFields.push(item.slice(CARD_FIELD_PREFIX.length) as MemberFieldId);
     } else if (item.startsWith(CARD_TRACK_PREFIX)) {
       state.hiddenTracks.push(item.slice(CARD_TRACK_PREFIX.length));
+    } else if (item.startsWith(CARD_CUSTOM_PREFIX)) {
+      state.hiddenCustom.push(item.slice(CARD_CUSTOM_PREFIX.length));
     }
   }
   return state;
@@ -127,6 +145,7 @@ export function memberDisplayToHidden(display: MemberDisplayState): string[] {
   return [
     ...display.hiddenFields.map((id) => `${CARD_FIELD_PREFIX}${id}`),
     ...display.hiddenTracks.map((key) => `${CARD_TRACK_PREFIX}${key}`),
+    ...display.hiddenCustom.map((id) => `${CARD_CUSTOM_PREFIX}${id}`),
   ];
 }
 
@@ -135,7 +154,8 @@ export function memberDisplayToHidden(display: MemberDisplayState): string[] {
  *  ways can hold its entries in either order. */
 export function sameMemberDisplay(a: MemberDisplayState, b: MemberDisplayState): boolean {
   return sameEntries(a.hiddenFields, b.hiddenFields)
-    && sameEntries(a.hiddenTracks, b.hiddenTracks);
+    && sameEntries(a.hiddenTracks, b.hiddenTracks)
+    && sameEntries(a.hiddenCustom, b.hiddenCustom);
 }
 
 function sameEntries(a: string[], b: string[]): boolean {
@@ -150,6 +170,10 @@ export function fieldShown(display: MemberDisplayState, id: MemberFieldId): bool
 
 export function trackShown(display: MemberDisplayState, id: MemberFieldId, trackId: number): boolean {
   return !display.hiddenTracks.includes(`${id}:${trackId}`);
+}
+
+export function customShown(display: MemberDisplayState, fieldId: string): boolean {
+  return !display.hiddenCustom.includes(fieldId);
 }
 
 function withToggled<T extends string>(list: T[], key: T): T[] {
@@ -203,6 +227,7 @@ export function MemberDisplayModal({
   /** The tournament's tracks, for the per-track chip editors — caller-supplied
    *  rather than fetched here, same reasoning as MembersFilterModal's options. */
   tracks,
+  customFields,
   onApply,
   onClose,
 }: {
@@ -214,6 +239,8 @@ export function MemberDisplayModal({
    *  track status and preferences. */
   defaults?: MemberDisplayState;
   tracks: { id: number; label: string }[];
+  /** The tournament's custom questions, for the Custom fields chips. */
+  customFields: { id: string; label: string }[];
   onApply: (next: MemberDisplayState) => void;
   onClose: () => void;
 }) {
@@ -234,7 +261,60 @@ export function MemberDisplayModal({
   );
 
   /**
-   * The three per-track fields, each as its own group.
+   * A field with an on/off switch and a chip per item it shows — the
+   * per-track fields (an item per track) and Custom fields (one per question).
+   * Hidden-by-exception, like the rest: a new track or question shows.
+   */
+  const chipGroup = <T extends string | number>(
+    id: MemberFieldId, label: string, items: { id: T; label: string }[],
+    shown: (item: T) => boolean, toggle: (item: T) => void, hideAll: () => void,
+    addTitle: string,
+  ) => (
+    <FieldGroup
+      key={id}
+      label={label}
+      action={<Switch checked={fieldShown(draft, id)} onChange={() => toggleField(id)} />}
+    >
+      {/* `disabled`, not `locked`: switched off by its own toggle, the chips
+          stay greyed on screen — what turning it back on would show. */}
+      <div>
+        <ChipInput
+          disabled={!fieldShown(draft, id)}
+          value={items.filter((item) => shown(item.id)).map((item) => item.label)}
+          onChange={(labels) => {
+            const removed = items.find((item) => shown(item.id) && !labels.includes(item.label));
+            if (removed) toggle(removed.id);
+          }}
+          variant="transparent"
+          size="sm"
+          disableInput
+          fullWidth
+          onClear={hideAll}
+          addButton={
+            <ChecklistPopover
+              trigger={
+                <Button
+                  type="button" variant="secondary" size="sm" iconOnly
+                  title={addTitle} style={{ padding: 0, flexShrink: 0 }}
+                >
+                  <IconPlus size={13} />
+                </Button>
+              }
+              items={items}
+              getKey={(item) => item.id}
+              renderLabel={(item) => item.label}
+              isSelected={(item) => shown(item.id)}
+              onToggle={(item) => toggle(item.id)}
+              emptyMessage="Nothing to configure"
+            />
+          }
+        />
+      </div>
+    </FieldGroup>
+  );
+
+  /**
+   * The per-track fields, each as its own group.
    *
    * They used to be a checkbox in the field list plus a chip row in a shared
    * "Tracks" block, which split one decision across two places you had to
@@ -242,62 +322,18 @@ export function MemberDisplayModal({
    * the same subject, so they sit together: the toggle names the group, and
    * the chips are what it contains.
    */
-  const trackGroup = (id: MemberFieldId, label: string) => (
-    <FieldGroup
-      key={id}
-      label={label}
-      action={
-        <Switch checked={fieldShown(draft, id)} onChange={() => toggleField(id)} />
-      }
-    >
-      {/* `disabled`, not `locked`: the group is switched off by its own
-          toggle, so the chips and the add button stay on screen greyed — you
-          are meant to see what turning it back on would show. Hiding them
-          would make the row look broken rather than paused. */}
-      <div>
-        <ChipInput
-          disabled={!fieldShown(draft, id)}
-          value={tracks
-            .filter((t) => trackShown(draft, id, t.id))
-            .map((t) => t.label)}
-          onChange={(labels) => {
-            const removed = tracks.find(
-              (t) => trackShown(draft, id, t.id) && !labels.includes(t.label),
-            );
-            if (removed) toggleTrack(`${id}:${removed.id}`);
-          }}
-          variant="transparent"
-          size="sm"
-          disableInput
-          fullWidth
-          onClear={() => setDraft((d) => ({
-            ...d,
-            hiddenTracks: [
-              ...d.hiddenTracks.filter((key) => !key.startsWith(`${id}:`)),
-              ...tracks.map((t) => `${id}:${t.id}`),
-            ],
-          }))}
-          addButton={
-            <ChecklistPopover
-              trigger={
-                <Button
-                  type="button" variant="secondary" size="sm" iconOnly
-                  title="Edit visible tracks" style={{ padding: 0, flexShrink: 0 }}
-                >
-                  <IconPlus size={13} />
-                </Button>
-              }
-              items={tracks}
-              getKey={(track) => track.id}
-              renderLabel={(track) => track.label}
-              isSelected={(track) => trackShown(draft, id, track.id)}
-              onToggle={(track) => toggleTrack(`${id}:${track.id}`)}
-              emptyMessage="Nothing to configure"
-            />
-          }
-        />
-      </div>
-    </FieldGroup>
+  const trackGroup = (id: MemberFieldId, label: string) => chipGroup(
+    id, label, tracks,
+    (trackId) => trackShown(draft, id, trackId),
+    (trackId) => toggleTrack(`${id}:${trackId}`),
+    () => setDraft((d) => ({
+      ...d,
+      hiddenTracks: [
+        ...d.hiddenTracks.filter((key) => !key.startsWith(`${id}:`)),
+        ...tracks.map((t) => `${id}:${t.id}`),
+      ],
+    })),
+    "Edit visible tracks",
   );
 
   return (
@@ -310,6 +346,8 @@ export function MemberDisplayModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
             {check("roles", "Roles")}
             {check("age", "Age")}
+            {check("onboarding", "Onboarding")}
+            {check("dietary_restriction", "Dietary restriction")}
           </div>
         </FieldGroup>
 
@@ -329,6 +367,14 @@ export function MemberDisplayModal({
             {check("volunteer_role", "Role")}
           </div>
         </FieldGroup>
+
+        {chipGroup(
+          "custom_fields", "Custom fields", customFields,
+          (fieldId) => customShown(draft, fieldId),
+          (fieldId) => setDraft((d) => ({ ...d, hiddenCustom: withToggled(d.hiddenCustom, fieldId) })),
+          () => setDraft((d) => ({ ...d, hiddenCustom: customFields.map((f) => f.id) })),
+          "Edit visible questions",
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "16px" }}>

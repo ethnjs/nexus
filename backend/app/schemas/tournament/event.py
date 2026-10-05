@@ -132,8 +132,9 @@ class EventBase(BaseModel):
     # silently didn't save.
     model_config = ConfigDict(extra="forbid")
 
-    # Custom (event_id-less) events only — catalog-linked events display
-    # the joined Event.name instead. See the model_validator below.
+    # A custom event's name, or on a catalog-linked one an optional override
+    # of the joined Event.name (see TournamentEvent.display_name). See the
+    # model_validator below.
     name: str | None = None
     division: str | None = None
     event_type: str = "standard"

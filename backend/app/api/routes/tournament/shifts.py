@@ -177,6 +177,14 @@ def update_shift(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(shift, field, value)
 
+    # Checked after the merge: the schema only sees both ends when both are
+    # sent, so a start-only patch could otherwise land past the stored end.
+    if shift.end <= shift.start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="End must be after the start",
+        )
+
     track = _resolve_track(db, tournament_id, shift.track_id)
     if _label_taken(db, shift.track_id, shift.label, excluding_id=shift.id):
         raise HTTPException(

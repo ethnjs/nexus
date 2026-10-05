@@ -7,6 +7,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
 import { PillTone, PillTrigger } from "@/components/ui/PillMenu";
+import { Input } from "@/components/ui/Input";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
 import {
@@ -90,6 +91,27 @@ const ANY = "__any__";
 // pill's answered/not-answered toggle rather than two more rows in its list.
 const UNANSWERED = "__unanswered__";
 const ANSWERED_OPTIONS = [{ value: ANY, label: "Answered" }, { value: UNANSWERED, label: "Not answered" }];
+
+// Event preferences: a chip's rank condition, kept as one more value under
+// its track ("rank:le:3") — shared with the backend's RANK_PREFIX. One per
+// chip, applied to whichever events it picks (or any event, with none). The
+// number may be blank while it's being typed; the backend ignores it until set.
+const RANK_PREFIX = "rank:";
+const RANK_OPS = [
+  { value: "lt", label: "<" },
+  { value: "le", label: "≤" },
+  { value: "eq", label: "=" },
+  { value: "ge", label: "≥" },
+  { value: "gt", label: ">" },
+];
+
+type RankCondition = { op: string; n: string };
+
+function parseRank(option: string): RankCondition | null {
+  if (!option.startsWith(RANK_PREFIX)) return null;
+  const [op, n = ""] = option.slice(RANK_PREFIX.length).split(":");
+  return RANK_OPS.some((o) => o.value === op) ? { op, n: n.replace(/\D/g, "") } : null;
+}
 
 // Fixed, unlike everything else in the modal, so they're spelled out rather
 // than fetched. No "any" row: that's what an untouched chip already means,
@@ -185,7 +207,7 @@ function withGroup(selected: Set<string>, group: string, options: string[]): Set
 //
 // Only the control — FilterModal draws the heading and Clear around it, the
 // same frame every other section gets.
-function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyMessage, searchable, optionTones, answeredToggle }: {
+function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyMessage, searchable, optionTones, answeredToggle, rankFilter }: {
   groups: FilterOptionGroup[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
@@ -199,6 +221,8 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
   optionTones?: Record<string, PillTone>;
   /** Lunch: offers answered/not-answered above the list. "Answered" ticks every box, "not answered" clears them — a free-text question has no boxes at all, and that is still the useful question to ask of it. */
   answeredToggle?: boolean;
+  /** Event preferences: a rank condition above the list (see RANK_PREFIX). */
+  rankFilter?: boolean;
 }) {
   // A group the options endpoint no longer offers (a deleted lunch question,
   // an archived track) still filters, so it keeps a chip under its raw key
@@ -217,10 +241,31 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
   function chosenFor(group: FilterOptionGroup): string[] {
     const chosen = optionsFor(selected, group.value);
     if (answeredToggle && chosen.includes(ANY)) return group.options.map((option) => option.value);
-    return chosen.filter((option) => option !== ANY && option !== UNANSWERED);
+    return chosen.filter((option) => option !== ANY && option !== UNANSWERED && !option.startsWith(RANK_PREFIX));
+  }
+
+  /** The chip's rank condition, if it has one. */
+  function rankFor(group: FilterOptionGroup): RankCondition | null {
+    for (const option of optionsFor(selected, group.value)) {
+      const rank = parseRank(option);
+      if (rank) return rank;
+    }
+    return null;
+  }
+
+  /** Rewrites a chip's events, carrying its rank condition along. */
+  function writeGroup(group: FilterOptionGroup, options: string[], rank = rankFor(group)) {
+    onChange(withGroup(selected, group.value, rank ? [...options, `${RANK_PREFIX}${rank.op}:${rank.n}`] : options));
   }
 
   function summaryFor(group: FilterOptionGroup): string {
+    const rank = rankFor(group);
+    const base = eventSummaryFor(group);
+    // Only once it filters anything — an operator with no number yet doesn't.
+    return rank?.n ? `${base} · rank ${RANK_OPS.find((o) => o.value === rank.op)?.label} ${rank.n}` : base;
+  }
+
+  function eventSummaryFor(group: FilterOptionGroup): string {
     const raw = optionsFor(selected, group.value);
     if (answeredToggle && raw.includes(ANY)) return "Answered";
     if (answeredToggle && raw.includes(UNANSWERED)) return "Not answered";
@@ -250,7 +295,39 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
     // Emptying a chip falls back to the sentinel rather than deleting it —
     // unticking the last shift means "any shift on that track", not
     // "never mind".
-    onChange(withGroup(selected, group.value, next.length > 0 ? next : [ANY]));
+    writeGroup(group, next.length > 0 ? next : [ANY]);
+  }
+
+  function rankHeader(group: FilterOptionGroup): ReactNode {
+    const rank = rankFor(group);
+    const events = chosenFor(group);
+    const base = events.length > 0 ? events : [ANY];
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Rank</span>
+        <ButtonGroup
+          options={RANK_OPS}
+          value={rank?.op ?? ""}
+          // Toggles: the lit operator clicked again drops the condition. A
+          // fresh one starts at 1 — "= 1", first choice, is the likeliest ask.
+          onChange={(op) => writeGroup(group, base, op === rank?.op ? null : { op, n: rank?.n || "1" })}
+          size="sm"
+        />
+        <div style={{ width: "56px", flexShrink: 0 }}>
+          <Input
+            aria-label="Rank"
+            value={rank?.n ?? ""}
+            onChange={(e) => rank && writeGroup(group, base, { ...rank, n: e.target.value })}
+            charset="numeric"
+            placeholder="#"
+            font="mono"
+            size="sm"
+            locked={!rank}
+            fullWidth
+          />
+        </div>
+      </div>
+    );
   }
 
   function answeredHeader(group: FilterOptionGroup): ReactNode {
@@ -282,7 +359,7 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
         const group = groupByLabel.get(label);
         // A free-text lunch question has no options, but answered/not
         // answered is still worth asking — so the pill stays.
-        if (!group || (group.options.length === 0 && !answeredToggle)) return null;
+        if (!group || (group.options.length === 0 && !answeredToggle && !rankFilter)) return null;
         return (
           <ChecklistPopover
             trigger={(open) => (
@@ -295,9 +372,10 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
             searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
             isSelected={(option) => chosenFor(group).includes(option.value)}
             onToggle={(option) => toggleOption(group, option.value)}
-            header={answeredToggle ? answeredHeader(group) : undefined}
+            header={answeredToggle ? answeredHeader(group) : rankFilter ? rankHeader(group) : undefined}
             emptyMessage="Nothing to filter by"
-            width={260}
+            // Room for the rank row on one line.
+            width={rankFilter ? 340 : 260}
             align="left"
           />
         );
@@ -409,7 +487,7 @@ export function MembersFilterModal({
       emptyMessage: "No lunch questions on this tournament yet.",
     }),
     paired("event_pref", "Event preferences", options?.event_preferences ?? [], {
-      searchable: true, anyLabel: "Any event", addLabel: "Filter by event preference",
+      searchable: true, rankFilter: true, anyLabel: "Any event", addLabel: "Filter by event preference",
       emptyMessage: "No event preference questions on this tournament yet.",
     }),
     {

@@ -4,6 +4,7 @@ import { ReactNode, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
@@ -52,6 +53,36 @@ export function sameFilterState(a: FilterState<string>, b: FilterState<string>):
   return true;
 }
 
+/** A table's saved filters (arrays, keyed by filter) back into filter state.
+ *  Unknown keys are dropped — a filter removed in a later release must not
+ *  come back as a narrowing nothing in the modal can clear. `keep` drops
+ *  values a key no longer offers (e.g. one whose vocabulary changed). */
+export function filterStateFromStored<K extends string>(
+  keys: readonly K[],
+  stored: Record<string, string[]> | null | undefined,
+  keep: (key: K, value: string) => boolean = () => true,
+): FilterState<K> {
+  const state = emptyFilterState(keys);
+  for (const key of keys) {
+    const values = stored?.[key];
+    if (Array.isArray(values)) {
+      state[key] = new Set(values.filter((v): v is string => typeof v === "string" && keep(key, v)));
+    }
+  }
+  return state;
+}
+
+/** Filter state as the saved shape, empty keys dropped. The *selected*
+ *  values — these tables filter in the client, so what's stored is what the
+ *  FilterModal deals in, not query params. */
+export function filterStateToStored(filters: FilterState<string>): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(filters)
+      .map(([key, values]): [string, string[]] => [key, [...values]])
+      .filter(([, values]) => values.length > 0),
+  );
+}
+
 /** Whether `value` passes one field's filter. Empty selection = no narrowing,
  *  which is the rule every caller's predicate needs and none should re-derive. */
 export function filterAllows(selected: Set<string>, value: string): boolean {
@@ -70,10 +101,11 @@ interface SectionBase<K extends string> {
 /** A section over a flat list of values, rendered by one of the stock controls. */
 interface ListSection<K extends string> extends SectionBase<K> {
   options: FilterOption[];
-  /** "buttons" for a handful of fixed values, "checkbox" for open-ended
+  /** "buttons" for a handful of fixed values ("divisions" for A/B/C, in
+   *  their colours — see DivisionButtonGroup), "checkbox" for open-ended
    *  lists, "chips" for a long list where only the picked few are worth the
    *  space (see ChipFilterBody). */
-  control: "buttons" | "checkbox" | "chips";
+  control: "buttons" | "divisions" | "checkbox" | "chips";
   /** Chips only. Defaults to "once the list is long enough to be worth
    *  typing at"; force it on for a list that is long *in practice*. */
   searchable?: boolean;
@@ -171,6 +203,16 @@ function ButtonGroupFilterBody({ options, selected, onChange }: FilterBodyProps)
   );
 }
 
+function DivisionFilterBody({ options, selected, onChange }: FilterBodyProps) {
+  return (
+    <DivisionButtonGroup
+      options={options}
+      value={[...selected]}
+      onChange={(value) => onChange(toggled(selected, value))}
+    />
+  );
+}
+
 // Above this many rows a picker is faster to type into than to scroll.
 export const SEARCHABLE_ABOVE = 8;
 
@@ -225,6 +267,7 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
 
 const LIST_BODIES = {
   buttons: ButtonGroupFilterBody,
+  divisions: DivisionFilterBody,
   checkbox: CheckboxFilterBody,
   chips: ChipFilterBody,
 } as const;

@@ -187,3 +187,45 @@ def purge_pending_tracks(db: Session, tournament_id: int, actor_id: int) -> list
         purged.append(track.id)
 
     return purged
+
+
+def sole_track_name(tournament) -> str:
+    """What a single-track tournament's track is called: the short name where
+    the TD set one, else the full name — the same preference the header and
+    the new-tournament form use."""
+    return (tournament.short_name or "").strip() or tournament.name
+
+
+def sync_sole_track_name(db: Session, tournament) -> None:
+    """Names a simple tournament's one track after the tournament.
+
+    A tournament with exactly one live track shows no Tracks list, so the
+    track's name is never the TD's to choose — it is the tournament's, and
+    stays so through renames, short-name changes and deletes down to one.
+    Called after each of those writes. Does not commit.
+
+    The name is unique per tournament, pending-delete tracks included; if one
+    of those holds it, the sole track keeps its name until that one is purged.
+    """
+    live = (
+        db.query(TournamentTrack)
+        .filter(TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived.is_(False))
+        .all()
+    )
+    if len(live) != 1:
+        return
+    track, name = live[0], sole_track_name(tournament)
+    if track.name == name:
+        return
+    taken = (
+        db.query(TournamentTrack.id)
+        .filter(
+            TournamentTrack.tournament_id == tournament.id,
+            TournamentTrack.name == name,
+            TournamentTrack.id != track.id,
+        )
+        .first()
+    )
+    if taken is None:
+        track.name = name
+

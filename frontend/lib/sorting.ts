@@ -98,3 +98,22 @@ export function sameSortRules<F extends string>(
   return a.length === b.length
     && a.every((rule, i) => rule.field === b[i].field && rule.direction === b[i].direction)
 }
+
+/**
+ * A column-header click on `field`: absent → appended ascending, ascending →
+ * descending, descending → removed. Click order is chain order, which is the
+ * multi-sort. While the chain is still `defaults`, the first click replaces
+ * it — appending would only break the default's ties and look like nothing
+ * happened. Emptying the chain hands back the defaults.
+ */
+export function cycleSortRule<F extends string>(
+  rules: readonly SortRule<F>[], field: F, defaults: readonly SortRule<F>[],
+): SortRule<F>[] {
+  const base = sameSortRules(rules, defaults) ? [] : rules
+  const current = base.find((rule) => rule.field === field)
+  let next: SortRule<F>[]
+  if (!current) next = [...base, { field, direction: 'asc' }]
+  else if (current.direction === 'asc') next = base.map((rule) => (rule.field === field ? { field, direction: 'desc' } : rule))
+  else next = base.filter((rule) => rule.field !== field)
+  return next.length > 0 ? next : [...defaults]
+}

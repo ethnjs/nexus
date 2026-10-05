@@ -2,6 +2,7 @@
 
 import { ReactNode, CSSProperties } from "react";
 import { MembershipFull } from "@/lib/api";
+import type { MemberSortField } from "@/lib/memberSort";
 import { formatPhone } from "@/lib/auth";
 import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
@@ -10,12 +11,15 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
 import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
 import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
+import { PreferenceOptionLine } from "@/components/tournament/members/sections/EventPreferencesSection";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 
 // Namespaces shared with the backend's display_config — a column key means
 // the same thing here as it does on the panel.
 export const TRACK_PREFIX = "track:";
 export const AVAILABILITY_TRACK_PREFIX = "availability_track:";
 export const LUNCH_PREFIX = "lunch:";
+export const EVENT_PREF_PREFIX = "event_pref:";
 export const FORM_FIELD_PREFIX = "form_field:";
 
 // Grid track per kind of data, not per individual column. Width is a property
@@ -31,10 +35,10 @@ const WIDTHS = {
   // Floor is higher than a plain text column's: the avatar and its gap take
   // ~32px before a single character of the name is drawn.
   name: "minmax(160px, 1.1fr)",
-  // Low flex on purpose: 190px already holds a typical address, so the extra
-  // space of a full-width table is better spent on Roles than on padding out
-  // an already-fitting email.
-  email: "minmax(190px, 0.7fr)",
+  // Free-text columns are never narrower than their longest value: nothing is
+  // cut off, and the table scrolls sideways instead (see Table.module.css's
+  // .scroll). Low flex on email, since the spare width is better spent on Roles.
+  email: "minmax(max-content, 0.7fr)",
   // Fixed, and sized to the widest formatted number — "(555) 123-4567" is
   // ~101px at 12px mono. This is the one column that must never shrink: it
   // has no useful truncation, and squeezing it is what made it wrap.
@@ -50,9 +54,16 @@ const WIDTHS = {
   onboarding: "96px",
   track: "104px",
   availabilityDay: "minmax(110px, 0.7fr)",
-  lunchCategory: "minmax(90px, 0.8fr)",
-  customField: "minmax(100px, 1fr)",
-  roles: "minmax(110px, 2.6fr)",
+  lunchCategory: "minmax(max-content, 0.8fr)",
+  customField: "minmax(max-content, 1fr)",
+  // Free text ("Peanut allergy, vegetarian") — open-ended, read left to right.
+  dietary: "minmax(max-content, 1fr)",
+  // Never narrower than its longest line: the list is shown whole, and the
+  // table scrolls sideways instead of cutting a choice off (see table.scroll).
+  eventPrefs: "minmax(max-content, 1fr)",
+  // A floor that holds a few chips before they wrap. It no longer gives way
+  // as data columns are added — those scroll sideways instead.
+  roles: "minmax(240px, 2.6fr)",
   // The collapsed form of `roles`, for when a docked panel narrows the table.
   // Deliberately still a minmax(<length>, <flex>): grid-template-columns only
   // interpolates track-for-track between matching value types, so a bare
@@ -87,6 +98,8 @@ export interface MemberColumn {
   /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
   align?: "start";
   render: (membership: MembershipFull) => ReactNode;
+  /** Set when the header sorts by this column (see SortableHeader). */
+  sortField?: MemberSortField;
 }
 
 // The coarse duration ("3mo") with the exact moment behind it on hover —
@@ -121,12 +134,12 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "account_age":
       return {
-        key, label: "Account Age", width: WIDTHS.accountAge,
+        key, label: "Account Age", width: WIDTHS.accountAge, sortField: "account_age",
         render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
       return {
-        key, label: "Joined", width: WIDTHS.duration,
+        key, label: "Joined", width: WIDTHS.duration, sortField: "joined",
         render: (m) => <DurationCell iso={m.created_at} />,
       };
     case "method":
@@ -152,6 +165,14 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
         key, label: "Shirt", width: WIDTHS.shirtSize,
         render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
       };
+    case "dietary_restriction":
+      return {
+        key, label: "Dietary", width: WIDTHS.dietary, align: "start",
+        render: (m) => {
+          const text = m.user.dietary_restriction;
+          return text ? <span style={LEFT_TEXT_CELL} title={text}>{text}</span> : <Dash />;
+        },
+      };
     case "onboarding":
       return {
         key, label: "Onboarding", width: WIDTHS.onboarding,
@@ -168,7 +189,7 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
 
 // Same option-snapshot unwrapping the panel's Custom Responses does — a
 // select answer is stored as {option_id, value, label}, not a bare string.
-function formatAnswer(value: unknown): string {
+export function formatAnswer(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) return value.length ? value.map(formatAnswer).join(", ") : "—";
   if (typeof value === "object") {
@@ -180,8 +201,10 @@ function formatAnswer(value: unknown): string {
 }
 
 // One column per entity — a track, an availability day, a lunch category, a
-// custom field. The label comes from the display-config catalog, which named
-// the key in the first place, so the two can't disagree.
+// track's event preferences, a custom field. The label comes from the
+// display-config catalog, which named the key in the first place, so the two
+// can't disagree. Per-track kinds suffix it ("Day 1 status"), since status,
+// availability and preferences would otherwise all be headed "Day 1".
 // "lunch:{track_id}:{category}" — a category is a slug, so it can never
 // contain a colon of its own; splitting on the first separator is safe.
 function splitLunchKey(key: string): [number, string] {
@@ -196,7 +219,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
-      key, label, width: WIDTHS.track,
+      key, label: `${label} status`, width: WIDTHS.track, sortField: key,
       render: (m) => {
         const status = (m.track_statuses ?? []).find((t) => t.track_id === trackId);
         if (!status) return <Dash />;
@@ -207,7 +230,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
     const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
-      key, label, width: WIDTHS.availabilityDay,
+      key, label: `${label} availability`, width: WIDTHS.availabilityDay, sortField: key,
       render: (m) => {
         // Keyed by track, not by day: two sites running the same Saturday are
         // separate tracks, and pooling their shifts into one column would
@@ -227,7 +250,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(LUNCH_PREFIX)) {
     const [trackId, category] = splitLunchKey(key);
     return {
-      key, label, width: WIDTHS.lunchCategory,
+      key, label, width: WIDTHS.lunchCategory, sortField: key,
       render: (m) => {
         // Both halves: Day 1's protein and Day 2's protein are different
         // questions, and the category alone would merge them.
@@ -235,6 +258,33 @@ function entityColumn(key: string, label: string): MemberColumn | null {
         if (picks.length === 0) return <Dash />;
         const text = picks.map((p) => p.value).join(", ");
         return <span style={TEXT_CELL} title={text}>{text}</span>;
+      },
+    };
+  }
+  if (key.startsWith(EVENT_PREF_PREFIX)) {
+    const trackId = Number(key.slice(EVENT_PREF_PREFIX.length));
+    return {
+      key, label: `${label} prefs`, width: WIDTHS.eventPrefs, align: "start",
+      render: (m) => {
+        const answer = (m.event_preferences ?? []).find((p) => p.track_id === trackId);
+        if (!answer || answer.options.length === 0) return <Dash />;
+        // Rank order; an unranked pick (a checkbox question) keeps its place after the ranked ones.
+        const options = [...answer.options].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+        // One choice per line, as in the panel. A grouped option can't open
+        // here, so its events are on hover instead.
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "2px 0" }}>
+            {options.map((option, i) => (
+              <div
+                key={option.option_id ?? `orphan-${i}`}
+                style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
+                title={option.events.length > 1 ? option.events.map(eventNameWithDivision).join("\n") : undefined}
+              >
+                <PreferenceOptionLine option={option} compact />
+              </div>
+            ))}
+          </div>
+        );
       },
     };
   }
@@ -278,41 +328,17 @@ export const COLUMN_WIDTHS = WIDTHS;
 // table has left — the grid overflows and the last column (Actions) is
 // clipped by the card's edge. Select mode makes it worse by another 28px.
 //
-// Name and email are the columns a coordinator actually reads, so they hold
-// floors that stay legible (~17 and ~20 mono characters) and the other
-// ellipsing text columns give instead. Phone and the badge columns are left
-// alone — phone has no useful truncation, and badges wrap (ballooning the row
-// height) rather than ellipse.
+// Only Name gives: the free-text columns are content-sized so they're never
+// cut off, and a max-content floor can't animate to a px one anyway — the
+// table scrolls sideways while the panel is open instead.
 //
 // Safe by construction: a floor only binds when space is scarce, so this is
 // identical to the full-width table whenever the table actually fits.
 const COMPACT_TRACKS: Record<string, string> = {
   [WIDTHS.name]: "minmax(132px, 1.4fr)",
-  [WIDTHS.email]: "minmax(150px, 0.7fr)",
-  // Free-text answers: shorter than name/email are worth, and they keep their
-  // hover title, so these are the cheapest characters in the row to spend.
-  [WIDTHS.lunchCategory]: "minmax(70px, 0.5fr)",
-  [WIDTHS.customField]: "minmax(76px, 0.6fr)",
 };
 
 /** The panel-open form of a track, or the track itself if it can't give. */
 export function compactTrack(width: string): string {
   return COMPACT_TRACKS[width] ?? width;
-}
-
-// Roles is the elastic column: it holds wrapping chips, so it can give space
-// back as data columns are added, and it's the only track wide enough to be
-// worth taking from. Shrinks per configured column past the default five,
-// with a floor that still fits two chips before wrapping.
-const ROLES_BASE_FR = 2.6;
-const ROLES_FR_PER_COLUMN = 0.3;
-const ROLES_MIN_FR = 0.8;
-const ROLES_FREE_COLUMNS = 5;
-
-export function rolesWidth(columnCount: number): string {
-  const share = Math.max(
-    ROLES_MIN_FR,
-    ROLES_BASE_FR - Math.max(0, columnCount - ROLES_FREE_COLUMNS) * ROLES_FR_PER_COLUMN,
-  );
-  return `minmax(110px, ${share}fr)`;
 }

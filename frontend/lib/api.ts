@@ -693,7 +693,8 @@ export interface TournamentEventInput {
   // are two ways to write the same thing, and the pair would have to define
   // which wins. Whole-set, and whole-set *within* each entry too — an entry
   // with no `rooms` clears the rooms, an entry with no `needs` clears the
-  // needs. Leave a track out entirely to keep what it already has.
+  // needs, and a track left out is unlinked. Omit the field to leave every
+  // track alone; to change one, resend all (see lib/eventTrackDetails).
   track_details?:     EventTrackDetail[]
 }
 
@@ -2386,6 +2387,8 @@ export interface DisplayConfigSurface {
   // sorts, the rest break its ties. Separate from `sort` so the single-sort
   // tables keep reading exactly what they wrote.
   sorts?: DisplayConfigSort[] | null
+  /** page_header only: the page header is folded into the Topbar. */
+  collapsed?: boolean | null
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>

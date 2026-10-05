@@ -61,3 +61,10 @@ export function trackDetail(
 ): EventTrackDetailRead | undefined {
   return event.track_details.find((d) => d.track_id === trackId);
 }
+
+/** The floor the server derives when no override is set — the first character
+ *  of the first room ("210" → "2"). Mirrors TournamentEventTrack.effective_floor. */
+export function derivedFloor(rooms: readonly string[] | null | undefined): string | null {
+  const first = (rooms ?? []).map((room) => room.trim()).find(Boolean);
+  return first ? first[0] : null;
+}

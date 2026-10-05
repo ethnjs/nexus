@@ -7,7 +7,7 @@ import type { SortRule, SortValue } from '@/lib/sorting'
 /** Shared by the assignments board and the events table. Mirrors
  *  KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS (and KNOWN_EVENT_SORT_FIELDS) in
  *  display_config.py — the server validates what it stores against them. */
-export const EVENT_SORT_FIELDS = ['name', 'start', 'staffing', 'category', 'location'] as const
+export const EVENT_SORT_FIELDS = ['name', 'division', 'start', 'staffing', 'category', 'location'] as const
 export type EventSortField = (typeof EVENT_SORT_FIELDS)[number]
 
 export function isEventSortField(field: string): field is EventSortField {
@@ -19,6 +19,7 @@ export function isEventSortField(field: string): field is EventSortField {
  *  them work out what a descending gap means. */
 export const EVENT_SORT_OPTIONS: SortFieldOption[] = [
   { value: 'name', label: 'Name', ascLabel: 'A → Z', descLabel: 'Z → A' },
+  { value: 'division', label: 'Division', ascLabel: 'A → C', descLabel: 'C → A' },
   { value: 'start', label: 'Start time', ascLabel: 'Earliest first', descLabel: 'Latest first' },
   { value: 'staffing', label: 'Staffing gap', ascLabel: 'Filled first', descLabel: 'Most short first' },
   { value: 'category', label: 'Category', ascLabel: 'A → Z', descLabel: 'Z → A' },
@@ -37,11 +38,9 @@ export const EVENT_SORT_TIEBREAK = 'name'
  * What an event is called for the purpose of ordering — eventNameWithDivision,
  * which is the same label a results report identifies a row by.
  *
- * Division is not a sort key of its own here. Within one tournament it is
- * part of the event's identity — "Crime Busters B" and "Crime Busters C" are
- * two events, not one event seen two ways — so sorting by name has to keep
- * them adjacent and in division order, and a separate Division key would only
- * ever scatter the same event's divisions apart.
+ * Name keeps an event's divisions adjacent and in order ("Crime Busters B"
+ * before "Crime Busters C"). Division is also a key of its own, for grouping
+ * every B event together — put it first in the chain to do that.
  */
 const sortName = eventNameWithDivision
 
@@ -61,6 +60,8 @@ export function eventSortValue(
 ): SortValue {
   switch (field) {
     case 'name': return sortName(event)
+    // No division (a trial with none) sorts last, like any empty value.
+    case 'division': return event.division
     // The joined canonical event's, since TournamentEvent has no category of
     // its own. A trial event linked to nothing has none, and sorts last.
     case 'category': return event.event?.category.name ?? null

@@ -1,7 +1,8 @@
 'use client'
 
-import { ReactNode, useState } from "react"
+import { KeyboardEvent, ReactNode, useRef, useState } from "react"
 import { Input } from "@/components/ui/Input"
+import { enterIndex, OptionList, stepActive, type ListOption } from "@/components/ui/OptionList"
 
 type ComboboxSize = 'sm' | 'md'
 type ComboboxVariant = 'primary' | 'secondary'
@@ -81,6 +82,47 @@ export function Combobox<T>({
   const showEmptyRow = !!emptyMessage && matches.length === 0 && !showCustomRow
   const dropdownOpen = open && (matches.length > 0 || showCustomRow || showEmptyRow)
 
+  // The shared list (see OptionList): fixed off the field's rect, so no
+  // scrolling ancestor clips it. Its rows are the matches, then "Use “…”".
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [active, setActive] = useState(-1)
+  const listOptions: ListOption[] = [
+    ...matches.map((option): ListOption => {
+      const disabled = getDisabled?.(option) ?? false
+      return {
+        key: String(getId(option)), label: getLabel(option), disabled,
+        reason: disabled ? getDisabledReason?.(option) : undefined,
+      }
+    }),
+    ...(showCustomRow ? [{ key: '__custom__', label: `Use “${value.trim()}”`, muted: true }] : []),
+  ]
+
+  function pick(index: number) {
+    if (index < matches.length) handleSelect(matches[index])
+    else handleSelectCustom()
+  }
+
+  // ↑/↓ move through the list; Enter takes the highlighted row, or with
+  // nothing highlighted the exact match, else the first one — so typing part
+  // of a name and pressing Enter fills it in. An empty field picks nothing.
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (locked) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      setActive((i) => stepActive(listOptions, i, e.key === 'ArrowDown' ? 1 : -1))
+    } else if (e.key === 'Enter' && dropdownOpen && (active >= 0 || query)) {
+      const exact = matches.findIndex((o) => getLabel(o).toLowerCase() === query && !getDisabled?.(o))
+      const index = active >= 0 ? active : exact >= 0 ? exact : enterIndex(listOptions, -1)
+      if (index < 0) return
+      e.preventDefault()
+      pick(index)
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault()
+      setOpen(false)
+    }
+  }
+
   function handleTextChange(text: string) {
     if (locked) return
     const t = text.trim().toLowerCase()
@@ -89,6 +131,7 @@ export function Combobox<T>({
     onChange(text, match)
     setTyped(true)
     setOpen(true)
+    setActive(-1)
   }
 
   function handleSelect(option: T) {
@@ -107,6 +150,7 @@ export function Combobox<T>({
   return (
     <div style={{ position: 'relative' }}>
       <Input
+        ref={inputRef}
         label={label}
         labelExtra={labelExtra}
         required={required}
@@ -114,7 +158,8 @@ export function Combobox<T>({
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={e => handleTextChange(e.target.value)}
-        onFocus={() => { if (!locked) { setOpen(true); setTyped(false) } }}
+        onFocus={() => { if (!locked) { setOpen(true); setTyped(false); setActive(-1) } }}
+        onKeyDown={handleKeyDown}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         error={displayedError}
         size={size}
@@ -123,61 +168,16 @@ export function Combobox<T>({
         fullWidth
       />
       {dropdownOpen && !locked && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          borderTop: 'none',
-          borderRadius: '0 0 6px 6px',
-          maxHeight: '180px', overflowY: 'auto',
-          boxShadow: 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.12))',
-        }}>
-          {matches.map(option => {
-            const disabled = getDisabled?.(option) ?? false
-            const reason = disabled ? getDisabledReason?.(option) : undefined
-            return (
-              <div
-                key={getId(option)}
-                onMouseDown={() => handleSelect(option)}
-                title={reason}
-                style={{
-                  padding: '8px 10px', fontFamily: 'var(--font-sans)', fontSize: '14px',
-                  cursor: disabled ? 'not-allowed' : 'pointer',
-                  color: disabled ? 'var(--color-text-tertiary)' : undefined,
-                  display: 'flex', justifyContent: 'space-between', gap: '8px',
-                }}
-              >
-                <span>{getLabel(option)}</span>
-                {reason && (
-                  <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', fontStyle: 'italic', flexShrink: 0 }}>
-                    {reason}
-                  </span>
-                )}
-              </div>
-            )
-          })}
-          {showEmptyRow && (
-            <div style={{
-              padding: '8px 10px', fontFamily: 'var(--font-sans)', fontSize: '13px',
-              color: 'var(--color-text-tertiary)', cursor: 'default',
-            }}>
-              {emptyMessage}
-            </div>
-          )}
-          {showCustomRow && (
-            <div
-              onMouseDown={handleSelectCustom}
-              style={{
-                padding: '8px 10px', cursor: 'pointer',
-                fontFamily: 'var(--font-sans)', fontSize: '14px',
-                color: 'var(--color-text-secondary)',
-                borderTop: matches.length > 0 ? '1px solid var(--color-border)' : undefined,
-              }}
-            >
-              Use &ldquo;{value.trim()}&rdquo;
-            </div>
-          )}
-        </div>
+        <OptionList
+          anchorRef={inputRef}
+          options={listOptions}
+          active={active}
+          onActiveChange={setActive}
+          onPick={pick}
+          size={size}
+          matchWidth
+          emptyMessage={showEmptyRow ? emptyMessage : undefined}
+        />
       )}
     </div>
   )

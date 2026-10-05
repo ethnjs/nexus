@@ -776,7 +776,8 @@ class TournamentEvent(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
 
-    # Custom (event_id-less) events only
+    # A custom (event_id-less) event's name, or a catalog-linked one's
+    # tournament-level override of the catalog name (null = use the catalog's).
     name = Column(String(255), nullable=True)
     division = Column(String(4), nullable=True)           # "A" | "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
@@ -848,10 +849,10 @@ class TournamentEvent(Base):
 
     @property
     def display_name(self) -> str | None:
-        """The name to show for this event. `name` is only populated for
-        custom (event_id-less) events — a catalog-linked one carries its name
-        on the joined Event row, so reading `.name` directly renders every
-        catalog event nameless."""
+        """The name to show for this event. `name` is the only name a custom
+        (event_id-less) event has, and on a catalog-linked one an optional
+        tournament-level override of the catalog's — null there means "use
+        the catalog's", so reading `.name` directly renders it nameless."""
         return self.name or (self.event.name if self.event else None)
 
     __table_args__ = (
@@ -1160,8 +1161,20 @@ class TournamentEventTrack(Base):
     # in a building only Day 2 uses. Same device as the assignment's
     # shift/track pairing.
     building_id = Column(Integer, nullable=True, index=True)
+    # An override: null means "derive it from the rooms" (see effective_floor).
+    # Kept as a column for the building whose numbering doesn't follow the rule.
     floor = Column(String(64), nullable=True)
     rooms = Column(JSON, nullable=True)                        # list of str
+
+    @property
+    def effective_floor(self) -> str | None:
+        """The floor this event is on: the TD's override if set, otherwise the
+        first character of its first room ("210" -> "2") — room numbers lead
+        with the floor almost everywhere, so typing the room is enough."""
+        if self.floor:
+            return self.floor
+        first = next((room.strip() for room in (self.rooms or []) if room and room.strip()), None)
+        return first[0] if first else None
 
     tournament_event = relationship("TournamentEvent", back_populates="track_details")
     # lazy="joined" like TournamentTrackAssignment.role: every

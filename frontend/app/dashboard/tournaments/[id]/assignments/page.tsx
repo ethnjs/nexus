@@ -20,8 +20,8 @@
  * handler can always tell "real" from "still in flight" without a second
  * bookkeeping structure.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import { type DragEndEvent } from '@dnd-kit/core'
 
 import { DockedPanel } from '@/components/layout/DockedPanel'
@@ -37,11 +37,12 @@ import {
 } from '@/components/tournament/members/MembersFilterModal'
 import {
   EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
-  eventCategoryKey, eventCategoryOptions, eventsFilterFromStored,
+  eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
+  eventPassesFilters, eventsFilterFromStored,
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, filterAllows, sameFilterState } from '@/components/ui/FilterModal'
+import { emptyFilterState, sameFilterState } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
@@ -58,14 +59,14 @@ import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { CollapsibleHeader } from '@/components/ui/CollapsibleHeader'
 import { Spinner } from '@/components/ui/Spinner'
 import {
   ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
   ApiError, assignmentsApi, buildingsApi, canonicalEventsApi, displayConfigApi, membersApi,
   rolesApi, tabSurface, tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type CanonicalEvent, type DisplayConfig, type MembershipFull, type Role,
+  type Assignment, type CanonicalEvent, type DisplayConfig, type DisplayConfigCatalog,
+  type FilterOptionGroup, type MembershipFull, type Role,
   type TournamentBuilding, type TournamentEvent, type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
@@ -78,7 +79,7 @@ import { roleKey, rolesOf, sameRole, type AssignmentRole } from '@/lib/assignmen
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
 import { eventName } from '@/lib/eventDisplay'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
-import { useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
+import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
@@ -88,6 +89,10 @@ import {
 import {
   sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
 } from '@/lib/sorting'
+import {
+  MEMBER_SORT_TIEBREAK, isMemberSortField, memberSortOptions, memberSortTiebreak, memberSortValue,
+  type MemberSortField,
+} from '@/lib/memberSort'
 import {
   DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
   memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
@@ -115,10 +120,24 @@ const PANEL_WIDTH: Record<PanelKind, number> = {
  *  within its own row makes the row the click's common ancestor, so the drop
  *  would otherwise open the panel it landed on. */
 const CLICK_AFTER_DRAG_MS = 250
+/** An event with only the shifts and tracks the current tab shows. */
+function filterEventTracks(event: TournamentEvent, showsTrack: (id: number) => boolean): TournamentEvent {
+  return {
+    ...event,
+    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
+    tracks: event.tracks.filter((t) => showsTrack(t.id)),
+  }
+}
+/** Shared by every unstaffed row — a fresh `[]` per render would defeat EventRow's memo. */
+const NO_ASSIGNMENTS: Assignment[] = []
 
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
+// A belt is scanned for a person, so alphabetical is the order you can
+// predict without reading. The members table defaults to newest joins instead.
+const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: 'first_name', direction: 'asc' }]
+
 export default function AssignmentsPage() {
   const params = useParams()
   const tournamentId = Number(params.id)
@@ -195,6 +214,8 @@ export default function AssignmentsPage() {
   // the browser fires a click on it once the drag ends — and the row would
   // open the panel for a gesture that was never a click.
   const lastDropAt = useRef(0)
+  // Stable, so the belt's memoised cards survive a page re-render.
+  const openMemberPanel = useCallback((id: number) => openPanel('member', id), [openPanel])
   const openEventPanel = useCallback((id: number) => {
     if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return
     openPanel('event', id)
@@ -211,12 +232,18 @@ export default function AssignmentsPage() {
   const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY)
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
+  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT)
+  const [showMemberSortModal, setShowMemberSortModal] = useState(false)
+  // Names every track, lunch question and custom question — what the card
+  // display and sort modals offer. Same catalog the members page reads.
+  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null)
+  // Each track's preference events, for the per-event sort. Fetched the
+  // first time the sort modal opens — nothing else on the board needs them.
+  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null)
 
   // Which track tab is showing; null is All. Mirrored into ?track= so a
   // reload comes back to the day being staffed, the way the buildings board
   // does. A stale id simply falls back to All below.
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [pickedTrackId, setPickedTrackId] = useState<number | null>(
     () => Number(searchParams.get('track')) || null,
@@ -240,9 +267,8 @@ export default function AssignmentsPage() {
     const params = new URLSearchParams(window.location.search)
     if (next === null) params.delete('track')
     else params.set('track', String(next))
-    const query = params.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }, [pathname, router])
+    replaceSearchParams(params)
+  }, [])
 
   // Each tab keeps its own filters, columns and card fields, stored under its
   // own surface key ("assignments_events:track:3"). The whole config is read
@@ -275,6 +301,9 @@ export default function AssignmentsPage() {
       // No saved view (or no permission to read one) is not an error — the
       // board's defaults are a perfectly good board.
       .catch(() => { if (current) setSavedConfig({}) })
+    displayConfigApi.getCatalog(tournamentId)
+      .then((data) => { if (current) setCatalog(data) })
+      .catch(() => {})
     return () => { current = false }
   }, [tournamentId, canView])
 
@@ -299,6 +328,9 @@ export default function AssignmentsPage() {
     setMemberDisplay(Array.isArray(card?.hidden)
       ? memberDisplayFromHidden(card.hidden)
       : memberDisplayDefaults)
+    setMemberSort(card?.sorts
+      ? sortRulesFromStored(card.sorts, isMemberSortField)
+      : DEFAULT_BELT_SORT)
   }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults])
 
   /** Persists one surface and keeps the local copy in step, so switching away
@@ -330,6 +362,27 @@ export default function AssignmentsPage() {
     setMemberDisplay(next)
     persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) })
   }, [persistSurface, cardSurface])
+
+  // Per tab, with the tab's filters and card fields. The belt is fetched with
+  // every data group, so no sort here ever waits on a reload.
+  const applyMemberSort = useCallback((next: SortRule<MemberSortField>[]) => {
+    setMemberSort(next)
+    persistSurface(cardSurface, { sorts: sortRulesToStored(next) })
+  }, [persistSurface, cardSurface])
+
+  const openMemberSortModal = useCallback(() => {
+    setShowMemberSortModal(true)
+    if (eventPrefGroups === null) {
+      membersApi.filterOptions(tournamentId)
+        .then((options) => setEventPrefGroups(options.event_preferences))
+        .catch(() => setEventPrefGroups([]))
+    }
+  }, [eventPrefGroups, tournamentId])
+
+  const memberSortFields = useMemo(
+    () => memberSortOptions(catalog?.columns ?? [], eventPrefGroups ?? []),
+    [catalog, eventPrefGroups],
+  )
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
@@ -395,11 +448,22 @@ export default function AssignmentsPage() {
     [activeTrackId],
   )
 
-  const boardEvents = useMemo(() => (events ?? []).map((event) => ({
-    ...event,
-    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
-    tracks: event.tracks.filter((t) => showsTrack(t.id)),
-  })), [events, showsTrack])
+  // Each event's copy is reused while its source is unchanged, so replacing
+  // one event rebuilds only that copy — fresh objects for all of them would
+  // bust every row's memo. Kept in state and adjusted during render (the
+  // pattern React documents for derived state), since a render-time cache
+  // mutation is what the compiler rules forbid. A new tab rebuilds them all.
+  const [board, setBoard] = useState(() => ({
+    events, showsTrack, boardEvents: (events ?? []).map((e) => filterEventTracks(e, showsTrack)),
+  }))
+  let boardEvents = board.boardEvents
+  if (board.events !== events || board.showsTrack !== showsTrack) {
+    const reuse = board.showsTrack === showsTrack
+      ? new Map((board.events ?? []).map((e, i) => [e, board.boardEvents[i]]))
+      : null
+    boardEvents = (events ?? []).map((e) => reuse?.get(e) ?? filterEventTracks(e, showsTrack))
+    setBoard({ events, showsTrack, boardEvents })
+  }
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -439,9 +503,13 @@ export default function AssignmentsPage() {
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
   // carries a default role. See TournamentEvent.tracks.
+  //
+  // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
+  // every row takes flagsFor, so a new Map per event edit re-rendered them all.
+  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]))
   const eventTrackIds = useMemo(
-    () => new Map((boardEvents ?? []).map((e) => [e.id, e.tracks.map((t) => t.id)])),
-    [boardEvents],
+    () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
+    [eventTrackKey],
   )
 
   const divisionOptions = useMemo(() => {
@@ -455,29 +523,21 @@ export default function AssignmentsPage() {
       : options
   }, [boardEvents])
   const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
+  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents])
+  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents])
+  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents])
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
     const matching = (boardEvents ?? []).filter((event) => {
       if (text && !eventName(event).toLowerCase().includes(text)) return false
-      if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
-      if (!filterAllows(eventFilters.type, event.event_type)) return false
-      if (!filterAllows(eventFilters.category, eventCategoryKey(event))) return false
-      // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
-      // of its tracks is picked — filtering to Day 1 shouldn't hide an event
-      // that runs on both Day 1 and Day 2.
-      // A track tab narrows to its own track; the All tab honours whatever
-      // the saved filter says.
-      const wantedTracks = activeTrackId === null
-        ? eventFilters.track
-        : new Set([String(activeTrackId)])
-      if (wantedTracks.size > 0) {
-        const ids = (eventTrackIds.get(event.id) ?? []).map(String)
-        if (!ids.some((id) => wantedTracks.has(id))) return false
-      }
-      const staffed = (byEvent.get(event.id)?.length ?? 0) > 0
-      if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
-      return true
+      return eventPassesFilters(event, eventFilters, {
+        assignmentsFor: (id) => byEvent.get(id) ?? [],
+        showsTrack,
+        // A track tab narrows to its own track; the All tab honours whatever
+        // the saved filter says.
+        trackOverride: activeTrackId === null ? undefined : new Set([String(activeTrackId)]),
+      })
     })
     // Sorted after filtering, not before: the staffing key costs a pass over
     // each event's assignments, and there is no reason to pay it for rows the
@@ -488,7 +548,7 @@ export default function AssignmentsPage() {
       (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
       eventSortTiebreak,
     )
-  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds, eventSort, showsTrack])
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack])
 
 
   // Members matching the filters, from the same server filter the members
@@ -511,13 +571,14 @@ export default function AssignmentsPage() {
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
 
-    return members.filter((member) => {
+    const matching = members.filter((member) => {
       if (text && !fullName(member.user ?? { first_name: null, last_name: null })
         .toLowerCase().includes(text)) return false
       if (filterMatchIds && !filterMatchIds.has(member.id)) return false
       return true
     })
-  }, [filterMatchIds, members, memberQuery])
+    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak)
+  }, [filterMatchIds, members, memberQuery, memberSort])
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>()
@@ -901,18 +962,28 @@ export default function AssignmentsPage() {
     })
   }
 
-  // Every write a row can start, in one object. Rebuilt per render like the
-  // functions it holds, so the rows' memoisation behaves exactly as it did
-  // when these were six separate props — what mattered there and still
-  // matters is that the *page* doesn't re-render mid-drag.
-  const boardHandlers: BoardHandlers = {
-    onResize: handleResize,
-    onResizeCommit: handleResizeCommit,
-    onToggleRole: handleToggleRole,
-    onPickRole: handlePickRole,
-    onRemove: handleRemove,
-    onPickDefaultRole: requestDefaultRoleChange,
-  }
+  // Every write a row can start, in one object whose identity never changes,
+  // so the rows' memo survives page re-renders. Each method forwards to this
+  // render's handler through the ref, so none of them reads stale state.
+  const latestHandlers = useRef<BoardHandlers>(null!)
+  useLayoutEffect(() => {
+    latestHandlers.current = {
+      onResize: handleResize,
+      onResizeCommit: handleResizeCommit,
+      onToggleRole: handleToggleRole,
+      onPickRole: handlePickRole,
+      onRemove: handleRemove,
+      onPickDefaultRole: requestDefaultRoleChange,
+    }
+  })
+  const boardHandlers = useMemo<BoardHandlers>(() => ({
+    onResize: (...args) => latestHandlers.current.onResize(...args),
+    onResizeCommit: (...args) => latestHandlers.current.onResizeCommit(...args),
+    onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
+    onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
+    onRemove: (...args) => latestHandlers.current.onRemove(...args),
+    onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
+  }), [])
 
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
@@ -949,6 +1020,10 @@ export default function AssignmentsPage() {
             tournamentId={tournamentId}
             membershipId={focused.id}
             allRoles={roleCatalog}
+            // The board's own copies, so stepping through members doesn't
+            // re-fetch both on every open.
+            shifts={allShifts}
+            tracks={tracks}
             canTouchRole={canTouchRole}
             canEditMember={canEditMember}
             collectIsOver18={!!selectedTournament?.collect_is_over_18}
@@ -1039,6 +1114,12 @@ export default function AssignmentsPage() {
                 // unfiltered state *is* the day it is staffing.
                 onClear={() => applyMemberFilters(memberFilterDefaults)}
               />
+              <SortButton
+                size="sm" iconOnly label="Sort members"
+                active={!sameSortRules(memberSort, DEFAULT_BELT_SORT)}
+                onOpen={openMemberSortModal}
+                onReset={() => applyMemberSort(DEFAULT_BELT_SORT)}
+              />
             </>
           }
         >
@@ -1082,7 +1163,7 @@ export default function AssignmentsPage() {
                   selected={focusedId === member.id}
                   display={memberDisplay}
                   allShifts={allShifts}
-                  onOpen={() => openPanel('member', member.id)}
+                  onOpen={openMemberPanel}
                 />
               ))
             )}
@@ -1119,8 +1200,9 @@ export default function AssignmentsPage() {
     belt, members, allShifts, memberQuery,
     memberFilters, memberFilterDefaults, panelAssignmentsVersion, memberFilterActive,
     memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
-    applyMemberFilters,
+    applyMemberFilters, memberSort, applyMemberSort, openMemberSortModal,
     canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
+    openMemberPanel,
     setPanel, clearPanel,
   ])
 
@@ -1352,7 +1434,7 @@ export default function AssignmentsPage() {
   if (!canView) {
     return (
       <div>
-        <PageHeader heading="Assignments" />
+        <CollapsibleHeader heading="Assignments" />
         <Card radius="lg" style={{ padding: '8px' }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -1452,13 +1534,13 @@ export default function AssignmentsPage() {
               <EventRow
                 key={event.id}
                 event={event}
-                rowAssignments={byEvent.get(event.id) ?? []}
+                rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
                 activeTrackId={activeTrackId}
                 simple={simple}
                 selected={event.id === focusedEventId}
-                onOpen={canManageEvents ? () => openEventPanel(event.id) : undefined}
+                onOpen={canManageEvents ? openEventPanel : undefined}
                 handlers={boardHandlers}
               />
             ))}
@@ -1473,7 +1555,10 @@ export default function AssignmentsPage() {
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
-          showStaffing
+          // The tab already picked a track; only the All tab offers the choice.
+          trackOptions={activeTrackId === null ? trackOptions : undefined}
+          buildingOptions={buildingOptions}
+          shiftOptions={shiftOptions}
           filters={eventFilters}
           onApply={applyEventFilters}
           onClose={() => setShowEventFilterModal(false)}
@@ -1507,8 +1592,21 @@ export default function AssignmentsPage() {
           display={memberDisplay}
           defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
+          // "form_field:{id}" in the catalog; the card hides by the bare id.
+          customFields={(catalog?.custom_fields ?? []).map((f) => ({ id: f.key.split(':')[1], label: f.label }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
+        />
+      )}
+      {showMemberSortModal && (
+        <SortModal
+          title="Sort members"
+          fields={memberSortFields}
+          rules={memberSort}
+          defaults={DEFAULT_BELT_SORT}
+          tiebreakLabel={MEMBER_SORT_TIEBREAK}
+          onApply={(next) => applyMemberSort(next as SortRule<MemberSortField>[])}
+          onClose={() => setShowMemberSortModal(false)}
         />
       )}
       {pendingRoleChange && (

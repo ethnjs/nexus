@@ -60,7 +60,9 @@ export function Badge({ variant = 'default', className = '', children, copyValue
       onClick={copyValue ? handleClick : onClick}
       className={[
         'inline-flex items-center px-2 py-0.5',
-        'text-2xs font-medium uppercase tracking-wider',
+        // Its own font, not the parent's — inherited, a badge in a Button
+        // drew in sans beside its mono siblings.
+        'font-mono text-2xs font-medium uppercase tracking-wider',
         'border rounded-sm',
         variantStyles[variant],
         className,
