@@ -1055,3 +1055,37 @@ def test_manage_events_alone_can_read_and_write_display_config(
         json={"events_table": {"columns": ["division"]}},
     )
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Shifts table
+# ---------------------------------------------------------------------------
+
+def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"shifts_table": {
+            "hidden": [],
+            "filters": {"track": ["3"], "events": ["none"]},
+            "sorts": [{"field": "start", "direction": "asc"}, {"field": "label", "direction": "desc"}],
+        }},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["shifts_table"]
+    assert saved["filters"] == {"track": ["3"], "events": ["none"]}
+    assert saved["sorts"][0] == {"field": "start", "direction": "asc"}
+
+
+def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_user, td_tournament):
+    """No columns at all (the table shows every one), and no category filter
+    or staffing sort — those are the events table's."""
+    login(client, "td@test.com", "tdpass")
+    for body in (
+        {"hidden": [], "columns": ["track"]},
+        {"hidden": [], "filters": {"category": ["x"]}},
+        {"hidden": [], "sorts": [{"field": "staffing", "direction": "asc"}]},
+    ):
+        response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json={"shifts_table": body})
+        assert response.status_code == 422, body
+

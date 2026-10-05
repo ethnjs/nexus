@@ -23,3 +23,5 @@ export const ASSIGNMENTS_EVENTS = "assignments_events";
 // hides — a separate surface from EVENTS_TABLE, so trimming the panel down to
 // the day being placed doesn't touch how the table reads.
 export const EVENT_PANEL = "event_panel";
+// The shifts table — filters and sort only (it always shows every column).
+export const SHIFTS_TABLE = "shifts_table";

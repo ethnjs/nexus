@@ -23,9 +23,12 @@ ASSIGNMENTS_EVENTS = "assignments_events"
 # blocks it shows — and hiding Test Writing's block while placing Day 1 events
 # must not drop Tracks from how you read the table.
 EVENT_PANEL = "event_panel"
+# The shifts table — its filters and sort, in its own vocabulary: a shift has
+# a time and a track, not a division. No columns: the table shows them all.
+SHIFTS_TABLE = "shifts_table"
 
 FLAT_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL,
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL, SHIFTS_TABLE,
 })
 
 # ---------------------------------------------------------------------------
@@ -223,6 +226,20 @@ KNOWN_EVENT_FILTER_KEYS = frozenset({
 KNOWN_EVENT_SORT_FIELDS = frozenset({
     "name", "division", "category", "start", "staffing", "location", "day",
 })
+
+
+# ---------------------------------------------------------------------------
+# Shifts table
+#
+# Filters and sort only — the table always shows every column, so there is
+# no column vocabulary and a saved `columns` list is rejected. Filtered and
+# sorted in the client, like the events table.
+# ---------------------------------------------------------------------------
+# Track narrows to one or more days; events is "has" / "none" — a shift no
+# event uses yet is the thing worth finding.
+KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "events"})
+
+KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "start", "end", "duration", "events"})
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +484,8 @@ def known_filter_keys(surface: str) -> frozenset[str]:
         return KNOWN_EVENT_FILTER_KEYS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS
+    if surface == SHIFTS_TABLE:
+        return KNOWN_SHIFT_FILTER_KEYS
     # The belt is filtered by the roster's own modal, so it stores the roster's
     # keys — see the note on ASSIGNMENT_CARD_FIELDS about why it is still its
     # own surface.
@@ -485,6 +504,8 @@ def known_sort_fields(surface: str) -> frozenset[str]:
         return KNOWN_EVENT_SORT_FIELDS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS
+    if surface == SHIFTS_TABLE:
+        return KNOWN_SHIFT_SORT_FIELDS
     return frozenset()
 
 
