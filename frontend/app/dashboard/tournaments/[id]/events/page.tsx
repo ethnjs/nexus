@@ -979,6 +979,7 @@ const EventRow = memo(function EventRow({
         name: event.event && (!name || name === event.event.name) ? null : name,
       })}
       allowEmpty={!!event.event}
+      errorToast
       locked={!!lockReason}
       textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
       title={lockReason ?? (event.event ? "Click to rename for this tournament — clear to use the catalog name" : "Click to rename")}

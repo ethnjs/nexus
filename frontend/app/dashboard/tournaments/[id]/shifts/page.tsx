@@ -749,8 +749,15 @@ function ShiftRow({
     ? guard(
       <EditableText
         value={shift.label}
-        onSave={(label) => edit.update(shift, { label })}
+        // Empty reaches onSave so it can say Required, like the panel, rather
+        // than silently reverting.
+        allowEmpty
+        onSave={(label) => {
+          if (!label) throw new Error("Required");
+          return edit.update(shift, { label });
+        }}
         locked={!!lockReason}
+        errorToast
         textStyle={LABEL_TEXT}
         title={lockReason ?? "Click to rename"}
       />,
@@ -783,6 +790,7 @@ function ShiftRow({
       <EditableText
         value={display}
         locked={!!lockReason}
+        errorToast
         textStyle={TIME_TEXT}
         title={lockReason ?? `Click to edit — ${TIME_HINT}`}
         onSave={async (typed) => {
@@ -790,7 +798,11 @@ function ShiftRow({
           if (!parsed) throw new Error(`Couldn't read that time — ${TIME_HINT}`);
           if (parsed === hhmm) return;
           // The day stays the shift's own; Date is its own cell.
-          await edit.update(shift, { [which]: fromDayAndTime(toDateInput(iso), parsed)! });
+          const next = fromDayAndTime(toDateInput(iso), parsed)!;
+          // The panel's check, against the end this edit leaves alone.
+          if (which === "start" && new Date(next) >= new Date(shift.end)) throw new Error("Must be before the end.");
+          if (which === "end" && new Date(next) <= new Date(shift.start)) throw new Error("Must be after the start.");
+          await edit.update(shift, { [which]: next });
         }}
       />,
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, KeyboardEvent, ReactNode, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, ReactNode, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
@@ -11,6 +11,7 @@ import { IconPlus } from "@/components/ui/Icons";
 import { PillInput } from "@/components/ui/PillInput";
 import { enterChoice, OptionList, stepActive, suggestionRows } from "@/components/ui/OptionList";
 import { focusAdjacentCell } from "@/lib/gridNav";
+import { useToast } from "@/lib/useToast";
 import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
@@ -89,7 +90,15 @@ export function LockedCell({ title, align = "center", children }: {
   );
 }
 
-const ERROR_TEXT: CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" };
+/** A failed save goes to a toast: text under a cell would overlap the next
+ *  row. The editor stays open, so the value can be fixed in place. */
+function useErrorToast() {
+  const { show } = useToast();
+  return useCallback(
+    (err: unknown) => show(err instanceof Error ? err.message : "Failed to save", "error"),
+    [show],
+  );
+}
 
 /**
  * Rest/edit switching shared by the cells that swap a plain display for an
@@ -206,7 +215,7 @@ export function SelectCell({
   divisions?: boolean;
   align?: "start" | "center";
 }) {
-  const [error, setError] = useState<string | undefined>(undefined);
+  const toastError = useErrorToast();
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -239,7 +248,7 @@ export function SelectCell({
             {display}
           </Button>
         }
-        onOpenChange={(next) => { setOpen(next); setError(undefined); }}
+        onOpenChange={setOpen}
         // Wide enough for every button on one row: roughly a label's text
         // plus a small button's padding and border, the gaps, and the panel's own padding.
         width={options.reduce((w, o) => w + o.label.length * 7 + 32, 0) + (options.length - 1) * 8 + 30}
@@ -276,13 +285,12 @@ export function SelectCell({
                   await onPick(next);
                   closeAndRefocus(close);
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : "Failed to save");
+                  toastError(err);
                 } finally {
                   setSaving(false);
                 }
               }}
             />
-            {error && <span style={ERROR_TEXT}>{error}</span>}
           </div>
         )}
       </FormPopover>
@@ -313,7 +321,7 @@ export function ChipsCell<T>({
   addTitle: string;
   emptyMessage: string;
 }) {
-  const [error, setError] = useState<string | undefined>(undefined);
+  const toastError = useErrorToast();
   const [saving, setSaving] = useState(false);
   const editor = useCellEditor();
   // Opening the cell is opening its checklist — chips alone are one more
@@ -330,11 +338,10 @@ export function ChipsCell<T>({
   const byLabel = (label: string) => selected.find((item) => getLabel(item) === label);
   async function run(change: () => Promise<void>) {
     setSaving(true);
-    setError(undefined);
     try {
       await change();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      toastError(err);
     } finally {
       setSaving(false);
     }
@@ -372,8 +379,9 @@ export function ChipsCell<T>({
                 getKey={getKey}
                 renderLabel={getLabel}
                 isSelected={(item) => selected.some((s) => getKey(s) === getKey(item))}
-                // Popover shows a rejected toggle's error itself and stays open.
-                onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item))}
+                // Caught here, so the toast is the only report — the popover
+                // would otherwise print it inline too. It stays open either way.
+                onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item)).catch(toastError)}
                 emptyMessage={emptyMessage}
                 width={220}
                 align="left"
@@ -385,7 +393,6 @@ export function ChipsCell<T>({
             {display}
           </RestControl>
         )}
-        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );
@@ -421,7 +428,9 @@ export function LocationCell({
   // the server until Enter/Tab commits whatever the box then says.
   const [buildingInBox, setBuildingInBox] = useState(false);
   const [highlight, setHighlight] = useState(-1);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const toastError = useErrorToast();
+  // Turns the underline red until the next try; the message itself is a toast.
+  const [failed, setFailed] = useState(false);
   // Until a building save lands, the box would still read the next keystrokes
   // as a building name — so it pauses (read-only keeps focus; disabled wouldn't).
   const [savingBuilding, setSavingBuilding] = useState(false);
@@ -445,16 +454,17 @@ export function LocationCell({
     setText("");
     setBuildingInBox(false);
     setHighlight(-1);
-    setError(undefined);
+    setFailed(false);
     openEditor();
   }
 
   async function run(change: () => Promise<void>) {
-    setError(undefined);
+    setFailed(false);
     try {
       await change();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      setFailed(true);
+      toastError(err);
     }
   }
 
@@ -512,7 +522,7 @@ export function LocationCell({
             display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 6px", minWidth: 0,
             // A shadow, not a border: a border adds a pixel of height, and
             // the text would shift the moment the box opened.
-            boxShadow: "inset 0 -1px 0 var(--color-border-strong)",
+            boxShadow: `inset 0 -1px 0 ${failed ? "var(--color-danger)" : "var(--color-border-strong)"}`,
             fontFamily: "var(--font-sans)", fontSize: "13px",
           }}
         >
@@ -569,7 +579,6 @@ export function LocationCell({
             />
           )}
         </span>
-        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );
@@ -593,7 +602,7 @@ export function StaffingCell({
 }) {
   const editor = useCellEditor();
   const [hovered, setHovered] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const toastError = useErrorToast();
   const [saving, setSaving] = useState(false);
   // Opening the cell opens its role picker (see ChipsCell for why it presses
   // the trigger). After a role is added the picker closes and focus goes to
@@ -611,11 +620,10 @@ export function StaffingCell({
 
   async function save(next: { role_id: number; count: number }[]) {
     setSaving(true);
-    setError(undefined);
     try {
       await onSave(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      toastError(err);
     } finally {
       setSaving(false);
     }
@@ -706,7 +714,6 @@ export function StaffingCell({
             )}
           </RestControl>
         )}
-        {error && <span style={ERROR_TEXT}>{error}</span>}
       </span>
     </CellGuard>
   );

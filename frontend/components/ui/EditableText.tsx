@@ -2,6 +2,7 @@
 
 import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { enterChoice, OptionList, stepActive, suggestionRows } from '@/components/ui/OptionList'
+import { useToast } from '@/lib/useToast'
 
 interface EditableTextProps {
   value: string
@@ -30,6 +31,10 @@ interface EditableTextProps {
   /** Offered in a list as you type — free text is still allowed. Use
    *  EditableCombobox, which requires it, rather than passing it here. */
   suggestions?: string[]
+  /** A failed save's message goes to a toast instead of under the field — for
+   *  table cells, where text under one row overlaps the next. The field still
+   *  stays open with a red underline so the value can be fixed in place. */
+  errorToast?: boolean
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -49,7 +54,8 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false, suggestions }: EditableTextProps) {
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false, suggestions, errorToast = false }: EditableTextProps) {
+  const { show } = useToast()
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -113,7 +119,9 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
     } catch (err) {
       // Still editing, so nothing to hand focus back to.
       refocus.current = false
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      const message = err instanceof Error ? err.message : 'Failed to save'
+      setError(message)
+      if (errorToast) show(message, 'error')
     } finally {
       inFlight.current = false
       setSaving(false)
@@ -173,7 +181,7 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
             onPick={(i) => { const picked = rows.names[i] ?? draft.trim(); setDraft(picked); save(picked) }}
           />
         )}
-        {error && (
+        {error && !errorToast && (
           <span style={{
             position: 'absolute', top: '100%', left: 0, marginTop: '4px', whiteSpace: 'nowrap',
             fontFamily: 'var(--font-sans)', fontSize: '11px', color: 'var(--color-danger)',
