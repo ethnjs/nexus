@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, SyntheticEvent, useState } from "react";
+import { ReactNode, SyntheticEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
@@ -8,8 +8,9 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
+import { PillInput } from "@/components/ui/PillInput";
 import { EditableCombobox } from "@/components/ui/EditableText";
-import { TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
+import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
 export interface EventEditContext {
@@ -21,6 +22,8 @@ export interface EventEditContext {
   divisions: TournamentDivision[];
   /** Every shift in the tournament — what a per-track Shifts cell offers. */
   shifts: TournamentShift[];
+  /** Every role the tournament offers — what a Staffing cell can add. */
+  roles: Role[];
   /** Every building in the tournament — the Location cell narrows to the track. */
   buildings: TournamentBuilding[];
   /** Finds or creates a building by name on a track, keeping the page's list current. */
@@ -340,6 +343,166 @@ export function LocationCell({
         </span>
         {roomsError && (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{roomsError}</span>
+        )}
+      </span>
+    </CellGuard>
+  );
+}
+
+/**
+ * One track's staffing needs. At rest it's the normal progress display;
+ * clicked, it becomes chips — one per role, × to drop it, the head count in a
+ * pill on the chip, and + to add a role (starting at 1). Each change saves the
+ * track's whole needs list. Locked, it's the read-only `display`.
+ */
+export function StaffingCell({
+  display, needs, roles, lockReason, onSave,
+}: {
+  display: ReactNode;
+  needs: { role_id: number; role_label: string; count: number }[];
+  /** Every role the tournament offers. */
+  roles: Role[];
+  lockReason?: string;
+  onSave: (needs: { role_id: number; count: number }[]) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  // The empty state's + should land in the role picker, not in an editor
+  // whose only content is another +. So it opens the editor and asks it to
+  // press its own add button once mounted (Popover has no open prop).
+  const addRef = useRef<HTMLButtonElement>(null);
+  const [openPicker, setOpenPicker] = useState(false);
+  useEffect(() => {
+    if (editing && openPicker) {
+      addRef.current?.click();
+      setOpenPicker(false);
+    }
+  }, [editing, openPicker]);
+
+  // Closes on a press outside the cell rather than on blur: the + checklist's
+  // rows aren't focusable, so picking one would blur the cell and unmount the
+  // checklist mid-click. The checklist renders inside the cell, so a press
+  // there counts as inside.
+  useEffect(() => {
+    if (!editing) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current?.contains(e.target as Node)) return;
+      // Blur first, so a count typed but not yet entered commits before its
+      // field unmounts.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && wrapRef.current?.contains(active)) active.blur();
+      setEditing(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [editing]);
+
+  if (lockReason) {
+    return <span title={lockReason} style={{ display: "flex", minWidth: 0 }}>{display}</span>;
+  }
+
+  async function save(next: { role_id: number; count: number }[]) {
+    setSaving(true);
+    setError(undefined);
+    try {
+      await onSave(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const current = needs.map((n) => ({ role_id: n.role_id, count: n.count }));
+  const byLabel = (label: string) => needs.find((n) => n.role_label === label);
+
+  return (
+    <CellGuard align="start">
+      <span
+        ref={wrapRef}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+        style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}
+      >
+        {editing ? (
+          <ChipInput
+            value={needs.map((n) => n.role_label)}
+            // Only removal reaches here (disableInput): keep the needs whose chip is left.
+            onChange={(labels) => void save(
+              needs.filter((n) => labels.includes(n.role_label)).map((n) => ({ role_id: n.role_id, count: n.count })),
+            )}
+            renderChipTrailing={(label) => {
+              const need = byLabel(label);
+              return need ? (
+                <PillInput
+                  value={need.count}
+                  label={`${label} needed`}
+                  disabled={saving}
+                  onCommit={(count) => void save(current.map((n) => (n.role_id === need.role_id ? { ...n, count } : n)))}
+                />
+              ) : null;
+            }}
+            variant="transparent"
+            size="sm"
+            disableInput
+            disabled={saving}
+            addButton={
+              <ChecklistPopover
+                trigger={
+                  <Button ref={addRef} type="button" variant="secondary" size="sm" iconOnly title="Add role" disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                    <IconPlus size={14} />
+                  </Button>
+                }
+                items={roles}
+                getKey={(r) => r.id}
+                renderLabel={(r) => r.label}
+                isSelected={(r) => needs.some((n) => n.role_id === r.id)}
+                onToggle={(r) => save(needs.some((n) => n.role_id === r.id)
+                  ? current.filter((n) => n.role_id !== r.id)
+                  : [...current, { role_id: r.id, count: 1 }])}
+                searchable={roles.length > 8}
+                getSearchText={(r) => r.label}
+                emptyMessage="No roles yet."
+                width={220}
+                align="left"
+              />
+            }
+          />
+        ) : (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => setEditing(true)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true); } }}
+            title="Click to edit staffing"
+            style={{ cursor: "pointer", minWidth: 0 }}
+          >
+            {needs.length > 0 ? display : (
+              // Muted, like the location cell's "No location". The add button
+              // only appears on hover, so a resting table reads normally.
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                  No staffing
+                </span>
+                {hovered && (
+                  <Button
+                    type="button" variant="secondary" size="sm" iconOnly title="Add role"
+                    onClick={(e) => { e.stopPropagation(); setEditing(true); setOpenPicker(true); }}
+                    style={{ padding: 0, flexShrink: 0 }}
+                  >
+                    <IconPlus size={14} />
+                  </Button>
+                )}
+              </span>
+            )}
+          </span>
+        )}
+        {error && (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)" }}>{error}</span>
         )}
       </span>
     </CellGuard>

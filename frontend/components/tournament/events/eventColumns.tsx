@@ -10,7 +10,7 @@ import type { EventSortField } from "@/lib/eventSort";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
-import { ChipsCell, EventEditContext, LocationCell, SelectCell } from "@/components/tournament/events/EditableCells";
+import { ChipsCell, EventEditContext, LocationCell, SelectCell, StaffingCell } from "@/components/tournament/events/EditableCells";
 import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
@@ -199,14 +199,25 @@ function renderTrackCell(family: TrackFamily, track: TournamentTrack, e: Tournam
     }
     case "staffing": {
       const needs = e.track_details.find((d) => d.track_id === track.id)?.needs ?? [];
-      if (needs.length === 0) return EMPTY_CELL;
       const rows = ctx.assignmentsFor(e.id);
-      return (
+      const display = needs.length === 0 ? EMPTY_CELL : (
         <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
           {needs.map((need) => (
             <StaffingNeedLine key={need.role_id} need={need} filled={staffedCount(rows, need.role_id, track.id)} />
           ))}
         </span>
+      );
+      if (!ctx.edit) return display;
+      const { edit } = ctx;
+      return (
+        <StaffingCell
+          display={display}
+          needs={needs}
+          roles={edit.roles}
+          lockReason={edit.lockReason(e)}
+          // Joins the track if the event isn't on it yet (withTrackDetail adds it).
+          onSave={(next) => edit.update(e, { track_details: withTrackDetail(e, track.id, { needs: next }) })}
+        />
       );
     }
   }

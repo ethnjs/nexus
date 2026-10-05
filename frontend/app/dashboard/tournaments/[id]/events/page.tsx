@@ -378,6 +378,7 @@ export default function EventsPage() {
     update: updateEvent,
     divisions: selectedTournament?.division ?? [],
     shifts: allShifts ?? [],
+    roles,
     buildings,
     ensureBuilding: async (name, trackId) => {
       const building = await ensureBuildingOnTrack(tournamentId, name, trackId, buildings);
@@ -387,7 +388,7 @@ export default function EventsPage() {
     confirm: setPendingConfirm,
   } : undefined), [
     canManageEvents, archivedReason, selectMode, focusedEventId, updateEvent, selectedTournament, allShifts,
-    buildings, tournamentId, handleBuildingSaved,
+    roles, buildings, tournamentId, handleBuildingSaved,
   ]);
 
   const tableColumns = useMemo(
