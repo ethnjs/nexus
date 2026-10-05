@@ -680,7 +680,7 @@ export default function MembersPage() {
             )}
           </div>
 
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <Card radius="lg" className={styles.scroll} style={{ padding: "8px 12px" }}>
             {/* One grid for the whole table: it owns the column tracks and is
                 the only element that transitions them. Header and rows are
                 subgrids, so resizing (the docked panel sliding open shrinks

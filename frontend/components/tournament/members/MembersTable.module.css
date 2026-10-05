@@ -23,6 +23,10 @@
   composes: collapsible from "@/components/ui/Table.module.css";
 }
 
+.scroll {
+  composes: scroll from "@/components/ui/Table.module.css";
+}
+
 .collapsed {
   composes: collapsed from "@/components/ui/Table.module.css";
 }

@@ -111,7 +111,7 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
   onDeactivated: (id: number) => void;
 }) {
   return (
-    <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
+    <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div
         className={table.table}
         style={{ gridTemplateColumns: INVITE_ROW_COLUMNS }}

@@ -172,7 +172,7 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div className={table.table} style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "620px" }}>
             <div className={table.header}>
               <span>Event — {visible.length}{isFiltered ? ` of ${events.length}` : ""}</span>
@@ -444,7 +444,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div className={table.table} style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "760px" }}>
             <div className={table.header}>
               <span>Event — {rows.length}</span>

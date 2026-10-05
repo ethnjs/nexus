@@ -674,7 +674,7 @@ export default function EventsPage() {
             )}
           </div>
 
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
             {/* One grid owns the tracks; header and rows are subgrids of it,
                 so toggling Select mode resolves the template once rather than
                 once per row (which is what this table did before). */}

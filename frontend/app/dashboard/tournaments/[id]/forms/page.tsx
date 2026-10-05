@@ -122,7 +122,7 @@ function FormTable({ forms, onAction, onAllowEditsChange, lockedReason }: {
   lockedReason?: string;
 }) {
   return (
-    <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
+    <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div
         className={table.table}
         style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}
