@@ -9,7 +9,7 @@ import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
 import { PillInput } from "@/components/ui/PillInput";
-import { SuggestionList } from "@/components/ui/SuggestionList";
+import { enterChoice, OptionList, stepActive, suggestionRows } from "@/components/ui/OptionList";
 import { focusAdjacentCell } from "@/lib/gridNav";
 import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
@@ -411,10 +411,9 @@ export function LocationCell({
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
   const rooms = detail?.rooms ?? [];
   const typingBuilding = buildingId === null || buildingInBox;
-  const needle = text.trim().toLowerCase();
-  const matches = editing && typingBuilding
-    ? onTrack.map((b) => b.name).filter((name) => name.toLowerCase().includes(needle) && name !== text).slice(0, 8)
-    : [];
+  const rows = editing && typingBuilding
+    ? suggestionRows(onTrack.map((b) => b.name), text)
+    : { names: [], options: [] };
 
   function open() {
     setText("");
@@ -508,10 +507,12 @@ export function LocationCell({
             placeholder={typingBuilding ? "Building" : "Room"}
             onChange={(e) => { setText(e.target.value); setHighlight(-1); }}
             onKeyDown={(e) => {
-              if (e.key === "ArrowDown" && matches.length > 0) { e.preventDefault(); setHighlight((h) => (h + 1) % matches.length); return; }
-              if (e.key === "ArrowUp" && matches.length > 0) { e.preventDefault(); setHighlight((h) => (h <= 0 ? matches.length - 1 : h - 1)); return; }
+              if (e.key === "ArrowDown" && rows.options.length > 0) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, 1)); return; }
+              if (e.key === "ArrowUp" && rows.options.length > 0) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, -1)); return; }
               if (e.key === "Enter" || e.key === "Tab") {
-                const picked = highlight >= 0 ? matches[highlight] : undefined;
+                // A building: the highlighted row, else the exact/first match
+                // for typed text; an empty box picks nothing (clears it).
+                const picked = typingBuilding ? enterChoice(rows.names, highlight, text) : undefined;
                 // Tab with nothing to commit is a plain Tab: focus moves on.
                 if (commit(picked) || e.key === "Enter") e.preventDefault();
                 return;
@@ -532,13 +533,13 @@ export function LocationCell({
               fontFamily: "var(--font-sans)", fontSize: "13px", lineHeight: "inherit",
             }}
           />
-          {matches.length > 0 && (
-            <SuggestionList
+          {rows.options.length > 0 && (
+            <OptionList
               anchorRef={inputRef}
-              options={matches}
-              highlight={highlight}
-              onHighlight={setHighlight}
-              onPick={(option) => { commit(option); inputRef.current?.focus(); }}
+              options={rows.options}
+              active={highlight}
+              onActiveChange={setHighlight}
+              onPick={(i) => { commit(rows.names[i] ?? text); inputRef.current?.focus(); }}
             />
           )}
         </span>

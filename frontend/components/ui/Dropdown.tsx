@@ -9,6 +9,7 @@ import {
   KeyboardEvent,
 } from 'react'
 import { IconChevronDown } from './Icons'
+import { OptionList, type ListOption } from './OptionList'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,13 @@ function isGroup(item: DropdownItem): item is DropdownOptionGroup {
 
 function flatOptions(items: DropdownItem[]): DropdownOption[] {
   return items.flatMap((item) => (isGroup(item) ? item.options : [item]))
+}
+
+function toListOption(opt: DropdownOption, value: string): ListOption {
+  return {
+    key: opt.value, label: opt.label, subtitle: opt.subtitle, badge: opt.badge,
+    disabled: opt.disabled, selected: opt.value === value,
+  }
 }
 
 function matchesQuery(opt: DropdownOption, query: string): boolean {
@@ -99,9 +107,6 @@ interface DropdownProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PANEL_MAX_HEIGHT = 260
-const PANEL_GAP        = 4   // px between trigger edge and panel
-
 // Heights match Button/Input's scale — same size name, same height everywhere.
 const SIZE_MAP: Record<'sm' | 'md', { height: number; triggerFontSize: string; optionPadding: string; optionFontSize: string }> = {
   sm: { height: 28, triggerFontSize: '13px', optionPadding: '5px 8px',  optionFontSize: '13px' },
@@ -113,12 +118,6 @@ const BACKGROUND_MAP: Record<'primary' | 'secondary' | 'transparent', string> = 
   secondary:   'var(--color-surface)',
   transparent: 'transparent',
 }
-
-// ─── Panel position type ──────────────────────────────────────────────────────
-
-type PanelPos =
-  | { above: false; top: number;    left: number; width: number }
-  | { above: true;  bottom: number; left: number; width: number }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -150,7 +149,6 @@ export function Dropdown({
   const [focused, setFocused]     = useState(false)
   const [hovered, setHovered]     = useState(false)
   const [activeIdx, setActiveIdx] = useState<number>(-1)
-  const [panelPos, setPanelPos]   = useState<PanelPos | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef              = useRef<HTMLDivElement>(null)
   const triggerRef                = useRef<HTMLButtonElement>(null)
@@ -167,35 +165,14 @@ export function Dropdown({
   const flat          = flatOptions(visibleOptions)
   const flatAll        = flatOptions(options)
   const selected       = flatAll.find((o) => o.value === value)
+  const listOptions: ListOption[] = visibleOptions.flatMap((item) => (isGroup(item)
+    ? item.options.map((o) => ({ ...toListOption(o, value), group: item.group }))
+    : [toListOption(item, value)]))
   const displayLabel   = selected?.label ?? placeholder
 
-  // ── Update panel position — flip upward when not enough space below ───────
-
-  function updatePanelPos() {
-    if (!triggerRef.current) return
-    const r          = triggerRef.current.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - r.bottom - PANEL_GAP
-    const spaceAbove = r.top - PANEL_GAP
-
-    if (spaceBelow >= PANEL_MAX_HEIGHT || spaceBelow >= spaceAbove) {
-      // Enough room below, or more room below than above — open downward
-      setPanelPos({ above: false, top: r.bottom + PANEL_GAP, left: r.left, width: r.width })
-    } else {
-      // More room above — flip upward, anchor bottom of panel to top of trigger
-      setPanelPos({ above: true, bottom: window.innerHeight - r.top + PANEL_GAP, left: r.left, width: r.width })
-    }
-  }
-
   useEffect(() => {
-    if (!open) { setPanelPos(null); setSearchQuery(''); return }
+    if (!open) { setSearchQuery(''); return }
     if (searchable) searchRef.current?.focus()
-    updatePanelPos()
-    window.addEventListener('scroll', updatePanelPos, true)
-    window.addEventListener('resize', updatePanelPos)
-    return () => {
-      window.removeEventListener('scroll', updatePanelPos, true)
-      window.removeEventListener('resize', updatePanelPos)
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -212,14 +189,6 @@ export function Dropdown({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
-
-  // ── Scroll active option into view ────────────────────────────────────────
-
-  useEffect(() => {
-    if (!open || activeIdx < 0 || !listRef.current) return
-    const el = listRef.current.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [activeIdx, open])
 
   // ── Set active index to current value when opening ────────────────────────
 
@@ -381,31 +350,20 @@ export function Dropdown({
           />
         </button>
 
-        {/* Dropdown panel — fixed positioned, flips upward when near bottom of viewport */}
-        {open && panelPos && (
-          <div
-            ref={listRef}
-            role="listbox"
-            aria-label={label}
-            data-select-panel="true"
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position:     'fixed',
-              left:         panelPos.left,
-              minWidth:     panelPos.width,
-              ...(panelPos.above
-                ? { bottom: panelPos.bottom }
-                : { top:    panelPos.top }
-              ),
-              zIndex:       9999,
-              background:   'var(--color-surface)',
-              border:       '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow:    'var(--shadow-lg)',
-              overflow:     'hidden',
-            }}
-          >
-            {searchable && (
+        {/* The shared list (see OptionList) — fixed positioned, flips upward near the bottom of the viewport. */}
+        {open && (
+          <OptionList
+            anchorRef={triggerRef}
+            panelRef={listRef}
+            label={label}
+            options={listOptions}
+            active={activeIdx}
+            onActiveChange={setActiveIdx}
+            onPick={(i) => { onChange(flat[i].value); setOpen(false) }}
+            size={size}
+            matchWidth
+            emptyMessage={emptyMessage}
+            header={searchable ? (
               <div style={{ padding: '6px 8px' }}>
                 <input
                   ref={searchRef}
@@ -426,46 +384,8 @@ export function Dropdown({
                   }}
                 />
               </div>
-            )}
-            <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: 'auto' }}>
-            {flat.length === 0 && emptyMessage && (
-              <p style={{ padding: '12px 16px', fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
-                {emptyMessage}
-              </p>
-            )}
-            {visibleOptions.map((item, groupIdx) => {
-              if (isGroup(item)) {
-                return (
-                  <div key={item.group}>
-                    {groupIdx > 0 && (
-                      <div style={{ height: '1px', background: 'var(--color-border)', margin: '4px 0' }} />
-                    )}
-                    <div style={{
-                      padding:       '5px 10px 3px',
-                      fontFamily:    'var(--font-mono)',
-                      fontSize:      '10px',
-                      fontWeight:    700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.07em',
-                      color:         'var(--color-text-tertiary)',
-                    }}>
-                      {item.group}
-                    </div>
-                    {item.options.map((opt) => {
-                      const idx = flat.indexOf(opt)
-                      return <OptionRow key={opt.value} opt={opt} idx={idx} activeIdx={activeIdx} selectedValue={value} size={size} onSelect={(v) => { onChange(v); setOpen(false) }} onHover={setActiveIdx} />
-                    })}
-                  </div>
-                )
-              }
-              const idx = flat.indexOf(item)
-              return (
-                <OptionRow key={item.value} opt={item} idx={idx} activeIdx={activeIdx} selectedValue={value} size={size} onSelect={(v) => { onChange(v); setOpen(false) }} onHover={setActiveIdx} />
-              )
-            })}
-            </div>
-
-            {footerLabel && (
+            ) : undefined}
+            footer={footerLabel ? (
               <>
                 {flat.length > 0 && <div style={{ height: '1px', background: 'var(--color-border)' }} />}
                 <div
@@ -473,7 +393,7 @@ export function Dropdown({
                   onClick={() => { onFooterClick?.(); setOpen(false) }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '8px',
-                    // Same padding as an OptionRow, not a hardcoded pair: at
+                    // Same padding as a list row, not a hardcoded pair: at
                     // sm the old 10px 16px gave the footer double the option
                     // rows' vertical padding and twice their indent, so it read
                     // as a different size of control.
@@ -500,8 +420,8 @@ export function Dropdown({
                   {footerLabel}
                 </div>
               </>
-            )}
-          </div>
+            ) : undefined}
+          />
         )}
 
         {error && (
@@ -510,65 +430,6 @@ export function Dropdown({
           </p>
         )}
       </div>
-    </div>
-  )
-}
-
-// ─── Option row ───────────────────────────────────────────────────────────────
-
-function OptionRow({
-  opt, idx, activeIdx, selectedValue, size, onSelect, onHover,
-}: {
-  opt:           DropdownOption
-  idx:           number
-  activeIdx:     number
-  selectedValue: string
-  size:          'sm' | 'md'
-  onSelect:      (v: string) => void
-  onHover:       (idx: number) => void
-}) {
-  const isActive   = idx === activeIdx
-  const isSelected = opt.value === selectedValue
-  const sizing     = SIZE_MAP[size]
-
-  return (
-    <div
-      role="option"
-      aria-selected={isSelected}
-      aria-disabled={opt.disabled}
-      data-idx={idx}
-      onMouseEnter={() => { if (!opt.disabled) onHover(idx) }}
-      onClick={() => { if (!opt.disabled) onSelect(opt.value) }}
-      style={{
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'space-between',
-        padding:        sizing.optionPadding,
-        borderRadius:   'var(--radius-sm)',
-        fontFamily:     'var(--font-sans)',
-        fontSize:       sizing.optionFontSize,
-        color:          'var(--color-text-primary)',
-        background:     isActive && !opt.disabled ? 'var(--color-bg)' : 'transparent',
-        cursor:         opt.disabled ? 'default' : 'pointer',
-        opacity:        opt.disabled ? 0.5 : 1,
-        userSelect:     'none',
-        transition:     'background 80ms ease',
-        whiteSpace:     'nowrap',
-      }}
-    >
-      <div style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>{opt.label}{opt.badge}</div>
-        {opt.subtitle && (
-          <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-            {opt.subtitle}
-          </div>
-        )}
-      </div>
-      {isSelected && (
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, marginLeft: '8px', color: 'var(--color-accent)' }}>
-          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
     </div>
   )
 }

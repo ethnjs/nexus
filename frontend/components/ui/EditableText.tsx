@@ -1,7 +1,7 @@
 'use client'
 
 import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SuggestionList } from '@/components/ui/SuggestionList'
+import { enterChoice, OptionList, stepActive, suggestionRows } from '@/components/ui/OptionList'
 
 interface EditableTextProps {
   value: string
@@ -64,11 +64,8 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   const refocus = useRef(false)
   // Combobox mode: which suggestion the arrow keys are on (-1 = none).
   const [highlight, setHighlight] = useState(-1)
-  const needle = draft.trim().toLowerCase()
-  const matches = editing && suggestions
-    ? suggestions.filter((s) => s.toLowerCase().includes(needle) && s !== draft).slice(0, 8)
-    : []
-  const listOpen = matches.length > 0
+  const rows = editing && suggestions ? suggestionRows(suggestions, draft) : { names: [], options: [] }
+  const listOpen = rows.options.length > 0
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
   // draft is already `value`, so `draft` alone wouldn't change on the
@@ -137,13 +134,15 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
           onChange={(e) => { setDraft(e.target.value); setHighlight(-1) }}
           onBlur={() => save()}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' && listOpen) { e.preventDefault(); setHighlight((h) => (h + 1) % matches.length) }
-            if (e.key === 'ArrowUp' && listOpen) { e.preventDefault(); setHighlight((h) => (h <= 0 ? matches.length - 1 : h - 1)) }
+            if (e.key === 'ArrowDown' && listOpen) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, 1)) }
+            if (e.key === 'ArrowUp' && listOpen) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, -1)) }
             if (e.key === 'Enter') {
               e.preventDefault()
               refocus.current = true
-              const picked = highlight >= 0 ? matches[highlight] : undefined
-              if (picked) setDraft(picked)
+              // Highlighted row, else the exact/first match for typed text
+              // (see enterChoice); empty text saves as empty.
+              const picked = suggestions ? enterChoice(rows.names, highlight, draft) : draft
+              setDraft(picked)
               save(picked)
             }
             if (e.key === 'Escape') { e.preventDefault(); refocus.current = true; setEditing(false) }
@@ -166,12 +165,12 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
           }}
         />
         {listOpen && (
-          <SuggestionList
+          <OptionList
             anchorRef={inputRef}
-            options={matches}
-            highlight={highlight}
-            onHighlight={setHighlight}
-            onPick={(option) => { setDraft(option); save(option) }}
+            options={rows.options}
+            active={highlight}
+            onActiveChange={setHighlight}
+            onPick={(i) => { const picked = rows.names[i] ?? draft.trim(); setDraft(picked); save(picked) }}
           />
         )}
         {error && (
