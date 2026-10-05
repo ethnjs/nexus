@@ -917,8 +917,9 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
             columns = list(DEFAULT_COLUMNS)
         # Name and roles are the row's identity and its controls — they are
         # not columns a TD can turn off (see FIXED_COLUMNS), so the table
-        # always needs roles whatever the saved config says.
-        groups = {"roles"}
+        # always needs roles whatever the saved config says. Contact too: search
+        # matches on email, and the name falls back to it, column or not.
+        groups = {"roles", "contact"}
         # Sorting is client-side, so a sort needs its data on the rows as
         # much as a column does — and sort keys share the column namespaces.
         sorts = [rule.get("field") for rule in (saved.get("sorts") or []) if isinstance(rule, dict)]

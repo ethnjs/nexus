@@ -379,6 +379,19 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     assert [entry["value"] for entry in row["lunch"]] == ["pizza"]
 
 
+def test_members_table_carries_email_without_email_column(client, td_user, td_tournament, db):
+    """Search matches on email whatever columns are shown, so hiding the email
+    column must not drop it from the row."""
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["joined"]}})
+    login(client, "td@test.com", "tdpass")
+
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table"
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert row["user"]["email"] == "alice@example.com"
+
+
 def test_availability_column_carries_shifts_with_their_local_day(client, td_user, td_tournament, db):
     """The table shows a badge per shift, so the rows carry the shifts
     themselves — each tagged with the tournament-local day its column keys by,
