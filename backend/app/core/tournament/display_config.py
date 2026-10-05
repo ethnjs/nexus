@@ -212,7 +212,14 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # as a deleted track is on the roster.
 KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
 
-KNOWN_EVENT_SORT_FIELDS = frozenset({"name", "division", "day"})
+# The table sorts by a chain (`sorts`) over the board's own fields — the
+# same five mean the same thing on both. "division" and "day" are the single
+# `sort` it saved before that: still accepted so an old blob re-PUT by another
+# save doesn't 422, and read by the client as name and start.
+KNOWN_EVENT_SORT_FIELDS = frozenset({
+    "name", "category", "start", "staffing", "location",
+    "division", "day",
+})
 
 
 # ---------------------------------------------------------------------------

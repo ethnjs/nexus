@@ -84,7 +84,7 @@ import { useToast } from '@/lib/useToast'
 import {
   DEFAULT_EVENT_SORT, EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK,
   eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
-} from '@/lib/assignments/eventSort'
+} from '@/lib/eventSort'
 import {
   sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
 } from '@/lib/sorting'

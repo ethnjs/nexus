@@ -852,6 +852,28 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
     assert saved["sort"] == {"field": "day", "direction": "asc"}
 
 
+def test_events_table_saves_a_sort_chain(client, td_user, td_tournament):
+    """The table sorts by the board's fields, as an ordered chain."""
+    login(client, "td@test.com", "tdpass")
+    chain = [{"field": "staffing", "direction": "desc"}, {"field": "location", "direction": "asc"}]
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "sorts": chain}},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["events_table"]
+    assert saved["sorts"] == chain
+
+
+def test_events_table_rejects_an_unknown_sort_field(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"hidden": [], "sorts": [{"field": "email", "direction": "asc"}]}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_accepts_per_track_shift_columns(client, td_user, td_tournament):
     """A column per competition track — and the bare key, which still means
     every one of them, so a config saved before the split keeps working."""

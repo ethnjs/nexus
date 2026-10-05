@@ -14,6 +14,12 @@ import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { rowActivation } from "@/lib/rowActivation";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
+import {
+  EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
+} from "@/lib/eventSort";
+import { sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule } from "@/lib/sorting";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
@@ -22,10 +28,9 @@ import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconPlus, IconTrash, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -44,7 +49,7 @@ import {
 } from "@/components/tournament/events/eventColumns";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
-import { eventFirstDay, eventName } from "@/lib/eventDisplay";
+import { eventName } from "@/lib/eventDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { FilterButton } from "@/components/ui/FilterButton";
@@ -70,26 +75,17 @@ function eventGridColumns(selectMode: boolean, columns: EventColumn[]) {
   ].join(" ");
 }
 
-type SortField = "name" | "division" | "day";
-type SortDir = "asc" | "desc";
+// Start time first, which is what the table sorted by before it took a chain.
+const DEFAULT_TABLE_SORT: SortRule<EventSortField>[] = [{ field: "start", direction: "asc" }];
 
-// Sentinel for the null case of a nullable field (division/category) so it
-// can sit in the same filter Set as real values.
+// Every field counts every track — the table has no tabs to narrow by.
+const ALL_TRACKS = () => true;
 
-const SORT_FIELD_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "division", label: "Division" },
-  { value: "day", label: "Day" },
-];
-
-function sortValue(e: TournamentEvent, field: SortField): string | number {
-  switch (field) {
-    case "name": return eventName(e).toLowerCase();
-    case "division": return e.division ?? "";
-    // An event has no time of its own — its schedule is its shifts, so
-    // the first day it runs is what there is to sort by.
-    case "day": return eventFirstDay(e);
-  }
+/** The single `sort` this table saved before it took a chain, as one. "division"
+ *  maps to name, which already orders an event's divisions together. */
+function legacySortRules(sort: { field: string; direction?: string } | null | undefined): SortRule<EventSortField>[] | null {
+  const field = sort?.field === "day" ? "start" : sort?.field === "name" || sort?.field === "division" ? "name" : null;
+  return field ? [{ field, direction: sort?.direction === "desc" ? "desc" : "asc" }] : null;
 }
 
 export default function EventsPage() {
@@ -171,8 +167,8 @@ export default function EventsPage() {
   // null = nothing saved, so use DEFAULT_EVENT_COLUMNS. An empty array is a
   // real answer ("show no data columns") and must not fall back.
   const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
-  const [sortField, setSortField] = useState<SortField>("day");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortRules, setSortRules] = useState<SortRule<EventSortField>[]>(DEFAULT_TABLE_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const initialEventId = useInitialPanelId("event");
 
@@ -307,10 +303,9 @@ export default function EventsPage() {
         setViewReady((already) => {
           if (already) return true;
           setFilters(eventsFilterFromStored(surface?.filters));
-          if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
-            setSortField(surface.sort.field as SortField);
-            setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
-          }
+          setSortRules(surface?.sorts
+            ? sortRulesFromStored(surface.sorts, isEventSortField)
+            : legacySortRules(surface?.sort) ?? DEFAULT_TABLE_SORT);
           return true;
         });
       });
@@ -339,10 +334,10 @@ export default function EventsPage() {
     persistView({ filters: eventsFilterToStored(next) });
   }, [persistView]);
 
-  const applySort = useCallback((field: SortField, direction: SortDir) => {
-    setSortField(field);
-    setSortDir(direction);
-    persistView({ sort: { field, direction } });
+  // Clears the legacy `sort` as it writes the chain, so the two never disagree.
+  const applySort = useCallback((next: SortRule<EventSortField>[]) => {
+    setSortRules(next);
+    persistView({ sorts: sortRulesToStored(next), sort: null });
   }, [persistView]);
 
   // Grouped once per fetch, not per cell — every staffing cell looks its
@@ -359,10 +354,11 @@ export default function EventsPage() {
     }),
     [columnKeys, tracks, byEvent],
   );
-  const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing");
+  const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing")
+    || sortRules.some((rule) => rule.field === "staffing");
 
-  // Only fetched while a staffing column is on screen — it's the one column
-  // that needs them, and a whole tournament's assignments isn't free.
+  // Only fetched while a staffing column is on screen or sorting by staffing —
+  // the only things that need them, and a whole tournament's assignments isn't free.
   useEffect(() => {
     if (!canManageEvents || !showsStaffing) return;
     let current = true;
@@ -389,14 +385,13 @@ export default function EventsPage() {
       if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
       return true;
     });
-    const sorted = [...filtered].sort((a, b) => {
-      const av = sortValue(a, sortField);
-      const bv = sortValue(b, sortField);
-      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return sorted;
-  }, [events, search, filters, sortField, sortDir]);
+    return sortRows(
+      filtered,
+      sortRules,
+      (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? NO_ASSIGNMENTS, ALL_TRACKS),
+      eventSortTiebreak,
+    );
+  }, [events, search, filters, sortRules, byEvent]);
 
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
@@ -656,22 +651,11 @@ export default function EventsPage() {
               >
                 <IconEye size={16} /> Display
               </Button>
-              <Dropdown
-                label="Sort by"
-                value={sortField}
-                onChange={(v) => applySort(v as SortField, sortDir)}
-                options={SORT_FIELD_OPTIONS}
-                size="md"
-                variant="secondary"
-                width={150}
+              <SortButton
+                active={!sameSortRules(sortRules, DEFAULT_TABLE_SORT)}
+                onOpen={() => setShowSortModal(true)}
+                onReset={() => applySort(DEFAULT_TABLE_SORT)}
               />
-              <Button
-                type="button" variant="secondary" size="md" iconOnly
-                title={sortDir === "asc" ? "Ascending" : "Descending"}
-                onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
-              >
-                <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
-              </Button>
               {canManageEvents && (
                 <Button
                   type="button" variant={selectMode ? "primary" : "secondary"} size="md"
@@ -755,6 +739,18 @@ export default function EventsPage() {
             </div>
           </Card>
         </>
+      )}
+
+      {showSortModal && (
+        <SortModal
+          title="Sort events"
+          fields={EVENT_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_TABLE_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<EventSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
       )}
 
       {showFilterModal && (

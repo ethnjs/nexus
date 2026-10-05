@@ -4,8 +4,9 @@ import { eventNameWithDivision, trackLocationLabel } from '@/lib/eventDisplay'
 import type { SortFieldOption } from '@/components/ui/SortModal'
 import type { SortRule, SortValue } from '@/lib/sorting'
 
-/** Mirrors KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS in display_config.py — the
- *  server validates what it stores against the same list. */
+/** Shared by the assignments board and the events table. Mirrors
+ *  KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS (and KNOWN_EVENT_SORT_FIELDS) in
+ *  display_config.py — the server validates what it stores against them. */
 export const EVENT_SORT_FIELDS = ['name', 'start', 'staffing', 'category', 'location'] as const
 export type EventSortField = (typeof EVENT_SORT_FIELDS)[number]
 
