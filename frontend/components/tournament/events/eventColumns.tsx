@@ -27,7 +27,8 @@ const WIDTHS = {
   name: "minmax(max-content, 1.3fr)",
   division: "90px",
   type: "100px",
-  category: "minmax(110px, 1.1fr)",
+  // Never truncated, like name — the table scrolls sideways instead.
+  category: "minmax(max-content, 1.1fr)",
   // Holds a chip per track, and an event on three tracks is normal.
   tracks: "minmax(140px, 1.6fr)",
   // One track's shift labels — usually two or three short words.
