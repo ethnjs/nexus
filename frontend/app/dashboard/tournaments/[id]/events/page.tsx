@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
@@ -211,6 +211,9 @@ export default function EventsPage() {
     setCreatingNew(false);
     setPanelDirty(false);
   }, [setPanelDirty]);
+
+  // Stable, so the memoised rows can share it.
+  const confirmDelete = useCallback((event: TournamentEvent) => setDeleteTargets([event]), []);
 
   // Blocked while dirty and clears whatever else was open — otherwise this
   // would silently replace a focused event or an in-progress selection with a
@@ -823,12 +826,12 @@ export default function EventsPage() {
                   columns={tableColumns}
                   canDelete={canManageEvents}
                   deleteLockedReason={archivedReason}
-                  onFocus={() => focusEvent(e.id)}
-                  onDelete={() => setDeleteTargets([e])}
+                  onFocus={focusEvent}
+                  onDelete={confirmDelete}
                   selectMode={selectMode}
                   selected={selectedIds.has(e.id)}
                   selectionLocked={panelDirty}
-                  onToggleSelect={() => toggleSelected(e.id)}
+                  onToggleSelect={toggleSelected}
                   focused={focusedEventId === e.id}
                   edit={editContext}
                 />
@@ -937,7 +940,9 @@ export default function EventsPage() {
   );
 }
 
-function EventRow({
+// Memoised so a page re-render that changes nothing here — a search keystroke,
+// a panel opening — doesn't rebuild every row's cells. Keep props identity-stable.
+const EventRow = memo(function EventRow({
   event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focused, edit,
 }: {
   event: TournamentEvent;
@@ -946,13 +951,14 @@ function EventRow({
   canDelete: boolean;
   /** Shown and disabled rather than hidden — archiving locks, it doesn't hide. */
   deleteLockedReason?: string;
-  onFocus: () => void;
-  onDelete: () => void;
+  /** These three take the row's event (or its id), so one callback serves every row. */
+  onFocus: (eventId: number) => void;
+  onDelete: (event: TournamentEvent) => void;
   selectMode: boolean;
   selected: boolean;
   /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
   selectionLocked: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (eventId: number) => void;
   /** This row is the one currently shown in the single-edit panel. */
   focused: boolean;
   /** Given, the name edits in place (custom events only). */
@@ -964,7 +970,9 @@ function EventRow({
   // This event is one of the references keeping a pending-delete track
   // alive — flagged here so the ones to repoint are findable in the table.
   const isPending = event.tracks.some((t) => t.is_archived);
-  const handleRowClick = selectionLocked ? undefined : selectMode ? onToggleSelect : onFocus;
+  const handleRowClick = selectionLocked
+    ? undefined
+    : selectMode ? () => onToggleSelect(event.id) : () => onFocus(event.id);
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
@@ -984,7 +992,7 @@ function EventRow({
         style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+        <Checkbox checked={selected} locked={selectionLocked} onChange={() => onToggleSelect(event.id)} />
       </span>
       <span data-nav-col="name" style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
@@ -1014,7 +1022,7 @@ function EventRow({
       <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canDelete && (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
+            type="button" variant="secondary" size="sm" iconOnly onClick={() => onDelete(event)}
             disabled={!!deleteLockedReason} title={deleteLockedReason ?? "Delete event"}
           >
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
@@ -1023,4 +1031,4 @@ function EventRow({
       </div>
     </div>
   );
-}
+});
