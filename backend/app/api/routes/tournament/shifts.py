@@ -181,7 +181,7 @@ def update_shift(
     # sent, so a start-only patch could otherwise land past the stored end.
     if shift.end <= shift.start:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="End must be after the start",
         )
 

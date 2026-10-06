@@ -569,7 +569,6 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     submitted — the same data that would ever appear on a panel worth hiding
     something from. Custom fields reuse get_custom_form_answers' reserved-key
     exclusion, but tournament-wide rather than per-user."""
-    from sqlalchemy import distinct
     from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN, TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.core.tournament import tournament_local_date
     from app.models.models import (
@@ -597,7 +596,8 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # anyone has replied, and a category only old submissions hold keeps its
     # column so those answers stay visible.
     answered_lunch_pairs = (
-        db.query(distinct(TournamentMembershipLunch.track_id), TournamentMembershipLunch.category)
+        db.query(TournamentMembershipLunch.track_id, TournamentMembershipLunch.category)
+        .distinct()
         .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
@@ -630,7 +630,8 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     ]
 
     event_pref_track_ids = (
-        db.query(distinct(TournamentMembershipEventPreference.track_id))
+        db.query(TournamentMembershipEventPreference.track_id)
+        .distinct()
         .join(TournamentMembership, TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
@@ -664,7 +665,8 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # wrong unit now: two sites running the same Saturday are two separate
     # availability questions, and a day-keyed toggle would hide both at once.
     availability_track_ids = (
-        db.query(distinct(TournamentShift.track_id))
+        db.query(TournamentShift.track_id)
+        .distinct()
         .filter(TournamentShift.tournament_id == tournament_id)
         .all()
     )

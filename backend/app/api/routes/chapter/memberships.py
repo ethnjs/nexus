@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, with_parent
 
 from app.core.chapters import find_chapter, require_chapter_lead_or_admin, require_lead, require_officer_or_lead
 from app.db.session import get_db
@@ -39,7 +39,7 @@ def get_chapter_member(
     _: User = Depends(require_lead),
 ):
     """View a member's full profile — major, university, competition/volunteer experience. Chapter lead only."""
-    member = db.query(ChapterMembership).with_parent(chapter, AlumniChapter.chapter_memberships).filter(ChapterMembership.user_id == user_id).first()
+    member = db.query(ChapterMembership).filter(with_parent(chapter, AlumniChapter.chapter_memberships), ChapterMembership.user_id == user_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return member
@@ -63,7 +63,7 @@ def update_chapter_member(
 
     # TODO(temp): officers get management powers later
     """
-    member = db.query(ChapterMembership).with_parent(chapter, AlumniChapter.chapter_memberships).filter(ChapterMembership.user_id == user_id).first()
+    member = db.query(ChapterMembership).filter(with_parent(chapter, AlumniChapter.chapter_memberships), ChapterMembership.user_id == user_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
     if member.role == payload.role:
@@ -85,7 +85,7 @@ def delete_member(
     _: User = Depends(require_chapter_lead_or_admin),
 ):
     """Remove a member from a chapter. Chapter lead or admin only."""
-    member = db.query(ChapterMembership).with_parent(chapter, AlumniChapter.chapter_memberships).filter(ChapterMembership.user_id == user_id).first()
+    member = db.query(ChapterMembership).filter(with_parent(chapter, AlumniChapter.chapter_memberships), ChapterMembership.user_id == user_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
     db.delete(member)

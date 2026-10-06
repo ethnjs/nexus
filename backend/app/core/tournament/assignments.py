@@ -82,7 +82,7 @@ def validate_shift_on_event(
     )
     if attached is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"'{shift.label}' is not one of this event's shifts",
         )
     return shift
@@ -110,14 +110,14 @@ def resolve_assignment_track(
     if shift is not None:
         if track_id is not None and track_id != shift.track_id:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"'{shift.label}' is not on the track this assignment names",
             )
         return shift.track_id
 
     if track_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="An assignment with no shift must name the track it is for",
         )
     get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")

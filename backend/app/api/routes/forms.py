@@ -114,7 +114,7 @@ def create_tournament_form(
 ):
     if payload.owner_type != "tournament" or payload.tournament_id != tournament_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="owner_type must be 'tournament' and tournament_id must match the path",
         )
     require_not_archived(get_tournament(tournament_id, db))
@@ -160,7 +160,7 @@ def create_chapter_form(
 
     if payload.owner_type != "chapter" or payload.chapter_id != chapter_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="owner_type must be 'chapter' and chapter_id must match the path",
         )
 
@@ -437,7 +437,7 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
         missing = sorted(set(ids) - found)
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"{label} do not belong to this tournament: {missing}",
             )
 
@@ -596,7 +596,7 @@ def update_form(
         try:
             validate_form_for_publish(db, form)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
     if payload.name is not None:
         form.name = payload.name
@@ -710,7 +710,7 @@ def bulk_update_fields(
     new_keys = [slugify(e.field_key or "") for e in new_entries]
     if len(new_keys) != len(set(new_keys)):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="duplicate field_key among the fields being created in this request",
         )
 
@@ -752,7 +752,7 @@ def bulk_update_fields(
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
             validate_track_status_options(db, form.tournament_id, field_key, question_type, normalized)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
         return normalized
 
     # (field, reasons, removed_option_ids) — resolved into rows after the
@@ -861,7 +861,7 @@ def bulk_update_fields(
     errors = collect_active_field_errors(db, form)
     if errors:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors))
 
     for field, reasons, removed_option_ids in pending_flags:
         flag_pending_updates(db, field, reasons, removed_option_ids)

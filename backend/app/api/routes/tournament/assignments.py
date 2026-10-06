@@ -60,7 +60,7 @@ def _flush_or_conflict(db: Session) -> None:
         # hit it looking in entirely the wrong place.
         if "uq_track_assignment" not in str(error.orig):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
                     "That event, shift and track don't belong together — the "
                     "event must run on the track, and a shift must be on it too"

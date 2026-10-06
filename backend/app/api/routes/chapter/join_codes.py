@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, with_parent
 
 from app.core.chapters import find_chapter, require_lead
 from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code
@@ -31,8 +31,7 @@ def get_chapter_join_codes(
     """List active join codes for a chapter. Chapter lead only."""
     return (
         db.query(JoinCode)
-        .with_parent(chapter, AlumniChapter.join_codes)
-        .filter(JoinCode.is_active == True)  # noqa: E712
+        .filter(with_parent(chapter, AlumniChapter.join_codes), JoinCode.is_active == True)  # noqa: E712
         .all()
     )
 

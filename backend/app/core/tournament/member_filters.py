@@ -349,7 +349,7 @@ def build_filter_options(db, tournament) -> dict:
     submitted rows. Only experience falls back to submitted data: offering
     every canonical event when three are mentioned makes the picker useless.
     """
-    from sqlalchemy import distinct, func
+    from sqlalchemy import func
     from app.core.form.validation import (
         EVENT_PREFERENCE_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
     )
@@ -481,7 +481,8 @@ def build_filter_options(db, tournament) -> dict:
     def experience_events(model):
         return [
             {"value": str(event_id), "label": name}
-            for event_id, name in db.query(distinct(model.event_id), Event.name)
+            for event_id, name in db.query(model.event_id, Event.name)
+            .distinct()
             .join(Event, model.event_id == Event.id)
             .filter(model.user_id.in_(db.query(member_user_ids.c.user_id)))
             .order_by(Event.name)

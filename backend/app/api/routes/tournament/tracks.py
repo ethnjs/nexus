@@ -50,7 +50,7 @@ def _validate_state(track: TournamentTrack) -> None:
     try:
         require_primary_fields(track)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def create_track(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     return track
 
 
@@ -175,7 +175,7 @@ def update_track(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     return track
 
 

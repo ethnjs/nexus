@@ -50,14 +50,14 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
     missing = sorted(set(track_ids) - found)
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown track id(s): {', '.join(str(i) for i in missing)}",
         )
 
     archived = sorted(track.id for track in rows if track.is_archived)
     if archived:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Track(s) pending deletion cannot be tagged: "
                 f"{', '.join(str(i) for i in archived)}"
