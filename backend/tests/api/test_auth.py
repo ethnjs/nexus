@@ -87,6 +87,32 @@ class TestLogin:
         assert res.status_code == 200
         assert res.json()["role"] == "admin"
 
+    def test_login_upgrades_legacy_bcrypt_hash(self, client, db, td_user):
+        # Hashes written by the old passlib setup are bcrypt; login should
+        # accept them and swap in Argon2.
+        import bcrypt
+        td_user.hashed_password = bcrypt.hashpw(b"tdpass", bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+
+    def test_login_long_password_against_legacy_bcrypt_hash(self, client, db, td_user):
+        # passlib truncated to bcrypt's 72-byte limit; bcrypt 5 raises instead.
+        # A password set under passlib must still work, and a wrong long one
+        # must be a 401, not a 500.
+        import bcrypt
+        long_password = "Aa1!" * 25  # 100 bytes
+        td_user.hashed_password = bcrypt.hashpw(long_password.encode()[:72], bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "x" * 100).status_code == 401
+        assert login(client, "td@test.com", long_password).status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+
 
 # ---------------------------------------------------------------------------
 # POST /auth/logout/
