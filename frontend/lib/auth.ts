@@ -33,42 +33,39 @@ export function formatPhone(phone: string): string {
     return `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6, 10)}`
 }
 
+// Mirrors backend/app/schemas/auth.py — keep the two in sync.
+export const PASSWORD_MIN_LENGTH = 8
+export const PASSWORD_MAX_LENGTH = 128
+
 export interface PasswordChecks {
     length:  boolean
     upper:   boolean
     lower:   boolean
     number:  boolean
     symbol:  boolean
+    valid:   boolean
     confirm: boolean
 }
 
-function isDigit(char: string): boolean {
-    return char >= '0' && char <= '9';
-}
-
-function isUpper(char: string): boolean {
-    return char >= 'A' && char <= 'Z'
-}
-
-function isLower(char: string): boolean {
-    return char >= 'a' && char <= 'z'
-}
-
-function isValidSymbol(char: string): boolean {
-    return (char >= '!' && char <= '/') || (char >= ':' && char <= '@') || (char >= '[' && char <= '`') || (char >= '{' && char <= '~')
+export const EMPTY_PASSWORD_CHECKS: PasswordChecks = {
+    length: false, upper: false, lower: false, number: false, symbol: false, valid: true, confirm: false,
 }
 
 // confirm password can be null to allow to just run the other checks on the password by itself
 export function checkPassword(password: string, confirm: string | null = null): PasswordChecks {
-    const checks: PasswordChecks = {length: false, upper: false, lower: false, number: false, symbol: false, confirm: false}
+    // valid means "no disallowed characters", so it starts true (an empty password fails on length instead)
+    const checks: PasswordChecks = {length: false, upper: false, lower: false, number: false, symbol: false, valid: true, confirm: false}
 
-    if (password.length >= 8) checks["length"] = true
+    if (password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH) checks["length"] = true
 
+    // Only printable ASCII ('!' through '~') is allowed. Validity is checked
+    // first so a disallowed character can never satisfy a class.
     for (const c of password) {
-        if (!checks["number"] && isDigit(c)) { checks["number"] = true; continue; }
-        if (!checks["upper"] && isUpper(c)) { checks["upper"] = true; continue; }
-        if (!checks["lower"] && isLower(c)) { checks["lower"] = true; continue; }
-        if (!checks["symbol"] && isValidSymbol(c)) { checks["symbol"] = true; continue; }
+        if (c < '!' || c > '~') checks["valid"] = false
+        else if (c >= '0' && c <= '9') checks["number"] = true
+        else if (c >= 'A' && c <= 'Z') checks["upper"] = true
+        else if (c >= 'a' && c <= 'z') checks["lower"] = true
+        else checks["symbol"] = true
     }
 
 

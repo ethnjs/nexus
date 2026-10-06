@@ -7,8 +7,14 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+# The cap applies only where a password is set, never to login or
+# current-password fields: passwords set before the cap existed may be longer.
+# Mirrored in frontend/lib/auth.ts.
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+
 PASSWORD_ERROR_MSG: dict[str, str] = {
-    "length": "Password must have a length of 8 or more characters.\n",
+    "length": f"Password must be {PASSWORD_MIN_LENGTH} to {PASSWORD_MAX_LENGTH} characters long.\n",
     "upper": "Password must include at least one uppercase letter.\n",
     "lower": "Password must include at least one lowercase letter.\n",
     "number": "Password must include at least one number.\n",
@@ -19,31 +25,31 @@ PASSWORD_ERROR_MSG: dict[str, str] = {
 
 def validate_password_strength(password: str) -> str:
     """
-    Shared password strength check — used by RegisterRequest, PasswordChangeRequest,
-    and PasswordResetConfirm. Raises ValueError with the same messages as before
-    if any check fails.
+    Shared password strength check — used everywhere a password is set
+    (register, change, reset, account setup, email-change revert). Raises
+    ValueError listing every failed check.
+
+    Only printable ASCII (33-126) is allowed, so every class below is an
+    ASCII range. Validity is checked before classification so a disallowed
+    character can never pass by satisfying a class.
     """
     # must be all true to pass
     checks: dict[str, bool] = {"length": False, "upper": False, "lower": False, "number": False, "symbol": False, "valid": True}
-    if len(password) >= 8:
+    if PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
         checks["length"] = True
 
     for c in password:
-        value = ord(c)
-        if not checks["number"] and c.isdigit():
-            checks["number"] = True
-            continue
-        if not checks["upper"] and c.isupper():
-            checks["upper"] = True
-            continue
-        if not checks["lower"] and c.islower():
-            checks["lower"] = True
-            continue
-        if not checks["symbol"] and (33 <= value <= 47 or 58 <= value <= 64 or 91 <= value <= 96 or 123 <= value <= 126):
-            checks["symbol"] = True
-            continue
-        if value <= 32 or value >= 127:
+        if not 33 <= ord(c) <= 126:
             checks["valid"] = False
+        elif "0" <= c <= "9":
+            checks["number"] = True
+        elif "A" <= c <= "Z":
+            checks["upper"] = True
+        elif "a" <= c <= "z":
+            checks["lower"] = True
+        else:
+            # Every other printable ASCII character is punctuation or a symbol.
+            checks["symbol"] = True
 
     if any(not value for value in checks.values()):
         msg = ""
