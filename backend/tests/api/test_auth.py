@@ -1,4 +1,5 @@
 """Tests for /auth routes."""
+import asyncio
 import hashlib
 from datetime import datetime, timedelta, timezone
 
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy import event
 from tests.conftest import login
+import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
 from app.core.auth import hash_password, create_verification_token, consume_verification_token
 from app.models.models import User, VerificationToken
@@ -735,3 +737,67 @@ class TestConsumeVerificationToken:
         ))
         db.commit()
         assert consume_verification_token(db, raw, "password_reset") is None
+
+
+# ---------------------------------------------------------------------------
+# Password hashing stays off the event loop
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def loop_spy(monkeypatch):
+    """Records (name, ran_on_event_loop) for each call the auth routes make to
+    the password hasher. A threadpool worker has no running loop; the thread
+    serving async routes does."""
+    calls = []
+
+    def spy(name):
+        real = getattr(auth_routes, name)
+
+        def wrapper(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                calls.append((name, True))
+            except RuntimeError:
+                calls.append((name, False))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(auth_routes, name, wrapper)
+
+    for name in ("hash_password", "verify_password"):
+        spy(name)
+    return calls
+
+
+def _ran_off_loop(calls, name):
+    seen = [on_loop for n, on_loop in calls if n == name]
+    return bool(seen) and not any(seen)
+
+
+class TestOffEventLoop:
+    def test_change_password(self, client, td_user, loop_spy):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "tdpass",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "verify_password")
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_confirm_password_reset(self, client, td_user, db, loop_spy):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_revert_email_change(self, client, td_user, db, loop_spy):
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_confirm_account_setup(self, client, invited_user, db, loop_spy):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        res = client.post("/auth/account-setup/confirm/", json={"token": token, "password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")

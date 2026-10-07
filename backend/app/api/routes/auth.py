@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
     create_session,
@@ -47,6 +48,12 @@ from app.services.email_service import (
 from datetime import datetime, timezone
 
 router = APIRouter(tags=["auth"])
+
+# Argon2 is CPU-bound (~50 ms per hash or verify), so it must never run on the
+# event loop, where it stalls every other request on the worker. Routes that
+# hash and await nothing are plain `def`, which FastAPI runs in its threadpool;
+# the async ones (they await an email send) wrap hash_password/verify_password
+# in run_in_threadpool.
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +242,7 @@ async def request_email_change(
         400: {"description": "Invalid or expired token"},
     },
 )
-async def confirm_email_change(token: str, db: Session = Depends(get_db)):
+def confirm_email_change(token: str, db: Session = Depends(get_db)):
     """
     Clicking this link is itself proof of ownership of the new address,
     so email_verified is set true here — no separate re-verification needed.
@@ -258,7 +265,7 @@ async def confirm_email_change(token: str, db: Session = Depends(get_db)):
         400: {"description": "Invalid or expired token"},
     },
 )
-async def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(get_db)):
+def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(get_db)):
     """
     Consumes an email_change_revert token. Handles both cases in one route,
     since the token doesn't know which state it'll find things in:
@@ -321,10 +328,12 @@ async def change_password(
     db: Session = Depends(get_db),
 ):
     """Authenticated password change — requires current_password to match before setting new_password."""
-    if not user.hashed_password or not verify_password(body.current_password, user.hashed_password):
+    if not user.hashed_password or not await run_in_threadpool(
+        verify_password, body.current_password, user.hashed_password,
+    ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
-    user.hashed_password = hash_password(body.new_password)
+    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
     db.commit()
 
     await send_password_changed_notice(user.email)
@@ -370,7 +379,7 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
         raise HTTPException(400, "Invalid or expired token")
 
     user = find_user_by_id(db, token_row.user_id)
-    user.hashed_password = hash_password(body.new_password)
+    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
     db.commit()
 
     await send_password_changed_notice(user.email)
@@ -394,7 +403,7 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
         400: {"description": "Invalid or expired token"},
     },
 )
-async def confirm_account_setup(
+def confirm_account_setup(
     body: AccountSetupConfirm,
     request: Request,
     response: Response,
