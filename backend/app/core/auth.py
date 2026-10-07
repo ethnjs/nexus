@@ -18,6 +18,7 @@ from fastapi import Cookie, Depends, HTTPException, Request, Response, status
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 from pwdlib.hashers.bcrypt import BcryptHasher
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -69,19 +70,22 @@ def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, Optional[
 # real time (a JWT stays valid until it naturally expires; nothing short
 # of a DB-backed check can kill it early).
 #
-# token_hash uses SHA-256, not bcrypt — this gets checked on every single
-# authenticated request, and the raw token is already high-entropy random,
-# so slow adaptive hashing isn't needed and would add real per-request
-# latency. Lookup is a direct indexed equality match, unlike
-# consume_verification_token's loop-and-bcrypt-verify (fine there since
-# verification tokens are rare; wrong here since sessions are constant).
+# token_hash uses SHA-256 (_hash_token), not the password hasher — see
+# _hash_token for why that's safe. Lookup is a direct indexed equality match.
 # ---------------------------------------------------------------------------
 
 SESSION_EXPIRE_DAYS = 7  # fixed from creation — no sliding renewal
 SESSION_ACTIVITY_THROTTLE = timedelta(minutes=15)  # last_active_at update granularity
 
 
-def _hash_session_token(raw_token: str) -> str:
+def _hash_token(raw_token: str) -> str:
+    """SHA-256 hex digest of a raw session or verification token.
+
+    Both are secrets.token_urlsafe(32): 256 random bits, unguessable at any
+    hashing speed. Slow salted hashes (Argon2, bcrypt) only protect guessable
+    secrets like passwords, and their salt rules out lookup by hash. SHA-256
+    is deterministic, so the token_hash unique index finds the row directly.
+    """
     return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
@@ -112,7 +116,7 @@ def create_session(
 
     session_row = UserSession(
         user_id=user_id,
-        token_hash=_hash_session_token(raw_token),
+        token_hash=_hash_token(raw_token),
         user_agent=user_agent,
         ip_address=ip_address,
         expires_at=now + timedelta(days=SESSION_EXPIRE_DAYS),
@@ -134,7 +138,7 @@ def get_active_session(db: Session, raw_token: str) -> Optional[UserSession]:
     check, so it doesn't need writing on every request.
     """
     now = datetime.now(timezone.utc)
-    token_hash = _hash_session_token(raw_token)
+    token_hash = _hash_token(raw_token)
 
     session_row = db.query(UserSession).filter(
         UserSession.token_hash == token_hash,
@@ -222,9 +226,9 @@ def clear_auth_cookie(response: Response) -> None:
 
 # ---------------------------------------------------------------------------
 # Verification tokens
-# Backs signup email verification, email-change, and password reset.
-# Raw token is emailed to the user; only its hash is ever persisted
-# (VerificationToken.token_hash, via the same bcrypt context as passwords).
+# Backs signup email verification, email change and revert, password reset,
+# and account setup. Raw token is emailed to the user; only its SHA-256 hash
+# is ever persisted (VerificationToken.token_hash, via _hash_token).
 # ---------------------------------------------------------------------------
 
 Purpose = Literal["signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"]
@@ -289,7 +293,7 @@ def create_verification_token(
 
     token_row = VerificationToken(
         user_id=user_id,
-        token_hash=hash_password(raw_token),
+        token_hash=_hash_token(raw_token),
         purpose=purpose,
         new_email=new_email,
         expires_at=now + TOKEN_TTL[purpose],
@@ -332,26 +336,29 @@ def consume_verification_token(
     Returns the VerificationToken row (with .user_id / .new_email available)
     on success, or None if no matching, unexpired, unconsumed token is found.
     Marks the row used_at on success — tokens are single-use.
+
+    Lookup and consume are one UPDATE ... RETURNING, so of two concurrent
+    requests with the same token only one gets the row back; the other's
+    WHERE no longer matches once used_at is set. Tokens issued before the
+    switch to SHA-256 stored Argon2/bcrypt hashes, which never match a digest,
+    so they're simply rejected and the user requests a new link.
     """
     now = datetime.now(timezone.utc)
 
-    candidates = (
-        db.query(VerificationToken)
-        .filter(
+    row = db.scalars(
+        update(VerificationToken)
+        .where(
+            VerificationToken.token_hash == _hash_token(raw_token),
             VerificationToken.purpose == expected_purpose,
             VerificationToken.used_at.is_(None),
             VerificationToken.expires_at > now,
         )
-        .all()
-    )
+        .values(used_at=now)
+        .returning(VerificationToken)
+    ).one_or_none()
+    db.commit()
 
-    for row in candidates:
-        if verify_password(raw_token, row.token_hash):
-            row.used_at = now
-            db.commit()
-            return row
-
-    return None
+    return row
 
 
 # ---------------------------------------------------------------------------

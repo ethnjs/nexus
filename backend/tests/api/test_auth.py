@@ -1,9 +1,15 @@
 """Tests for /auth routes."""
+import hashlib
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
+from pwdlib.hashers.bcrypt import BcryptHasher
+from sqlalchemy import event
 from tests.conftest import login
-from app.core.auth import hash_password, create_verification_token
-from app.models.models import User
+import app.core.auth as auth_core
+from app.core.auth import hash_password, create_verification_token, consume_verification_token
+from app.models.models import User, VerificationToken
 
 
 @pytest.fixture
@@ -452,6 +458,50 @@ class TestConfirmEmailChange:
 
 
 # ---------------------------------------------------------------------------
+# POST /auth/email/revert/
+# ---------------------------------------------------------------------------
+
+class TestRevertEmailChange:
+    def test_reverts_applied_change_and_resets_password(self, client, td_user, db):
+        # Change already confirmed: user.email holds the new address
+        td_user.email = "attacker@test.com"
+        db.commit()
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+
+        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.email == "td@test.com"
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+        assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_cancels_pending_change(self, client, td_user, db):
+        change_token = create_verification_token(db, td_user.id, "email_change", new_email="attacker@test.com")
+        revert_token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+
+        res = client.post("/auth/email/revert/", json={"token": revert_token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert client.get(f"/auth/email/confirm-change/?token={change_token}").status_code == 400
+        db.refresh(td_user)
+        assert td_user.email == "td@test.com"
+
+    def test_revokes_existing_sessions(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert client.get("/users/me/").status_code == 401
+
+    def test_invalid_token_rejected(self, client):
+        res = client.post("/auth/email/revert/", json={"token": "garbage", "new_password": VALID_PASSWORD})
+        assert res.status_code == 400
+
+    def test_token_already_used_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        assert client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}).status_code == 200
+        assert client.post("/auth/email/revert/", json={"token": token, "new_password": "Another@123"}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/password/change/
 # ---------------------------------------------------------------------------
 
@@ -602,3 +652,86 @@ class TestConfirmAccountSetup:
             "password": VALID_PASSWORD,
         })
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# consume_verification_token
+# ---------------------------------------------------------------------------
+
+class TestConsumeVerificationToken:
+    def test_stores_sha256_digest(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
+        assert row.token_hash == hashlib.sha256(token.encode()).hexdigest()
+
+    def test_single_update_without_password_hashing(self, td_user, db, monkeypatch):
+        # Lookup and consume are one indexed UPDATE ... RETURNING, never a
+        # loop of password-hash checks over pending tokens.
+        def fail(*args, **kwargs):
+            raise AssertionError("password hasher called while checking a token")
+
+        token = create_verification_token(db, td_user.id, "password_reset")
+        monkeypatch.setattr(auth_core, "verify_password", fail)
+        monkeypatch.setattr(auth_core, "hash_password", fail)
+        monkeypatch.setattr(auth_core.pwd_context, "verify", fail)
+
+        statements = []
+        conn = db.connection()
+
+        def record(conn, cursor, statement, parameters, context, executemany):
+            if "verification_tokens" in statement:
+                statements.append(statement)
+
+        event.listen(conn, "before_cursor_execute", record)
+        try:
+            row = consume_verification_token(db, token, "password_reset")
+        finally:
+            event.remove(conn, "before_cursor_execute", record)
+
+        assert row is not None
+        assert len(statements) == 1
+        assert statements[0].lstrip().upper().startswith("UPDATE")
+        assert "RETURNING" in statements[0].upper()
+
+    def test_returns_row_and_marks_used(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        row = consume_verification_token(db, token, "email_change")
+        assert row is not None
+        assert row.user_id == td_user.id
+        assert row.new_email == "tdnew@test.com"
+        assert row.used_at is not None
+
+    def test_second_consume_returns_none(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        assert consume_verification_token(db, token, "password_reset") is not None
+        assert consume_verification_token(db, token, "password_reset") is None
+
+    def test_wrong_purpose_rejected_and_token_left_usable(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        assert consume_verification_token(db, token, "signup_verify") is None
+        assert consume_verification_token(db, token, "account_setup") is None
+        assert consume_verification_token(db, token, "password_reset") is not None
+
+    def test_expired_token_rejected(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+        assert consume_verification_token(db, token, "password_reset") is None
+
+    @pytest.mark.parametrize("legacy_hash", [
+        pytest.param(lambda raw: hash_password(raw), id="argon2"),
+        pytest.param(lambda raw: BcryptHasher().hash(raw), id="bcrypt"),
+    ])
+    def test_legacy_password_hashed_token_rejected(self, td_user, db, legacy_hash):
+        # Tokens issued before the switch to SHA-256 are deliberately not
+        # migrated or verified with a fallback: users request a new link.
+        raw = "legacy-token-issued-before-sha256"
+        db.add(VerificationToken(
+            user_id=td_user.id,
+            token_hash=legacy_hash(raw),
+            purpose="password_reset",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        db.commit()
+        assert consume_verification_token(db, raw, "password_reset") is None
