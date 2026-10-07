@@ -105,7 +105,7 @@ def parse_fields(raw: str | None) -> frozenset[str] | None:
     unknown = sorted(requested - ALL_GROUPS)
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Unknown field group(s): {', '.join(unknown)}. "
                 f"Valid groups: {', '.join(sorted(ALL_GROUPS))}."

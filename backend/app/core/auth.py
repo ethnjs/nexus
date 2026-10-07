@@ -1,7 +1,7 @@
 """
 Core auth utilities.
 
-- Password hashing via bcrypt (passlib)
+- Password hashing via Argon2 (pwdlib), still verifying legacy bcrypt hashes
 - Sessions (opaque DB-backed tokens, replacing the previous JWT scheme)
 - Verification tokens (signup verify / email change / password reset)
 - FastAPI dependencies: get_current_user, require_admin
@@ -15,7 +15,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal
 
 from fastapi import Cookie, Depends, HTTPException, Request, Response, status
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
+from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -26,7 +28,23 @@ from app.models.models import User, VerificationToken, UserSession
 # Password hashing
 # ---------------------------------------------------------------------------
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+class _LegacyBcryptHasher(BcryptHasher):
+    """Verifies the $2b$ hashes written by the old passlib setup.
+
+    passlib silently truncated passwords to bcrypt's 72-byte limit; bcrypt 5
+    raises ValueError instead. Truncating here keeps passwords set under
+    passlib verifiable, and keeps an over-long login attempt a 401, not a 500.
+    """
+
+    def verify(self, password: str | bytes, hash: str | bytes) -> bool:
+        if isinstance(password, str):
+            password = password.encode("utf-8")
+        return super().verify(password[:72], hash)
+
+
+# New hashes use Argon2 (the first hasher). The bcrypt hasher only verifies
+# legacy hashes; login upgrades them to Argon2 via verify_and_update_password.
+pwd_context = PasswordHash((Argon2Hasher(), _LegacyBcryptHasher()))
 
 
 def hash_password(plain: str) -> str:
@@ -35,6 +53,12 @@ def hash_password(plain: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, Optional[str]]:
+    """Verify, and return a replacement hash when `hashed` uses an outdated
+    scheme or parameters (e.g. a legacy bcrypt hash). The caller persists it."""
+    return pwd_context.verify_and_update(plain, hashed)
 
 
 # ---------------------------------------------------------------------------

@@ -1,14 +1,10 @@
 'use client'
 
 import { useState } from "react"
-import { checkPassword, validateEmail, validatePassword, PasswordChecks } from "@/lib/auth"
+import { checkPassword, EMPTY_PASSWORD_CHECKS, validateEmail, validatePassword, PasswordChecks } from "@/lib/auth"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist"
-
-const EMPTY_CHECKS: PasswordChecks = {
-  length: false, upper: false, lower: false, number: false, symbol: false, confirm: false,
-}
 
 interface CredentialsFormProps {
   // Omit both to render a password-only form (e.g. account-setup, where the
@@ -30,7 +26,7 @@ export function CredentialsForm({
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_CHECKS)
+  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_PASSWORD_CHECKS)
   const [errors, setErrors] = useState<{ email?: string; password?: string; confirm_password?: string }>({})
 
   async function handleSubmit(e: React.SyntheticEvent) {

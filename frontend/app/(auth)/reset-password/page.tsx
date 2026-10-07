@@ -3,16 +3,12 @@
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ApiError, authApi } from "@/lib/api"
-import { checkPassword, validatePassword, PasswordChecks } from "@/lib/auth"
+import { checkPassword, EMPTY_PASSWORD_CHECKS, validatePassword, PasswordChecks } from "@/lib/auth"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist"
-
-const EMPTY_CHECKS: PasswordChecks = {
-  length: false, upper: false, lower: false, number: false, symbol: false, confirm: false,
-}
 
 export default function ResetPasswordPage() {
   return (
@@ -29,7 +25,7 @@ function ResetPasswordContent() {
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_CHECKS)
+  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_PASSWORD_CHECKS)
   const [error, setError] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)

@@ -104,30 +104,30 @@ def update_display_config(
     for surface, config in payload.items():
         if not is_known_surface(surface):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown surface '{surface}'",
             )
         if config.collapsed is not None and surface != PAGE_HEADER:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Surface '{surface}' cannot be collapsed",
             )
         for item in config.hidden:
             if not is_known_hidden_item(surface, item):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Surface '{surface}' cannot hide '{item}'",
                 )
         for column in config.columns or []:
             if not is_known_column(surface, column):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown column '{column}'",
                 )
         for key in (config.filters or {}):
             if key not in known_filter_keys(surface):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown filter '{key}'",
                 )
         # Both shapes, same vocabulary: `sort` is one key, `sorts` an
@@ -135,26 +135,26 @@ def update_display_config(
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
             if not is_known_sort_field(surface, rule.field):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown sort field '{rule.field}'",
                 )
             if rule.direction not in KNOWN_SORT_DIRECTIONS:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown sort direction '{rule.direction}'",
                 )
         seen_sections: set[str] = set()
         for section in config.sections or []:
             if not is_known_section(section.id):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown section '{section.id}'",
                 )
             # Order is the array's own order, so a duplicate id has no
             # meaning — it would just render the same section twice.
             if section.id in seen_sections:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Duplicate section '{section.id}'",
                 )
             seen_sections.add(section.id)
@@ -163,7 +163,7 @@ def update_display_config(
             for field_id in section.hidden_fields:
                 if field_id not in allowed_fields:
                     raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                         detail=f"Section '{section.id}' has no field '{field_id}'",
                     )
             # `fields` assigns custom-form answers to a TD-made section; a
@@ -171,7 +171,7 @@ def update_display_config(
             # would silently do nothing.
             if section.fields and not section.id.startswith(CUSTOM_SECTION_PREFIX):
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Section '{section.id}' is built-in and cannot be assigned fields",
                 )
 

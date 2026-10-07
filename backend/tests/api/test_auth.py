@@ -87,6 +87,32 @@ class TestLogin:
         assert res.status_code == 200
         assert res.json()["role"] == "admin"
 
+    def test_login_upgrades_legacy_bcrypt_hash(self, client, db, td_user):
+        # Hashes written by the old passlib setup are bcrypt; login should
+        # accept them and swap in Argon2.
+        import bcrypt
+        td_user.hashed_password = bcrypt.hashpw(b"tdpass", bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+
+    def test_login_long_password_against_legacy_bcrypt_hash(self, client, db, td_user):
+        # passlib truncated to bcrypt's 72-byte limit; bcrypt 5 raises instead.
+        # A password set under passlib must still work, and a wrong long one
+        # must be a 401, not a 500.
+        import bcrypt
+        long_password = "Aa1!" * 25  # 100 bytes
+        td_user.hashed_password = bcrypt.hashpw(long_password.encode()[:72], bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "x" * 100).status_code == 401
+        assert login(client, "td@test.com", long_password).status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+
 
 # ---------------------------------------------------------------------------
 # POST /auth/logout/
@@ -136,6 +162,60 @@ class TestMe:
 
 VALID_PASSWORD = "Secure@123"  # satisfies all validator rules
 VALID_PHONE = "9495551234"
+
+
+class TestPasswordRules:
+    """validate_password_strength, through every route that sets a password."""
+
+    def _register(self, client, password):
+        return client.post("/auth/register/", json={"email": "new@test.com", "password": password})
+
+    def test_max_length_accepted(self, client):
+        password = VALID_PASSWORD + "a" * (128 - len(VALID_PASSWORD))
+        assert self._register(client, password).status_code == 201
+
+    def test_over_max_length_rejected(self, client):
+        password = VALID_PASSWORD + "a" * (129 - len(VALID_PASSWORD))
+        res = self._register(client, password)
+        assert res.status_code == 422
+        assert "8 to 128 characters" in res.text
+
+    @pytest.mark.parametrize("password", [
+        "Écure@123",   # only uppercase letter is non-ASCII
+        "SECURE@12é",  # only lowercase letter is non-ASCII
+        "Secure@abc١",  # only digit is non-ASCII (Arabic-Indic one)
+        "Secure123€",  # only symbol is non-ASCII
+        "Secure @123",  # space
+        "Secure@123\t",  # control character
+    ])
+    def test_non_printable_ascii_rejected(self, client, password):
+        # The old validator let the first character satisfying each class skip
+        # the validity check, so the first four of these were accepted.
+        res = self._register(client, password)
+        assert res.status_code == 422
+        assert "invalid character" in res.text
+
+    def test_all_failures_reported_together(self, client):
+        res = self._register(client, "é")
+        for fragment in ("8 to 128", "uppercase", "lowercase", "number", "special symbol", "invalid character"):
+            assert fragment in res.text
+
+    def test_login_is_not_length_capped(self, client, td_user):
+        # A wrong over-long password is an ordinary 401, not a validation error.
+        assert login(client, "td@test.com", "x" * 200).status_code == 401
+
+    def test_current_password_is_not_length_capped(self, client, db, td_user):
+        # Passwords set before the cap existed may be longer than 128 characters.
+        long_password = "Aa1!" * 40  # 160 characters
+        td_user.hashed_password = hash_password(long_password)
+        db.commit()
+
+        login(client, "td@test.com", long_password)
+        res = client.post("/auth/password/change/", json={
+            "current_password": long_password,
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
 
 
 class TestRegister:

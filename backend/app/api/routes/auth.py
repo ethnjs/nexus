@@ -13,6 +13,7 @@ from app.core.auth import (
     revoke_all_other_sessions,
     hash_password,
     verify_password,
+    verify_and_update_password,
     get_current_user,
     set_auth_cookie,
     clear_auth_cookie,
@@ -70,11 +71,15 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             detail="Invalid email or password",
         )
 
-    if not verify_password(body.password, user.hashed_password):
+    valid, upgraded_hash = verify_and_update_password(body.password, user.hashed_password)
+    if not valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    if upgraded_hash:
+        # Legacy bcrypt hash: swap in Argon2. Committed by create_session below.
+        user.hashed_password = upgraded_hash
 
     raw_token = create_session(
         db, user.id,

@@ -136,7 +136,7 @@ def update_volunteer_experience(
     resulting_notes_event = resulting_notes.get("event") if isinstance(resulting_notes, dict) else None
     if resulting_event_id is not None and resulting_notes_event:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="event_id and notes.event are mutually exclusive",
         )
 

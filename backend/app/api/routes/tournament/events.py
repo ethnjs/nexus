@@ -31,7 +31,7 @@ def _validate_division(division: str | None, tournament) -> None:
     "suggested" for the tournament."""
     if division is not None and division not in (tournament.division or []):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"division must be one of the tournament's divisions: {tournament.division}",
         )
 
@@ -74,7 +74,7 @@ def _apply_shifts_and_tracks(
         missing = set(shift_ids) - {s.id for s in shifts}
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown shift {sorted(missing)[0]}",
             )
         _validate_no_overlap(shifts)
@@ -98,7 +98,7 @@ def _apply_shifts_and_tracks(
         wanted = {detail.track_id: detail for detail in track_details}
         if len(wanted) != len(track_details):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="track_details must not name the same track twice",
             )
         _validate_tracks(db, event, tournament_id, list(wanted))
@@ -158,7 +158,7 @@ def _validate_tracks(
     missing = set(track_ids) - {t.id for t in tracks}
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown track {sorted(missing)[0]}",
         )
 
@@ -205,7 +205,7 @@ def _validate_buildings(
     if bad:
         building_id, track_id = bad[0]
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Building {building_id} is not available on track {track_id}; "
                 f"tag it with that track first"
@@ -253,7 +253,7 @@ def _validate_need_roles(
     missing = sorted(role_ids - found)
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown role {missing[0]}",
         )
 
@@ -422,7 +422,7 @@ def update_event(
 
     if event.name is None and event.event_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Cannot clear both name and event_id — at least one must be set",
         )
 

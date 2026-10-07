@@ -51,7 +51,7 @@ def _get_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrac
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     if track.is_archived:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="That track is pending deletion",
         )
     return track
@@ -76,7 +76,7 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
         key = member.dedupe_key()
         if key in seen:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="A zone must not name the same building, floor or event twice",
             )
         seen.add(key)
@@ -95,7 +95,7 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
         missing = sorted(building_ids - tagged)
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
                     f"Building {missing[0]} is not available on this track; "
                     f"tag it with the track first"
@@ -118,7 +118,7 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
         missing = sorted(event_ids - on_track)
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Event {missing[0]} does not run on this track",
             )
 
@@ -354,7 +354,7 @@ def create_zone_assignment(
     role_id = payload.role_id or zone.default_role_id
     if role_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "This zone has no default role; give the zone one or name a "
                 "role on the assignment"

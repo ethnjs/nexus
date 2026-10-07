@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, with_parent
 
 from app.core.auth import require_admin
 from app.core.chapters import assign_chapter_lead, create_alumni_chapter, check_if_chapter_exists, find_chapter
@@ -70,7 +70,7 @@ def remove_lead(
     _: User = Depends(require_admin),
 ):
     """Demote a chapter's lead back to a regular member. Admin only."""
-    member = db.query(ChapterMembership).with_parent(chapter, AlumniChapter.chapter_memberships).filter(ChapterMembership.user_id == user_id).first()
+    member = db.query(ChapterMembership).filter(with_parent(chapter, AlumniChapter.chapter_memberships), ChapterMembership.user_id == user_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not in this chapter")
     if member.role != "lead":
