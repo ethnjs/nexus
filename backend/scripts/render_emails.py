@@ -4,6 +4,9 @@ From backend/:
 
     python scripts/render_emails.py
 
+Links use FRONTEND_URL. Set FRONTEND_URL=https://nexus.socalscioly.org
+for samples that show the real domain.
+
 Calls the real send functions in email_service, so template and constant
 changes there show up here. Nothing is sent: the SES call is intercepted
 after _send has finished building the message.
@@ -26,7 +29,6 @@ NEW = "new-address@example.com"
 OLD = "current-address@example.com"
 TOKEN = "placeholder-token"
 TOURNAMENT = "2026 SoCal Invitational"
-JOIN = "https://nexus.example/join?code=ABC123"
 
 captured: list[tuple[str, str, str, str]] = []
 
@@ -53,6 +55,8 @@ async def main() -> None:
         settings.aws_access_key_id = "preview"
         settings.aws_secret_access_key = "preview"
     settings.ses_max_send_rate = 1000
+    # Same shape join_codes.py builds
+    join = f"{settings.frontend_url.rstrip('/')}/join?code=ABC123"
 
     email_service.asyncio.to_thread = _capture_ses_call
     email_service.create_verification_token = _token
@@ -63,7 +67,7 @@ async def main() -> None:
     await email_service.send_password_reset_email(TO, TOKEN)
     await email_service.send_password_changed_notice(TO)
     await email_service.send_account_setup_email(TO, TOKEN)
-    await email_service.send_staff_invite_email(TO, TOURNAMENT, JOIN)
+    await email_service.send_staff_invite_email(TO, TOURNAMENT, join)
 
     OUT.mkdir(exist_ok=True)
     (OUT / ".gitignore").write_text("*\n", encoding="utf-8")

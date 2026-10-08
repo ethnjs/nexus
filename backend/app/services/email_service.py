@@ -118,6 +118,7 @@ def _render_email_html(
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
                 <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{footnote}</p>
                 <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">Questions? Email <a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a></p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_ORG_LINE}</p>
               </td>
             </tr>
           </table>
@@ -136,6 +137,8 @@ def _cta_url(path: str, token: Optional[str] = None) -> str:
 
 
 _SUPPORT_EMAIL = "support@nexus.socalscioly.org"
+_SUPPORT_LINK = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+_ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
@@ -192,7 +195,7 @@ _rate_limiter = _SendRateLimiter()
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
-    text = f"{text}\n\nQuestions? Email {_SUPPORT_EMAIL}"
+    text = f"{text}\n\nQuestions? Email {_SUPPORT_EMAIL}\n{_ORG_LINE}"
     settings = get_settings()
 
     if not (settings.aws_access_key_id and settings.aws_secret_access_key):
@@ -369,7 +372,7 @@ async def send_password_changed_notice(to: str) -> None:
             "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
             "If this wasn't you, please secure your account below.",
         ],
-        cta_label="Reset password",
+        cta_label="Secure your account",
         cta_url=url,
         footnote=_CONTACT_SUPPORT,
     )
@@ -425,9 +428,13 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
         ],
         cta_label="Join tournament",
         cta_url=join_url,
-        footnote="If you weren't expecting this, you can ignore this email.",
+        footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_LINK} to stop receiving invites.",
     )
-    await _send(to, f"You're invited to help run {tournament_name}", f"Join {tournament_name}: {join_url}", html)
+    text = (
+        f"Join {tournament_name}: {join_url}\n\n"
+        f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites."
+    )
+    await _send(to, f"You're invited to help run {tournament_name}", text, html)
 
 
 async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, join_url: str) -> list[str]:
