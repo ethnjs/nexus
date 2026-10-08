@@ -11,11 +11,13 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import (
-    SeasonEvent, TournamentEvent, TournamentShift, TournamentTrack, User,
+    SeasonEvent, TournamentBuilding, TournamentBuildingTrack, TournamentEvent,
+    TournamentEventStaffingNeed, TournamentEventTrack, TournamentRole, TournamentShift,
+    TournamentTrack, User,
 )
 from app.schemas.tournament.event import (
     EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
-    EventUpdate,
+    EventStaffingNeed, EventTrackDetail, EventUpdate,
 )
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
@@ -29,7 +31,7 @@ def _validate_division(division: str | None, tournament) -> None:
     "suggested" for the tournament."""
     if division is not None and division not in (tournament.division or []):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"division must be one of the tournament's divisions: {tournament.division}",
         )
 
@@ -45,7 +47,7 @@ def _validate_division(division: str | None, tournament) -> None:
 
 def _apply_shifts_and_tracks(
     db: Session, event: TournamentEvent, tournament_id: int,
-    shift_ids: list[int] | None, track_ids: list[int] | None,
+    shift_ids: list[int] | None, track_details: list[EventTrackDetail] | None,
 ) -> None:
     """Writes an event's shift and track sets, whole-set.
 
@@ -57,7 +59,8 @@ def _apply_shifts_and_tracks(
     runs on Day 1. Removing a shift never removes a track: a TD reshuffling a
     schedule shouldn't silently lose track membership, and an event can
     legitimately belong to a track it has no shifts on at all (Test Writing
-    has no shifts to give it).
+    has no shifts to give it). A track arriving that way starts unplaced;
+    only an explicit track_details entry sets a location.
     """
     if shift_ids is not None:
         shifts = (
@@ -71,7 +74,7 @@ def _apply_shifts_and_tracks(
         missing = set(shift_ids) - {s.id for s in shifts}
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown shift {sorted(missing)[0]}",
             )
         _validate_no_overlap(shifts)
@@ -83,47 +86,176 @@ def _apply_shifts_and_tracks(
         )
         event.shifts = shifts
 
-    resolved: list[TournamentTrack] = list(event.tracks)
-    if track_ids is not None:
-        # Archived (pending-delete) tracks are resolved too, then judged
-        # below. Filtering them out here made an event's own track set
-        # unwritable: EventRead reports every track the event holds, so an
-        # event blocking a track's purge could not be saved at all — any PATCH
-        # echoing back its own tracks came back "Unknown track".
-        tracks = (
-            db.query(TournamentTrack)
-            .filter(
-                TournamentTrack.tournament_id == tournament_id,
-                TournamentTrack.id.in_(track_ids),
-            )
-            .all()
-        ) if track_ids else []
-        missing = set(track_ids) - {t.id for t in tracks}
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Unknown track {sorted(missing)[0]}",
-            )
-        # Keeping a pending-delete link is allowed — that is what a round-trip
-        # does, and dropping it silently would unblock a purge the TD hasn't
-        # asked for. Adding a *new* one isn't: the track is on its way out.
-        held = {track.id for track in event.tracks}
-        newly_archived = sorted(t.id for t in tracks if t.is_archived and t.id not in held)
-        if newly_archived:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Track {newly_archived[0]} is pending deletion; restore it first",
-            )
-        resolved = tracks
+    if track_details is None and shift_ids is None:
+        return
 
-    if shift_ids is not None:
-        by_id = {t.id: t for t in resolved}
-        for shift in event.shifts:
-            by_id.setdefault(shift.track_id, shift.track)
-        resolved = list(by_id.values())
+    # None as a value means "this track stays, leave its location alone" —
+    # which is what a track inherited from a shift, or one already held on an
+    # untouched PATCH, should get.
+    wanted: dict[int, EventTrackDetail | None] = {}
 
-    if track_ids is not None or shift_ids is not None:
-        event.tracks = resolved
+    if track_details is not None:
+        wanted = {detail.track_id: detail for detail in track_details}
+        if len(wanted) != len(track_details):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="track_details must not name the same track twice",
+            )
+        _validate_tracks(db, event, tournament_id, list(wanted))
+        _validate_buildings(db, tournament_id, track_details)
+        _validate_need_roles(db, tournament_id, track_details)
+    else:
+        wanted = {detail.track_id: None for detail in event.track_details}
+
+    # Unconditional, not only when the write included shift_ids. Gating this
+    # on shift_ids is what let a PATCH sending tracks alone drop a track the
+    # event's existing shifts still sat on, leaving an event scheduled on a
+    # day it wasn't linked to — see the repair in revision 9beadc61ad5a.
+    # A track a shift demands is therefore not removable while the shift is
+    # attached: detach the shift first, which is the honest order anyway.
+    for shift in event.shifts:
+        wanted.setdefault(shift.track_id, None)
+
+    existing = {detail.track_id: detail for detail in event.track_details}
+
+    # A link row that stays keeps its identity, so a track the payload didn't
+    # mention keeps the building and rooms already set on it. Rebuilding the
+    # list wholesale would wipe a location the TD never touched — the same
+    # reason detaching a shift unpins its assignments instead of deleting them.
+    for track_id, row in existing.items():
+        if track_id not in wanted:
+            event.track_details.remove(row)
+
+    for track_id in sorted(wanted):
+        detail = wanted[track_id]
+        row = existing.get(track_id)
+        if row is None:
+            row = TournamentEventTrack(track_id=track_id)
+            event.track_details.append(row)
+        if detail is not None:
+            row.building_id = detail.building_id
+            row.floor = detail.floor
+            # [] and None both mean "no rooms"; storing None keeps one answer
+            # in the column rather than two that render identically.
+            row.rooms = detail.rooms or None
+            _set_needs(row, detail.needs)
+
+
+def _validate_tracks(
+    db: Session, event: TournamentEvent, tournament_id: int, track_ids: list[int],
+) -> None:
+    """Every named track exists in this tournament, and no *new* link points
+    at one pending deletion."""
+    tracks = (
+        db.query(TournamentTrack)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.id.in_(track_ids),
+        )
+        .all()
+    ) if track_ids else []
+
+    missing = set(track_ids) - {t.id for t in tracks}
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown track {sorted(missing)[0]}",
+        )
+
+    # Keeping a pending-delete link is allowed — that is what a round-trip
+    # does, and dropping it silently would unblock a purge the TD hasn't
+    # asked for. Adding a *new* one isn't: the track is on its way out.
+    held = {detail.track_id for detail in event.track_details}
+    newly_archived = sorted(t.id for t in tracks if t.is_archived and t.id not in held)
+    if newly_archived:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Track {newly_archived[0]} is pending deletion; restore it first",
+        )
+
+
+def _validate_buildings(
+    db: Session, tournament_id: int, details: list[EventTrackDetail],
+) -> None:
+    """Each named building belongs to this tournament and is tagged with the
+    track it is being used on.
+
+    The composite foreign key enforces this too, but an IntegrityError reaches
+    the caller as a 500 with nothing actionable in it. This turns the same
+    rule into a 422 that names the pair.
+    """
+    pairs = {
+        (detail.building_id, detail.track_id)
+        for detail in details if detail.building_id is not None
+    }
+    if not pairs:
+        return
+
+    valid = set(
+        db.query(TournamentBuildingTrack.building_id, TournamentBuildingTrack.track_id)
+        .join(TournamentBuilding, TournamentBuilding.id == TournamentBuildingTrack.building_id)
+        .filter(
+            TournamentBuilding.tournament_id == tournament_id,
+            TournamentBuildingTrack.building_id.in_({b for b, _ in pairs}),
+        )
+        .all()
+    )
+
+    bad = sorted(pairs - valid)
+    if bad:
+        building_id, track_id = bad[0]
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"Building {building_id} is not available on track {track_id}; "
+                f"tag it with that track first"
+            ),
+        )
+
+
+def _set_needs(row: TournamentEventTrack, needs: list[EventStaffingNeed]) -> None:
+    """Replace this link's staffing needs, reusing the row for a role that
+    stays so a count edit is an update rather than a delete and an insert."""
+    wanted = {need.role_id: need.count for need in needs}
+    existing = {need.role_id: need for need in row.needs}
+
+    for role_id, need in existing.items():
+        if role_id not in wanted:
+            row.needs.remove(need)
+    for role_id, count in wanted.items():
+        need = existing.get(role_id)
+        if need is None:
+            row.needs.append(TournamentEventStaffingNeed(role_id=role_id, count=count))
+        else:
+            need.count = count
+
+
+def _validate_need_roles(
+    db: Session, tournament_id: int, details: list[EventTrackDetail],
+) -> None:
+    """Every role named by a need belongs to this tournament.
+
+    The role FK alone would accept another tournament's role — it points at
+    tournament_roles with no tournament scoping — so unlike the building rule
+    this is the *only* thing enforcing it, not a friendlier version of a
+    database check.
+    """
+    role_ids = {need.role_id for detail in details for need in detail.needs}
+    if not role_ids:
+        return
+
+    found = {
+        row_id for (row_id,) in db.query(TournamentRole.id).filter(
+            TournamentRole.tournament_id == tournament_id,
+            TournamentRole.id.in_(role_ids),
+        )
+    }
+    missing = sorted(role_ids - found)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown role {missing[0]}",
+        )
 
 
 def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
@@ -241,10 +373,12 @@ def create_event(
 
     data = payload.model_dump()
     shift_ids = data.pop("shift_ids")
-    track_ids = data.pop("track_ids")
+    # From the payload, not the dump: model_dump would hand back plain dicts,
+    # and the link writer works in EventTrackDetail.
+    data.pop("track_details")
     event = TournamentEvent(**data)
     db.add(event)
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, track_ids)
+    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
     try:
         db.commit()
     except IntegrityError:
@@ -278,14 +412,17 @@ def update_event(
         _validate_division(update_data["division"], tournament)
 
     shift_ids = update_data.pop("shift_ids", None)
-    track_ids = update_data.pop("track_ids", None)
+    update_data.pop("track_details", None)
     for field, value in update_data.items():
         setattr(event, field, value)
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, track_ids)
+    # payload.track_details rather than the dumped copy — see create. None
+    # still means "not sent", which model_dump(exclude_unset) can't express
+    # once the value has become a list of dicts.
+    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
 
     if event.name is None and event.event_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Cannot clear both name and event_id — at least one must be set",
         )
 

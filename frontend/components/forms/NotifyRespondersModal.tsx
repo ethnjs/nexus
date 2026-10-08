@@ -2,7 +2,7 @@
 
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { IconLock } from "@/components/ui/Icons";
 import { FieldChange } from "@/lib/api";
 import { REASON_CONSEQUENCES, REASON_LABELS } from "@/lib/forms/changeClassification";
@@ -81,7 +81,7 @@ export function NotifyRespondersModal({
                       <IconLock size={12} />
                     </span>
                   )}
-                  <Toggle checked={on} onChange={(v) => onToggle(change.field_id, v)} locked={change.locked} />
+                  <Switch checked={on} onChange={(v) => onToggle(change.field_id, v)} locked={change.locked} />
                 </div>
               </div>
             );

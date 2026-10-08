@@ -6,6 +6,7 @@ import { PersonRef, UserSlim } from "@/lib/api";
 // choices) on every one of those references. See PersonRefResponse.
 
 export function personName(ref: PersonRef): string {
+  if (ref.user_id === null) return "Deleted user";
   const name = `${ref.first_name ?? ""} ${ref.last_name ?? ""}`.trim();
   // Defensive only: anyone who can appear as a reference has acted in the
   // app, and the profile flow collects a name before that. There's no email

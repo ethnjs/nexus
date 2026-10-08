@@ -1,5 +1,5 @@
 /*
- * The respondent-facing form flows (FormFillFlow, FormUpdateFlow). See the
+ * The respondent-facing form flow (FormFillFlow). See the
  * note atop components/layout/Sidebar.module.css for why the viewport switch
  * lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts —
  * keep the two in sync.
@@ -18,20 +18,6 @@
   padding: 24px;
 }
 
-/* Slightly tighter than a fill card — the update flow stacks more of them. */
-.updateCard {
-  padding: 20px 24px;
-}
-
-/* Wraps so the "N still to answer" hint doesn't squeeze the submit button. */
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
 @media (max-width: 640px) {
   .page {
     /*
@@ -42,8 +28,7 @@
     gap: 12px;
   }
 
-  .card,
-  .updateCard {
+  .card {
     padding: 18px 16px;
   }
 }

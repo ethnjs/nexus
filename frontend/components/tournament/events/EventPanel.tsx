@@ -1,29 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, ApiError,
+  tournamentEventsApi, displayConfigApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
+  EventTrackDetail, TournamentBuilding, Role,
 } from "@/lib/api";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import { EventTrackDetails, type DraftTrackDetail } from "@/components/tournament/events/EventTrackDetails";
+import { EventPanelConfigModal } from "@/components/tournament/events/EventPanelConfigModal";
+import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { useTournament } from "@/lib/useTournament";
+import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
-import { Popover } from "@/components/ui/Popover";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
-import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconCalendar, IconX, IconEye } from "@/components/ui/Icons";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -35,14 +42,15 @@ interface EventDraft {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
-  building: string;
-  room: string;
-  floor: string;
-  volunteers_needed: string;
-  // The tracks this event runs on. Not derived from its shifts: a cosmetic
-  // track (Test Writing) has none by construction, so an event that belongs
-  // to one can only say so outright.
-  trackIds: number[];
+  // The tracks this event runs on, each with where it happens there and how
+  // many of each role it wants. Not derived from its shifts: a cosmetic track
+  // (Test Writing) has none by construction, so an event that belongs to one
+  // can only say so outright.
+  //
+  // This one field replaced the old trackIds *and* the flat building/room/
+  // floor/volunteers_needed, because on the wire it is one whole-set value —
+  // see lib/eventTrackDetails.
+  trackDetails: DraftTrackDetail[];
 }
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
@@ -52,12 +60,27 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     name: event?.name ?? null,
     division: event?.division ?? null,
     event_type: event?.event_type ?? "standard",
-    building: event?.building ?? "",
-    room: event?.room ?? "",
-    floor: event?.floor ?? "",
-    volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
-    trackIds: event?.tracks.map((t) => t.id) ?? [],
+    // Sorted on both levels so the isDirty JSON compare comes out stable —
+    // the server has no guaranteed order for either list, and an unsorted
+    // round trip would leave an untouched panel reading as dirty.
+    trackDetails: (event?.track_details ?? [])
+      .map(toTrackDetailInput)
+      .sort((a, b) => a.track_id - b.track_id)
+      .map((d) => ({ ...d, needs: [...(d.needs ?? [])].sort((x, y) => x.role_id - y.role_id) })),
   };
+}
+
+/** Same event, ignoring list order — the server guarantees none, so a
+ *  reordered round trip mustn't read as a change. A false "changed" only
+ *  costs a redundant push, so inner lists are left as they come. */
+function sameEvent(a: TournamentEvent, b: TournamentEvent): boolean {
+  const norm = (e: TournamentEvent) => JSON.stringify({
+    ...e,
+    shifts: [...e.shifts].sort((x, y) => x.id - y.id),
+    tracks: [...e.tracks].sort((x, y) => x.id - y.id),
+    track_details: [...e.track_details].sort((x, y) => x.track_id - y.track_id),
+  });
+  return norm(a) === norm(b);
 }
 
 interface EventPanelProps {
@@ -73,8 +96,12 @@ interface EventPanelProps {
   canonicalEvents: CanonicalEvent[];
   allShifts: TournamentShift[] | null;
   tracks: TournamentTrack[];
+  buildings: TournamentBuilding[];
+  roles: Role[];
   /** A shift created from this panel, for the page's catalog. */
   onShiftCreated: (shift: TournamentShift) => void;
+  /** A building created or tagged from this panel, likewise. */
+  onBuildingSaved: (building: TournamentBuilding) => void;
   /** Lets the owning table block selection changes while this panel is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while creating a new event, or editing several at once). */
@@ -86,7 +113,7 @@ interface EventPanelProps {
 
 export function EventPanel({
   tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange, onPrev, onNext, hasPrev, hasNext,
-  canonicalEvents, allShifts, tracks, onShiftCreated,
+  canonicalEvents, allShifts, tracks, buildings, roles, onShiftCreated, onBuildingSaved,
 }: EventPanelProps) {
   const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
@@ -105,6 +132,25 @@ export function EventPanel({
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
 
+  // This viewer's hidden tracks for the location and staffing section, read
+  // the way MemberPanel reads its own surface. Bumped on save so the open
+  // panel picks up the change without closing.
+  const [hiddenItems, setHiddenItems] = useState<string[]>([]);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configKey, setConfigKey] = useState(0);
+  useEffect(() => {
+    displayConfigApi.get(tournamentId)
+      .then((config) => startTransition(() => setHiddenItems(config?.[EVENT_PANEL]?.hidden ?? [])))
+      .catch(() => {});
+  }, [tournamentId, configKey]);
+  // "track:3" is the surface's own vocabulary — the keys the modal writes.
+  const hiddenTrackIds = useMemo(() => new Set(
+    hiddenItems
+      .filter((item) => item.startsWith("track:"))
+      .map((item) => Number(item.slice("track:".length)))
+      .filter((id) => Number.isInteger(id)),
+  ), [hiddenItems]);
+
   const isNew = current === null;
   // For a new event this compares against the blank default draft, so an
   // untouched "New event" panel reads as clean — closing it needs no
@@ -121,6 +167,17 @@ export function EventPanel({
   // the draft is untouched — a ref, since the response lands after render.
   const dirtyRef = useRef(isDirty);
   useEffect(() => { dirtyRef.current = isDirty; });
+  // The page's copy changing under an open panel (an edit made elsewhere on
+  // the page) flows in here too. `current` always follows; the draft only
+  // while untouched, so a half-typed edit is never overwritten.
+  const seenEventRef = useRef(event);
+  useEffect(() => {
+    if (seenEventRef.current === event) return;
+    seenEventRef.current = event;
+    if (!event) return;
+    setCurrent(event);
+    if (!dirtyRef.current) setDraft(draftFromEvent(event));
+  }, [event]);
   const eventId = event?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
@@ -130,6 +187,9 @@ export function EventPanel({
     tournamentEventsApi.get(tournamentId, eventId)
       .then((fresh) => {
         if (!active || dirtyRef.current) return;
+        // Unchanged is the usual answer. Pushing it anyway hands the caller a
+        // new object, which re-rendered the whole assignments board per open.
+        if (seenEventRef.current && sameEvent(seenEventRef.current, fresh)) return;
         setCurrent(fresh);
         setDraft(draftFromEvent(fresh));
         onSaved(fresh);
@@ -149,25 +209,48 @@ export function EventPanel({
     patch({ eventText: text, event_id: matched ? matched.id : null, name: matched ? null : text });
   }
 
-  function buildPayload(): TournamentEventInput {
+  function buildPayload(trackDetails: EventTrackDetail[]): TournamentEventInput {
     return {
       name: draft.event_id ? null : (draft.name?.trim() || null),
       division: draft.division,
       event_type: draft.event_type,
       event_id: draft.event_id,
-      building: draft.building.trim() || null,
-      room: draft.room.trim() || null,
-      floor: draft.floor.trim() || null,
-      volunteers_needed: draft.volunteers_needed.trim() ? Number(draft.volunteers_needed) : null,
-      track_ids: draft.trackIds,
+      track_details: trackDetails,
     };
+  }
+
+  /**
+   * Turns every typed-but-uncreated building name into a real building, and
+   * returns track details that point at them by id.
+   *
+   * See ensureBuildingOnTrack. The same new name on two tracks is created
+   * once and tagged for the second, because `known` grows as it goes.
+   */
+  async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
+    const known = [...buildings];
+    const resolved: EventTrackDetail[] = [];
+    for (const { new_building_name, ...detail } of details) {
+      const name = new_building_name?.trim();
+      if (!name) { resolved.push(detail); continue; }
+      const building = await ensureBuildingOnTrack(tournamentId, name, detail.track_id, known);
+      const at = known.findIndex((b) => b.id === building.id);
+      if (at >= 0) known[at] = building;
+      else known.push(building);
+      onBuildingSaved(building);
+      resolved.push({ ...detail, building_id: building.id });
+    }
+    return resolved;
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const payload = buildPayload();
+      const trackDetails = await resolveNewBuildings(draft.trackDetails);
+      // Point the draft at the new rows before the event save, so if that
+      // save fails a retry reuses them instead of creating them again.
+      setDraft((d) => ({ ...d, trackDetails }));
+      const payload = buildPayload(trackDetails);
       const saved = isNew
         ? await tournamentEventsApi.create(tournamentId, { ...payload, tournament_id: tournamentId })
         : await tournamentEventsApi.update(tournamentId, current!.id, payload);
@@ -245,14 +328,35 @@ export function EventPanel({
     () => new Set(pendingTracks(tracks).map((t) => t.name)),
     [tracks],
   );
+  // Advanced tournaments can have same-labeled shifts on different tracks
+  // (the backend only forbids duplicates within a track), so the picker
+  // needs the track to disambiguate; simple mode has exactly one track, so
+  // naming it would be noise.
+  const simple = isSimpleMode(tracks);
 
   // The backend refuses a *new* link to a pending-delete track but allows an
   // existing one to round-trip, so the picker offers exactly that: live
   // tracks, plus any the event already holds.
-  const selectableTracks = useMemo(
-    () => tracks.filter((t) => !t.is_archived || draft.trackIds.includes(t.id)),
-    [tracks, draft.trackIds],
+  const trackIds = useMemo(
+    () => draft.trackDetails.map((d) => d.track_id),
+    [draft.trackDetails],
   );
+  const selectableTracks = useMemo(
+    () => tracks.filter((t) => !t.is_archived || trackIds.includes(t.id)),
+    [tracks, trackIds],
+  );
+
+  /** Adding a track starts it unplaced; removing one takes its location and
+   *  its staffing needs with it, which is the point — they described an
+   *  arrangement on a day this event no longer runs. */
+  function toggleTrack(trackId: number) {
+    patch({
+      trackDetails: trackIds.includes(trackId)
+        ? draft.trackDetails.filter((d) => d.track_id !== trackId)
+        : [...draft.trackDetails, { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] }]
+            .sort((a, b) => a.track_id - b.track_id),
+    });
+  }
 
   // The competition days a new shift could land on: this event's own tracks.
   // The form picks between them, so several is fine — but a cosmetic track
@@ -277,6 +381,16 @@ export function EventPanel({
       onNext={onNext}
       prevDisabled={!hasPrev}
       nextDisabled={!hasNext}
+      // Nothing to configure with one track — its block is the whole section.
+      headerActions={!simple && (
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Configure panel"
+          onClick={() => setShowConfigModal(true)}
+        >
+          <IconEye size={14} />
+        </Button>
+      )}
       footer={!locked && (
         <FloatingSaveBar
           visible={isDirty}
@@ -320,7 +434,7 @@ export function EventPanel({
           )}
 
           <SettingsRow label="Division">
-            <ButtonGroup
+            <DivisionButtonGroup
               options={divisions.map((d) => ({ value: d, label: d }))}
               value={draft.division ?? ""}
               onChange={(v) => patch({ division: v as TournamentDivision })}
@@ -340,11 +454,13 @@ export function EventPanel({
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no
               shifts to infer it from. */}
-          <SettingsRow label="Tracks">
+          <SettingsRow label="Tracks" last>
             <ChipInput
-              value={draft.trackIds.map((id) => trackNames.get(id) ?? String(id))}
+              value={trackIds.map((id) => trackNames.get(id) ?? String(id))}
               onChange={(names) => patch({
-                trackIds: draft.trackIds.filter((id) => names.includes(trackNames.get(id) ?? String(id))),
+                trackDetails: draft.trackDetails.filter(
+                  (d) => names.includes(trackNames.get(d.track_id) ?? String(d.track_id)),
+                ),
               })}
               variant="transparent"
               size="sm"
@@ -357,7 +473,7 @@ export function EventPanel({
               getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
               getChipTooltip={(name) => (pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined)}
               addButton={
-                <Popover
+                <ChecklistPopover
                   trigger={
                     <Button type="button" variant="secondary" size="sm" iconOnly title="Add track" style={{ padding: 0, flexShrink: 0 }}>
                       <IconPlus size={14} />
@@ -366,13 +482,8 @@ export function EventPanel({
                   items={selectableTracks}
                   getKey={(t) => t.id}
                   renderLabel={(t) => t.name}
-                  checklist
-                  isSelected={(t) => draft.trackIds.includes(t.id)}
-                  onSelect={(t) => patch({
-                    trackIds: draft.trackIds.includes(t.id)
-                      ? draft.trackIds.filter((x) => x !== t.id)
-                      : [...draft.trackIds, t.id],
-                  })}
+                  isSelected={(t) => trackIds.includes(t.id)}
+                  onToggle={(t) => toggleTrack(t.id)}
                   emptyMessage="No tracks yet."
                   width={280}
                 />
@@ -380,21 +491,19 @@ export function EventPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Building">
-            <Input fullWidth font="sans" locked={locked} value={draft.building} onChange={(e) => patch({ building: e.target.value })} />
-          </SettingsRow>
+        </SettingsSection>
 
-          <SettingsRow label="Room">
-            <Input fullWidth font="sans" locked={locked} value={draft.room} onChange={(e) => patch({ room: e.target.value })} />
-          </SettingsRow>
-
-          <SettingsRow label="Floor">
-            <Input fullWidth font="sans" locked={locked} value={draft.floor} onChange={(e) => patch({ floor: e.target.value })} />
-          </SettingsRow>
-
-          <SettingsRow label="Volunteers needed" last>
-            <Input fullWidth charset="numeric" locked={locked} value={draft.volunteers_needed} onChange={(e) => patch({ volunteers_needed: e.target.value })} />
-          </SettingsRow>
+        <SettingsSection title="Location & staffing">
+          <EventTrackDetails
+            details={draft.trackDetails}
+            hiddenTrackIds={hiddenTrackIds}
+            tracks={tracks}
+            buildings={buildings}
+            roles={roles}
+            locked={locked}
+            simple={simple}
+            onChange={(trackDetails) => patch({ trackDetails })}
+          />
         </SettingsSection>
 
         {/* Attaching a shift needs a real event id, so this only shows up
@@ -402,7 +511,10 @@ export function EventPanel({
             hides its Members tab for an unsaved role. */}
         {!isNew && current && (
           <SettingsSection title="Shifts">
-            <SettingsRow label="Shifts" last>
+            {/* Straight in the section, no SettingsRow: the row's label only
+                repeated the section title, and its 60% control column left
+                the shift labels truncating in a panel with room to spare. */}
+            <div style={{ padding: "16px 0 20px" }}>
               {/* A list, not chips — shifts can share a label but differ
                   only by time, so each row needs room to show its own
                   start/end (condensed to time-of-day; the event's own
@@ -426,6 +538,10 @@ export function EventPanel({
                         }}>
                           {shift.label}
                         </span>
+                        {/* Same badge, same place as the Add-shift popover:
+                            labels only have to be unique within a track, so
+                            two "Morning" rows are ambiguous without it. */}
+                        {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(shift.track_id) ?? ""}</Badge>}
                         <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>
                           {formatTime(shift.start)}–{formatTime(shift.end)}
                         </span>
@@ -445,58 +561,61 @@ export function EventPanel({
 
               {!locked && (
                   <div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      {eligibleShifts.length > 0 && (
-                        <Popover
-                          trigger={
-                            <Button type="button" variant="secondary" size="sm" fullWidth>
-                              <IconPlus size={12} /> Add shift
-                            </Button>
-                          }
-                          items={eligibleShifts}
-                          getKey={(s) => s.id}
-                          renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
-                          onSelect={handleAttachShift}
-                          checklist
-                          isSelected={() => false}
-                          width={280}
-                        />
-                      )}
-                      {/* A new shift needs a track, and the form asks for
-                          one — but only from the tracks this event is
-                          already on, so creating a shift can't quietly move
-                          the event somewhere new. */}
-                      {newShiftTracks.length > 0 && (
-                        <FormPopover
-                          width={300}
-                          trigger={
-                            <Button type="button" variant="secondary" size="sm" fullWidth>
-                              <IconPlus size={12} /> New shift
-                            </Button>
-                          }
-                        >
-                          {(close) => (
-                            <CreateShiftForm
-                              tournamentId={tournamentId}
-                              tracks={newShiftTracks}
-                              onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
-                              onCancel={close}
-                            />
-                          )}
-                        </FormPopover>
-                      )}
-                    </div>
-                    {/* No existing shift already fits this event's window —
-                        point straight at creating one instead of a
-                        dead-end "nothing to attach" message. */}
-                    {allShifts !== null && eligibleShifts.length === 0 && (
+                    {(eligibleShifts.length > 0 || newShiftTracks.length > 0) && (
+                      <ChecklistPopover
+                        trigger={
+                          <Button type="button" variant="secondary" size="sm" fullWidth>
+                            <IconPlus size={12} /> Add shift
+                          </Button>
+                        }
+                        items={eligibleShifts}
+                        getKey={(s) => s.id}
+                        renderLabel={(s) => (
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {s.label}
+                            </span>
+                            {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(s.track_id) ?? ""}</Badge>}
+                          </span>
+                        )}
+                        onToggle={handleAttachShift}
+                        isSelected={() => false}
+                        width={280}
+                        emptyMessage="No shifts left on this event's tracks — create one above."
+                        // A new shift needs a track, and the form asks for
+                        // one — but only from the tracks this event is
+                        // already on, so creating a shift can't quietly move
+                        // the event somewhere new.
+                        header={newShiftTracks.length > 0 && (
+                          <FormPopover
+                            width={280}
+                            trigger={
+                              <Button type="button" variant="secondary" size="sm" fullWidth>
+                                <IconPlus size={12} /> New shift
+                              </Button>
+                            }
+                          >
+                            {(close) => (
+                              <CreateShiftForm
+                                tournamentId={tournamentId}
+                                tracks={newShiftTracks}
+                                onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
+                                onCancel={close}
+                              />
+                            )}
+                          </FormPopover>
+                        )}
+                      />
+                    )}
+                    {/* No competition day on this event yet — the New shift
+                        form above has no track to offer, so point at the
+                        Tracks field instead of a dead-end popover. */}
+                    {allShifts !== null && eligibleShifts.length === 0 && newShiftTracks.length === 0 && (
                       <p style={{
                         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
                         marginTop: "8px",
                       }}>
-                        {newShiftTracks.length === 0
-                          ? "Add a competition day above, and save, to attach shifts from it."
-                          : "No shifts left on this event's tracks — create one above."}
+                        Add a competition day above, and save, to attach shifts from it.
                       </p>
                     )}
                   </div>
@@ -507,7 +626,7 @@ export function EventPanel({
                   {shiftError}
                 </p>
               )}
-            </SettingsRow>
+            </div>
           </SettingsSection>
         )}
 
@@ -528,6 +647,13 @@ export function EventPanel({
           events={[current]}
           onClose={() => setShowDelete(false)}
           onDeleted={() => { onDeleted(current.id); onClose(); }}
+        />
+      )}
+      {showConfigModal && (
+        <EventPanelConfigModal
+          tournamentId={tournamentId}
+          onSaved={() => setConfigKey((key) => key + 1)}
+          onClose={() => setShowConfigModal(false)}
         />
       )}
     </DockedPanel>

@@ -16,12 +16,14 @@ three of the named roles is returned once, not three times.
 """
 from __future__ import annotations
 
+import operator
+
 from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentEventAssignment, TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentMembershipRole,
+    TournamentMembership, TournamentMembershipAvailability,
+    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentTrackAssignment,
     TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
     UserVolunteerExperience,
 )
@@ -36,6 +38,14 @@ NO_ROLES = "none"
 # half first (a track, a day, a lunch category) and only then narrows it, so
 # a chip has to mean something before its pill is touched.
 ANY = "__any__"
+
+# An event-preference chip's rank condition, carried as one more value under
+# its track: "trackId:rank:{op}:{n}" — e.g. "3:rank:le:3", top three on track 3.
+RANK_PREFIX = "rank:"
+RANK_OPS = {
+    "lt": operator.lt, "le": operator.le, "eq": operator.eq,
+    "ge": operator.ge, "gt": operator.gt,
+}
 
 # Lunch-only right-hand sentinels. "Unanswered" is the one thing an EXISTS
 # over stored rows can't say by naming a value, and none/not-none exist
@@ -122,16 +132,43 @@ def apply_member_filters(
     ("every shift on Feb 13") into shift ids — a shift's day depends on the
     tournament's timezone, not on UTC."""
     if roles:
-        role_ids = [int(value) for value in roles if value != NO_ROLES]
+        # "roleId" or "roleId:trackId" — the role, optionally narrowed to the
+        # tracks it is held on. A tournament-wide grant counts on every track
+        # (the rule roles_on_track already states), so narrowing to Day 1 keeps
+        # a member who holds the role across the whole tournament.
+        any_scope: set[int] = set()
+        by_role: dict[int, set[int]] = {}
+        for value in roles:
+            if value == NO_ROLES:
+                continue
+            role_part, _, track_part = value.partition(":")
+            if not role_part.isdigit():
+                continue
+            role_id = int(role_part)
+            if track_part and track_part != ANY and track_part.isdigit():
+                by_role.setdefault(role_id, set()).add(int(track_part))
+            else:
+                any_scope.add(role_id)
+
         clauses = []
-        if role_ids:
+        if any_scope:
             clauses.append(exists().where(
-                (TournamentMembershipRole.membership_id == TournamentMembership.id)
-                & TournamentMembershipRole.role_id.in_(role_ids)
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & TournamentTrackAssignment.role_id.in_(any_scope)
+            ))
+        for role_id, track_ids in by_role.items():
+            # An unnarrowed chip for the same role already covers every track.
+            if role_id in any_scope:
+                continue
+            clauses.append(exists().where(
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & (TournamentTrackAssignment.role_id == role_id)
+                & (TournamentTrackAssignment.tournament_track_id.in_(track_ids)
+                   | TournamentTrackAssignment.is_tournament_wide)
             ))
         if NO_ROLES in roles:
             clauses.append(~exists().where(
-                TournamentMembershipRole.membership_id == TournamentMembership.id
+                TournamentTrackAssignment.membership_id == TournamentMembership.id
             ))
         if clauses:
             query = query.filter(or_(*clauses))
@@ -163,16 +200,39 @@ def apply_member_filters(
     if event_preferences:
         # "trackId:tournamentEventId" — an event ranked for one track says
         # nothing about another, so the track has to travel with the event.
-        clauses = [
-            exists().where(
+        # A track's rank condition (see RANK_PREFIX) is checked on the same
+        # row as its events, so "Anatomy ranked < 3" can't be met by Anatomy
+        # unranked plus some other event at 1.
+        events_by_track: dict[int, set[str]] = {}
+        rank_by_track: dict[int, tuple[str, int]] = {}
+        for track_id, right in _split_pairs(event_preferences):
+            if not track_id.isdigit():
+                continue
+            if right.startswith(RANK_PREFIX):
+                op, _, n = right[len(RANK_PREFIX):].partition(":")
+                if op in RANK_OPS and n.isdigit():
+                    rank_by_track[int(track_id)] = (op, int(n))
+            elif right == ANY or right.isdigit():
+                events_by_track.setdefault(int(track_id), set()).add(right)
+
+        clauses = []
+        # A rank alone, with no events picked, means any event at that rank.
+        for track_id in events_by_track.keys() | rank_by_track.keys():
+            events = events_by_track.get(track_id, {ANY})
+            condition = (
                 (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
-                & (TournamentMembershipEventPreference.track_id == int(track_id))
-                & (true() if event_id == ANY
-                   else TournamentMembershipEventPreference.tournament_event_id == int(event_id))
+                & (TournamentMembershipEventPreference.track_id == track_id)
             )
-            for track_id, event_id in _split_pairs(event_preferences)
-            if track_id.isdigit() and (event_id == ANY or event_id.isdigit())
-        ]
+            if ANY not in events:
+                condition &= TournamentMembershipEventPreference.tournament_event_id.in_(
+                    [int(event_id) for event_id in events]
+                )
+            if track_id in rank_by_track:
+                op, n = rank_by_track[track_id]
+                # An unranked row's NULL rank fails every comparison, so it
+                # never matches a rank condition.
+                condition &= RANK_OPS[op](TournamentMembershipEventPreference.rank, n)
+            clauses.append(exists().where(condition))
         if clauses:
             query = query.filter(or_(*clauses))
 
@@ -224,8 +284,8 @@ def apply_member_filters(
             if not track_id.isdigit():
                 continue
             staffed = exists().where(
-                (TournamentEventAssignment.membership_id == TournamentMembership.id)
-                & (TournamentEventAssignment.tournament_track_id == int(track_id))
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & (TournamentTrackAssignment.tournament_track_id == int(track_id))
             )
             if value == "assigned":
                 clauses.append(staffed)
@@ -289,7 +349,7 @@ def build_filter_options(db, tournament) -> dict:
     submitted rows. Only experience falls back to submitted data: offering
     every canonical event when three are mentioned makes the picker useless.
     """
-    from sqlalchemy import distinct, func
+    from sqlalchemy import func
     from app.core.form.validation import (
         EVENT_PREFERENCE_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
     )
@@ -421,7 +481,8 @@ def build_filter_options(db, tournament) -> dict:
     def experience_events(model):
         return [
             {"value": str(event_id), "label": name}
-            for event_id, name in db.query(distinct(model.event_id), Event.name)
+            for event_id, name in db.query(model.event_id, Event.name)
+            .distinct()
             .join(Event, model.event_id == Event.id)
             .filter(model.user_id.in_(db.query(member_user_ids.c.user_id)))
             .order_by(Event.name)
@@ -571,14 +632,14 @@ def apply_member_search(
         )
     if role_id is not None:
         held_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == role_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .filter(TournamentTrackAssignment.role_id == role_id)
         )
         query = query.filter(TournamentMembership.id.in_(held_role))
     if exclude_role_id is not None:
         held_by_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == exclude_role_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .filter(TournamentTrackAssignment.role_id == exclude_role_id)
         )
         query = query.filter(TournamentMembership.id.notin_(held_by_role))
     if max_rank is not None:
@@ -586,9 +647,9 @@ def apply_member_search(
         # with roles are kept only if their highest-authority (lowest rank
         # number) role is strictly less authoritative than max_rank.
         outranks_or_ties = (
-            db.query(TournamentMembershipRole.membership_id)
-            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
-            .group_by(TournamentMembershipRole.membership_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .join(TournamentRole, TournamentRole.id == TournamentTrackAssignment.role_id)
+            .group_by(TournamentTrackAssignment.membership_id)
             .having(func.min(TournamentRole.rank) <= max_rank)
         )
         query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))

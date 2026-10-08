@@ -12,8 +12,8 @@ from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT, require_catalog_read, require_permission,
 )
 from app.core.tournament.tracks import (
-    live_primary_track_count, track_blocking_references, track_member_data_count,
-    track_shift_count,
+    live_primary_track_count, sync_sole_track_name, track_blocking_references,
+    track_member_data_count, track_shift_count,
 )
 from app.db.session import get_db
 from app.models.models import TournamentRole, TournamentTrack, User
@@ -50,7 +50,7 @@ def _validate_state(track: TournamentTrack) -> None:
     try:
         require_primary_fields(track)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def create_track(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     return track
 
 
@@ -163,6 +163,9 @@ def update_track(
     for field, value in updates.items():
         setattr(track, field, value)
     _validate_state(track)
+    # A simple tournament's only track takes the tournament's name, so a
+    # rename of it here is put back rather than refused.
+    sync_sole_track_name(db, tournament)
 
     try:
         db.commit()
@@ -172,7 +175,7 @@ def update_track(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
     return track
 
 
@@ -217,6 +220,8 @@ def delete_track(
                 target_type="track", target_id=track.id,
                 extra_data={"name": track.name, "blocked_by": blockers},
             )
+        # Down to one live track: it now carries the tournament's name.
+        sync_sole_track_name(db, tournament)
         db.commit()
         return TournamentTrackDeleteResult(
             purged=False, blocked_by=blockers, member_rows_deleted=member_rows,
@@ -228,6 +233,8 @@ def delete_track(
         extra_data={"name": track.name, "blocked_by": [], "purged_immediately": True},
     )
     db.delete(track)
+    db.flush()
+    sync_sole_track_name(db, tournament)
     db.commit()
     return TournamentTrackDeleteResult(purged=True, blocked_by=[], member_rows_deleted=member_rows)
 

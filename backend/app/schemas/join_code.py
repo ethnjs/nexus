@@ -16,7 +16,7 @@ class JoinCodeResponse(BaseModel):
     use_count: int = 0
     # The creator's membership row in this tournament — falls back to the
     # bare user when they have none (e.g. a site admin acting without ever
-    # joining). created_by is always set; the membership isn't guaranteed.
+    # joining). A deleted creator comes back with user_id null.
     creator: PersonRefResponse
 
     model_config = {"from_attributes": True}

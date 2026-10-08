@@ -9,7 +9,8 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,7 +25,7 @@ import {
 import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
-import { IconSearch, IconEvents, IconTrash, IconPlus, IconFilter, IconX, IconPresets } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconTrash, IconPlus, IconPresets } from "@/components/ui/Icons";
 import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
 
@@ -127,28 +128,26 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        <Input
-          placeholder="Search events"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          icon={<IconSearch size={16} />}
-          size="md"
-          font="sans"
-          variant="secondary"
-          style={{ width: "320px" }}
+        {/* Grows into the room the toolbar leaves and is the first thing to
+            give it back — narrows before anything else has to wrap. */}
+        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+          <Input
+            placeholder="Search events"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            icon={<IconSearch size={16} />}
+            size="md"
+            font="sans"
+            variant="secondary"
+            fullWidth
+          />
+        </div>
+        <FilterButton
+          active={isFilterActive(filters)}
+          onOpen={() => setShowFilters(true)}
+          onClear={() => setFilters(emptyFilterState(EVENT_FILTER_KEYS))}
         />
-        <Button type="button" variant="secondary" size="md" onClick={() => setShowFilters(true)}>
-          <IconFilter size={16} /> Filter
-        </Button>
-        {isFilterActive(filters) && (
-          <Button
-            type="button" variant="secondary" size="md"
-            onClick={() => setFilters(emptyFilterState(EVENT_FILTER_KEYS))}
-          >
-            <IconX size={16} /> Clear filters
-          </Button>
-        )}
         {/* Pushed right so the filtering controls stay grouped on the left and
             the two "change the catalog" actions sit together. */}
         <span style={{ marginLeft: "auto", display: "flex", gap: "10px" }}>
@@ -173,7 +172,7 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div className={table.table} style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "620px" }}>
             <div className={table.header}>
               <span>Event — {visible.length}{isFiltered ? ` of ${events.length}` : ""}</span>
@@ -332,7 +331,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
       options: categories.map((c) => ({ value: c.name, label: c.name })),
     },
     {
-      key: "division", title: "Division", control: "buttons",
+      key: "division", title: "Division", control: "divisions",
       options: TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: `Division ${d}` })),
     },
   ];
@@ -391,28 +390,26 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        <Input
-          placeholder="Search this season"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          icon={<IconSearch size={16} />}
-          size="md"
-          font="sans"
-          variant="secondary"
-          style={{ width: "320px" }}
+        {/* Grows into the room the toolbar leaves and is the first thing to
+            give it back — narrows before anything else has to wrap. */}
+        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+          <Input
+            placeholder="Search this season"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            icon={<IconSearch size={16} />}
+            size="md"
+            font="sans"
+            variant="secondary"
+            fullWidth
+          />
+        </div>
+        <FilterButton
+          active={isFilterActive(filters)}
+          onOpen={() => setShowFilters(true)}
+          onClear={() => setFilters(emptyFilterState(SEASON_FILTER_KEYS))}
         />
-        <Button type="button" variant="secondary" size="md" onClick={() => setShowFilters(true)}>
-          <IconFilter size={16} /> Filter
-        </Button>
-        {isFilterActive(filters) && (
-          <Button
-            type="button" variant="secondary" size="md"
-            onClick={() => setFilters(emptyFilterState(SEASON_FILTER_KEYS))}
-          >
-            <IconX size={16} /> Clear filters
-          </Button>
-        )}
         <span style={LABEL}>{activeCount} active</span>
         <Button variant="primary" size="md" onClick={() => setShowAdd(true)} style={{ marginLeft: "auto" }}>
           <IconPlus />
@@ -447,7 +444,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div className={table.table} style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "760px" }}>
             <div className={table.header}>
               <span>Event — {rows.length}</span>
@@ -481,7 +478,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
                 {/* All three divisions always offered, so a division can be
                     added to an event already in the season without going back
                     through the add modal. */}
-                <ButtonGroup
+                <DivisionButtonGroup
                   options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
                   value={activeDivisions(event)}
                   onChange={(v) => {

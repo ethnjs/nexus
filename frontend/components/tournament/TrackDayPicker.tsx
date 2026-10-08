@@ -15,6 +15,7 @@ interface TrackDayPickerProps {
   placeholder?: string;
   /** Extra caller-driven lock (e.g. a read-only panel), on top of the single-day lock this applies itself. */
   locked?: boolean;
+  required?: boolean;
   size?: "sm" | "md";
   fullWidth?: boolean;
   error?: string;
@@ -33,7 +34,7 @@ interface TrackDayPickerProps {
  * day the shift lands on.
  */
 export function TrackDayPicker({
-  label, value, onChange, track, placeholder = "Select a day", locked, size = "md", fullWidth, error,
+  label, value, onChange, track, placeholder = "Select a day", locked, required, size = "md", fullWidth, error,
 }: TrackDayPickerProps) {
   const days = useMemo(
     () => (track?.start_date && track.end_date ? enumerateDays(track.start_date, track.end_date) : []),
@@ -43,6 +44,7 @@ export function TrackDayPicker({
   return (
     <Dropdown
       label={label}
+      required={required}
       value={value}
       onChange={onChange}
       options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}

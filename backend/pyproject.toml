@@ -1,0 +1,30 @@
+[project]
+name = "nexus-backend"
+# Placeholder. The release version lives in VERSION, written by semantic-release.
+# This project is never built or installed as a package.
+version = "0.0.0"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "apscheduler>=3.11.3,<4",
+    "boto3>=1.43.109",
+    "fastapi>=0.142.2",
+    "google-api-python-client>=2.201.0",
+    "google-auth>=2.60.0",
+    "nanoid>=2.0.0",
+    "psycopg[binary]>=3.3.6",
+    "pwdlib[argon2,bcrypt]>=0.3.1",
+    "pydantic-settings>=2.15.0",
+    "pydantic[email]>=2.13.5",
+    "scalar-fastapi>=1.9.1",
+    "sqlalchemy>=2.1.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+]

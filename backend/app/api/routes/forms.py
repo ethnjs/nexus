@@ -60,6 +60,7 @@ from app.core.tournament.form_prerequisites import member_meets_form_prerequisit
 from app.core.tournament.memberships import get_membership_by_user, is_declined
 from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
 from app.core.tournament.memberships import resolve_person_refs
+from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -84,7 +85,9 @@ from app.schemas.form import (
     FormListRead,
     MemberFormRead,
     FormRead,
+    FormRespondentRead,
     FormResponseCreate,
+    FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
     TournamentFormPrerequisitesUpdate,
@@ -111,7 +114,7 @@ def create_tournament_form(
 ):
     if payload.owner_type != "tournament" or payload.tournament_id != tournament_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="owner_type must be 'tournament' and tournament_id must match the path",
         )
     require_not_archived(get_tournament(tournament_id, db))
@@ -157,7 +160,7 @@ def create_chapter_form(
 
     if payload.owner_type != "chapter" or payload.chapter_id != chapter_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="owner_type must be 'chapter' and chapter_id must match the path",
         )
 
@@ -253,6 +256,7 @@ def list_my_tournament_forms(
                 is_onboarding=tournament_form.is_onboarding,
                 completed=completed,
                 eligible=eligible,
+                allow_response_edits=form.allow_response_edits,
             ))
     return result
 
@@ -312,8 +316,8 @@ def list_chapter_forms(
 
 
 def _resolve_chapter_creators(
-    db: Session, chapter_id: int, user_ids: set[int],
-) -> dict[int, PersonRefResponse]:
+    db: Session, chapter_id: int, user_ids: set[int | None],
+) -> dict[int | None, PersonRefResponse]:
     """The chapter-side twin of resolve_person_refs — same shape out, so a
     form's creator reads identically whoever owns the form.
 
@@ -344,6 +348,10 @@ def _resolve_chapter_creators(
             u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
             for u in users
         })
+    # A null credit FK — the account was deleted. Keyed on None so callers
+    # can index by the raw column value without special-casing it.
+    if None in user_ids:
+        resolved[None] = PersonRefResponse(user_id=None)
     return resolved
 
 
@@ -358,6 +366,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
         tournament_id=form.tournament_id,
         chapter_id=form.chapter_id,
         creator=creator,
+        allow_response_edits=form.allow_response_edits,
         created_at=form.created_at,
         updated_at=form.updated_at,
         response_count=form.response_count,
@@ -428,7 +437,7 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
         missing = sorted(set(ids) - found)
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"{label} do not belong to this tournament: {missing}",
             )
 
@@ -445,16 +454,20 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 # (availability/event_preference option `value` normally becomes
 # [{id, label, start, end}, ...] instead of the plain ids it's actually
 # stored/submitted as) — the builder needs exactly the round-trippable
-# config it's about to PUT back, not a rendering of it. Same view-access
-# gate either way; there's nothing sensitive in the raw ids a member with
-# view access couldn't already see resolved.
+# config it's about to PUT back, not a rendering of it. raw also keeps
+# archived options. It's the builder's shape, so it takes manage access on
+# top of view access — a member gets 403 rather than the builder's data.
 # ---------------------------------------------------------------------------
 @router.get("/forms/{form_id}/", response_model=FormRead)
 def get_form_for_rendering(
     raw: bool = False,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_view_access),
+    current_user: User = Depends(get_current_user),
 ):
+    if raw:
+        require_form_manage_access(form.id, db, current_user)
+
     active_fields = (
         db.query(FormField)
         .filter(FormField.form_id == form.id, FormField.is_archived == False)
@@ -564,7 +577,7 @@ def list_archived_fields(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/ — name/description/status.
+# PATCH /forms/{form_id}/ — name/description/status/allow_response_edits.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/", response_model=FormRead)
 def update_form(
@@ -583,7 +596,7 @@ def update_form(
         try:
             validate_form_for_publish(db, form)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
     if payload.name is not None:
         form.name = payload.name
@@ -591,6 +604,8 @@ def update_form(
         form.title = payload.title
     if payload.description is not None:
         form.description = payload.description
+    if payload.allow_response_edits is not None:
+        form.allow_response_edits = payload.allow_response_edits
     status_changed = payload.status is not None and payload.status != form.status
     if payload.status is not None:
         form.status = payload.status
@@ -695,7 +710,7 @@ def bulk_update_fields(
     new_keys = [slugify(e.field_key or "") for e in new_entries]
     if len(new_keys) != len(set(new_keys)):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="duplicate field_key among the fields being created in this request",
         )
 
@@ -737,7 +752,7 @@ def bulk_update_fields(
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
             validate_track_status_options(db, form.tournament_id, field_key, question_type, normalized)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
         return normalized
 
     # (field, reasons, removed_option_ids) — resolved into rows after the
@@ -846,7 +861,7 @@ def bulk_update_fields(
     errors = collect_active_field_errors(db, form)
     if errors:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors))
 
     for field, reasons, removed_option_ids in pending_flags:
         flag_pending_updates(db, field, reasons, removed_option_ids)
@@ -925,6 +940,28 @@ def _stored_answer_option_ids(db: Session, response: FormResponse, active_fields
             }
         else:
             result[field.id] = sorted(selected_option_ids(field, value))
+    return result
+
+
+def _unwrap_snapshot(item):
+    return item.get("option_id") if isinstance(item, dict) and "option_id" in item else item
+
+
+def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
+    """The response's stored answers in the shape a client submits them —
+    bare option_ids where storage holds {option_id, value, label} snapshots —
+    so they can be merged with a PATCH payload and replayed through branching
+    validation, which matches answers against option_ids."""
+    result = {}
+    for answer in db.query(FormAnswer).filter(FormAnswer.response_id == response.id):
+        value = answer.value
+        if isinstance(value, list):
+            value = [_unwrap_snapshot(item) for item in value]
+        elif isinstance(value, dict) and "option_id" not in value:
+            value = {rank: _unwrap_snapshot(item) for rank, item in value.items()}  # ranked_choice
+        else:
+            value = _unwrap_snapshot(value)
+        result[answer.field_id] = value
     return result
 
 
@@ -1014,14 +1051,18 @@ def submit_form_response(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/responses/me/ — edit a submitted response, limited to
-# the questions carrying a pending update. A respondent can't freely revise an
-# old response: replaying answers that didn't change can overwrite state a
-# newer form already set (see the track status ordering note in
-# form-edit-lifecycle.md). The gate is enforced here, not in the UI.
+# PATCH /forms/{form_id}/responses/me/ — edit a submitted response. By default
+# limited to the questions carrying a pending update: replaying answers that
+# didn't change can overwrite state a newer form already set (see the track
+# status ordering note in form-edit-lifecycle.md). A form with
+# allow_response_edits opens every live question instead — the TD has opted
+# into members revising freely, so the client must send only what changed.
+# The gate is enforced here, not in the UI.
 #
-# Only the patched fields are replaced, validated, written through, and
-# cleared; the rest of the response is untouched.
+# Only the patched fields are replaced, written through, and cleared; the
+# rest of the response is untouched. With edits open, required/branching
+# validation runs over the merged response, since changing a branching answer
+# can make a required question reachable that was never answered.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/responses/me/", response_model=FormResponseRead)
 def patch_form_response(
@@ -1054,14 +1095,16 @@ def patch_form_response(
             FormResponsePendingUpdate.response_id == response.id
         )
     }
-    ungated = patched_ids - flagged_ids
+    active_fields = _active_fields(db, form)
+    editable_ids = {f.id for f in active_fields} if form.allow_response_edits else flagged_ids
+    ungated = patched_ids - editable_ids
     if ungated:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"These questions aren't open for editing: {sorted(ungated)}",
         )
 
-    fields_by_id = {f.id: f for f in _active_fields(db, form) if f.id in patched_ids}
+    fields_by_id = {f.id: f for f in active_fields if f.id in patched_ids}
     # A flag should only ever point at a live field; anything missing here
     # means one was archived without its flags being cleaned up.
     missing = patched_ids - set(fields_by_id)
@@ -1072,9 +1115,14 @@ def patch_form_response(
         )
 
     answers_by_field = {answer_in.field_id: answer_in.value for answer_in in payload.answers}
-    # Only over what's being patched — the rest of the response already
-    # satisfied required validation when it was submitted.
-    missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
+    if form.allow_response_edits:
+        merged = {**_stored_answers_as_submitted(db, response), **answers_by_field}
+        missing_required = missing_required_field_keys(active_fields, merged)
+    else:
+        # Only over what's being patched — the rest of the response already
+        # satisfied required validation when it was submitted, and flagged
+        # edits can't move a branching answer the TD didn't flag.
+        missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
     if missing_required:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1412,20 +1460,102 @@ def _clear_event_preference_write_through(db: Session, form: Form, field: FormFi
 
 
 # ---------------------------------------------------------------------------
-# GET /forms/{form_id}/responses/ — all responses to a form. Manage access
-# only — this is roster data, not something every member should see.
+# GET /forms/{form_id}/responses/ — all responses to a form, with who gave
+# each. Manage access only — this is roster data, not something every member
+# should see. Search is client-side; a form's responses are a bounded list.
 # ---------------------------------------------------------------------------
-@router.get("/forms/{form_id}/responses/", response_model=list[FormResponseRead])
+@router.get("/forms/{form_id}/responses/", response_model=list[FormResponseManagerRead])
 def list_form_responses(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    return (
+    responses = (
         db.query(FormResponse)
+        .options(
+            selectinload(FormResponse.user),
+            selectinload(FormResponse.answers),
+            selectinload(FormResponse.pending_updates),
+        )
         .filter(FormResponse.form_id == form.id)
-        .order_by(FormResponse.id)
+        .order_by(FormResponse.submitted_at)
         .all()
     )
+
+    membership_ids: dict[int, int] = {}
+    if form.owner_type == "tournament":
+        membership_ids = dict(
+            db.query(TournamentMembership.user_id, TournamentMembership.id).filter(
+                TournamentMembership.tournament_id == form.tournament_id,
+                TournamentMembership.user_id.in_([r.user_id for r in responses]),
+            )
+        )
+
+    return [
+        FormResponseManagerRead(
+            **FormResponseRead.model_validate(response).model_dump(),
+            respondent=FormRespondentRead(
+                user_id=response.user_id,
+                membership_id=membership_ids.get(response.user_id),
+                first_name=response.user.first_name,
+                last_name=response.user.last_name,
+                email=response.user.email,
+            ),
+        )
+        for response in responses
+    ]
+
+
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/responses/{response_id}/ — a manager removes one
+# member's response, answers and pending-update flags with it.
+#
+# Write-through data (availability, lunch, event preferences, track statuses)
+# is deliberately kept: it's the membership's current truth and may have been
+# edited since. Resubmitting re-fires write-through as usual.
+#
+# Blocked on an archived form or tournament — both are read-only history.
+# ---------------------------------------------------------------------------
+@router.delete("/forms/{form_id}/responses/{response_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_form_response(
+    response_id: str,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+    current_user: User = Depends(get_current_user),
+):
+    require_form_not_archived(form)
+    if form.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This form is archived — unarchive it before deleting responses",
+        )
+
+    response = (
+        db.query(FormResponse)
+        .filter(FormResponse.id == response_id, FormResponse.form_id == form.id)
+        .first()
+    )
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    if form.owner_type == "tournament":
+        membership = get_membership_by_user(db, form.tournament_id, response.user_id)
+        respondent = response.user
+        # Stored by value, like ownership_transferred: the log has to read
+        # right even after the member leaves or is deleted.
+        respondent_name = f"{respondent.first_name or ''} {respondent.last_name or ''}".strip() or respondent.email
+        log_action(
+            db, form.tournament_id, current_user.id, FORM_RESPONSE_DELETED,
+            target_type="membership", target_id=membership.id if membership else None,
+            extra_data={"form_id": form.id, "form_name": form.name, "respondent_name": respondent_name},
+        )
+
+    db.delete(response)
+
+    # An onboarding step losing its response un-onboards that member.
+    if form.tournament_form is not None and form.tournament_form.is_onboarding:
+        recompute_onboarding(db, form.tournament_id)
+
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

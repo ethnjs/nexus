@@ -1,27 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
+  buildingsApi, rolesApi, assignmentsApi, TournamentBuilding, Role, Assignment,
   displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
-  TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
+  TournamentEvent, TournamentEventInput, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
+import { rowActivation } from "@/lib/rowActivation";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import { handleGridArrows } from "@/lib/gridNav";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+import { assignmentsByEvent } from "@/lib/assignments/flags";
+import {
+  EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
+} from "@/lib/eventSort";
+import {
+  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from "@/lib/sorting";
+import { SortableHeader } from "@/components/ui/SortableHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { EditableText } from "@/components/ui/EditableText";
+import { CellGuard, ConfirmRequest, EventEditContext, LockedCell } from "@/components/tournament/events/EditableCells";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { DisplayButton } from "@/components/ui/DisplayButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { Card } from "@/components/ui/Card";
 import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
 import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
+import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
+import { IconSearch, IconEvents, IconWarning, IconPlus, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -30,25 +50,29 @@ import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/Ev
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import {
   EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
-  EVENT_FILTER_UNSET, eventCategoryKey, eventCategoryOptions,
-  eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
+  EVENT_FILTER_UNSET, eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
+  eventPassesFilters, eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
 } from "@/components/tournament/events/EventsFilterModal";
-import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
+import { emptyFilterState } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
-  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns,
+  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns, trackFamilyOf,
 } from "@/components/tournament/events/eventColumns";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
-import { eventFirstDay, eventName } from "@/lib/eventDisplay";
+import { eventName } from "@/lib/eventDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
 const SELECT_COLUMN_WIDTH = "28px";
+
+// Stable empty list, so an event with no assignments doesn't get a fresh array per cell.
+const NO_ASSIGNMENTS: readonly Assignment[] = [];
 
 // Name and Actions bracket the configured columns: the row's identity and
 // its controls, which is why neither is a column a TD can turn off.
@@ -61,26 +85,16 @@ function eventGridColumns(selectMode: boolean, columns: EventColumn[]) {
   ].join(" ");
 }
 
-type SortField = "name" | "division" | "day";
-type SortDir = "asc" | "desc";
+// Start time first, which is what the table sorted by before it took a chain.
+const DEFAULT_TABLE_SORT: SortRule<EventSortField>[] = [{ field: "start", direction: "asc" }];
 
-// Sentinel for the null case of a nullable field (division/category) so it
-// can sit in the same filter Set as real values.
+// Every field counts every track — the table has no tabs to narrow by.
+const ALL_TRACKS = () => true;
 
-const SORT_FIELD_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "division", label: "Division" },
-  { value: "day", label: "Day" },
-];
-
-function sortValue(e: TournamentEvent, field: SortField): string | number {
-  switch (field) {
-    case "name": return eventName(e).toLowerCase();
-    case "division": return e.division ?? "";
-    // An event has no time of its own — its schedule is its shifts, so
-    // the first day it runs is what there is to sort by.
-    case "day": return eventFirstDay(e);
-  }
+/** The single `sort` this table saved before it took a chain, as one. */
+function legacySortRules(sort: { field: string; direction?: string } | null | undefined): SortRule<EventSortField>[] | null {
+  const field = sort?.field === "day" ? "start" : sort?.field === "name" || sort?.field === "division" ? sort.field : null;
+  return field ? [{ field, direction: sort?.direction === "desc" ? "desc" : "asc" }] : null;
 }
 
 export default function EventsPage() {
@@ -120,12 +134,33 @@ export default function EventsPage() {
   // so fetching them there re-requested all three on every arrow press.
   const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  // A table edit that asked first (see EventEditContext.confirm).
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
+  // Below this the labelled toolbar no longer fits on one line (search at its
+  // minimum plus every button), so the buttons drop to icons instead of the
+  // row wrapping. Select keeps its word — it has no icon that says "select".
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(900);
   // Every live track, competition day or not: an event can belong to an
   // undated one (Test Writing).
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Null until a staffing column asks for them (see the fetch below).
+  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  // The panel's location and staffing editors pick from these: a building is
+  // a catalog row now, and every staffing line names a role.
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   // Bumped when the tab regains focus, so collaborators' changes show up.
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+  // Replace-or-append: tagging an existing building onto a track comes back
+  // as that same row with a longer track_ids.
+  const handleBuildingSaved = useCallback((building: TournamentBuilding) => {
+    setBuildings((cur) => (
+      cur.some((b) => b.id === building.id)
+        ? cur.map((b) => (b.id === building.id ? building : b))
+        : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
+    ));
+  }, []);
   const handleShiftCreated = useCallback(
     (shift: TournamentShift) => setAllShifts((prev) => [...(prev ?? []), shift]),
     [],
@@ -147,8 +182,8 @@ export default function EventsPage() {
   // null = nothing saved, so use DEFAULT_EVENT_COLUMNS. An empty array is a
   // real answer ("show no data columns") and must not fall back.
   const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
-  const [sortField, setSortField] = useState<SortField>("day");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortRules, setSortRules] = useState<SortRule<EventSortField>[]>(DEFAULT_TABLE_SORT);
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const initialEventId = useInitialPanelId("event");
 
@@ -177,6 +212,9 @@ export default function EventsPage() {
     setPanelDirty(false);
   }, [setPanelDirty]);
 
+  // Stable, so the memoised rows can share it.
+  const confirmDelete = useCallback((event: TournamentEvent) => setDeleteTargets([event]), []);
+
   // Blocked while dirty and clears whatever else was open — otherwise this
   // would silently replace a focused event or an in-progress selection with a
   // blank "new event" draft with no warning.
@@ -185,36 +223,6 @@ export default function EventsPage() {
       setCreatingNew(true);
       setCreateKey((k) => k + 1);
     });
-  }
-
-  // Exact copies, tracks and shifts included. A custom event gets "(copy)" on
-  // its name; a catalog event keeps its link, so the backend refuses a copy in
-  // the same division (one per division) and the toast says so.
-  async function duplicateSelected() {
-    setDuplicating(true);
-    const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
-      tournament_id: tournamentId,
-      event_id: e.event_id,
-      name: e.event_id ? null : `${e.name ?? "Event"} (copy)`,
-      division: e.division,
-      event_type: e.event_type,
-      building: e.building,
-      room: e.room,
-      floor: e.floor,
-      volunteers_needed: e.volunteers_needed,
-      track_ids: e.tracks.map((t) => t.id),
-      shift_ids: e.shifts.map((s) => s.id),
-    })));
-    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
-    if (created.length > 0) setEvents((prev) => [...(prev ?? []), ...created]);
-    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
-    if (failure) {
-      const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong.";
-      show(`Duplicated ${created.length}, ${outcomes.length - created.length} failed: ${reason}`, "error");
-    } else {
-      show(`Duplicated ${created.length} event${created.length === 1 ? "" : "s"}.`);
-    }
-    setDuplicating(false);
   }
 
   // Gated on the permission, and re-run when it lands: the table used to be a
@@ -249,6 +257,12 @@ export default function EventsPage() {
     tournamentTracksApi.list(tournamentId, { public: true })
       .then((next) => { if (current) setTracks(next); })
       .catch(() => { if (current) setTracks([]); });
+    buildingsApi.list(tournamentId)
+      .then((next) => { if (current) setBuildings(next); })
+      .catch(() => { if (current) setBuildings([]); });
+    rolesApi.list(tournamentId)
+      .then((next) => { if (current) setRoles(next); })
+      .catch(() => { if (current) setRoles([]); });
     return () => { current = false; };
   }, [tournamentId, canManageEvents, refreshKey]);
 
@@ -278,50 +292,107 @@ export default function EventsPage() {
         setViewReady((already) => {
           if (already) return true;
           setFilters(eventsFilterFromStored(surface?.filters));
-          if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
-            setSortField(surface.sort.field as SortField);
-            setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
-          }
+          setSortRules(surface?.sorts
+            ? sortRulesFromStored(surface.sorts, isEventSortField)
+            : legacySortRules(surface?.sort) ?? DEFAULT_TABLE_SORT);
           return true;
         });
       });
     return () => { current = false; };
   }, [tournamentId, canManageEvents, displayConfigVersion]);
 
-  // Write-back for the view state this tab owns (filters, sort). Re-reads
-  // before writing because a PUT replaces every surface at once and the
-  // Display modal writes columns into this same surface — see
-  // useDisplayConfigDraft, which merges from the other side for the same
-  // reason. Fire-and-forget: failing to remember a sort order is not worth
-  // interrupting the table over.
-  const persistView = useCallback((patch: Partial<DisplayConfigSurface>) => {
-    displayConfigApi.get(tournamentId)
-      .then((fresh) => displayConfigApi.set(tournamentId, {
-        ...fresh,
-        // A surface that has never been saved still needs its required
-        // `hidden` key, hence the spread order.
-        [EVENTS_TABLE]: { ...{ hidden: [] }, ...fresh[EVENTS_TABLE], ...patch },
-      }))
-      .catch(() => {});
-  }, [tournamentId]);
+  // Write-back for the view state this tab owns (filters, sort, a reset of
+  // columns) — see persistSurfaceView for why it re-reads first.
+  const persistView = useCallback(
+    (patch: Partial<DisplayConfigSurface>) => persistSurfaceView(tournamentId, EVENTS_TABLE, patch),
+    [tournamentId],
+  );
 
   const applyFilters = useCallback((next: EventsFilterState) => {
     setFilters(next);
     persistView({ filters: eventsFilterToStored(next) });
   }, [persistView]);
 
-  const applySort = useCallback((field: SortField, direction: SortDir) => {
-    setSortField(field);
-    setSortDir(direction);
-    persistView({ sort: { field, direction } });
+  // Clears the legacy `sort` as it writes the chain, so the two never disagree.
+  const applySort = useCallback((next: SortRule<EventSortField>[]) => {
+    setSortRules(next);
+    persistView({ sorts: sortRulesToStored(next), sort: null });
   }, [persistView]);
+
+  // Grouped once per fetch, not per cell — every staffing cell looks its
+  // event up here.
+  const byEvent = useMemo(() => assignmentsByEvent(assignments ?? []), [assignments]);
+
+  // Inline edits save one field at a time and swap the server's copy in. No
+  // optimistic write: each cell shows its own saving/error state, and a
+  // rejected change simply never lands.
+  const updateEvent = useCallback(async (event: TournamentEvent, patch: Partial<TournamentEventInput>) => {
+    const saved = await tournamentEventsApi.update(tournamentId, event.id, patch);
+    setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)));
+  }, [tournamentId]);
+
+  // Locked where the row is already being edited some other way: Select mode
+  // (a click there toggles the box), or the panel open on it — that one is
+  // the row's to add (see EventRow), so focusing a row rebuilds no columns.
+  const editContext = useMemo<EventEditContext | undefined>(() => (canManageEvents ? {
+    lockReason: () => {
+      if (archivedReason) return archivedReason;
+      if (selectMode) return "Leave Select mode to edit in the table";
+      return undefined;
+    },
+    update: updateEvent,
+    divisions: selectedTournament?.division ?? [],
+    shifts: allShifts ?? [],
+    roles,
+    buildings,
+    ensureBuilding: async (name, trackId) => {
+      const building = await ensureBuildingOnTrack(tournamentId, name, trackId, buildings);
+      handleBuildingSaved(building);
+      return building;
+    },
+    confirm: setPendingConfirm,
+  } : undefined), [
+    canManageEvents, archivedReason, selectMode, updateEvent, selectedTournament, allShifts,
+    roles, buildings, tournamentId, handleBuildingSaved,
+  ]);
 
   const tableColumns = useMemo(
     // A saved list of [] means "no columns"; only a missing one falls back to
     // the defaults, which is why null and [] are kept apart.
-    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS),
-    [columnKeys],
+    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS, {
+      // Live tracks only; each family narrows further (see familyTracks).
+      tracks: tracks.filter((t) => !t.is_archived),
+      assignmentsFor: (eventId) => byEvent.get(eventId) ?? NO_ASSIGNMENTS,
+      edit: editContext,
+    }),
+    [columnKeys, tracks, byEvent, editContext],
   );
+  // Off-default is what the Display button reports, compared after expansion
+  // so a saved copy of the defaults doesn't read as a change.
+  const defaultColumnKeys = useMemo(
+    () => resolveEventColumns(DEFAULT_EVENT_COLUMNS, { tracks, assignmentsFor: () => NO_ASSIGNMENTS }).map((c) => c.key).join(),
+    [tracks],
+  );
+  const displayActive = tableColumns.map((c) => c.key).join() !== defaultColumnKeys;
+  const resetDisplay = useCallback(() => {
+    setColumnKeys(null);
+    persistView({ columns: null });
+  }, [persistView]);
+
+  const showsStaffing = tableColumns.some((c) => trackFamilyOf(c.key) === "staffing")
+    || sortRules.some((rule) => rule.field === "staffing")
+    || filters.staffing.size > 0;
+
+  // Only fetched while something staffing-shaped is on (a column, the sort,
+  // the filter) — a whole tournament's assignments isn't free.
+  useEffect(() => {
+    if (!canManageEvents || !showsStaffing) return;
+    let current = true;
+    assignmentsApi.list(tournamentId)
+      .then((next) => { if (current) setAssignments(next); })
+      .catch(() => { if (current) setAssignments([]); });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents, showsStaffing, refreshKey]);
 
   const divisionOptions = useMemo(() => {
     const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));
@@ -329,25 +400,27 @@ export default function EventsPage() {
   }, [selectedTournament, events]);
 
   const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events]);
+  const trackOptions = useMemo(() => eventTrackOptions(events ?? []), [events]);
+  const buildingOptions = useMemo(() => eventBuildingOptions(events ?? []), [events]);
+  const shiftOptions = useMemo(() => eventShiftOptions(events ?? []), [events]);
 
   const visibleEvents = useMemo(() => {
     if (!events) return [];
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (!filterAllows(filters.division, e.division ?? EVENT_FILTER_UNSET)) return false;
-      if (!filterAllows(filters.type, e.event_type)) return false;
-      if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
-      return true;
+      return eventPassesFilters(e, filters, {
+        assignmentsFor: (id) => byEvent.get(id) ?? NO_ASSIGNMENTS,
+        showsTrack: ALL_TRACKS,
+      });
     });
-    const sorted = [...filtered].sort((a, b) => {
-      const av = sortValue(a, sortField);
-      const bv = sortValue(b, sortField);
-      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return sorted;
-  }, [events, search, filters, sortField, sortDir]);
+    return sortRows(
+      filtered,
+      sortRules,
+      (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? NO_ASSIGNMENTS, ALL_TRACKS),
+      eventSortTiebreak,
+    );
+  }, [events, search, filters, sortRules, byEvent]);
 
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
@@ -360,6 +433,36 @@ export default function EventsPage() {
     () => (events ?? []).filter((e) => selectedIds.has(e.id)),
     [events, selectedIds]
   );
+
+  // Exact copies, tracks and shifts included. A custom event gets "(copy)" on
+  // its name; a catalog event keeps its link, so the backend refuses a copy in
+  // the same division (one per division) and the toast says so.
+  async function duplicateSelected() {
+    setDuplicating(true);
+    const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
+      tournament_id: tournamentId,
+      event_id: e.event_id,
+      // A linked copy keeps any rename override; a custom one is marked as the copy.
+      name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
+      division: e.division,
+      event_type: e.event_type,
+      // Carries the copy's location and staffing needs across with it —
+      // track_details is whole-set, so this is also what keeps the copy on
+      // the same tracks.
+      track_details: e.track_details.map(toTrackDetailInput),
+      shift_ids: e.shifts.map((s) => s.id),
+    })));
+    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
+    if (created.length > 0) setEvents((prev) => [...(prev ?? []), ...created]);
+    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+    if (failure) {
+      const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong.";
+      show(`Duplicated ${created.length}, ${outcomes.length - created.length} failed: ${reason}`, "error");
+    } else {
+      show(`Duplicated ${created.length} event${created.length === 1 ? "" : "s"}.`);
+    }
+    setDuplicating(false);
+  }
 
   // Deduped across every event — the same pending track can hold dozens.
   const eventTracks = useMemo(() => {
@@ -379,7 +482,10 @@ export default function EventsPage() {
     // when the render below is the no-access card, and that page has no
     // panel to dock.
     if (!canManageEvents) return;
-    const catalog = { canonicalEvents, allShifts, tracks, onShiftCreated: handleShiftCreated };
+    const catalog = {
+      canonicalEvents, allShifts, tracks, buildings, roles,
+      onShiftCreated: handleShiftCreated, onBuildingSaved: handleBuildingSaved,
+    };
     if (creatingNew) {
       setPanel(
         <EventPanel
@@ -470,7 +576,7 @@ export default function EventsPage() {
   }, [
     canManageEvents,
     creatingNew, createKey, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
-    canonicalEvents, allShifts, tracks, handleShiftCreated,
+    canonicalEvents, allShifts, tracks, buildings, roles, handleShiftCreated, handleBuildingSaved,
     prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);
@@ -493,7 +599,7 @@ export default function EventsPage() {
   if (!canManageEvents) {
     return (
       <div>
-        <PageHeader heading="Events" />
+        <CollapsibleHeader heading="Events" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -508,7 +614,7 @@ export default function EventsPage() {
   if (events === null || !viewReady) {
     return (
       <div>
-        <PageHeader heading="Events" />
+        <CollapsibleHeader heading="Events" />
         <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
           <Spinner size="lg" />
         </div>
@@ -518,9 +624,26 @@ export default function EventsPage() {
 
   const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
 
+
+  // A header that sorts its column. The default chain isn't shown as a
+  // header state — it's the absence of a choice, and clicking replaces it.
+  const headerSortRules = sameSortRules(sortRules, DEFAULT_TABLE_SORT) ? [] : sortRules;
+  const sortableHeader = (field: EventSortField, label: string, align: "start" | "center") => {
+    const index = headerSortRules.findIndex((rule) => rule.field === field);
+    return (
+      <SortableHeader
+        label={label}
+        align={align}
+        rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+        showPosition={headerSortRules.length > 1}
+        onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_TABLE_SORT))}
+      />
+    );
+  };
+
   return (
     <div>
-      <PageHeader heading="Events" />
+      <CollapsibleHeader heading="Events" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -573,11 +696,16 @@ export default function EventsPage() {
         </Card>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap" }}>
-              <div style={{ width: "300px" }}>
+          <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+              {/* Grows into whatever the toolbar leaves over, and is the first
+                  thing to give that room back: a small basis with grow means
+                  the search narrows before anything else has to wrap, and
+                  the other controls stay their natural size. */}
+              <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
                 <Input
-                  label="Search"
+                  // No visible label — the placeholder and icon say it; aria-label keeps it named for screen readers.
+                  aria-label="Search events"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onClear={() => setSearch("")}
@@ -589,42 +717,24 @@ export default function EventsPage() {
                   fullWidth
                 />
               </div>
-              <Button
-                type="button" variant="secondary" size="md"
-                onClick={() => setShowFilterModal(true)}
-              >
-                <IconFilter size={16} /> Filter
-              </Button>
-              {isEventsFilterActive(filters) && (
-                <Button
-                  type="button" variant="ghost" size="md"
-                  onClick={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
-                >
-                  <IconX size={16} /> Clear filters
-                </Button>
-              )}
-              <Button
-                type="button" variant="secondary" size="md"
-                onClick={() => setShowColumnsModal(true)}
-              >
-                <IconEye size={16} /> Display
-              </Button>
-              <Dropdown
-                label="Sort by"
-                value={sortField}
-                onChange={(v) => applySort(v as SortField, sortDir)}
-                options={SORT_FIELD_OPTIONS}
-                size="md"
-                variant="secondary"
-                width={150}
+              <FilterButton
+                iconOnly={compactToolbar}
+                active={isEventsFilterActive(filters)}
+                onOpen={() => setShowFilterModal(true)}
+                onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
               />
-              <Button
-                type="button" variant="secondary" size="md" iconOnly
-                title={sortDir === "asc" ? "Ascending" : "Descending"}
-                onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
-              >
-                <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
-              </Button>
+              <DisplayButton
+                iconOnly={compactToolbar}
+                active={displayActive}
+                onOpen={() => setShowColumnsModal(true)}
+                onReset={resetDisplay}
+              />
+              <SortButton
+                iconOnly={compactToolbar}
+                active={!sameSortRules(sortRules, DEFAULT_TABLE_SORT)}
+                onOpen={() => setShowSortModal(true)}
+                onReset={() => applySort(DEFAULT_TABLE_SORT)}
+              />
               {canManageEvents && (
                 <Button
                   type="button" variant={selectMode ? "primary" : "secondary"} size="md"
@@ -639,23 +749,25 @@ export default function EventsPage() {
 
             {canManageEvents && (
               <Button
-                type="button" variant="primary" size="md"
+                type="button" variant="primary" size="md" iconOnly={compactToolbar}
                 onClick={handleAddEvent}
                 disabled={panelDirty || isArchived}
-                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
+                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : compactToolbar ? "Add event" : undefined)}
               >
-                <IconPlus size={14} /> Add event
+                <IconPlus size={14} />{!compactToolbar && " Add event"}
               </Button>
             )}
           </div>
 
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
             {/* One grid owns the tracks; header and rows are subgrids of it,
                 so toggling Select mode resolves the template once rather than
                 once per row (which is what this table did before). */}
             <div
               className={`${table.table} ${table.animatedTracks}`}
               style={{ gridTemplateColumns: eventGridColumns(selectMode, tableColumns) }}
+              // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
+              onKeyDown={handleGridArrows}
             >
             <div className={table.header}>
               <span
@@ -669,8 +781,16 @@ export default function EventsPage() {
                   onChange={(checked) => toggleSelectAll(visibleEvents.map((e) => e.id), checked)}
                 />
               </span>
-              <span>Events — {isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}</span>
-              {tableColumns.map((column) => (
+              {sortableHeader("name", `Events — ${isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}`, "start")}
+              {tableColumns.map((column) => column.sortField ? (
+                <span
+                  key={column.key}
+                  // Same alignment as the column's cells, so the header sits over them.
+                  style={{ display: "flex", minWidth: 0, justifyContent: column.align === "start" ? "flex-start" : "center" }}
+                >
+                  {sortableHeader(column.sortField, column.label, column.align === "start" ? "start" : "center")}
+                </span>
+              ) : (
                 <span
                   key={column.key}
                   style={{
@@ -682,7 +802,7 @@ export default function EventsPage() {
                   {column.label}
                 </span>
               ))}
-              <span style={{ textAlign: "center" }}>Actions</span>
+              <span />
             </div>
 
             {visibleEvents.length === 0 ? (
@@ -695,14 +815,14 @@ export default function EventsPage() {
                   columns={tableColumns}
                   canDelete={canManageEvents}
                   deleteLockedReason={archivedReason}
-                  onFocus={() => focusEvent(e.id)}
-                  onDelete={() => setDeleteTargets([e])}
+                  onFocus={focusEvent}
+                  onDelete={confirmDelete}
                   selectMode={selectMode}
                   selected={selectedIds.has(e.id)}
                   selectionLocked={panelDirty}
-                  onToggleSelect={() => toggleSelected(e.id)}
-                  focusActive={focusedEventId !== null}
+                  onToggleSelect={toggleSelected}
                   focused={focusedEventId === e.id}
+                  edit={editContext}
                 />
               ))
             )}
@@ -711,11 +831,26 @@ export default function EventsPage() {
         </>
       )}
 
+      {showSortModal && (
+        <SortModal
+          title="Sort events"
+          fields={EVENT_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_TABLE_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => applySort(next as SortRule<EventSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
+      )}
+
       {showFilterModal && (
         <EventsFilterModal
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
+          trackOptions={trackOptions}
+          buildingOptions={buildingOptions}
+          shiftOptions={shiftOptions}
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
@@ -765,6 +900,17 @@ export default function EventsPage() {
         }
       />
 
+      {pendingConfirm && (
+        <ConfirmModal
+          title={pendingConfirm.title}
+          description={pendingConfirm.description}
+          confirmLabel={pendingConfirm.confirmLabel}
+          variant="danger"
+          onConfirm={pendingConfirm.onConfirm}
+          onClose={() => setPendingConfirm(null)}
+        />
+      )}
+
       {deleteTargets && (
         <DeleteEventModal
           tournamentId={tournamentId}
@@ -783,8 +929,10 @@ export default function EventsPage() {
   );
 }
 
-function EventRow({
-  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+// Memoised so a page re-render that changes nothing here — a search keystroke,
+// a panel opening — doesn't rebuild every row's cells. Keep props identity-stable.
+const EventRow = memo(function EventRow({
+  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focused, edit,
 }: {
   event: TournamentEvent;
   /** The viewer's configured columns, between Name and Actions. */
@@ -792,63 +940,89 @@ function EventRow({
   canDelete: boolean;
   /** Shown and disabled rather than hidden — archiving locks, it doesn't hide. */
   deleteLockedReason?: string;
-  onFocus: () => void;
-  onDelete: () => void;
+  /** These three take the row's event (or its id), so one callback serves every row. */
+  onFocus: (eventId: number) => void;
+  onDelete: (event: TournamentEvent) => void;
   selectMode: boolean;
   selected: boolean;
   /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
   selectionLocked: boolean;
-  onToggleSelect: () => void;
-  /** A single-edit panel is open (for some row, not necessarily this one) — rows become click-to-switch instead of inert. */
-  focusActive: boolean;
+  onToggleSelect: (eventId: number) => void;
   /** This row is the one currently shown in the single-edit panel. */
   focused: boolean;
+  /** Given, the name edits in place (custom events only). */
+  edit?: EventEditContext;
 }) {
-  // Two different reasons a row might be clickable: toggling a checkbox in
-  // Select mode, or switching which row the single-edit panel shows. Never
-  // both at once — the two flows are mutually exclusive.
+  // A click toggles the box in Select mode and opens (or switches) the panel
+  // otherwise. Editable cells keep their own clicks (CellGuard), so only a
+  // click outside them reaches the row. Frozen while the panel is dirty.
   // This event is one of the references keeping a pending-delete track
   // alive — flagged here so the ones to repoint are findable in the table.
   const isPending = event.tracks.some((t) => t.is_archived);
-  const clickable = (selectMode || focusActive) && !selectionLocked;
-  const handleRowClick = selectMode ? onToggleSelect : onFocus;
+  const handleRowClick = selectionLocked
+    ? undefined
+    : selectMode ? () => onToggleSelect(event.id) : () => onFocus(event.id);
   const highlighted = selectMode ? selected : focused;
+  // The panel's draft and a cell save would overwrite each other.
+  const lockReason = edit?.lockReason(event) ?? (focused ? "Being edited in the panel" : undefined);
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
+
+  // Locked keeps the same EditableText, just inert, so the name doesn't shift
+  // when its row opens in the panel.
+  const nameText = edit && (
+    <EditableText
+      value={eventName(event)}
+      // On a catalog-linked event the name is an override: typing the
+      // catalog's own name back, or clearing it, drops the override.
+      onSave={(name) => edit.update(event, {
+        name: event.event && (!name || name === event.event.name) ? null : name,
+      })}
+      allowEmpty={!!event.event}
+      errorToast
+      locked={!!lockReason}
+      textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+      title={lockReason ?? (event.event ? "Click to rename for this tournament — clear to use the catalog name" : "Click to rename")}
+    />
+  );
+  const nameCell = !nameText
+    ? eventName(event)
+    : lockReason
+      ? <LockedCell align="start">{nameText}</LockedCell>
+      : <CellGuard align="start">{nameText}</CellGuard>;
 
   return (
     <div
       className={table.row}
+      data-nav-row
       data-active={highlighted ? "true" : undefined}
       data-pending={isPending ? "true" : undefined}
-      onClick={clickable ? handleRowClick : undefined}
-      title={(selectMode || focusActive) ? lockedTitle : undefined}
-      style={{ cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default" }}
+      onClick={handleRowClick}
+      {...rowActivation(handleRowClick)}
+      title={lockedTitle}
+      style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
     >
       <span
         className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
         style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+        <Checkbox checked={selected} locked={selectionLocked} onChange={() => onToggleSelect(event.id)} />
       </span>
-      <span style={{
+      <span data-nav-col="name" style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
-        {eventName(event)}
+        {nameCell}
       </span>
       {/* Each cell knows how to render itself (see eventColumns) — the row
           only places them, so adding a column is one entry there. */}
       {columns.map((column) => (
-        <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
+        <span key={column.key} data-nav-col={column.key} style={{ minWidth: 0 }}>{column.render(event, lockReason)}</span>
       ))}
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>
-          <IconEdit size={13} />
-        </Button>
+      <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canDelete && (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
+            type="button" variant="secondary" size="sm" iconOnly onClick={() => onDelete(event)}
             disabled={!!deleteLockedReason} title={deleteLockedReason ?? "Delete event"}
           >
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
@@ -857,4 +1031,4 @@ function EventRow({
       </div>
     </div>
   );
-}
+});

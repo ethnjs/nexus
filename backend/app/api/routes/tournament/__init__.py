@@ -10,6 +10,7 @@ from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIV
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived, tournament_counts
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership
+from app.core.tournament.tracks import sync_sole_track_name
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
@@ -156,6 +157,9 @@ def update_tournament(
 
     for field, value in update_data.items():
         setattr(tournament, field, value)
+    # A renamed simple tournament renames its one track with it.
+    if "name" in update_data or "short_name" in update_data:
+        sync_sole_track_name(db, tournament)
 
     try:
         db.commit()
@@ -274,9 +278,11 @@ def unarchive_tournament(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/transfer-ownership/ — owner only
+# POST /tournaments/{tournament_id}/transfer-ownership/ — owner or admin
 # The old owner keeps whatever TournamentRole assignments they already had —
 # no roles are auto-assigned or auto-removed as a side effect of transfer.
+# Admins can transfer too: it's the only way to re-own a tournament whose
+# owner deleted their account (owner_id is then null).
 # ---------------------------------------------------------------------------
 @router.post("/{tournament_id}/transfer-ownership/", response_model=TournamentRead)
 def transfer_ownership(
@@ -291,7 +297,7 @@ def transfer_ownership(
     if not has_any_membership(current_user, tournament_id, db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    if tournament.owner_id != current_user.id:
+    if current_user.role != "admin" and tournament.owner_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the current owner can transfer ownership",
@@ -314,10 +320,12 @@ def transfer_ownership(
             detail="new_owner_id must already hold a membership in this tournament",
         )
 
-    old_owner_id = tournament.owner_id
+    old_owner = tournament.owner
     tournament.owner_id = payload.new_owner_id
 
-    def _display_name(user: User) -> str:
+    def _display_name(user: User | None) -> str:
+        if user is None:
+            return "Deleted user"
         name = f"{user.first_name or ''} {user.last_name or ''}".strip()
         return name or user.email
 
@@ -325,7 +333,8 @@ def transfer_ownership(
         db, tournament_id, current_user.id, OWNERSHIP_TRANSFERRED,
         target_type="tournament", target_id=tournament.id,
         extra_data={
-            "old": {"id": old_owner_id, "name": _display_name(current_user)},
+            # The previous owner, not the actor — an admin can transfer too.
+            "old": {"id": old_owner.id if old_owner else None, "name": _display_name(old_owner)},
             "new": {"id": payload.new_owner_id, "name": _display_name(new_owner_membership.user)},
         },
     )

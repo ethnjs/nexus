@@ -1,0 +1,89 @@
+---
+title: v1.4.0-beta
+description: Plan each event by track and edit events, shifts and members tables in-place
+date: 2026-10-05T12:00:00-07:00
+---
+
+Running a tournament across more than one track is now built in. Each event's location, time and staffing needs are set per track, roles can be held on specific tracks, and the events, shifts, members and assignments pages all work track by track.
+
+## What's new
+
+### Plan events per track
+
+When an event runs on more than one track, each track now has its own logistics.
+
+- **Location:** Set the building, rooms and floor separately for each track. The floor fills in from the first room unless you change it.
+- **Staffing needs:** Set how many of each role an event needs on each track, for example 2 event supervisors on one track and 3 on another.
+- **Time:** The event's time shows one line per day, taken from the shifts it runs in on each track.
+
+You can also set and remove staffing needs across many events at once from the mass editor.
+
+### Edit the events table in place
+
+You can now change most of an event straight from the **Events** table, without opening its panel.
+
+- Click a cell to edit an event's name, division, type, tracks, shifts, location or staffing needs.
+- Use the arrow keys and **Tab** to move between cells, like a spreadsheet.
+- To open an event's panel, click anywhere on its row outside an editable cell.
+- Add per-track columns for time, location and staffing, and choose which tracks they show.
+- Sort by clicking the name, division and category headers. Click more than one to sort by each in turn.
+- Filter by track, building, staffing and shift.
+
+### A fuller shifts table
+
+The **Shifts** table now works like the events table.
+
+- New **Date** and **Duration** columns.
+- Edit a shift's label, track, date and times in place. A shift can't end before it starts.
+- Search, save filters, and sort by a chain of rules from the toolbar or the column headers.
+- Use the arrow keys and **Tab** to move between cells.
+
+Shift labels must now be unique within each track.
+
+### Roles can apply to specific tracks
+
+A role can now apply to the whole tournament or only to certain tracks.
+
+- On the **Members** table, each role chip shows where it's held. Change its tracks from the chip's menu.
+- When you add a role to a member, or add members from a role's **Members** tab, pick the tracks it applies to.
+- When you change roles for many members at once, your changes show as badges, each with its tracks, before you save.
+
+### Assignments board by track
+
+- Each track gets its own tab on the **Assignments** board. **All** shows every track.
+- Each tab keeps its own default filters and sort, and **Reset** returns to them.
+- Event rows are split by track, with a staffing progress bar and the event's default roles, which you can edit right there.
+- Event rows show each track's venue and building.
+- Click an event's name to open its panel. It opens on top of the member panel if one is open.
+- Member cards can show onboarding, dietary restrictions, lunch and custom fields. Availability now shows above experience, labeled by track.
+
+### More columns and sorting on the members table
+
+- New columns for dietary restrictions, event preferences and lunch. Event preferences show as a ranked list, and you can filter them by rank.
+- Sort the roster by a saved chain of rules, including onboarding and, per track, status, availability, lunch and event preference rank.
+- Remove the selected members from the **Select** toolbar. Anyone you can't remove is skipped.
+
+## Improvements
+
+- **Page headers fold into the top bar** as you scroll on the events, shifts, members and assignments pages.
+- **Wide tables scroll sideways** when their columns don't fit.
+- **Click a table row to open its panel.** The separate edit and expand buttons are gone.
+- **Toolbars collapse to icons** when they run out of room.
+- **Tabs scroll sideways** when there are too many to fit, keeping the current tab in view.
+- **Track pickers are locked** when a tournament has only one track.
+- **A simple tournament's only track is named after the tournament.**
+- **The overview shows a single competition day** inline in the header card.
+- **Settings and its pages show in the folded breadcrumb.**
+- **Dropdowns and comboboxes** fill in the first match when you press **Enter**, and you can use them with the keyboard.
+
+## Fixes
+
+- On the assignments board, dragging a member now scrolls whatever's under the cursor, the drag chip stays pinned to the cursor and names where it will land, and each day's bar drags and resizes on its own.
+- Event names and category names no longer get cut off.
+
+## Worth knowing
+
+- **Existing roles were moved onto tracks.** Roles that grant permissions now apply to the whole tournament. Other roles were placed on the tracks where the member was already staffed, or on the earliest track if they weren't staffed anywhere. Check your roles if you run more than one track.
+- **Duplicate shift labels were renamed.** If two shifts on the same track had the same label, one was renamed so each label is unique.
+- **Simple tournaments' tracks were renamed** to match the tournament's name.
+- **Simple and advanced mode now follow your track count.** A tournament with one track is simple. Add a second track to get the advanced options.

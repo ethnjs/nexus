@@ -1,6 +1,7 @@
 "use client";
 
 import { ClipboardEvent, KeyboardEvent, ReactNode, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { IconLock, IconX } from "@/components/ui/Icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 
@@ -29,8 +30,18 @@ interface ChipInputProps {
   getChipTooltip?: (chip: string) => string | undefined;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
+  /** The chips' and the field's own typeface — "mono" for values that are data
+   *  (room numbers, codes), matching Input's prop of the same name. The label
+   *  and any error stay sans either way: those are UI text, not values. */
+  font?: "sans" | "mono";
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
   addButton?: ReactNode;
+  /** Given, a "clear" button sits after `addButton` while there is at least
+   *  one chip — for a picker whose chips are unticked one at a time, where
+   *  starting over otherwise means as many clicks as there are chips. */
+  onClear?: () => void;
+  /** Focus the text field on mount — e.g. right after the step that revealed it. */
+  autoFocus?: boolean;
   /** Optional control rendered inside each chip, e.g. a status dropdown. */
   renderChipTrailing?: (chip: string) => ReactNode;
 }
@@ -57,6 +68,19 @@ const SIZE_MAP: Record<ChipInputSize, { minHeight: string; paddingX: string; fon
   lg: { minHeight: "48px", paddingX: "10px", fontSize: "14px" },
 };
 
+// Chips sized to fit inside a bordered field of that size without it growing.
+// Only xs/sm need it — a normal 24px chip already fits md/lg — and only for a
+// bordered field: a transparent row has no box, so there is no height for its
+// chips to fit inside and they keep their natural size.
+//   chip  = 14px line + 2 * chipPadY + 2px border
+//   field = chip + 2 * fieldPadY + 2px border  (<= minHeight, which then holds)
+// 11px text rather than 12: at these sizes the chip is a tag inside a field,
+// and 12px made it nearly as loud as the field's own text.
+const COMPACT_CHIPS: Partial<Record<ChipInputSize, { fieldPadY: number; chipPadY: number }>> = {
+  xs: { fieldPadY: 2, chipPadY: 1 },  // 18px chip in a 26px field
+  sm: { fieldPadY: 2, chipPadY: 2 },  // 20px chip in a 28px field
+};
+
 // Splits on comma or newline — covers both typed Enter and pasted
 // comma/newline-separated lists (e.g. copied from a spreadsheet column).
 const SPLIT_PATTERN = /[,\n]+/;
@@ -77,7 +101,7 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
         display: "flex", alignItems: "center", justifyContent: "center",
         border: "none", borderRadius: "var(--radius-sm)", background: "transparent",
         padding: "2px", color: "inherit",
-        cursor: disabled ? "default" : "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.4 : 1,
         // An inset box-shadow acts as a darkening film regardless of which
         // status color the chip itself is using as background (default/
@@ -97,11 +121,11 @@ function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, disabled, chipLockReason,
-  getChipTooltip, variant = "primary", size = "md", addButton,
-  renderChipTrailing,
-}: ChipInputProps) {
+  getChipTooltip, variant = "primary", size = "md", font = "sans", addButton, onClear,
+  renderChipTrailing, autoFocus}: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
+  const compact = variant === "transparent" ? undefined : COMPACT_CHIPS[size];
   // Both stop every write; they differ only in what stays on screen.
   const readOnly = locked || disabled;
 
@@ -158,8 +182,13 @@ export function ChipInput({
 
       <div style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px",
-        padding: variant === "transparent" ? "0" : `4px ${sizing.paddingX}`, minHeight: sizing.minHeight, boxSizing: "border-box",
-        background: VARIANT_BACKGROUND[variant],
+        padding: variant === "transparent" ? "0" : `${compact?.fieldPadY ?? 4}px ${sizing.paddingX}`,
+        minHeight: sizing.minHeight, boxSizing: "border-box",
+        // Disabled darkens to the same fill as a locked Input, so a paused
+        // ChipInput beside one reads as the same state. Not for transparent:
+        // it has no field to darken, only chips.
+        background: disabled && variant !== "transparent" ? "var(--color-accent-subtle)" : VARIANT_BACKGROUND[variant],
+        cursor: disabled ? "not-allowed" : undefined,
         border: error
           ? "1px solid var(--color-danger)"
           : variant === "transparent" ? "none" : "1px solid var(--color-border)",
@@ -178,13 +207,20 @@ export function ChipInput({
           return (
             <span
               key={chip}
+              // Lets a click-through container (a table cell) tell a chip from
+              // the bare field around it.
+              data-chip
               style={{
                 display: "inline-flex", alignItems: "center", gap: "5px",
-                padding: hasTrailing ? "3px 6px 3px 9px" : "3px 9px",
+                padding: compact
+                  ? (hasTrailing ? `${compact.chipPadY}px 6px ${compact.chipPadY}px 8px` : `${compact.chipPadY}px 8px`)
+                  : (hasTrailing ? "3px 6px 3px 9px" : "3px 9px"),
                 borderRadius: "var(--radius-sm)",
                 background: styles.background, color: styles.color,
                 border: `1px solid ${styles.border}`,
-                fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
+                fontFamily: `var(--font-${font})`, fontSize: compact ? "11px" : "12px", fontWeight: 500,
+                // Pinned only where the height math depends on it.
+                lineHeight: compact ? "14px" : undefined,
               }}
             >
               {chipTooltip ? (
@@ -220,10 +256,17 @@ export function ChipInput({
             onPaste={handlePaste}
             onBlur={handleBlur}
             disabled={disabled}
+            autoFocus={autoFocus}
             placeholder={value.length === 0 ? placeholder : undefined}
             style={{
-              flex: 1, minWidth: "120px", border: "none", outline: "none",
-              background: "transparent", fontFamily: "var(--font-sans)", fontSize: sizing.fontSize,
+              // 120px only while empty, to fit the placeholder. With chips in
+              // front of it, 120px was wider than the room left on the line,
+              // so the field wrapped to a line of its own beside empty space.
+              flex: 1, minWidth: value.length === 0 ? "120px" : "40px", border: "none", outline: "none",
+              // The native disabled input resets to the default cursor on its
+              // own, which would punch a hole in the field's not-allowed one.
+              cursor: disabled ? "not-allowed" : undefined,
+              background: "transparent", fontFamily: `var(--font-${font})`, fontSize: sizing.fontSize,
               color: "var(--color-text-primary)",
             }}
           />
@@ -235,6 +278,18 @@ export function ChipInput({
           disabled
             ? <span aria-disabled style={{ display: "flex", opacity: 0.4, pointerEvents: "none" }}>{addButton}</span>
             : addButton
+        )}
+        {!locked && onClear && value.length > 0 && (
+          <Button
+            type="button" variant="ghost" size="xs" iconOnly
+            onClick={onClear}
+            disabled={disabled}
+            title="Clear all"
+            aria-label="Clear all"
+            style={{ flexShrink: 0 }}
+          >
+            <IconX size={11} />
+          </Button>
         )}
       </div>
 

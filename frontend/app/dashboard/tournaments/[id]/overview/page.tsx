@@ -12,7 +12,15 @@ import { Button } from "@/components/ui/Button";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { IconLock } from "@/components/ui/Icons";
+import { useArchiveLock } from "@/lib/useArchiveLock";
+import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
 import styles from "@/components/tournament/overview/Overview.module.css";
+
+function openInNewTab(path: string) {
+  window.open(path, "_blank", "noopener,noreferrer");
+}
 
 export default function OverviewPage() {
   const params = useParams();
@@ -20,6 +28,7 @@ export default function OverviewPage() {
   const [forms, setForms] = useState<MemberForm[] | null>(null);
   const [formsError, setFormsError] = useState<string | null>(null);
   const [hoveredFormId, setHoveredFormId] = useState<string | null>(null);
+  const { isArchived } = useArchiveLock();
 
   useEffect(() => {
     formsApi.listMineForTournament(Number(tournamentId))
@@ -42,17 +51,25 @@ export default function OverviewPage() {
           {forms === null ? (
             <div style={{ padding: "20px" }}><Spinner size="sm" /></div>
           ) : forms.length > 0 ? (
-            <OverviewCard title="Forms">
+            // Two columns wide, so form names fit beside the status badge, Locked and Edit.
+            <OverviewCard title="Forms" data-min-width={560}>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {forms.map((form, index) => (
+                {forms.map((form, index) => {
+                  const lockedReason = form.completed
+                    ? responseEditLockedReason({ ...form, tournamentArchived: isArchived })
+                    : undefined;
+                  return (
                   <div
                     key={form.id}
                     onMouseEnter={() => setHoveredFormId(form.id)}
                     onMouseLeave={() => setHoveredFormId(null)}
+                    // A completed row opens the member's read-only response.
+                    onClick={form.completed ? () => openInNewTab(`/forms/${form.id}/view`) : undefined}
                     className={styles.formRow}
                     style={{
                       borderBottom: index === forms.length - 1 ? "none" : "1px solid var(--color-border)",
                       background: hoveredFormId === form.id ? "var(--color-bg)" : "transparent",
+                      cursor: form.completed ? "pointer" : "default",
                     }}
                   >
                     <div className={styles.formName}>
@@ -67,16 +84,38 @@ export default function OverviewPage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => {
-                          window.open(form.is_onboarding
+                          openInNewTab(form.is_onboarding
                             ? `/tournaments/${tournamentId}/onboarding`
-                            : `/forms/${form.id}/view`, "_blank", "noopener,noreferrer");
+                            : `/forms/${form.id}/view`);
                         }}
                       >
                         Open
                       </Button>
                     )}
+                    {form.completed && lockedReason && (
+                      <Tooltip variant="info" message={lockedReason} showIcon={false}>
+                        <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+                      </Tooltip>
+                    )}
+                    {form.completed && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!!lockedReason}
+                        title={lockedReason}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Onboarding too: editing goes straight to the form, not the onboarding route.
+                          openInNewTab(`/forms/${form.id}/view?edit=true`);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </OverviewCard>
           ) : null}

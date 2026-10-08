@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.models import TournamentMembership, TournamentMembershipRole, User
+from app.models.models import TournamentMembership, User
 # Safe at module scope where the tournament schemas aren't: person.py sits at
 # the bottom of the import graph on purpose (see its docstring).
 from app.schemas.person import PersonRefResponse, PersonRoleRead
@@ -57,8 +57,8 @@ def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *optio
     return query.first()
 
 def resolve_person_refs(
-    db: Session, tournament_id: int, user_ids: set[int],
-) -> dict[int, PersonRefResponse]:
+    db: Session, tournament_id: int, user_ids: set[int | None],
+) -> dict[int | None, PersonRefResponse]:
     """
     Resolve a batch of user ids to name-and-roles references, for any response
     that surfaces "who did this" — join-code creators, audit log actors, form
@@ -74,7 +74,7 @@ def resolve_person_refs(
     memberships = (
         db.query(TournamentMembership)
         .options(
-            selectinload(TournamentMembership.roles).selectinload(TournamentMembershipRole.role),
+            selectinload(TournamentMembership.track_assignments),
             selectinload(TournamentMembership.user),
         )
         .filter(
@@ -89,7 +89,8 @@ def resolve_person_refs(
             membership_id=m.id,
             first_name=m.user.first_name,
             last_name=m.user.last_name,
-            roles=[PersonRoleRead(id=mr.role.id, label=mr.role.label) for mr in m.roles],
+            # m.roles is the distinct TournamentRole list now, not join rows.
+            roles=[PersonRoleRead(id=r.id, label=r.label) for r in m.roles],
         )
         for m in memberships
     }
@@ -100,6 +101,10 @@ def resolve_person_refs(
             u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
             for u in users
         })
+    # A null credit FK — the account was deleted. Keyed on None so callers
+    # can index by the raw column value without special-casing it.
+    if None in user_ids:
+        resolved[None] = PersonRefResponse(user_id=None)
     return resolved
 
 

@@ -61,10 +61,47 @@ submission would.
 | --- | --- | --- |
 | `-t`, `--tournament ID` | required | Tournament to seed. |
 | `--email-prefix PREFIX` | `test` | Seeds accounts whose email starts with this. |
+| `--email-domain DOMAIN` | `nexus.dev` | Domain for accounts this run creates. |
 | `--limit N` | all | Only the first N matching accounts. |
-| `--seed N` | `0` | RNG seed. Same value, same data. |
+| `--rng-seed N` | `0` | RNG seed. Same value, same fake people. Not a count. |
 | `--dry-run` | off | Roll back instead of committing. |
 | `--force` | off | Allow running outside development/preview. |
+
+`--rng-seed` is a starting point for the random number generator, never a
+count. Same value, same fake people: reset the database, re-run with the same
+seed, and `test1` comes back with the same major, birth date and form answers.
+A different value gives a different population that is equally reproducible.
+It's what lets you get back to a member who triggered a layout bug instead of
+re-rolling until it maybe reappears.
+
+To control *how many* members you get, use `--create`.
+
+### Account creation
+
+| Flag | Default | What it does |
+| --- | --- | --- |
+| `-c`, `--create N` | off | Seed N members total, creating whichever of `PREFIX1..PREFIXN` don't exist yet. |
+| `--password PW` | `test1234` | Password for accounts this run creates. |
+
+Without it the script only seeds accounts that already exist, which is why a
+fresh database used to come back empty.
+
+**N is a target, not a quantity to add.** With `test1`..`test15` already
+there, `--create 50` creates `test16`..`test50` and you end up with fifty
+members. `--create 50` twice creates fifty accounts, not a hundred; `--create
+60` afterwards adds ten.
+
+It works that out by asking the database which of `PREFIX1..PREFIXN` exist and
+inserting the gaps, rather than counting existing accounts and making up the
+difference — with a sparse population (`test3`, `test7`, `test40`) a count
+would have to invent numbers and could collide with one already there.
+
+Existing accounts are never touched — no password reset, no rename. They are
+still re-seeded (profile, experience, onboarding) like everyone else.
+
+New accounts get a random name from a pool and `email_verified=True`, so they
+can log in immediately. Names use their own RNG, so growing the population
+doesn't change the profile data `--rng-seed` produces for everybody else.
 
 ### What to seed
 
@@ -106,10 +143,16 @@ python -m app.db.seed_members -t 3 --no-onboarding
 python -m app.db.seed_members -t 3 --stop-every 0 --unstarted-every 0
 
 # A different population, same shape.
-python -m app.db.seed_members -t 3 --seed 7
+python -m app.db.seed_members -t 3 --rng-seed 7
 
 # Just a handful, for a quick screen check.
 python -m app.db.seed_members -t 3 --limit 5
+
+# Fifty members on a database that has none yet.
+python -m app.db.seed_members -t 3 --create 50
+
+# A second tournament, reusing the same fifty people.
+python -m app.db.seed_members -t 4 --create 50
 ```
 
 ---
@@ -131,7 +174,8 @@ That reset is required, not tidiness. `sync_track_statuses` only ever upserts
 would blend into the first.
 
 It does **not** touch memberships it did not create, tournament configuration,
-forms, events, or any account outside `--email-prefix`.
+forms, events, or any account outside `--email-prefix`. `--create` only ever
+inserts — it never rewrites an account that already exists.
 
 ---
 

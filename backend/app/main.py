@@ -23,6 +23,8 @@ from app.api.routes.tournament import audit as tournament_audit
 from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
 from app.api.routes.tournament import onboarding as tournament_onboarding
 from app.api.routes.tournament import tracks as tournament_tracks
+from app.api.routes.tournament import buildings as tournament_buildings
+from app.api.routes.tournament import zones as tournament_zones
 from app.api.routes.tournament import display_config as tournament_display_config
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes import chapter as chapter_core
@@ -35,7 +37,7 @@ DEV_DOCS = settings.app_env in ("development", "preview")
 
 
 def _read_app_version() -> str:
-    # backend/VERSION is written by release-please; lives in backend/ so backend-only deploys ship it.
+    # backend/VERSION is written by the Release workflow; lives in backend/ so backend-only deploys ship it.
     version_file = Path(__file__).resolve().parents[1] / "VERSION"
     try:
         return version_file.read_text(encoding="utf-8").strip()
@@ -123,6 +125,9 @@ app.include_router(tournament_setup_checklist.router,      prefix="", dependenci
 app.include_router(tournament_onboarding.router,            prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_onboarding.member_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_tracks.router,                prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_buildings.router,             prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_zones.router,                 prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_zones.assignments_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_display_config.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_assignments.router,           prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])

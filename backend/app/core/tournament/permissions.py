@@ -147,9 +147,10 @@ def get_user_permissions(
     - admin users get all permissions without a DB lookup.
     - the tournament owner gets all permissions — ownership sits structurally
       above the role/rank system, not implemented as a role.
-    - Everyone else: load their membership, look up each TournamentRole's
-      permissions via MembershipRole, and union them. Each role's permission
-      list is explicit (no implied expansion).
+    - Everyone else: load their membership, take the distinct roles across
+      their track assignments, and union those roles' permissions. Each
+      role's permission list is explicit (no implied expansion), and a
+      role held on any one track counts tournament-wide.
 
     Returns an empty set if the user has no membership in this tournament.
     """
@@ -176,7 +177,11 @@ def get_user_permissions(
     if not membership:
         return set()
 
-    role_ids = [mr.role_id for mr in membership.roles]
+    # Distinct roles across the member's track assignments. Deliberately
+    # track-blind: a role held on one day grants its permissions across the
+    # whole tournament (#83), so which track it was granted on is not a
+    # question this function asks.
+    role_ids = [role.id for role in membership.held_roles]
     roles = db.query(TournamentRole).filter(TournamentRole.id.in_(role_ids)).all()
 
     effective: set[str] = set()
@@ -223,7 +228,11 @@ def get_highest_rank(
     if not membership:
         return None
 
-    role_ids = [mr.role_id for mr in membership.roles]
+    # Distinct roles across the member's track assignments. Deliberately
+    # track-blind: a role held on one day grants its permissions across the
+    # whole tournament (#83), so which track it was granted on is not a
+    # question this function asks.
+    role_ids = [role.id for role in membership.held_roles]
     if not role_ids:
         return None
 

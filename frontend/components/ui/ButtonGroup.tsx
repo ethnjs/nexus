@@ -1,11 +1,14 @@
 'use client'
 
+import { ReactNode } from 'react'
 import { Button } from "@/components/ui/Button"
 
 export interface ButtonGroupOption {
   value:        string
   label:        string
   description?: string
+  /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
+  badge?:       ReactNode
 }
 
 interface ButtonGroupProps {
@@ -59,6 +62,7 @@ export function ButtonGroup({ options, value, onChange, direction = 'row', size 
             }}
           >
             <span>{opt.label}</span>
+            {opt.badge}
             {opt.description && (
               <span style={{
                 fontWeight: 400, fontSize: '12px',

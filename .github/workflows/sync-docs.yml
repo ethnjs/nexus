@@ -19,7 +19,7 @@ jobs:
 
     steps:
       # Docs changes reach the site without waiting for a release. Releases use the
-      # repository_dispatch in release-please.yml instead, which syncs at the tag.
+      # repository_dispatch in release.yml instead, which syncs at the tag.
       - name: Trigger the docs site sync
         env:
           GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}

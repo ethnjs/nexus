@@ -2,7 +2,7 @@
 
 ## Getting started
 
-**Requirements:** Python 3.13, Node/pnpm, [Docker Desktop](https://www.docker.com/products/docker-desktop/), a Google service account credentials file.
+**Requirements:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (installs Python 3.13 for you, pinned in `backend/.python-version`), Node/pnpm, [Docker Desktop](https://www.docker.com/products/docker-desktop/), a Google service account credentials file.
 
 ### 1. Start the database
 
@@ -21,13 +21,13 @@ To actually look at what's in the database — tables, rows, whether a migration
 
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+uv sync                # creates .venv with the pinned Python and dependencies
 cp .env.example .env   # fill in GOOGLE_SERVICE_ACCOUNT_FILE at minimum
-alembic upgrade head
-uvicorn app.main:app --reload --port 8001
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --port 8001
 ```
+
+Add packages with `uv add <pkg>` (or `uv add --dev <pkg>` for test-only tools), and commit `pyproject.toml` and `uv.lock` together. Never edit `uv.lock` by hand.
 
 Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
 
@@ -53,7 +53,7 @@ No `.env.local` needed — the frontend talks to the backend through the same `/
 
 ```bash
 cd backend
-pytest
+uv run pytest
 ```
 
 Runs against the `nexus_test` Postgres database from step 1. Each test rolls back its own transaction, so the test DB never accumulates data. The Google Sheets API is mocked — no external services required.
@@ -63,8 +63,8 @@ Runs against the `nexus_test` Postgres database from step 1. Each test rolls bac
 Any model change needs a migration:
 ```bash
 cd backend
-alembic revision --autogenerate -m "description"
-alembic upgrade head
+uv run alembic revision --autogenerate -m "description"
+uv run alembic upgrade head
 ```
 
 ---
@@ -95,7 +95,7 @@ fix(db): enable pool_pre_ping to survive Railway's idle connection drops
 feat(api)!: rename /tournaments/{id}/members to /memberships
 ```
 
-The `type` matters: release-please reads commit messages on `main` to pick the next version and build the GitHub release's commit list.
+The `type` matters: semantic-release reads commit messages on `main` to pick the next version and build the GitHub release's commit list.
 
 | Type | Use for | Version bump |
 |---|---|---|
@@ -116,19 +116,43 @@ Pick the type by what the change *does for users*, not by what files it touches 
 
 ### Versioning
 
-- SemVer. `.release-please-manifest.json` tracks the released version; release-please writes it to `frontend/package.json` and `backend/VERSION` (the API's OpenAPI version reads from the latter).
-- During the pilot year, every release carries a flat `-beta` suffix, not an incrementing `beta.N`. The core number still moves normally: `v1.0.0-beta` → `v1.1.0-beta` on a `feat`, → `v1.0.1-beta` on a `fix`.
-- Versions are never bumped by hand — release-please opens a release PR, and merging it tags the release.
+- SemVer, computed by semantic-release from the commits since the last tag. On release it writes the version to `frontend/package.json` and `backend/VERSION` (the API's OpenAPI version reads from the latter) in a `chore(release)` commit.
+- During the pilot year, every release carries a flat `-beta` suffix, not an incrementing `beta.N` — it's baked into `tagFormat` in `.releaserc.json`. The core number still moves normally: `v1.0.0-beta` → `v1.1.0-beta` on a `feat`, → `v1.0.1-beta` on a `fix`.
+- Versions are never bumped by hand. Nothing releases on merge — releases are cut manually with the **Release** workflow.
 - Two separate records, two audiences:
-  - **Changelog** — the commit list release-please generates on the GitHub release. For us. Nothing to write, and no `CHANGELOG.md` is committed.
+  - **Changelog** — the commit list semantic-release generates on the GitHub release. For us. Nothing to write, and no `CHANGELOG.md` is committed.
   - **Release notes** — a hand-written page per release in `docs/release-notes/`, synced to the docs site. For the people using NEXUS.
 
 ### Cutting a release
 
-1. **Write the release notes.** Copy `.github/RELEASE_NOTES_TEMPLATE.mdx` to `docs/release-notes/<tag>.mdx` — the tag is in the open release PR's title. Plain language for tournament directors and volunteers; screenshots and videos welcome.
-2. **One page per release.** Several PRs usually ship together and share the page — add to the pending page rather than starting a second one.
-3. **Merge it before the release PR** — a normal PR into `main`, so it's there when the release publishes.
-4. **Merge the release PR.** That tags the release, GitHub shows the generated commit list, and the docs site syncs the release notes page.
+**1. Preview the version** from an up-to-date `main`. Prints the next tag and its notes:
+
+```bash
+GITHUB_TOKEN=$(gh auth token) npx \
+  -p node@24 \
+  -p semantic-release@25 \
+  -p @semantic-release/exec@7 \
+  -p @semantic-release/git@11 \
+  -p conventional-changelog-conventionalcommits@9 \
+  semantic-release --dry-run --no-ci
+```
+
+**2. Write the release notes**, named after that tag. Plain language for tournament directors and volunteers.
+
+```bash
+cp .github/RELEASE_NOTES_TEMPLATE.mdx docs/release-notes/<tag>.mdx
+```
+
+- One page per release. If a page for the pending tag already exists, add to it.
+- Merge it into `main` before releasing, then re-run the preview: a `feat`/`fix` landing in between changes the tag.
+
+**3. Run the Release workflow** (or Actions → Release → Run workflow):
+
+```bash
+gh workflow run release.yml
+```
+
+It tags the release, posts the commit list on GitHub with a link to the release notes page, and syncs the docs site.
 
 ### Before opening a PR
 

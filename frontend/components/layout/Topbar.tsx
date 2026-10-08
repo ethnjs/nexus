@@ -2,6 +2,7 @@
 
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
+import { TopbarCrumb } from "@/components/layout/TopbarCrumb";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/Button";
 import { IconMenu } from "@/components/ui/Icons";
@@ -88,7 +89,15 @@ export function Topbar({
         </div>
       )}
 
+      {/* Pushes the avatar to the far end. */}
       <div style={{ flex: 1 }} />
+      {/* The folded page header, centred on the bar itself rather than in
+          the gap between the switcher and the avatar, which drifted with the
+          tournament's name. Out of flow, so it moves nothing else; renders
+          nothing until a page folds its header away. */}
+      <div className={styles.crumbSlot}>
+        <TopbarCrumb />
+      </div>
 
       {showAvatar && <UserAvatar logoutOnly={showAvatar === "logout-only"} />}
     </header>

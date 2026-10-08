@@ -10,13 +10,15 @@ import table from "@/components/ui/Table.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/ui/Icons";
+import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
+import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 import { useToast } from "@/lib/useToast";
 import { useArchiveLock } from "@/lib/useArchiveLock";
@@ -25,7 +27,7 @@ import { useArchiveLock } from "@/lib/useArchiveLock";
 // share the free space (Name used to take ~5x Creator's share). Actions is
 // fixed, not auto: each row is its own grid, so a width that followed the
 // button count would misalign rows. 170px fits the most a row ever shows —
-// edit, preview, a status move, archive, delete.
+// a status move, archive, delete, and the ⋮ menu.
 const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1fr) 90px 100px 170px";
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
@@ -34,9 +36,10 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-function FormRow({ form, onAction, lockedReason }: {
+function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
   form: FormListItem;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  onAllowEditsChange: (formId: string, allow: boolean) => void;
   lockedReason?: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -55,11 +58,20 @@ function FormRow({ form, onAction, lockedReason }: {
       // and forth is worse than an extra tab.
       onClick={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
     >
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {form.name}
+      <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        <span style={{
+          fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {form.name}
+        </span>
+        {!form.allow_response_edits && (
+          <span style={{ flexShrink: 0, display: "flex" }}>
+            <Tooltip variant="info" message="Members can't edit their responses. Turn on Allow response edits in the ⋮ menu." showIcon={false}>
+              <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+            </Tooltip>
+          </span>
+        )}
       </span>
       <Badge variant={STATUS_BADGE_VARIANT[form.status]} style={{ justifySelf: "center" }}>
         {form.status}
@@ -91,32 +103,26 @@ function FormRow({ form, onAction, lockedReason }: {
             <FormActionIcon action={option.action} />
           </Button>
         ))}
-        <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title="Edit"
-          onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer"); }}
-        >
-          <IconEdit size={14} />
-        </Button>
-        <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title="Preview"
-          onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/preview`, "_blank", "noopener,noreferrer"); }}
-        >
-          <IconEye size={14} />
-        </Button>
+        <FormActionsMenu
+          form={form}
+          items={["edit", "preview", "responses", "allow-edits"]}
+          onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
+          lockedReason={lockedReason}
+          size="sm"
+        />
       </div>
     </div>
   );
 }
 
-function FormTable({ forms, onAction, lockedReason }: {
+function FormTable({ forms, onAction, onAllowEditsChange, lockedReason }: {
   forms: FormListItem[];
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  onAllowEditsChange: (formId: string, allow: boolean) => void;
   lockedReason?: string;
 }) {
   return (
-    <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
+    <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div
         className={table.table}
         style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}
@@ -131,7 +137,7 @@ function FormTable({ forms, onAction, lockedReason }: {
       </div>
 
       {forms.map((form) => (
-        <FormRow key={form.id} form={form} onAction={onAction} lockedReason={lockedReason} />
+        <FormRow key={form.id} form={form} onAction={onAction} onAllowEditsChange={onAllowEditsChange} lockedReason={lockedReason} />
       ))}
       </div>
     </Card>
@@ -206,6 +212,10 @@ export default function FormsPage() {
     }
   }
 
+  function handleAllowEditsChange(formId: string, allow: boolean) {
+    setForms((prev) => prev && prev.map((f) => (f.id === formId ? { ...f, allow_response_edits: allow } : f)));
+  }
+
   // Submit -> POST -> builder in a new tab. title/description are set later,
   // inside the builder — not part of this modal.
   function handleCreated(form: Form) {
@@ -250,7 +260,7 @@ export default function FormsPage() {
           />
         </Card>
       ) : (
-        <FormTable forms={forms} onAction={handleAction} lockedReason={archivedReason} />
+        <FormTable forms={forms} onAction={handleAction} onAllowEditsChange={handleAllowEditsChange} lockedReason={archivedReason} />
       )}
 
       {deleteTarget && (

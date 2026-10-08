@@ -1,9 +1,17 @@
 """Tests for /auth routes."""
+import asyncio
+import hashlib
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
+from pwdlib.hashers.bcrypt import BcryptHasher
+from sqlalchemy import event
 from tests.conftest import login
-from app.core.auth import hash_password, create_verification_token
-from app.models.models import User
+import app.api.routes.auth as auth_routes
+import app.core.auth as auth_core
+from app.core.auth import hash_password, create_verification_token, consume_verification_token
+from app.models.models import User, VerificationToken
 
 
 @pytest.fixture
@@ -87,6 +95,32 @@ class TestLogin:
         assert res.status_code == 200
         assert res.json()["role"] == "admin"
 
+    def test_login_upgrades_legacy_bcrypt_hash(self, client, db, td_user):
+        # Hashes written by the old passlib setup are bcrypt; login should
+        # accept them and swap in Argon2.
+        import bcrypt
+        td_user.hashed_password = bcrypt.hashpw(b"tdpass", bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+
+    def test_login_long_password_against_legacy_bcrypt_hash(self, client, db, td_user):
+        # passlib truncated to bcrypt's 72-byte limit; bcrypt 5 raises instead.
+        # A password set under passlib must still work, and a wrong long one
+        # must be a 401, not a 500.
+        import bcrypt
+        long_password = "Aa1!" * 25  # 100 bytes
+        td_user.hashed_password = bcrypt.hashpw(long_password.encode()[:72], bcrypt.gensalt()).decode()
+        db.commit()
+
+        assert login(client, "td@test.com", "x" * 100).status_code == 401
+        assert login(client, "td@test.com", long_password).status_code == 200
+        db.refresh(td_user)
+        assert td_user.hashed_password.startswith("$argon2")
+
 
 # ---------------------------------------------------------------------------
 # POST /auth/logout/
@@ -136,6 +170,60 @@ class TestMe:
 
 VALID_PASSWORD = "Secure@123"  # satisfies all validator rules
 VALID_PHONE = "9495551234"
+
+
+class TestPasswordRules:
+    """validate_password_strength, through every route that sets a password."""
+
+    def _register(self, client, password):
+        return client.post("/auth/register/", json={"email": "new@test.com", "password": password})
+
+    def test_max_length_accepted(self, client):
+        password = VALID_PASSWORD + "a" * (128 - len(VALID_PASSWORD))
+        assert self._register(client, password).status_code == 201
+
+    def test_over_max_length_rejected(self, client):
+        password = VALID_PASSWORD + "a" * (129 - len(VALID_PASSWORD))
+        res = self._register(client, password)
+        assert res.status_code == 422
+        assert "8 to 128 characters" in res.text
+
+    @pytest.mark.parametrize("password", [
+        "Écure@123",   # only uppercase letter is non-ASCII
+        "SECURE@12é",  # only lowercase letter is non-ASCII
+        "Secure@abc١",  # only digit is non-ASCII (Arabic-Indic one)
+        "Secure123€",  # only symbol is non-ASCII
+        "Secure @123",  # space
+        "Secure@123\t",  # control character
+    ])
+    def test_non_printable_ascii_rejected(self, client, password):
+        # The old validator let the first character satisfying each class skip
+        # the validity check, so the first four of these were accepted.
+        res = self._register(client, password)
+        assert res.status_code == 422
+        assert "invalid character" in res.text
+
+    def test_all_failures_reported_together(self, client):
+        res = self._register(client, "é")
+        for fragment in ("8 to 128", "uppercase", "lowercase", "number", "special symbol", "invalid character"):
+            assert fragment in res.text
+
+    def test_login_is_not_length_capped(self, client, td_user):
+        # A wrong over-long password is an ordinary 401, not a validation error.
+        assert login(client, "td@test.com", "x" * 200).status_code == 401
+
+    def test_current_password_is_not_length_capped(self, client, db, td_user):
+        # Passwords set before the cap existed may be longer than 128 characters.
+        long_password = "Aa1!" * 40  # 160 characters
+        td_user.hashed_password = hash_password(long_password)
+        db.commit()
+
+        login(client, "td@test.com", long_password)
+        res = client.post("/auth/password/change/", json={
+            "current_password": long_password,
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
 
 
 class TestRegister:
@@ -372,6 +460,50 @@ class TestConfirmEmailChange:
 
 
 # ---------------------------------------------------------------------------
+# POST /auth/email/revert/
+# ---------------------------------------------------------------------------
+
+class TestRevertEmailChange:
+    def test_reverts_applied_change_and_resets_password(self, client, td_user, db):
+        # Change already confirmed: user.email holds the new address
+        td_user.email = "attacker@test.com"
+        db.commit()
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+
+        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.email == "td@test.com"
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+        assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_cancels_pending_change(self, client, td_user, db):
+        change_token = create_verification_token(db, td_user.id, "email_change", new_email="attacker@test.com")
+        revert_token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+
+        res = client.post("/auth/email/revert/", json={"token": revert_token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert client.get(f"/auth/email/confirm-change/?token={change_token}").status_code == 400
+        db.refresh(td_user)
+        assert td_user.email == "td@test.com"
+
+    def test_revokes_existing_sessions(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert client.get("/users/me/").status_code == 401
+
+    def test_invalid_token_rejected(self, client):
+        res = client.post("/auth/email/revert/", json={"token": "garbage", "new_password": VALID_PASSWORD})
+        assert res.status_code == 400
+
+    def test_token_already_used_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        assert client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}).status_code == 200
+        assert client.post("/auth/email/revert/", json={"token": token, "new_password": "Another@123"}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/password/change/
 # ---------------------------------------------------------------------------
 
@@ -522,3 +654,150 @@ class TestConfirmAccountSetup:
             "password": VALID_PASSWORD,
         })
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# consume_verification_token
+# ---------------------------------------------------------------------------
+
+class TestConsumeVerificationToken:
+    def test_stores_sha256_digest(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
+        assert row.token_hash == hashlib.sha256(token.encode()).hexdigest()
+
+    def test_single_update_without_password_hashing(self, td_user, db, monkeypatch):
+        # Lookup and consume are one indexed UPDATE ... RETURNING, never a
+        # loop of password-hash checks over pending tokens.
+        def fail(*args, **kwargs):
+            raise AssertionError("password hasher called while checking a token")
+
+        token = create_verification_token(db, td_user.id, "password_reset")
+        monkeypatch.setattr(auth_core, "verify_password", fail)
+        monkeypatch.setattr(auth_core, "hash_password", fail)
+        monkeypatch.setattr(auth_core.pwd_context, "verify", fail)
+
+        statements = []
+        conn = db.connection()
+
+        def record(conn, cursor, statement, parameters, context, executemany):
+            if "verification_tokens" in statement:
+                statements.append(statement)
+
+        event.listen(conn, "before_cursor_execute", record)
+        try:
+            row = consume_verification_token(db, token, "password_reset")
+        finally:
+            event.remove(conn, "before_cursor_execute", record)
+
+        assert row is not None
+        assert len(statements) == 1
+        assert statements[0].lstrip().upper().startswith("UPDATE")
+        assert "RETURNING" in statements[0].upper()
+
+    def test_returns_row_and_marks_used(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        row = consume_verification_token(db, token, "email_change")
+        assert row is not None
+        assert row.user_id == td_user.id
+        assert row.new_email == "tdnew@test.com"
+        assert row.used_at is not None
+
+    def test_second_consume_returns_none(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        assert consume_verification_token(db, token, "password_reset") is not None
+        assert consume_verification_token(db, token, "password_reset") is None
+
+    def test_wrong_purpose_rejected_and_token_left_usable(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        assert consume_verification_token(db, token, "signup_verify") is None
+        assert consume_verification_token(db, token, "account_setup") is None
+        assert consume_verification_token(db, token, "password_reset") is not None
+
+    def test_expired_token_rejected(self, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+        assert consume_verification_token(db, token, "password_reset") is None
+
+    @pytest.mark.parametrize("legacy_hash", [
+        pytest.param(lambda raw: hash_password(raw), id="argon2"),
+        pytest.param(lambda raw: BcryptHasher().hash(raw), id="bcrypt"),
+    ])
+    def test_legacy_password_hashed_token_rejected(self, td_user, db, legacy_hash):
+        # Tokens issued before the switch to SHA-256 are deliberately not
+        # migrated or verified with a fallback: users request a new link.
+        raw = "legacy-token-issued-before-sha256"
+        db.add(VerificationToken(
+            user_id=td_user.id,
+            token_hash=legacy_hash(raw),
+            purpose="password_reset",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        db.commit()
+        assert consume_verification_token(db, raw, "password_reset") is None
+
+
+# ---------------------------------------------------------------------------
+# Password hashing stays off the event loop
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def loop_spy(monkeypatch):
+    """Records (name, ran_on_event_loop) for each call the auth routes make to
+    the password hasher. A threadpool worker has no running loop; the thread
+    serving async routes does."""
+    calls = []
+
+    def spy(name):
+        real = getattr(auth_routes, name)
+
+        def wrapper(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                calls.append((name, True))
+            except RuntimeError:
+                calls.append((name, False))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(auth_routes, name, wrapper)
+
+    for name in ("hash_password", "verify_password"):
+        spy(name)
+    return calls
+
+
+def _ran_off_loop(calls, name):
+    seen = [on_loop for n, on_loop in calls if n == name]
+    return bool(seen) and not any(seen)
+
+
+class TestOffEventLoop:
+    def test_change_password(self, client, td_user, loop_spy):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "tdpass",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "verify_password")
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_confirm_password_reset(self, client, td_user, db, loop_spy):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_revert_email_change(self, client, td_user, db, loop_spy):
+        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")
+
+    def test_confirm_account_setup(self, client, invited_user, db, loop_spy):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        res = client.post("/auth/account-setup/confirm/", json={"token": token, "password": VALID_PASSWORD})
+        assert res.status_code == 200
+        assert _ran_off_loop(loop_spy, "hash_password")

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.schemas.person import PersonRefResponse
+from app.schemas.person import PersonNameRef, PersonRefResponse
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
@@ -316,7 +316,9 @@ class FormRead(BaseModel):
     # Null for a chapter form, which has no tournament to be archived.
     tournament_is_archived: bool | None = None
     chapter_id: int | None = None
-    created_by: int
+    # Null once the creator's account is deleted.
+    created_by: int | None = None
+    allow_response_edits: bool = False
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
@@ -344,6 +346,7 @@ class FormListRead(BaseModel):
     # (e.g. a site admin acting without ever joining) — same pattern as
     # JoinCodeResponse.creator.
     creator: PersonRefResponse
+    allow_response_edits: bool = False
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
@@ -362,6 +365,8 @@ class MemberFormRead(BaseModel):
     is_onboarding: bool
     completed: bool
     eligible: bool
+    # Whether a completed response can be revised — the overview's Edit button.
+    allow_response_edits: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -390,6 +395,7 @@ class FormUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
+    allow_response_edits: bool | None = None
 
 
 class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
@@ -438,3 +444,15 @@ class FormResponseRead(BaseModel):
     pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FormRespondentRead(PersonNameRef):
+    """Who submitted a response. Email rides along for the managers' search
+    and follow-up — this only ever reaches people with manage access."""
+    email: str
+
+
+class FormResponseManagerRead(FormResponseRead):
+    """GET /forms/{form_id}/responses/ — the managers' audience. Adds who
+    answered; a respondent reading their own response already knows."""
+    respondent: FormRespondentRead

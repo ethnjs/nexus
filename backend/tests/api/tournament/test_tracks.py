@@ -455,3 +455,44 @@ def test_pending_delete_track_drops_out_of_member_statuses(client, db, td_user, 
     res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     assert track["id"] not in [s["track_id"] for s in res.json()["track_statuses"]]
+
+
+# ---------------------------------------------------------------------------
+# A simple tournament's sole track is named after the tournament
+# ---------------------------------------------------------------------------
+
+def _sole_track(db, tournament_id: int) -> TournamentTrack:
+    db.expire_all()
+    return db.query(TournamentTrack).filter(
+        TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False),
+    ).one()
+
+
+def test_renaming_a_simple_tournament_renames_its_track(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    client.patch(f"/tournaments/{td_tournament.id}/", json={"name": "SoCal State Tournament"})
+    assert _sole_track(db, td_tournament.id).name == "SoCal State Tournament"
+
+    # The short name wins once there is one, and the full name returns without it.
+    client.patch(f"/tournaments/{td_tournament.id}/", json={"short_name": "SoCal States"})
+    assert _sole_track(db, td_tournament.id).name == "SoCal States"
+    client.patch(f"/tournaments/{td_tournament.id}/", json={"short_name": None})
+    assert _sole_track(db, td_tournament.id).name == "SoCal State Tournament"
+
+
+def test_a_simple_tournaments_track_keeps_the_tournament_name(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _sole_track(db, td_tournament.id)
+    response = client.patch(f"/tournaments/{td_tournament.id}/tracks/{track.id}/", json={"name": "Day 1"})
+    assert response.status_code == 200
+    assert response.json()["name"] == td_tournament.name
+
+
+def test_deleting_down_to_one_track_renames_it(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    extra = _create_track(client, td_tournament.id, "Test Writing").json()
+    # Two tracks: names are the TD's own.
+    assert {t.name for t in db.query(TournamentTrack).filter_by(tournament_id=td_tournament.id)} == {"Main", "Test Writing"}
+
+    assert client.delete(f"/tournaments/{td_tournament.id}/tracks/{extra['id']}/").status_code == 200
+    assert _sole_track(db, td_tournament.id).name == td_tournament.name

@@ -1,7 +1,9 @@
 "use client";
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Form, FormField, FormFieldOption } from "@/lib/api";
+import { Form, FormField, FormFieldOption, PendingUpdateReason } from "@/lib/api";
+import { REASON_LABELS } from "@/lib/forms/changeClassification";
+import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
@@ -79,6 +81,20 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
   return undefined;
 }
 
+/** A response being revised rather than filled for the first time. */
+export interface ExistingResponse {
+  /** Stored answers by field id, raw (snapshots and all). */
+  stored: Record<string, unknown>;
+  /** Questions the respondent may change; the rest render read-only. */
+  editableIds: Set<string>;
+  /** Questions the TD flagged — they start blank and show why. */
+  flagged: Map<string, PendingUpdateReason[]>;
+}
+
+function sameAnswer(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 interface FormFillFlowProps {
   form: Form;
   /** Rendered above the title card — e.g. the builder preview's "nothing
@@ -92,6 +108,11 @@ interface FormFillFlowProps {
       this to formsApi.submitResponse; omitted (the default), nothing is
       persisted, which is what makes this safe to use for a TD's preview. */
   onComplete?: (answers: Record<string, unknown>) => void | Promise<void>;
+  /** Revising a submitted response: answers start prefilled so the
+      respondent can click straight through, and onComplete receives only
+      the editable answers that changed — an unchanged answer sent back
+      would re-fire its write-through. */
+  existing?: ExistingResponse;
 }
 
 // One question revealed at a time (Continue advances; Submit only appears
@@ -100,8 +121,18 @@ interface FormFillFlowProps {
 // cleanup between every place a form gets filled out — the builder's own
 // /preview page and any other embedded viewer alike, so they can never
 // drift out of sync with each other or with the server's own validation.
-export function FormFillFlow({ form, banner, successMessage, onComplete }: FormFillFlowProps) {
-  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+export function FormFillFlow({ form, banner, successMessage, onComplete, existing }: FormFillFlowProps) {
+  // Flagged questions start blank on purpose — prefilling the answer being
+  // questioned invites a reflexive resubmit.
+  const initialAnswers = useMemo(() => {
+    if (!existing) return {};
+    const prefilled: Record<string, unknown> = {};
+    for (const [fieldId, value] of Object.entries(existing.stored)) {
+      if (!existing.flagged.has(fieldId)) prefilled[fieldId] = storedAnswerToInput(value);
+    }
+    return prefilled;
+  }, [existing]);
+  const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers);
   // How many steps deep into the branching walk the respondent has
   // advanced — not tied to specific field ids, so if an earlier (still-
   // editable) answer's branch changes, re-slicing the freshly recomputed
@@ -138,18 +169,42 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
 
   const fields = useMemo(() => form.fields.filter((f) => !f.is_archived), [form.fields]);
   const walk = useMemo(() => computeWalk(fields, answers), [fields, answers]);
+
+  const isLocked = (field: FormField) => !!existing && !existing.editableIds.has(field.id);
+  // A locked answer can't be fixed here, so it never blocks; a flagged one
+  // has to be answered again even if the question is optional.
+  function errorFor(field: FormField, value: unknown): string | undefined {
+    if (isLocked(field)) return undefined;
+    if (existing?.flagged.has(field.id) && isBlank(value)) return "Please answer this again.";
+    return fieldErrorMessage(field, value);
+  }
+  // Editable answers that differ from what was stored, plus every flagged one.
+  function changedAnswers(): Record<string, unknown> {
+    if (!existing) return answers;
+    const changed: Record<string, unknown> = {};
+    for (const field of fields) {
+      if (isLocked(field)) continue;
+      if (existing.flagged.has(field.id) || !sameAnswer(answers[field.id], initialAnswers[field.id])) {
+        changed[field.id] = answers[field.id] ?? null;
+      }
+    }
+    return changed;
+  }
   const visibleFields = walk.slice(0, revealCount);
   // True once Continue has been clicked past the walk's actual last field —
   // not just "the active field happens to be last" (that field still needs
   // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
   const showSuccess = submitSucceeded;
-  const invalidCount = walk.filter((f) => attemptedIds.has(f.id) && fieldErrorMessage(f, answers[f.id]) !== undefined).length;
+  const invalidCount = walk.filter((f) => attemptedIds.has(f.id) && errorFor(f, answers[f.id]) !== undefined).length;
   // Broader than the submit bar's own visibility (allContinued) — leaving
   // partway through, before ever reaching the end, should still warn if the
   // respondent has actually answered something. Only clears once Submit
   // has succeeded, same as showSuccess.
-  const isDirty = !showSuccess && Object.values(answers).some((v) => !isBlank(v));
+  // Revising: dirty means changed from what was stored, not merely non-blank.
+  const isDirty = !showSuccess && (existing
+    ? Object.keys(changedAnswers()).length > 0
+    : Object.values(answers).some((v) => !isBlank(v)));
   useBlockNavigation(isDirty);
 
   // A branching answer changing (editing an already-passed radio/dropdown)
@@ -242,7 +297,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
 
   function handleContinue(field: FormField) {
     setAttemptedIds((prev) => new Set(prev).add(field.id));
-    if (fieldErrorMessage(field, answers[field.id])) return;
+    if (errorFor(field, answers[field.id])) return;
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
@@ -251,7 +306,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
 
   async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
-    const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
+    const firstInvalid = walk.find((f) => errorFor(f, answers[f.id]) !== undefined);
     if (firstInvalid) {
       setSubmitSucceeded(false);
       setPendingScrollId(firstInvalid.id);
@@ -260,7 +315,9 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     setSubmitting(true);
     setSubmitError(undefined);
     try {
-      await onComplete?.(answers);
+      const payload = changedAnswers();
+      // Nothing changed on a revision — there's nothing to send.
+      if (!existing || Object.keys(payload).length > 0) await onComplete?.(payload);
       setSubmitSucceeded(true);
     } catch (error: unknown) {
       setSubmitSucceeded(false);
@@ -303,19 +360,34 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
       ) : (
         visibleFields.map((field, i) => {
           const isActive = i === visibleFields.length - 1 && !allContinued;
-          const errorMessage = attemptedIds.has(field.id) ? fieldErrorMessage(field, answers[field.id]) : undefined;
+          const errorMessage = attemptedIds.has(field.id) ? errorFor(field, answers[field.id]) : undefined;
+          const locked = isLocked(field);
+          const reasons = existing?.flagged.get(field.id);
           // ranked_choice surfaces its own error on the add-combobox (via
           // QuestionRenderer's `error` prop) — every other type has no
           // inline slot for it yet, so it falls back to plain text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
             <Card key={field.id} data-form-field={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} className={styles.card}>
+              {reasons && (
+                <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+                  {reasons.map((r) => REASON_LABELS[r]).join(" · ")}
+                </div>
+              )}
               <QuestionRenderer
                 field={field}
                 interactive
+                locked={locked}
                 value={answers[field.id]}
                 onChange={(v) => setAnswer(field.id, v)}
                 error={isRanked ? errorMessage : undefined}
+                // A past pick that's no longer offered still shows, marked Removed.
+                removedOptions={existing && !reasons ? removedPickedOptions(field, existing.stored[field.id]) : undefined}
+                answerNote={locked && isBlankAnswer(answers[field.id]) ? (
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontStyle: "italic", color: "var(--color-text-tertiary)" }}>
+                    Not answered
+                  </span>
+                ) : undefined}
               />
               {!isRanked && errorMessage && (
                 <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "10px" }}>

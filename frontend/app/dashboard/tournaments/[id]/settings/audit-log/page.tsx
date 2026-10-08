@@ -8,7 +8,7 @@ import { personName } from "@/lib/personDisplay";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -159,7 +159,7 @@ export default function AuditLogSettingsPage() {
   if (!canViewAuditLog) {
     return (
       <div>
-        <PageHeader heading="Audit Log" subheading="Tournament Settings" />
+        <SettingsPageHeader page="audit-log" heading="Audit Log" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -185,7 +185,7 @@ export default function AuditLogSettingsPage() {
 
   return (
     <div>
-      <PageHeader heading="Audit Log" subheading="Tournament Settings" />
+      <SettingsPageHeader page="audit-log" heading="Audit Log" />
 
       <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
         <Dropdown

@@ -125,7 +125,13 @@ def admin_delete_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Delete any user. Admin only.
+    """Delete any user. Admin only. Irreversible.
+
+    Everything personal goes: profile, experience, sessions, chapter and
+    tournament memberships, form responses. Things they made for other people
+    stay as history with the credit nulled — tournaments they own (left
+    ownerless until an admin transfers them), forms, join codes, audit entries.
+    See the SET NULL FKs on those models.
 
     Not yourself, though: deleting the account you are acting with is an
     irreversible accident, and the self-service DELETE /users/me/ exists for
@@ -288,8 +294,9 @@ def delete_me(
     user: User = Depends(get_current_user),
 ):
     """
-    Irreversible hard delete — cascades through TournamentMembership,
-    sessions, verification tokens, etc. via DB-level ON DELETE CASCADE.
+    Irreversible hard delete — same reach as the admin delete above: personal
+    data cascades away, owned tournaments and other credited rows survive
+    with the user reference nulled.
     """
     if not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")

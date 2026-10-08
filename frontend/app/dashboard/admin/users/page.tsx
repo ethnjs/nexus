@@ -16,13 +16,13 @@ import { Spinner } from "@/components/ui/Spinner";
 import { HoverCard } from "@/components/ui/HoverCard";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import {
   IconSearch, IconMembers, IconTrash, IconKey, IconLock, IconRestore,
   IconUserShield, IconUser, IconCheckCircle, IconXCircle,
 } from "@/components/ui/Icons";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
+import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
 import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
 import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
@@ -331,7 +331,7 @@ export default function AdminUsersPage() {
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
@@ -456,17 +456,8 @@ export default function AdminUsersPage() {
       )}
 
       {pending?.kind === "delete" && (
-        <BulkDeleteModal
-          items={[pending.user]}
-          noun="account"
-          description={
-            <>
-              Delete <strong>{userName(pending.user)}</strong> ({pending.user.email})? This
-              destroys their profile, experience records and every tournament membership they
-              hold. This can&rsquo;t be undone — lock the account instead if you only need to cut
-              off access.
-            </>
-          }
+        <DeleteUserModal
+          user={pending.user}
           onDelete={(u) => run(`${userName(u)} deleted`, () => adminUsersApi.delete(u.id))}
           onClose={() => setPending(null)}
           onDeleted={removeRows}

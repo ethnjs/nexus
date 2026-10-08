@@ -1,0 +1,60 @@
+---
+title: v1.3.0-beta
+description: See and manage form responses and members can edit their responses
+date: 2026-10-02T12:00:00-07:00
+---
+
+Tournament directors can now read every form response and decide whether members may change theirs.
+
+## What's new
+
+### See every response to a form
+
+Each form now has a **Responses** tab next to **Questions**.
+
+- Pick a member from the list to see their answers exactly as they gave them.
+- Search the list by name or email.
+- Questions someone skipped show **Not answered**. An option that has been removed from the form question still shows, marked **Removed**.
+- **Delete** removes one member's response, for example a test submission or one that needs redoing.
+
+### Let members edit their responses
+
+Each form has an **Allow response edits** switch in its `⋮` menu, in the form builder and on the forms list. It starts off.
+
+- With it on, members can open a form they've submitted and change any answer.
+- With it off, the form shows a **Locked** badge on your forms list, and members see their answers but can't change them.
+- When a member edits, only the answers they actually changed are saved.
+
+### Members can see what they submitted
+
+On the tournament overview, clicking a completed form in the **Forms** card now opens your answers, read-only.
+
+- **Edit** next to it lets you change them, when the form allows it.
+- When it doesn't, Edit is greyed out with a **Locked** badge saying to contact your tournament director.
+- Editing goes one question at a time with your previous answers already filled in, so you can click straight through to the one you want to change. See [How to edit your form responses](/docs/nexus/volunteer-guides/edit-form-responses).
+
+## Improvements
+
+- **Forms list rows are tidier.** Edit, Preview, View responses and Allow response edits moved into a `⋮` menu; publishing, archiving and deleting stay on the row.
+- **Ranked-choice questions preview every option** in the form builder, not just the first few.
+- **Deleting a response is recorded** in the tournament's audit log, with the member's name and the form.
+
+## Fixes
+
+- Members could open the form builder for a form they could fill out. They couldn't save anything, but they now see a **No access** page instead.
+
+### Deleting an account
+
+Admins can now delete any account. Before, deleting someone who had answered a form failed.
+
+- Deleting someone removes everything personal: their profile, experience, tournament memberships and form responses.
+- Tournaments they own are kept, without an owner, so the tournament's history stays. The delete confirmation lists them, and an admin can give each one a new owner from its settings with **Transfer ownership**.
+- Forms, invites and audit log entries they made are kept, and show **Deleted user** where their name was.
+- You now type **DELETE** to confirm.
+
+## Worth knowing
+
+- **Deleting a response keeps what it filled in elsewhere.** Availability, lunch, event preferences and track status stay on the member's profile.
+- **Admins deleting an account can't be undone.** Lock the account instead if you only need to cut off access.
+- **Existing forms start with edits off.** Turn **Allow response edits** on per form.
+- **Locked tracks don't stop form edits.** A member editing their form response can still change answers about a track you've locked. Turn **Allow response edits** off as well if you want those answers fixed.

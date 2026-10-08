@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ALL_PERMISSIONS, PERMISSION_INFO, Permission, Role } from "@/lib/api";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
-import { Toggle } from "@/components/ui/Toggle";
+import { Switch } from "@/components/ui/Switch";
 import { Button } from "@/components/ui/Button";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 
@@ -53,7 +53,7 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
             last={i === ALL_PERMISSIONS.length - 1}
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Toggle checked={draft.permissions.includes(p)} onChange={() => togglePermission(p)} locked={locked} />
+            <Switch checked={draft.permissions.includes(p)} onChange={() => togglePermission(p)} locked={locked} />
           </SettingsRow>
         ))}
       </SettingsSection>

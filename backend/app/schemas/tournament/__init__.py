@@ -165,7 +165,8 @@ class TournamentRead(BaseModel):
     is_public: bool
     is_verified: bool
     is_archived: bool
-    owner_id: int
+    # Null once the owner deletes their account — see Tournament.owner_id.
+    owner_id: int | None = None
     roles: list[RoleRead] = []
     # TD opt-in to collecting each age threshold — see TournamentMembership's
     # age_disclosure for the per-member consent this gates.
@@ -235,8 +236,7 @@ class AdminTournamentRead(TournamentRead):
     No track counts: TournamentRead already ships the full `tracks` list, so
     a reader that wants "how many sites" counts the primary ones itself.
     """
-    # Nullable only defensively — owner_id is NOT NULL, so a null here would
-    # mean a tournament outlived its owner row.
+    # Null when the owner deleted their account — the tournament outlives them.
     owner: UserSlimResponse | None = None
     event_count: int
     volunteer_count: int

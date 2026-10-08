@@ -1,0 +1,79 @@
+/*
+ * The roster's own table classes. Only the Roles and Actions collapse
+ * behaviour lives here — it depends on a docked panel and a Roles column,
+ * which no other table has. The shell (components/ui/Table.module.css) owns
+ * the card/rows/header look, and `animatedTracks`/`collapsible` there own the
+ * animated-column machinery this table shares with the events table.
+ */
+
+.table {
+  composes: table animatedTracks from "@/components/ui/Table.module.css";
+}
+
+.header {
+  composes: header from "@/components/ui/Table.module.css";
+}
+
+.row {
+  composes: row from "@/components/ui/Table.module.css";
+}
+
+/* Re-exported so this file stays the roster's single style import. */
+.collapsible {
+  composes: collapsible from "@/components/ui/Table.module.css";
+}
+
+.scroll {
+  composes: scroll from "@/components/ui/Table.module.css";
+}
+
+.collapsed {
+  composes: collapsed from "@/components/ui/Table.module.css";
+}
+
+/*
+ * The Roles cell gets the same zero-width track treatment, but it can't just
+ * be hidden: its chips are flex-wrap, so at a near-zero track width every chip
+ * lands on its own line, the row's height balloons, and that height is
+ * recomputed on every frame of the column transition. For a full roster that
+ * is the entire cost of opening a panel.
+ *
+ * So while the column is narrow the whole subtree comes out of layout. The
+ * cell itself stays in the DOM — the track has to exist for
+ * grid-template-columns to interpolate at all — but nothing inside it is
+ * measured, sized or painted, and it can't contribute to the row's height.
+ *
+ * height:0 is the fallback half of that, for browsers without
+ * content-visibility (Safari < 18): the subtree still lays out internally
+ * there, but it no longer drives the row height, which is the part that was
+ * visible as the rows jumping.
+ */
+.rolesCell {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.table[data-roles-hidden="true"] .rolesCell {
+  height: 0;
+  opacity: 0;
+  content-visibility: hidden;
+}
+
+/* Actions collapses on the same signal: while a panel is open the row's
+   Remove lives in the panel header, so its width goes back to Name and Email
+   instead. Same zero-width track trick as above — the cell stays mounted so
+   the template can interpolate. */
+.actionsCell {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.table[data-roles-hidden="true"] .actionsCell {
+  opacity: 0;
+  pointer-events: none;
+  content-visibility: hidden;
+}

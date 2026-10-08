@@ -8,7 +8,7 @@ import { groupByRank } from "@/lib/roles/roleReorder";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -106,7 +106,7 @@ export default function RolesSettingsPage() {
   if (!canManageRoles) {
     return (
       <div>
-        <PageHeader heading="Roles" subheading="Tournament Settings" />
+        <SettingsPageHeader page="roles" heading="Roles" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -122,7 +122,7 @@ export default function RolesSettingsPage() {
 
   return (
     <div>
-      <PageHeader heading="Roles" subheading="Tournament Settings" />
+      <SettingsPageHeader page="roles" heading="Roles" />
 
       {roles.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>

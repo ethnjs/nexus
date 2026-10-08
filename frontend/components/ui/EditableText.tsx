@@ -1,6 +1,8 @@
 'use client'
 
 import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { enterChoice, OptionList, stepActive, suggestionRows } from '@/components/ui/OptionList'
+import { useToast } from '@/lib/useToast'
 
 interface EditableTextProps {
   value: string
@@ -26,6 +28,13 @@ interface EditableTextProps {
    * otherwise a wrong abbreviation can never be removed.
    */
   allowEmpty?: boolean
+  /** Offered in a list as you type — free text is still allowed. Use
+   *  EditableCombobox, which requires it, rather than passing it here. */
+  suggestions?: string[]
+  /** A failed save's message goes to a toast instead of under the field — for
+   *  table cells, where text under one row overlaps the next. The field still
+   *  stays open with a red underline so the value can be fixed in place. */
+  errorToast?: boolean
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -45,7 +54,8 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false }: EditableTextProps) {
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false, suggestions, errorToast = false }: EditableTextProps) {
+  const { show } = useToast()
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -53,6 +63,15 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   const [inputWidth, setInputWidth] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const measureRef = useRef<HTMLSpanElement>(null)
+  // Enter/Esc end editing from the keyboard; focus then goes back to the
+  // resting text so Tab carries on from here, not from the top of the page.
+  // A blur-save doesn't — focus already went where the user clicked.
+  const restRef = useRef<HTMLSpanElement>(null)
+  const refocus = useRef(false)
+  // Combobox mode: which suggestion the arrow keys are on (-1 = none).
+  const [highlight, setHighlight] = useState(-1)
+  const rows = editing && suggestions ? suggestionRows(suggestions, draft) : { names: [], options: [] }
+  const listOpen = rows.options.length > 0
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
   // draft is already `value`, so `draft` alone wouldn't change on the
@@ -63,6 +82,10 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   }, [draft, editing])
 
   useEffect(() => {
+    if (!editing && refocus.current) {
+      refocus.current = false
+      restRef.current?.focus()
+    }
     if (editing && inputRef.current) {
       inputRef.current.focus()
       const len = inputRef.current.value.length
@@ -73,22 +96,34 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
   function startEdit() {
     setDraft(value)
     setError(undefined)
+    setHighlight(-1)
     setEditing(true)
   }
 
-  async function save() {
-    const trimmed = draft.trim()
+  // A ref, not the `saving` state: Enter disables the input, and a browser
+  // that blurs it on disable would otherwise start a second save in the same tick.
+  const inFlight = useRef(false)
+
+  async function save(text: string = draft) {
+    if (inFlight.current) return
+    const trimmed = text.trim()
     if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false)
       return
     }
+    inFlight.current = true
     setSaving(true)
     try {
       await onSave(trimmed)
       setEditing(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      // Still editing, so nothing to hand focus back to.
+      refocus.current = false
+      const message = err instanceof Error ? err.message : 'Failed to save'
+      setError(message)
+      if (errorToast) show(message, 'error')
     } finally {
+      inFlight.current = false
       setSaving(false)
     }
   }
@@ -104,17 +139,29 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
         <input
           ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={save}
+          onChange={(e) => { setDraft(e.target.value); setHighlight(-1) }}
+          onBlur={() => save()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); save() }
-            if (e.key === 'Escape') { e.preventDefault(); setEditing(false) }
+            if (e.key === 'ArrowDown' && listOpen) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, 1)) }
+            if (e.key === 'ArrowUp' && listOpen) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, -1)) }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              refocus.current = true
+              // Highlighted row, else the exact/first match for typed text
+              // (see enterChoice); empty text saves as empty.
+              const picked = suggestions ? enterChoice(rows.names, highlight, draft) : draft
+              setDraft(picked)
+              save(picked)
+            }
+            if (e.key === 'Escape') { e.preventDefault(); refocus.current = true; setEditing(false) }
           }}
           disabled={saving}
           style={{
             ...style,
             ...BOX_STYLE,
-            width: `${Math.max(inputWidth, 20)}px`,
+            // Wider floor with suggestions: an empty field there is the
+            // normal start, and a 20px one hides what is being typed.
+            width: `${Math.max(inputWidth, suggestions ? 80 : 20)}px`,
             boxSizing: 'content-box',
             color: 'var(--color-text-primary)',
             background: 'transparent',
@@ -125,7 +172,16 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
             margin: 0,
           }}
         />
-        {error && (
+        {listOpen && (
+          <OptionList
+            anchorRef={inputRef}
+            options={rows.options}
+            active={highlight}
+            onActiveChange={setHighlight}
+            onPick={(i) => { const picked = rows.names[i] ?? draft.trim(); setDraft(picked); save(picked) }}
+          />
+        )}
+        {error && !errorToast && (
           <span style={{
             position: 'absolute', top: '100%', left: 0, marginTop: '4px', whiteSpace: 'nowrap',
             fontFamily: 'var(--font-sans)', fontSize: '11px', color: 'var(--color-danger)',
@@ -139,7 +195,13 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
 
   return (
     <span
+      ref={restRef}
       onClick={locked ? undefined : startEdit}
+      // Reachable by Tab, and Enter starts editing — same as a click.
+      tabIndex={locked ? undefined : 0}
+      onKeyDown={locked ? undefined : (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); startEdit() }
+      }}
       title={title}
       style={{
         ...style,
@@ -155,4 +217,14 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
       {value || placeholder}
     </span>
   )
+}
+
+/**
+ * EditableText with suggestions: reads as plain text, and while editing
+ * offers matching options under the field (up/down to move, Enter or a click
+ * to pick). Free text still saves — the caller decides what an unknown value
+ * means (e.g. create the building).
+ */
+export function EditableCombobox(props: EditableTextProps & { suggestions: string[] }) {
+  return <EditableText {...props} />
 }

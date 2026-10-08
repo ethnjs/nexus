@@ -39,7 +39,6 @@ from app.core.form.write_through import (
 from app.models.models import (
     Tournament,
     TournamentMembership,
-    TournamentMembershipRole,
     TournamentMembershipTrackStatus,
     TournamentRole,
     TournamentShift,
@@ -79,7 +78,7 @@ def _build_me_response(
         updated_at=membership.updated_at, user=membership.user,
         is_owner=is_owner, permissions=permissions,
         needs_age_consent=needs_age_consent,
-        roles=membership.roles if wants(requested, ROLES) else [],
+        roles=membership.held_roles if wants(requested, ROLES) else [],
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         # build_track_statuses rather than the raw rows: it pads every live
         # track the member has no row for as "pending", and those are exactly
@@ -274,7 +273,8 @@ def get_my_membership(
 
     membership = get_membership_by_user(
         db, tournament_id, current_user.id,
-        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        # The role rides along on each assignment via its own lazy="joined".
+        selectinload(TournamentMembership.track_assignments),
     )
     permissions = sorted(get_user_permissions(current_user, tournament_id, db))
     is_owner = current_user.id == tournament.owner_id
@@ -314,7 +314,8 @@ def set_my_age_disclosure(
 
     membership = get_membership_by_user(
         db, tournament_id, current_user.id,
-        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        # The role rides along on each assignment via its own lazy="joined".
+        selectinload(TournamentMembership.track_assignments),
     )
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
@@ -441,7 +442,7 @@ def _set_track_status(db: Session, membership_id: int, track: TournamentTrack, i
         )
     if incoming == "interested" and track.allow_confirm:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Confirm or decline this track — there's no interested step on it",
         )
 
@@ -516,7 +517,7 @@ def update_my_availability(
     unknown = set(payload.shift_ids) - owned_shift_ids
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Shift {sorted(unknown)[0]} is not on this track",
         )
 
@@ -566,17 +567,17 @@ def update_my_lunch(
     free_text = field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES
     if free_text and payload.option_ids:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="This is a free-text question — send `text`, not `option_ids`",
         )
     if not free_text and payload.text is not None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="This question has options — send `option_ids`, not `text`",
         )
     if field.question_type == "single_select_radio" and len(payload.option_ids) > 1:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Only one option may be selected on this question",
         )
 
@@ -588,7 +589,7 @@ def update_my_lunch(
     unknown = set(payload.option_ids) - live_option_ids
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown option {sorted(unknown)[0]}",
         )
 
@@ -642,12 +643,12 @@ def update_my_event_preferences(
     unknown = set(option_ids) - live_option_ids
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown option {sorted(unknown)[0]}",
         )
     if len(set(option_ids)) != len(option_ids):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="An option may only be selected once",
         )
 
@@ -655,32 +656,32 @@ def update_my_event_preferences(
         ranks = [sel.rank for sel in payload.selections]
         if any(rank is None for rank in ranks):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Every selection on a ranked question needs a rank",
             )
         # Contiguous from 1: a gap or a repeat has no meaning a reader could
         # act on, and the stored rows carry no record of which it was.
         if sorted(ranks) != list(range(1, len(ranks) + 1)):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Ranks must be unique and contiguous, starting at 1",
             )
         max_ranks = (field.config or {}).get("ranks")
         if max_ranks is not None and len(ranks) > max_ranks:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"At most {max_ranks} option(s) may be ranked",
             )
         answer = {str(sel.rank): sel.option_id for sel in payload.selections}
     else:
         if any(sel.rank is not None for sel in payload.selections):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="This question is not ranked — omit `rank`",
             )
         if field.question_type == "single_select_dropdown" and len(option_ids) > 1:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Only one option may be selected on this question",
             )
         answer = option_ids

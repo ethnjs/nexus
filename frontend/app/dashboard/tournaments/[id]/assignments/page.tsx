@@ -20,56 +20,54 @@
  * handler can always tell "real" from "still in flight" without a second
  * bookkeeping structure.
  */
-import {
-  memo, useCallback, useEffect, useMemo, useRef, useState,
-  type PointerEvent as ReactPointerEvent, type ReactNode,
-} from 'react'
-import { useParams } from 'next/navigation'
-import {
-  useDraggable, useDroppable, type DragEndEvent,
-} from '@dnd-kit/core'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
+import { type DragEndEvent } from '@dnd-kit/core'
 
 import { DockedPanel } from '@/components/layout/DockedPanel'
 
-import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
-import { RolePillMenu } from '@/components/assignments/RolePillMenu'
-import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
+import { useRegisterBoardDnd } from '@/components/tournament/assignments/BoardDnd'
+import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members/MemberPanel'
+import { EventPanel, EVENT_PANEL_WIDTH } from '@/components/tournament/events/EventPanel'
 import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
-  MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
+  MembersFilterModal, MEMBERS_FILTER_KEYS, defaultMemberFiltersForTab,
   membersFilterFromStored, membersFilterToStored, membersFilterParams,
   type MembersFilterState,
-} from '@/components/tournament/MembersFilterModal'
+} from '@/components/tournament/members/MembersFilterModal'
 import {
   EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
-  eventCategoryKey, eventCategoryOptions, eventsFilterFromStored,
+  eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
+  eventPassesFilters, eventsFilterFromStored,
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, filterAllows } from '@/components/ui/FilterModal'
+import { emptyFilterState, sameFilterState } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
 import { useTournament } from '@/lib/useTournament'
 import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { FilterButton } from '@/components/ui/FilterButton'
+import { DisplayButton } from '@/components/ui/DisplayButton'
+import { SortButton } from '@/components/ui/SortButton'
+import { SortModal } from '@/components/ui/SortModal'
 import { Card } from '@/components/ui/Card'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
-import {
-  IconClock, IconEvents, IconEye, IconFilter, IconLocation, IconLock,
-  IconSearch, IconUser, IconWarning, IconX,
-} from '@/components/ui/Icons'
+import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { CollapsibleHeader } from '@/components/ui/CollapsibleHeader'
 import { Spinner } from '@/components/ui/Spinner'
-import { Tooltip } from '@/components/ui/Tooltip'
 import {
-  ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tournamentEventsApi,
-  tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type MembershipFull, type Role, type TournamentEvent,
-  type TournamentShift, type TournamentTrack,
+  ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
+  ApiError, assignmentsApi, buildingsApi, canonicalEventsApi, displayConfigApi, membersApi,
+  rolesApi, tabSurface, tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi,
+  type Assignment, type CanonicalEvent, type DisplayConfig, type DisplayConfigCatalog,
+  type FilterOptionGroup, type MembershipFull, type Role,
+  type TournamentBuilding, type TournamentEvent, type TournamentShift, type TournamentTrack,
 } from '@/lib/api'
 import {
   assignmentFlags,
@@ -77,1053 +75,69 @@ import {
   memberFacts,
   type Flag,
 } from '@/lib/assignments/flags'
-import {
-  buildLanes as buildAssignmentLanes, laneFlags, roleKey, rolesOf, sameRole,
-  type AssignmentRole, type Lane,
-} from '@/lib/assignments/lanes'
+import { roleKey, rolesOf, sameRole, type AssignmentRole } from '@/lib/assignments/lanes'
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
-import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces'
 import { eventName } from '@/lib/eventDisplay'
-import { formatTime } from '@/lib/timeFormat'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
-import { useInitialPanelId, usePanelUrlSync } from '@/lib/usePanelUrl'
+import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
-  DEFAULT_EVENT_DISPLAY, EventDisplayModal, eventDisplayFromColumns,
-  eventDisplayToColumns, eventDisplayToHidden, type EventDisplayState,
-} from '@/components/assignments/EventDisplayModal'
+  DEFAULT_EVENT_SORT, EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK,
+  eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
+} from '@/lib/eventSort'
 import {
-  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, memberDisplayFromHidden,
-  memberDisplayToHidden, type MemberDisplayState,
-} from '@/components/assignments/MemberDisplayModal'
-import { MemberCard } from '@/components/assignments/MemberCard'
-
-type DragListeners = ReturnType<typeof useDraggable>['listeners']
-
-/**
- * `grabbing` from the moment the pointer goes down.
- *
- * dnd-kit's `isDragging` only turns true once the PointerSensor's 4px
- * threshold is crossed, so keying the cursor off it leaves the hand open
- * through the whole press-and-hesitate that precedes most drags. The release
- * is watched on `window` because the pointer is usually somewhere else by
- * then — that is the entire point of a drag.
- *
- * Takes dnd-kit's `listeners` and calls through to them, because
- * `{...listeners}` already sets onPointerDown: a second onPointerDown prop
- * beside the spread replaces it outright and silently kills the drag. Passing
- * them in keeps that composition in one place rather than at each call site.
- */
-function useGrabCursor(listeners: DragListeners) {
-  const [pressed, setPressed] = useState(false)
-
-  function onPointerDown(e: ReactPointerEvent) {
-    setPressed(true)
-    const release = () => {
-      setPressed(false)
-      window.removeEventListener('pointerup', release)
-      window.removeEventListener('pointercancel', release)
-    }
-    window.addEventListener('pointerup', release)
-    window.addEventListener('pointercancel', release)
-    listeners?.onPointerDown?.(e)
-  }
-
-  return { pressed, onPointerDown }
-}
+  sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
+} from '@/lib/sorting'
+import {
+  MEMBER_SORT_TIEBREAK, isMemberSortField, memberSortOptions, memberSortTiebreak, memberSortValue,
+  type MemberSortField,
+} from '@/lib/memberSort'
+import {
+  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
+  memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
+  type MemberDisplayState,
+} from '@/components/tournament/assignments/MemberDisplayModal'
+import { MemberCard } from '@/components/tournament/assignments/MemberCard'
+import { EventRow } from '@/components/tournament/assignments/EventRow'
+import {
+  fullName, laneKeyOf, withOrderedShifts, type BoardHandlers,
+} from '@/lib/assignments/board'
 
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
 
-function fullName(member: { first_name: string | null; last_name: string | null }) {
-  return [member.first_name, member.last_name].filter(Boolean).join(' ')
+/** One open docked panel. At most one of each kind is ever open, which is
+ *  what keeps the stack two deep and makes `kind` a usable React key. */
+type PanelKind = 'member' | 'event'
+interface PanelRef { kind: PanelKind; id: number }
+const PANEL_WIDTH: Record<PanelKind, number> = {
+  member: MEMBER_PANEL_WIDTH,
+  event: EVENT_PANEL_WIDTH,
 }
-
-function divisionVariant(division: string | null) {
-  if (division === 'A') return 'divisionA' as const
-  if (division === 'B') return 'divisionB' as const
-  return 'divisionC' as const
-}
-
-
-/**
- * The same event with its shifts in schedule order.
- *
- * The board reads `shifts` as the timeline itself — the array index is the
- * column, a bar's span is a slice of it, and the boundary times are its
- * starts and ends — so an event whose Impound shift was attached after
- * Morning printed the day as 8am, 12pm, 4pm, 8am. The API sorts these now
- * (TournamentEvent.shifts order_by), and this normalises on arrival anyway:
- * every ordering assumption downstream is local to this page, so this is
- * where it should be guaranteed rather than assumed.
- */
-function withOrderedShifts(event: TournamentEvent): TournamentEvent {
+/** How long after a drop a click on an event row is ignored. A chip dragged
+ *  within its own row makes the row the click's common ancestor, so the drop
+ *  would otherwise open the panel it landed on. */
+const CLICK_AFTER_DRAG_MS = 250
+/** An event with only the shifts and tracks the current tab shows. */
+function filterEventTracks(event: TournamentEvent, showsTrack: (id: number) => boolean): TournamentEvent {
   return {
     ...event,
-    shifts: [...event.shifts].sort(
-      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime() || a.id - b.id,
-    ),
+    shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
+    tracks: event.tracks.filter((t) => showsTrack(t.id)),
   }
 }
-
-/** An event's shiftless tracks. `is_primary` is the whole test: only a
- *  primary track has dates, and only a dated track can hold shifts (see
- *  TournamentTrack in models.py), so a cosmetic one can never be a column. */
-function cosmeticTracksOf(event: TournamentEvent): TournamentTrack[] {
-  return event.tracks.filter((track) => !track.is_primary)
-}
-
-
-/** A hover-revealed icon button inside a chip. Hidden from the pointer while
- *  invisible, not merely transparent — otherwise a stray click on a chip you
- *  were only passing over hits a control you cannot see. */
-function ChipAction({
-  hovered, danger, onClick, title, label, children,
-}: {
-  hovered: boolean
-  danger?: boolean
-  onClick: () => void
-  title: string
-  label: string
-  children: ReactNode
-}) {
-  const resting = 'var(--color-text-tertiary)'
-  const active = danger ? 'var(--color-danger)' : 'var(--color-text-primary)'
-  return (
-    <button
-      type="button"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onClick() }}
-      title={title}
-      aria-label={label}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, padding: 0, width: '14px', height: '14px',
-        border: 'none', background: 'transparent', borderRadius: '3px',
-        color: resting, cursor: 'pointer',
-        opacity: hovered ? 1 : 0,
-        pointerEvents: hovered ? 'auto' : 'none',
-        transition: 'opacity 120ms ease, color 120ms ease',
-      }}
-      onPointerEnter={(e) => { e.currentTarget.style.color = active }}
-      onPointerLeave={(e) => { e.currentTarget.style.color = resting }}
-    >
-      {children}
-    </button>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Chip — one assigned person. Name only.
-// ---------------------------------------------------------------------------
-interface ChipProps {
-  /** The bar this chip draws — one person on the event, every role they hold
-   *  here (a lane is one row per shift *per role*). */
-  lane: Lane
-  eventId: number
-  /** Every role the tournament offers, for the pill's picker. */
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  /** Adds or removes one role, leaving the rest — the multi-select path. */
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  /** Replaces every role this person holds here with the one picked — the
-   *  default path, since swapping a role is far commoner than stacking one. */
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  /** Drops the whole bar — every shift, every role. */
-  onRemove: (laneKey: string, eventId: number) => void
-  /** Given, the chip grows its own resize edges — no separate handles. */
-  onResizeStart?: (edge: 'start' | 'end', e: ReactPointerEvent) => void
-  /** Which edge is mid-drag, so its grip stays lit once the cursor has
-   *  outrun the chip. */
-  resizingEdge?: 'start' | 'end' | null
-}
-
-/**
- * The draggable shell. useDraggable re-renders this on every drop-target
- * crossing, and context bypasses memo — so the shell stays thin and the real
- * chip lives in ChipBody, the same split MemberCard uses.
- */
-function Chip(props: ChipProps) {
-  const [hovered, setHovered] = useState(false)
-  const assignment = props.lane.assignments[0]
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `chip:${assignment.id}`,
-    data: { kind: 'chip', assignment },
-  })
-  const grab = useGrabCursor(listeners)
-
-  return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onPointerDown={grab.onPointerDown}
-      style={{
-        minWidth: 0,
-        cursor: grab.pressed || isDragging ? 'grabbing' : 'grab',
-        opacity: isDragging ? 0.4 : 1,
-        // dnd-kit makes a draggable focusable, so grabbing one paints the
-        // browser's default focus ring — the black outline. Dragging already
-        // has its own visual state; the ring only adds a hard edge.
-        outline: 'none',
-      }}
-    >
-      <ChipBody {...props} hovered={hovered} />
-    </div>
-  )
-}
-
-const ChipBody = memo(function ChipBody({
-  lane, eventId, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onResizeStart, resizingEdge, hovered,
-}: ChipProps & { hovered: boolean }) {
-  const assignment = lane.assignments[0]
-  const roles = lane.roles
-  // Memoised so a hover toggle doesn't recompute every row's flags.
-  const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor])
-
-  // The edges live inside the chip and sit above the drag listeners.
-  // stopPropagation is what keeps a resize from also starting a drag — the
-  // pointerdown would otherwise bubble to the draggable root.
-  const edge = (side: 'start' | 'end') => {
-    const active = resizingEdge === side
-    return (
-      <div
-        onPointerDown={(e) => { e.stopPropagation(); onResizeStart?.(side, e) }}
-        title={side === 'start' ? 'Drag to start earlier' : 'Drag to extend'}
-        style={{
-          position: 'absolute', top: 0, bottom: 0, width: '12px',
-          [side === 'start' ? 'left' : 'right']: 0,
-          cursor: 'ew-resize',
-          // Touch hands a horizontal drag to the scroller unless the element
-          // claims it, and the resize would never see a pointermove.
-          touchAction: 'none',
-          display: 'flex', alignItems: 'center',
-          justifyContent: side === 'start' ? 'flex-start' : 'flex-end',
-          padding: '0 3px',
-        }}
-      >
-        {/* An invisible hit zone is a feature nobody finds. The grip shows on
-            hover only, so a settled board stays quiet. */}
-        <div style={{
-          width: '2px', height: '11px', borderRadius: '1px',
-          background: active ? 'var(--color-accent)' : 'var(--color-border-strong)',
-          opacity: active || hovered ? 1 : 0,
-          transition: 'opacity 120ms ease, background 120ms ease',
-        }} />
-      </div>
-    )
-  }
-
-  return (
-    <div
-      style={{
-        position: 'relative',
-        display: 'flex', alignItems: 'center', gap: '6px',
-        // Horizontal padding clears the 12px grips, so the name never sits
-        // under a hit zone on a chip narrowed to a single shift.
-        padding: '4px 14px', borderRadius: 'var(--radius-md)',
-        border: `1px solid ${flags.length ? 'var(--color-warning)' : 'var(--color-border)'}`,
-        background: flags.length ? 'var(--color-warning-subtle)' : 'var(--color-surface)',
-        fontSize: '12px',
-        // No `overflow: hidden` here — it clipped the warning tooltip, which
-        // renders inside the chip. The name below does its own truncating.
-        minWidth: 0,
-      }}
-    >
-      {onResizeStart && edge('start')}
-      {/* The shift is carried by where the bar sits on the timeline, so
-          repeating it here would say the same thing twice and cost the width
-          that makes the name readable. */}
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontWeight: 500, whiteSpace: 'nowrap',
-        overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-      }}>
-        {fullName(assignment.member)}
-      </span>
-      {/* stopPropagation for the same reason the resize edges do it: without
-          it, pressing the pill starts a dnd-kit drag of the whole chip and the
-          menu never opens. flexShrink pins the pill at full size so a chip
-          narrowed to one shift eats into the name instead of the control. */}
-      <span
-        onPointerDown={(e) => e.stopPropagation()}
-        style={{ display: 'flex', flexShrink: 0, cursor: 'default' }}
-      >
-        <RolePillMenu
-          roles={roles}
-          roleCatalog={roleCatalog}
-          onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-          onPickRole={(role) => onPickRole(lane.key, eventId, role)}
-        />
-      </span>
-      {flags.length > 0 && (
-        <Tooltip variant="warning" message={flags.map((f) => f.detail).join(' ')} showIcon={false}>
-          <span style={{ display: 'flex', color: 'var(--color-warning)' }}>
-            <IconWarning size={12} />
-          </span>
-        </Tooltip>
-      )}
-      {/* Only on hover: a board of forty chips each wearing a permanent × is
-          forty invitations to delete something. stopPropagation on pointerdown
-          so pressing it doesn't start a drag, and the click is what fires. */}
-      <ChipAction
-        hovered={hovered}
-        danger
-        onClick={() => onRemove(lane.key, eventId)}
-        title="Remove from this event"
-        label={`Remove ${fullName(assignment.member)} from this event`}
-      >
-        <IconX size={10} />
-      </ChipAction>
-      {onResizeStart && edge('end')}
-    </div>
-  )
-})
-
-// ---------------------------------------------------------------------------
-// Shift timeline
-// ---------------------------------------------------------------------------
-/** A bar's identity: one member on one event, with a *set* of roles (one row
- *  per shift per role). Shift rows share one key so a bar can span Day 1 and
- *  Day 2; unpinned rows key by track, so a role edit or drag on Test Writing
- *  can't rebuild the Day 1 bar, or vice versa. */
-function laneKeyOf(assignment: Assignment) {
-  const member = assignment.member.membership_id
-  return assignment.shift ? `${member}:shifts` : `${member}:track:${assignment.track.id}`
-}
-
-/** The board's bars: one per member on the event, across its shifts. */
-function buildLanes(rowAssignments: Assignment[], shiftIds: number[]) {
-  return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf)
-}
-
-function TimelineBar({
-  lane, eventId, columns, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
-}: {
-  lane: Lane
-  eventId: number
-  columns: number
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  /** Fires once, on release — syncs the whole gesture's net change to the
-   *  server rather than one write per pointermove. `beforeRows` is the
-   *  lane's rows as of pointerdown (see the closure note on startResize). */
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-}) {
-  const first = Math.min(...lane.covered)
-  const last = Math.max(...lane.covered)
-  const [resizingEdge, setResizingEdge] = useState<'start' | 'end' | null>(null)
-
-  // A raw pointer drag rather than a dnd-kit draggable: resizing changes how
-  // far one bar reaches, not where it lives, and routing it through the drag
-  // context would make every resize look like a reassignment to the drop
-  // targets. Each move commits, so the chip grows under the cursor rather
-  // than snapping when you let go.
-  function startResize(edge: 'start' | 'end', e: ReactPointerEvent) {
-    e.preventDefault()
-    const handle = e.currentTarget as HTMLElement
-    const track = handle.closest('[data-lane]')
-    if (!track) return
-    const rect = track.getBoundingClientRect()
-    const colWidth = rect.width / columns
-
-    // Capture retargets every later pointer event to the handle, so the drag
-    // survives the cursor leaving the chip — and a release outside the window
-    // still arrives as a pointerup instead of stranding the listeners.
-    handle.setPointerCapture(e.pointerId)
-    setResizingEdge(edge)
-
-    // The cursor belongs to whatever sits under the pointer, which mid-resize
-    // is rarely the chip. Lock it on <body>, and kill selection so dragging
-    // back across the row doesn't highlight its text.
-    const priorCursor = document.body.style.cursor
-    const priorSelect = document.body.style.userSelect
-    document.body.style.cursor = 'ew-resize'
-    document.body.style.userSelect = 'none'
-
-    let lastIndex = -1
-
-    function move(ev: globalThis.PointerEvent) {
-      const raw = Math.floor((ev.clientX - rect.left) / colWidth)
-      const index = Math.max(0, Math.min(columns - 1, raw))
-      // Pointermove fires per frame; without this every one re-commits the
-      // same span and rebuilds the whole rows array for nothing.
-      if (index === lastIndex) return
-      lastIndex = index
-      onResize(lane.key, eventId, edge, index)
-    }
-    function up() {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.removeEventListener('pointercancel', up)
-      document.body.style.cursor = priorCursor
-      document.body.style.userSelect = priorSelect
-      setResizingEdge(null)
-      // `lane.assignments` is exactly what the lane held before this
-      // gesture's first pointermove — startResize closed over it once, at
-      // pointerdown, and nothing since has changed which object it names.
-      onResizeCommit(lane.key, eventId, lane.assignments)
-    }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-    handle.addEventListener('pointercancel', up)
-  }
-
-  return (
-    <div style={{ gridColumn: `${first + 1} / ${last + 2}`, minWidth: 0, padding: '0 3px' }}>
-      <Chip
-        lane={lane}
-        eventId={eventId}
-        roleCatalog={roleCatalog}
-        flagsFor={flagsFor}
-        onToggleRole={onToggleRole}
-        onPickRole={onPickRole}
-        onRemove={onRemove}
-        onResizeStart={startResize}
-        resizingEdge={resizingEdge}
-      />
-    </div>
-  )
-}/** One shift's full-height column. Invisible until a drag is over it, then
- *  the column itself tints — the target is the area you are already aiming
- *  at, not a separate band that has to be explained. */
-function ShiftColumn({
-  eventId, shiftId, first, allShifts,
-}: { eventId: number; shiftId: number; first: boolean; allShifts: boolean }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `shift:${eventId}:${shiftId}`,
-    data: { kind: 'shift', eventId, shiftId },
-  })
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        borderLeft: first ? 'none' : '1px solid var(--color-border)',
-        // `allShifts` is the row's all-shifts target being hovered. It tints
-        // every column because that is literally what dropping there does —
-        // showing the preview only on the metadata block asked you to take
-        // its word for it.
-        background: isOver || allShifts ? 'var(--color-accent-subtle)' : 'transparent',
-        transition: 'background 120ms ease',
-      }}
-    />
-  )
-}
-
-/**
- * Memoised: EventRow above calls useDroppable, so it re-renders every time
- * the drag crosses into a different target — twenty-five rows rebuilding
- * their lanes, chips and flags per crossing. The row's droppable state that
- * this subtree actually needs is `overAllShifts`, which only moves for the
- * one row being hovered; everything else it takes is stable while dragging,
- * so the other rows now bail out here.
- */
-const ShiftTimeline = memo(function ShiftTimeline({
-  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts,
-}: {
-  event: TournamentEvent
-  rowAssignments: Assignment[]
-  roleCatalog: Role[]
-  onRemove: (laneKey: string, eventId: number) => void
-  /** The row's all-shifts target is being hovered. */
-  overAllShifts: boolean
-  flagsFor: (a: Assignment) => Flag[]
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-}) {
-  const shiftIds = event.shifts.map((s) => s.id)
-  const { lanes, unpinned } = buildLanes(rowAssignments, shiftIds)
-  // Any drag in flight, from the belt or from another chip. Our own context,
-  // not useDndContext — see the note on useBoardDragging.
-  const dragging = useBoardDragging()
-  const columns = event.shifts.length
-  const gridColumns = `repeat(${columns}, minmax(0, 1fr))`
-  const noShiftTracks = noShiftTracksOf(event, unpinned)
-
-  // One time at every divider, edges included — n shifts have n+1 boundaries,
-  // and each internal one is both a shift's end and the next one's start.
-  const boundaries = [event.shifts[0].start, ...event.shifts.map((s) => s.end)]
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-      {/* Everything the columns apply to, and nothing else — the layer below
-          is `inset: 0` against *this* box, so the No-shift section being a
-          sibling rather than a child is what keeps the dividers from running
-          down through it. Those people are on no column by definition. */}
-      <div style={{
-        position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0,
-      }}>
-      {/* The columns are both the dividers and the drop targets, drawn once as
-          a layer behind everything so they run the full height of the lanes.
-          Per-lane borders never line up, and a separate strip of drop zones
-          made you aim somewhere other than where the shift is. */}
-      <div
-        style={{
-          position: 'absolute', inset: 0, display: 'grid',
-          gridTemplateColumns: gridColumns,
-        }}
-      >
-        {event.shifts.map((shift, i) => (
-          <ShiftColumn
-            key={shift.id}
-            eventId={event.id}
-            shiftId={shift.id}
-            first={i === 0}
-            allShifts={overAllShifts}
-          />
-        ))}
-      </div>
-
-      {/* Times and shift names share one line: they name the same axis, and
-          stacking them cost a whole row of header to say it twice. They can
-          share because they never want the same x — a name is centred in its
-          column, a time sits on the divider *between* columns, so each falls
-          in the other's gap. The times are absolutely positioned (out of the
-          grid's flow) rather than being cells of it, since a boundary belongs
-          to no single column.
-
-          One time per divider — a boundary is shared by the shift before and
-          after it, so printing it once says what two per-column ranges said
-          redundantly. Every time sits to the *right* of its line, so each
-          reads as "this column starts at"; the last boundary has no column
-          after it, so it flips to the left. */}
-      <div style={{
-        position: 'relative', pointerEvents: 'none',
-        display: 'grid', gridTemplateColumns: gridColumns,
-        borderBottom: '1px solid var(--color-border)', paddingBottom: '4px',
-      }}>
-        {boundaries.map((moment, i) => (
-          <span
-            key={i}
-            style={{
-              position: 'absolute', left: `${(i / columns) * 100}%`, top: '50%',
-              // translateY centres it against the taller shift name beside it;
-              // the last one also pulls itself back inside the right edge.
-              transform: i === columns ? 'translate(-100%, -50%)' : 'translateY(-50%)',
-              paddingLeft: i === columns ? 0 : '4px',
-              paddingRight: i === columns ? '4px' : 0,
-              fontFamily: 'var(--font-sans)', fontSize: '10px',
-              color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap',
-            }}
-          >
-            {formatTime(moment)}
-          </span>
-        ))}
-        {event.shifts.map((shift) => (
-          <span key={shift.id} style={{
-            fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
-            color: 'var(--color-text-secondary)', textAlign: 'center',
-            padding: '0 6px', minWidth: 0,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {shift.label}
-          </span>
-        ))}
-      </div>
-
-      {lanes.length === 0 && (
-        // Empty means empty *here*: this is the timeline, so it reports on
-        // the shifts alone. People in the cosmetic-track columns below are
-        // not on a shift, and counting them as staffing would leave an event
-        // whose competition days are unstaffed looking covered.
-        //
-        // Sits above the column layer so the dividers don't strike through
-        // it, and spans the row so an unstaffed event reads as a gap in the
-        // board rather than as a stray line of text.
-        <div style={{ position: 'relative' }}>
-          <EmptyState size="sm" title="Nobody assigned" />
-        </div>
-      )}
-
-      {lanes.map((lane) => (
-        <div
-          key={lane.key}
-          data-lane
-          style={{ position: 'relative', display: 'grid', gridTemplateColumns: gridColumns }}
-        >
-          <TimelineBar
-            lane={lane}
-            eventId={event.id}
-            columns={columns}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            onResize={onResize}
-            onResizeCommit={onResizeCommit}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
-          />
-        </div>
-      ))}
-
-      {/* Normally only when somebody is actually unpinned — an always-present
-          empty section is chrome explaining a state that isn't happening. But
-          its columns are the only targets a cosmetic track has, and a target
-          that only exists once you have already used it is not reachable by
-          dragging. So it also appears, empty, for the duration of a drag. */}
-      </div>
-
-      {(unpinned.length > 0 || (dragging && noShiftTracks.length > 0)) && (
-        <UnpinnedSection
-          eventId={event.id}
-          unpinned={unpinned}
-          cosmeticTracks={noShiftTracks}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-        />
-      )}
-    </div>
-  )
-})
-
-/**
- * One cosmetic track's share of the no-shift area: its people, and the target
- * that puts more of them there.
- *
- * A cosmetic track (is_primary false — Test Writing, Review) has no shifts by
- * construction, so it can never be a timeline column; before this it had no
- * area of its own at all, and a drop anywhere on the event granted
- * `tracks[0]`'s default role. On an event that runs on both Day 1 and Test
- * Writing that is simply the wrong role, with nothing on screen to say so.
- *
- * The role is named in the header rather than left to be discovered after the
- * drop, since granting it is the whole point of aiming at this column.
- */
-function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
-  eventId: number
-  track: TournamentTrack
-  lanes: Lane[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `track:${eventId}:${track.id}`,
-    data: { kind: 'track', eventId, trackId: track.id },
-  })
-  const role = track.default_role_id === null
-    ? null
-    : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0,
-        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
-        // Border stays the ordinary colour while hovered — the tint alone
-        // says "you can drop here", the same as the event row and the shift
-        // columns. --color-accent is near-black, so lighting the border made
-        // one column jump out of a row of otherwise quiet boxes.
-        border: '1px solid var(--color-border)',
-        background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
-        // Tall enough to be aimed at while empty — this is the only way onto
-        // a cosmetic track, so it cannot be a hairline.
-        minHeight: '58px',
-        transition: 'background 120ms ease',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', minWidth: 0 }}>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-          letterSpacing: '0.05em', textTransform: 'uppercase',
-          color: 'var(--color-text-tertiary)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {track.name} · {lanes.length}
-        </span>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontSize: '10px', whiteSpace: 'nowrap',
-          // A track with no default role still takes drops: the failure names
-          // the track, which is more use than a column you cannot aim at and
-          // cannot ask why.
-          color: role ? 'var(--color-text-tertiary)' : 'var(--color-warning)',
-        }}>
-          {role ? role.label : 'No default role'}
-        </span>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {lanes.map((lane) => (
-          <Chip
-            key={lane.key}
-            lane={lane}
-            eventId={eventId}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/**
- * Which column an unpinned chip sits in — the track the row itself names.
- *
- * This used to be a guess: an assignment carried only event, member, role and
- * shift, so a chip was filed under whichever track's *default role* it held,
- * which two tracks can share and a hand-picked role matches none of. The row
- * carries its track now (see tournament_track_id), so the question is
- * answered rather than inferred.
- */
-function bucketByTrack(lanes: Lane[], tracks: TournamentTrack[]): Map<number, Lane[]> {
-  const buckets = new Map(tracks.map((track) => [track.id, [] as Lane[]]))
-  for (const lane of lanes) {
-    buckets.get(lane.assignments[0].track.id)?.push(lane)
-  }
-  return buckets
-}
-
-/**
- * The no-shift area's columns: every cosmetic track the event runs on, plus
- * any track that actually holds unpinned rows here.
- *
- * The second half is not hypothetical — detaching a shift from an event
- * unpins its assignments while leaving them on that day's track (see
- * detach_shifts_from_assignments, which unpins rather than deletes precisely
- * so the staffing isn't silently lost). Without a column for it, "not lost"
- * would still mean "nowhere on screen".
- */
-function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTrack[] {
-  const columns = cosmeticTracksOf(event)
-  const shown = new Set(columns.map((track) => track.id))
-  for (const lane of unpinned) {
-    const track = lane.assignments[0].track
-    if (shown.has(track.id)) continue
-    shown.add(track.id)
-    // The event's own copy where there is one — it carries default_role_id,
-    // which the column header names.
-    columns.push(event.tracks.find((t) => t.id === track.id) ?? {
-      ...track, tournament_id: event.tournament_id, start_date: null, end_date: null,
-      university: null, location: null, division: null, is_archived: false,
-      allow_confirm: false, lock_responses: false, default_role_id: null,
-      created_at: '', updated_at: '',
-    })
-  }
-  return columns
-}
-
-/** The no-shift area, split into one equal column per cosmetic track. Equal
- *  because nothing ranks them — an event's cosmetic tracks are parallel
- *  workstreams, not a hierarchy — and they divide the people area exactly,
- *  which is the row's width less the metadata column. */
-function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
-  eventId: number
-  tracks: TournamentTrack[]
-  lanes: Lane[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-}) {
-  if (tracks.length === 0) return null
-  const buckets = bucketByTrack(lanes, tracks)
-  return (
-    <div style={{
-      display: 'grid', gap: '6px',
-      gridTemplateColumns: `repeat(${tracks.length}, minmax(0, 1fr))`,
-    }}>
-      {tracks.map((track) => (
-        <TrackColumn
-          key={track.id}
-          eventId={eventId}
-          track={track}
-          lanes={buckets.get(track.id) ?? []}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-        />
-      ))}
-    </div>
-  )
-}
-
-/**
- * Assigned to the event but pinned to no shift — test writing, and anything
- * not yet scheduled. Its own section because these are exactly the people a
- * TD needs to find and drag up onto a column.
- *
- * The section has no target of its own: it is exactly the event's cosmetic
- * tracks, one column each. A generic "no shift" drop is what used to grant
- * `tracks[0]`'s role with nothing on screen naming the track it billed, so
- * removing it removes the only way to land in that state by accident. The
- * cost is that an event with no cosmetic track can no longer be given an
- * unpinned assignment from the board — its columns are what a drop is for.
- * Existing unpinned people on such an event still show, read-only as a
- * placement: they are still draggable up onto a shift.
- */
-function UnpinnedSection({
-  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove,
-}: {
-  eventId: number
-  unpinned: Lane[]
-  /** The event's shiftless tracks — the section's columns, in event order. */
-  cosmeticTracks: TournamentTrack[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-}) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: '6px',
-      marginTop: '2px', paddingTop: '6px',
-      borderTop: '1px solid var(--color-border)',
-    }}>
-      {cosmeticTracks.length > 0 ? (
-        <NoShiftTracks
-          eventId={eventId}
-          tracks={cosmeticTracks}
-          lanes={unpinned}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-        />
-      ) : (
-        <>
-          <span style={{
-            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-            letterSpacing: '0.05em', textTransform: 'uppercase',
-            color: 'var(--color-text-tertiary)',
-          }}>
-            No shift · {unpinned.length}
-          </span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {unpinned.map((lane) => (
-              <Chip
-                key={lane.key}
-                lane={lane}
-                eventId={eventId}
-                roleCatalog={roleCatalog}
-                flagsFor={flagsFor}
-                onToggleRole={onToggleRole}
-                onPickRole={onPickRole}
-                onRemove={onRemove}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) {
-  return (
-    <span style={{
-      display: 'flex', alignItems: 'center', gap: '5px',
-      fontFamily: 'var(--font-sans)', fontSize: '11px',
-      color: 'var(--color-text-tertiary)',
-    }}>
-      {icon}
-      {children}
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Event row
-// ---------------------------------------------------------------------------
-function EventRow({
-  event, rowAssignments, roleCatalog, flagsFor, display, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
-}: {
-  event: TournamentEvent
-  rowAssignments: Assignment[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  display: EventDisplayState
-  onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
-  onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
-  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
-  onRemove: (laneKey: string, eventId: number) => void
-}) {
-  // Two targets on a row with shifts: the metadata column means "every
-  // shift", and each timeline column means that one. The row itself is only a
-  // target when there are no shifts to aim at.
-  const { setNodeRef: setAllShiftsRef, isOver: overAllShifts } = useDroppable({
-    id: `allday:${event.id}`,
-    data: { kind: 'allday', eventId: event.id },
-  })
-  // The row is a target only for an event with neither shifts to aim at nor
-  // cosmetic tracks to split by — anything else has a more specific target.
-  const cosmeticTracks = cosmeticTracksOf(event)
-  const { setNodeRef: setRowRef, isOver: overRow } = useDroppable({
-    id: `event:${event.id}`,
-    data: { kind: 'event', eventId: event.id },
-    disabled: event.shifts.length > 0 || cosmeticTracks.length > 0,
-  })
-  // Memoised so the lane objects survive this row's per-crossing re-renders
-  // (useDroppable above) — ChipBody's memo compares them by identity.
-  const hasShifts = event.shifts.length > 0
-  const shiftlessLanes = useMemo(
-    () => (hasShifts ? [] : buildLanes(rowAssignments, []).unpinned),
-    [rowAssignments, hasShifts],
-  )
-
-  const location = [event.building, event.room].filter(Boolean).join(' ')
-  // The event's window: earliest shift start to latest shift end. Derived,
-  // not stored — an event has no times of its own, only the union of the
-  // shifts attached to it (see TournamentEvent in models.py).
-  const starts = event.shifts.map((s) => s.start).sort()
-  const ends = event.shifts.map((s) => s.end).sort()
-  const span = event.shifts.length > 0
-    ? `${formatTime(starts[0])} – ${formatTime(ends[ends.length - 1])}`
-    : null
-  const trackNames = event.tracks.map((t) => t.name)
-
-  return (
-    <div
-      style={{
-        display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
-        padding: '10px 12px', borderRadius: 'var(--radius-md)',
-        // Border stays the ordinary colour while dragging — a tint carries
-        // the "you can drop here" signal without the row jumping out.
-        border: '1px solid var(--color-border)',
-        background: overRow ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
-        transition: 'background 120ms ease',
-        // A row you cannot aim at is not a drop target. `start`, not `center`:
-        // centering pins the row to one line's height, so a second lane spills
-        // past the border instead of growing it.
-        minHeight: '56px', alignItems: 'start',
-      }}
-    >
-      <div
-        ref={event.shifts.length > 0 ? setAllShiftsRef : undefined}
-        style={{
-          display: 'flex', flexDirection: 'column', gap: '4px',
-          position: 'relative', borderRadius: 'var(--radius-sm)',
-          padding: '2px 4px', margin: '-2px -4px',
-          background: overAllShifts ? 'var(--color-accent-subtle)' : 'transparent',
-          transition: 'background 120ms ease',
-        }}
-      >
-        {/* Says what dropping here does, and only while it would do it. */}
-        {overAllShifts && event.shifts.length > 0 && (
-          <span style={{
-            position: 'absolute', right: '4px', top: '2px',
-            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-            color: 'var(--color-accent)',
-          }}>
-            All shifts
-          </span>
-        )}
-        {/* Name in sans and first — it is what you scan the column for. The
-            division trails it as a tag rather than leading, so the names line
-            up on the left edge instead of being indented by a badge. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {/* eventName, not `name`: a catalog-linked event leaves its own
-              name column null and carries it on the joined canonical event. */}
-          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
-            {eventName(event)}
-          </span>
-          {display.division && event.division && (
-            <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
-          )}
-          {display.type && event.event_type === 'trial' && <Badge variant="pending">Trial</Badge>}
-        </div>
-
-        {/* Icon + text per line, so the kinds stay distinguishable without
-            labels. Sans, not mono: these read as prose, not as data. */}
-        {display.room && location && (
-          <MetaLine icon={<IconLocation size={12} />}>{location}</MetaLine>
-        )}
-        {display.time && span && (
-          <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>
-        )}
-        {display.tracks && trackNames.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-            {trackNames.map((name) => <Badge key={name} variant="default">{name}</Badge>)}
-          </div>
-        )}
-      </div>
-
-      {event.shifts.length === 0 ? (
-        // No shifts to lay a timeline over — test writing and friends. The
-        // whole people area is the no-shift area here, so it is split the
-        // same way: one column per cosmetic track.
-        cosmeticTracks.length > 0 ? (
-          <NoShiftTracks
-            eventId={event.id}
-            tracks={noShiftTracksOf(event, shiftlessLanes)}
-            lanes={shiftlessLanes}
-            roleCatalog={roleCatalog}
-            flagsFor={flagsFor}
-            onToggleRole={onToggleRole}
-            onPickRole={onPickRole}
-            onRemove={onRemove}
-          />
-        ) : (
-          // No cosmetic track to split by, so the row itself stays the
-          // target — the alternative is an event nothing can be assigned to.
-          <div ref={setRowRef} style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {rowAssignments.length === 0 ? (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <EmptyState size="sm" title="Nobody assigned" />
-              </div>
-            ) : (
-              // No shifts to index against, so every row lands in `unpinned` —
-              // which is the grouping we want anyway: one chip per person,
-              // carrying however many roles they hold here.
-              shiftlessLanes.map((lane) => (
-                <Chip
-                  key={lane.key}
-                  lane={lane}
-                  eventId={event.id}
-                  roleCatalog={roleCatalog}
-                  flagsFor={flagsFor}
-                  onToggleRole={onToggleRole}
-                  onPickRole={onPickRole}
-                  onRemove={onRemove}
-                />
-              ))
-            )}
-          </div>
-        )
-      ) : (
-        <ShiftTimeline
-          event={event}
-          rowAssignments={rowAssignments}
-          roleCatalog={roleCatalog}
-          flagsFor={flagsFor}
-          onResize={onResize}
-          onResizeCommit={onResizeCommit}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
-          onRemove={onRemove}
-          overAllShifts={overAllShifts}
-        />
-      )}
-    </div>
-  )
-}
+/** Shared by every unstaffed row — a fresh `[]` per render would defeat EventRow's memo. */
+const NO_ASSIGNMENTS: Assignment[] = []
 
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
+// A belt is scanned for a person, so alphabetical is the order you can
+// predict without reading. The members table defaults to newest joins instead.
+const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: 'first_name', direction: 'asc' }]
+
 export default function AssignmentsPage() {
   const params = useParams()
   const tournamentId = Number(params.id)
@@ -1159,80 +173,216 @@ export default function AssignmentsPage() {
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1))
   const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
   const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
+  // Only the event panel reads these two; the board itself has no use for
+  // them, so they are fetched for its sake rather than the page's.
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([])
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([])
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
   const [loadError, setLoadError] = useState<string | undefined>()
 
   // Which member's panel is open, mirrored into ?member= so a refresh — or a
   // link pasted to a colleague — comes back to it. Same param name as the
   // roster's, since it is the same panel showing the same member.
+  // Both panels share one docked column, stacked front to back rather than
+  // side by side: a 700px member panel beside a 600px event panel leaves no
+  // board to drag onto. Only the top one is ever visible — it covers the
+  // other outright — and closing it uncovers what was already there.
   const initialMemberId = useInitialPanelId('member')
-  const [focusedId, setFocusedId] = useState<number | null>(initialMemberId)
-  usePanelUrlSync('member', focusedId)
+  const initialEventId = useInitialPanelId('event')
+  const [panelStack, setPanelStack] = useState<PanelRef[]>(() => [
+    // Member first, so a link carrying both comes back with the event panel
+    // on top — the order opening them by hand produces.
+    ...(initialMemberId !== null ? [{ kind: 'member' as const, id: initialMemberId }] : []),
+    ...(initialEventId !== null ? [{ kind: 'event' as const, id: initialEventId }] : []),
+  ])
+  const focusedId = panelStack.find((p) => p.kind === 'member')?.id ?? null
+  const focusedEventId = panelStack.find((p) => p.kind === 'event')?.id ?? null
+  usePanelParamsSync({ member: focusedId, event: focusedEventId })
+
+  // Opening replaces its own kind and moves it to the front — which is both
+  // "only one member panel at a time" and "the one you just opened is the
+  // one you see", in a single rule.
+  const openPanel = useCallback((kind: PanelKind, id: number) => {
+    setPanelStack((stack) => [...stack.filter((p) => p.kind !== kind), { kind, id }])
+  }, [])
+  const closePanel = useCallback((kind: PanelKind) => {
+    setPanelStack((stack) => stack.filter((p) => p.kind !== kind))
+  }, [])
+
+  // When the last drop landed. A chip dragged from one shift to another
+  // inside the same row leaves that row as the click's common ancestor, so
+  // the browser fires a click on it once the drag ends — and the row would
+  // open the panel for a gesture that was never a click.
+  const lastDropAt = useRef(0)
+  // Stable, so the belt's memoised cards survive a page re-render.
+  const openMemberPanel = useCallback((id: number) => openPanel('member', id), [openPanel])
+  const openEventPanel = useCallback((id: number) => {
+    if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return
+    openPanel('event', id)
+  }, [openPanel])
 
   const [eventQuery, setEventQuery] = useState('')
   const [eventFilters, setEventFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS))
-  const [eventDisplay, setEventDisplay] = useState<EventDisplayState>(DEFAULT_EVENT_DISPLAY)
+  const [eventSort, setEventSort] = useState<SortRule<EventSortField>[]>(DEFAULT_EVENT_SORT)
   const [showEventFilterModal, setShowEventFilterModal] = useState(false)
-  const [showEventDisplayModal, setShowEventDisplayModal] = useState(false)
+  const [showEventSortModal, setShowEventSortModal] = useState(false)
 
   const [memberQuery, setMemberQuery] = useState('')
-  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyMembersFilter())
+  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS))
   const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY)
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
+  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT)
+  const [showMemberSortModal, setShowMemberSortModal] = useState(false)
+  // Names every track, lunch question and custom question — what the card
+  // display and sort modals offer. Same catalog the members page reads.
+  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null)
+  // Each track's preference events, for the per-event sort. Fetched the
+  // first time the sort modal opens — nothing else on the board needs them.
+  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null)
 
-  // This viewer's saved view of the board — the event rows' filters and
-  // metadata under one surface, the belt's under another. Read once: unlike
-  // the roster's, nothing here gates a fetch (both halves filter client-side),
-  // so the board renders on its defaults and settles onto the saved view when
-  // this lands, rather than holding the page on a request.
+  // Which track tab is showing; null is All. Mirrored into ?track= so a
+  // reload comes back to the day being staffed, the way the buildings board
+  // does. A stale id simply falls back to All below.
+  const searchParams = useSearchParams()
+  const [pickedTrackId, setPickedTrackId] = useState<number | null>(
+    () => Number(searchParams.get('track')) || null,
+  )
+  const simple = tracks.length <= 1
+  const activeTrackId = !simple && pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId)
+    ? pickedTrackId
+    : null
+
+  // Memoised: CollapsibleHeader re-registers the bar's copy whenever this
+  // identity changes, and a fresh array each render would do that per frame.
+  const headerTabs = useMemo(
+    () => [{ key: 'all', label: 'All' }, ...tracks.map((t) => ({ key: String(t.id), label: t.name }))],
+    [tracks],
+  )
+
+  const pickTab = useCallback((key: string) => {
+    const next = key === 'all' ? null : Number(key)
+    setPickedTrackId(next)
+    // Merged, so an open ?member= panel survives the tab change.
+    const params = new URLSearchParams(window.location.search)
+    if (next === null) params.delete('track')
+    else params.set('track', String(next))
+    replaceSearchParams(params)
+  }, [])
+
+  // Each tab keeps its own filters, columns and card fields, stored under its
+  // own surface key ("assignments_events:track:3"). The whole config is read
+  // once and the tab's slice derived from it, rather than a fetch per tab.
+  const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId)
+  const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId)
+
+  // What this tab shows and narrows to before anything is saved for it — and
+  // what its modals' Reset buttons return to. Held once rather than rebuilt
+  // at each use, so the modals and the effect below can't drift apart.
+  const trackIds = useMemo(() => tracks.map((t) => t.id), [tracks])
+  const memberDisplayDefaults = useMemo(
+    () => defaultMemberDisplayForTab(trackIds, activeTrackId),
+    [trackIds, activeTrackId],
+  )
+  const memberFilterDefaults = useMemo(
+    () => defaultMemberFiltersForTab(trackIds, activeTrackId),
+    [trackIds, activeTrackId],
+  )
+  const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null)
+
+  // Read once: unlike the roster's, nothing here gates a fetch (both halves
+  // filter client-side), so the board renders on its defaults and settles onto
+  // the saved view when this lands, rather than holding the page on a request.
   useEffect(() => {
     if (!canView) return
     let current = true
     displayConfigApi.get(tournamentId)
-      .then((config) => {
-        if (!current) return
-        const events = config[ASSIGNMENTS_EVENTS]
-        setEventFilters(eventsFilterFromStored(events?.filters))
-        setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
-        const card = config[ASSIGNMENT_CARD]
-        setMemberFilters(membersFilterFromStored(card?.filters))
-        setMemberDisplay(memberDisplayFromHidden(card?.hidden))
-      })
+      .then((config) => { if (current) setSavedConfig(config) })
       // No saved view (or no permission to read one) is not an error — the
       // board's defaults are a perfectly good board.
+      .catch(() => { if (current) setSavedConfig({}) })
+    displayConfigApi.getCatalog(tournamentId)
+      .then((data) => { if (current) setCatalog(data) })
       .catch(() => {})
     return () => { current = false }
   }, [tournamentId, canView])
 
-  const applyEventFilters = useCallback((next: EventsFilterState) => {
-    setEventFilters(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
-      filters: eventsFilterToStored(next),
-    })
+  // Re-derived per tab, so switching tabs swaps the whole view with it.
+  useEffect(() => {
+    if (savedConfig === null) return
+    const events = savedConfig[eventsSurface]
+    setEventFilters(eventsFilterFromStored(events?.filters))
+    // Absent means "never saved", which is the default chain — an empty
+    // *array* is a real state (somebody removed every rule) and stays empty.
+    setEventSort(events?.sorts
+      ? sortRulesFromStored(events.sorts, isEventSortField)
+      : DEFAULT_EVENT_SORT)
+    const card = savedConfig[cardSurface]
+    // Nothing saved for this tab yet: the tab decides what the belt narrows
+    // to and which tracks the card carries, rather than every tab starting
+    // unfiltered and showing all of them. A saved `{}` is a real state —
+    // somebody cleared every chip — so only an absent one falls back.
+    setMemberFilters(card?.filters
+      ? membersFilterFromStored(card.filters)
+      : memberFilterDefaults)
+    setMemberDisplay(Array.isArray(card?.hidden)
+      ? memberDisplayFromHidden(card.hidden)
+      : memberDisplayDefaults)
+    setMemberSort(card?.sorts
+      ? sortRulesFromStored(card.sorts, isMemberSortField)
+      : DEFAULT_BELT_SORT)
+  }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults])
+
+  /** Persists one surface and keeps the local copy in step, so switching away
+   *  and back shows what was just set rather than what was last fetched. */
+  const persistSurface = useCallback((surface: string, patch: Record<string, unknown>) => {
+    setSavedConfig((cur) => ({
+      ...(cur ?? {}),
+      [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
+    }))
+    persistDisplayConfigSurface(tournamentId, surface, patch)
   }, [tournamentId])
 
-  const applyEventDisplay = useCallback((next: EventDisplayState) => {
-    setEventDisplay(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
-      columns: eventDisplayToColumns(next),
-      hidden: eventDisplayToHidden(next),
-    })
-  }, [tournamentId])
+  const applyEventFilters = useCallback((next: EventsFilterState) => {
+    setEventFilters(next)
+    persistSurface(eventsSurface, { filters: eventsFilterToStored(next) })
+  }, [persistSurface, eventsSurface])
+
+  const applyEventSort = useCallback((next: SortRule<EventSortField>[]) => {
+    setEventSort(next)
+    persistSurface(eventsSurface, { sorts: sortRulesToStored(next) })
+  }, [persistSurface, eventsSurface])
 
   const applyMemberFilters = useCallback((next: MembersFilterState) => {
     setMemberFilters(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
-      filters: membersFilterToStored(next),
-    })
-  }, [tournamentId])
+    persistSurface(cardSurface, { filters: membersFilterToStored(next) })
+  }, [persistSurface, cardSurface])
 
   const applyMemberDisplay = useCallback((next: MemberDisplayState) => {
     setMemberDisplay(next)
-    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
-      hidden: memberDisplayToHidden(next),
-    })
-  }, [tournamentId])
+    persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) })
+  }, [persistSurface, cardSurface])
+
+  // Per tab, with the tab's filters and card fields. The belt is fetched with
+  // every data group, so no sort here ever waits on a reload.
+  const applyMemberSort = useCallback((next: SortRule<MemberSortField>[]) => {
+    setMemberSort(next)
+    persistSurface(cardSurface, { sorts: sortRulesToStored(next) })
+  }, [persistSurface, cardSurface])
+
+  const openMemberSortModal = useCallback(() => {
+    setShowMemberSortModal(true)
+    if (eventPrefGroups === null) {
+      membersApi.filterOptions(tournamentId)
+        .then((options) => setEventPrefGroups(options.event_preferences))
+        .catch(() => setEventPrefGroups([]))
+    }
+  }, [eventPrefGroups, tournamentId])
+
+  const memberSortFields = useMemo(
+    () => memberSortOptions(catalog?.columns ?? [], eventPrefGroups ?? []),
+    [catalog, eventPrefGroups],
+  )
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
@@ -1276,23 +426,44 @@ export default function AssignmentsPage() {
     // not the roster, so the belt just degrades to empty for them rather
     // than the page 403ing outright.
     membersApi.list(tournamentId).then((data) => { if (current) setMembers(data) }).catch(() => {})
+    // For the event panel. manage_events-gated like the panel itself, so a
+    // members-only coordinator simply never opens one.
+    if (canManageEvents) {
+      canonicalEventsApi.list().then((data) => { if (current) setCanonicalEvents(data) }).catch(() => {})
+      buildingsApi.list(tournamentId).then((data) => { if (current) setBuildings(data) }).catch(() => {})
+    }
     return () => { current = false }
-  }, [tournamentId, canView, refreshKey])
+  }, [tournamentId, canView, canManageEvents, refreshKey])
 
   // Every event with its hidden tracks stripped out — shifts and tracks both.
   // Derived once and read by *everything* downstream, render and handlers
   // alike: the timeline indexes bars by position in `shifts`, and a resize
   // slices that same array, so a handler working from the unfiltered event
   // while the row draws a filtered one would move the wrong bar.
-  const boardEvents = useMemo(() => {
-    const hidden = new Set(eventDisplay.hiddenTracks)
-    if (hidden.size === 0) return events
-    return (events ?? []).map((event) => ({
-      ...event,
-      shifts: event.shifts.filter((s) => !hidden.has(s.track_id)),
-      tracks: event.tracks.filter((t) => !hidden.has(t.id)),
-    }))
-  }, [events, eventDisplay.hiddenTracks])
+  // Whether a track is on screen. The tab is the whole answer now: it used
+  // to be the tab *plus* a per-viewer hidden set, which was two ways to say
+  // the same thing once every track had a tab of its own.
+  const showsTrack = useCallback(
+    (id: number) => activeTrackId === null || id === activeTrackId,
+    [activeTrackId],
+  )
+
+  // Each event's copy is reused while its source is unchanged, so replacing
+  // one event rebuilds only that copy — fresh objects for all of them would
+  // bust every row's memo. Kept in state and adjusted during render (the
+  // pattern React documents for derived state), since a render-time cache
+  // mutation is what the compiler rules forbid. A new tab rebuilds them all.
+  const [board, setBoard] = useState(() => ({
+    events, showsTrack, boardEvents: (events ?? []).map((e) => filterEventTracks(e, showsTrack)),
+  }))
+  let boardEvents = board.boardEvents
+  if (board.events !== events || board.showsTrack !== showsTrack) {
+    const reuse = board.showsTrack === showsTrack
+      ? new Map((board.events ?? []).map((e, i) => [e, board.boardEvents[i]]))
+      : null
+    boardEvents = (events ?? []).map((e) => reuse?.get(e) ?? filterEventTracks(e, showsTrack))
+    setBoard({ events, showsTrack, boardEvents })
+  }
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
@@ -1300,36 +471,45 @@ export default function AssignmentsPage() {
   // pinned to a hidden track's shift is dropped here, but stays in `rows` for
   // the conflict flags and for every write path — hiding a day must not make
   // a double-booking on it invisible to the day that is showing.
-  const visibleRows = useMemo(() => {
-    const hidden = new Set(eventDisplay.hiddenTracks)
-    if (hidden.size === 0) return rows
-    // An unpinned row names no track, so it goes by the same role match that
-    // buckets it into a column (see bucketByTrack) — otherwise hiding Test
-    // Writing would leave its people showing under Writer's Class. Only roles
-    // that are *no* visible track's default count, so a shared default never
-    // hides someone the remaining column is still speaking for.
-    const claimed = new Set(tracks.filter((t) => !t.is_primary && !hidden.has(t.id))
-      .map((t) => t.default_role_id))
-    const hiddenRoles = new Set(tracks
-      .filter((t) => !t.is_primary && hidden.has(t.id) && t.default_role_id !== null)
-      .map((t) => t.default_role_id)
-      .filter((roleId) => !claimed.has(roleId)))
-    return rows.filter((row) => (row.shift === null
-      ? !hiddenRoles.has(row.role.id)
-      : !hidden.has(row.shift.track_id)))
-  }, [rows, tracks, eventDisplay.hiddenTracks])
+  // Every row names its track, pinned or not, so both ask the same question:
+  // is this row's track on screen. An unpinned row used to be matched by
+  // *role* instead — a leftover from before assignments carried a track, and
+  // wrong as soon as two cosmetic tracks shared a default role, since neither
+  // could then claim a row over the other. Test Writing's people leaked onto
+  // the Writer's Class tab, and the board grew a second section for a track
+  // the tab had excluded.
+  //
+  // Asked through showsTrack rather than against a list of hidden ids: an
+  // event can carry a track the catalog no longer lists (an archived one
+  // pending delete), and a list of the others would let that one through.
+  const visibleRows = useMemo(
+    () => rows.filter((row) => showsTrack(row.shift ? row.shift.track_id : row.track.id)),
+    [rows, showsTrack],
+  )
 
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
   const eventFilterActive = isEventsFilterActive(eventFilters)
-  const memberFilterActive = isMembersFilterActive(memberFilters)
+  // Against the tab's defaults, not against nothing: the belt is *always*
+  // narrowed to the day being staffed, so isFilterActive would light the
+  // clear button on every tab from the first render and offer to undo a
+  // state the button itself hands back.
+  const memberFilterActive = !sameFilterState(memberFilters, memberFilterDefaults)
+  // Same rule for the cards: off-default is what the control reports, and on
+  // a track tab the default already hides every other day's slices.
+  const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults)
+  const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT)
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
   // carries a default role. See TournamentEvent.tracks.
+  //
+  // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
+  // every row takes flagsFor, so a new Map per event edit re-rendered them all.
+  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]))
   const eventTrackIds = useMemo(
-    () => new Map((boardEvents ?? []).map((e) => [e.id, e.tracks.map((t) => t.id)])),
-    [boardEvents],
+    () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
+    [eventTrackKey],
   )
 
   const divisionOptions = useMemo(() => {
@@ -1342,31 +522,33 @@ export default function AssignmentsPage() {
       ? [...options, { value: EVENT_FILTER_UNSET, label: 'No division' }]
       : options
   }, [boardEvents])
-  const trackOptions = useMemo(
-    () => tracks.map((t) => ({ value: String(t.id), label: t.name })),
-    [tracks],
-  )
   const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
+  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents])
+  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents])
+  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents])
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
-    return (boardEvents ?? []).filter((event) => {
+    const matching = (boardEvents ?? []).filter((event) => {
       if (text && !eventName(event).toLowerCase().includes(text)) return false
-      if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
-      if (!filterAllows(eventFilters.type, event.event_type)) return false
-      if (!filterAllows(eventFilters.category, eventCategoryKey(event))) return false
-      // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
-      // of its tracks is picked — filtering to Day 1 shouldn't hide an event
-      // that runs on both Day 1 and Day 2.
-      if (eventFilters.track.size > 0) {
-        const ids = (eventTrackIds.get(event.id) ?? []).map(String)
-        if (!ids.some((id) => eventFilters.track.has(id))) return false
-      }
-      const staffed = (byEvent.get(event.id)?.length ?? 0) > 0
-      if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
-      return true
+      return eventPassesFilters(event, eventFilters, {
+        assignmentsFor: (id) => byEvent.get(id) ?? [],
+        showsTrack,
+        // A track tab narrows to its own track; the All tab honours whatever
+        // the saved filter says.
+        trackOverride: activeTrackId === null ? undefined : new Set([String(activeTrackId)]),
+      })
     })
-  }, [boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
+    // Sorted after filtering, not before: the staffing key costs a pass over
+    // each event's assignments, and there is no reason to pay it for rows the
+    // filter is about to drop.
+    return sortRows(
+      matching,
+      eventSort,
+      (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
+      eventSortTiebreak,
+    )
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack])
 
 
   // Members matching the filters, from the same server filter the members
@@ -1389,13 +571,14 @@ export default function AssignmentsPage() {
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
 
-    return members.filter((member) => {
+    const matching = members.filter((member) => {
       if (text && !fullName(member.user ?? { first_name: null, last_name: null })
         .toLowerCase().includes(text)) return false
       if (filterMatchIds && !filterMatchIds.has(member.id)) return false
       return true
     })
-  }, [filterMatchIds, members, memberQuery])
+    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak)
+  }, [filterMatchIds, members, memberQuery, memberSort])
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>()
@@ -1634,7 +817,13 @@ export default function AssignmentsPage() {
         row.event.id === eventId && laneKeyOf(row) === laneKey)
       if (inLane.length === 0) return current
 
-      const shiftIds = event.shifts.map((s) => s.id)
+      // The lane's own track's shifts, not the event's. `index` was measured
+      // against the columns of one grid, and each track draws its own — on an
+      // event running two days, counting into `event.shifts` would land a Day
+      // 2 resize on Day 1's columns.
+      const trackId = inLane.find((row) => row.shift)?.shift?.track_id
+      const trackShifts = event.shifts.filter((s) => s.track_id === trackId)
+      const shiftIds = trackShifts.map((s) => s.id)
       const covered = inLane
         .map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))
         .filter((i) => i >= 0)
@@ -1648,7 +837,7 @@ export default function AssignmentsPage() {
 
       return rebuildLane(
         current, eventId, laneKey,
-        event.shifts.slice(from, to + 1).map((s) => s.id),
+        trackShifts.slice(from, to + 1).map((s) => s.id),
         rolesOf(inLane), event,
       ).rows
     })
@@ -1726,14 +915,182 @@ export default function AssignmentsPage() {
     setLaneRoles(laneKey, eventId, () => [role])
   }
 
+  // A track's default role, changed from its timeline header. Scoped to the
+  // whole track across the tournament — not to the one event the header
+  // happened to be drawn on — since the default role is a track setting, and
+  // "change every Volunteer on Day 1 to Test Writer" means every event on
+  // Day 1, not just this one.
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    track: TournamentTrack
+    oldRole: Role
+    newRole: Role
+    affected: Assignment[]
+    resolve: () => void
+  } | null>(null)
+
+  async function applyDefaultRoleChange(track: TournamentTrack, newRole: Role, affected: Assignment[]) {
+    const updated = await tournamentTracksApi.update(tournamentId, track.id, { default_role_id: newRole.id })
+    setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)))
+    if (affected.length > 0) {
+      await Promise.all(affected.map((row) =>
+        assignmentsApi.update(tournamentId, row.id, { role_id: newRole.id })))
+      const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label }
+      const affectedIds = new Set(affected.map((r) => r.id))
+      setRows((current) => current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)))
+      setBoardWriteVersion((v) => v + 1)
+    }
+  }
+
+  /** Picking a new default role for a track. Only the people currently
+   *  holding the *old* default on that track move to the new one — anyone
+   *  staffed under a different role is untouched, since a role they were
+   *  deliberately given is not the same fact as a role they inherited from
+   *  the track's default. Nothing to migrate (no default set yet, or nobody
+   *  holds it) applies immediately with no prompt. */
+  function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
+    if (!requireWriteAccess()) return Promise.resolve()
+    if (track.default_role_id === newRole.id) return Promise.resolve()
+    const oldRole = track.default_role_id === null
+      ? null
+      : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+    const affected = oldRole
+      ? rows.filter((r) => r.track.id === track.id && r.role.id === oldRole.id)
+      : []
+    if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, [])
+    return new Promise<void>((resolve) => {
+      setPendingRoleChange({ track, oldRole, newRole, affected, resolve })
+    })
+  }
+
+  // Every write a row can start, in one object whose identity never changes,
+  // so the rows' memo survives page re-renders. Each method forwards to this
+  // render's handler through the ref, so none of them reads stale state.
+  const latestHandlers = useRef<BoardHandlers>(null!)
+  useLayoutEffect(() => {
+    latestHandlers.current = {
+      onResize: handleResize,
+      onResizeCommit: handleResizeCommit,
+      onToggleRole: handleToggleRole,
+      onPickRole: handlePickRole,
+      onRemove: handleRemove,
+      onPickDefaultRole: requestDefaultRoleChange,
+    }
+  })
+  const boardHandlers = useMemo<BoardHandlers>(() => ({
+    onResize: (...args) => latestHandlers.current.onResize(...args),
+    onResizeCommit: (...args) => latestHandlers.current.onResizeCommit(...args),
+    onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
+    onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
+    onRemove: (...args) => latestHandlers.current.onRemove(...args),
+    onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
+  }), [])
+
   const { setPanel, clearPanel } = useSetLayoutPanel()
   const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
+  // From the unfiltered list: an event hidden by the current tab or filter is
+  // still the event whose panel is open, and dropping it out from under the
+  // panel because a filter narrowed would close it mid-edit.
+  const focusedEvent = focusedEventId === null
+    ? null
+    : (events ?? []).find((e) => e.id === focusedEventId) ?? null
 
-  // Both panels live in the shell's single slot as one flex row, since the
-  // slot holds one registration at a time. Widths add up so the board gives
-  // back exactly what the open panels take.
+  // The whole docked column lives in the shell's single slot, since the slot
+  // holds one registration at a time: the belt, then the panel stack beside
+  // it. The board gives back the belt's width plus the widest open panel —
+  // the stack overlaps, so a second panel costs nothing more.
   useEffect(() => {
     const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1
+    // Through the board's own order, filters and tab included — the arrows
+    // walk the list you are looking at, the way the belt's walk the belt.
+    const eventIndex = focusedEvent
+      ? visibleEvents.findIndex((e) => e.id === focusedEvent.id)
+      : -1
+    // The panel on top decides the column's width — not the widest one open.
+    // A wider panel underneath is clipped rather than left sticking out as a
+    // strip of half-rendered labels, and closing the top one widens the
+    // column back to whatever it uncovers.
+    const top = panelStack[panelStack.length - 1]
+    const stackWidth = top ? PANEL_WIDTH[top.kind] : 0
+
+    const panelFor = (ref: PanelRef) => {
+      if (ref.kind === 'member') {
+        return focused && (
+          <MemberPanel
+            key={focused.id}
+            tournamentId={tournamentId}
+            membershipId={focused.id}
+            allRoles={roleCatalog}
+            // The board's own copies, so stepping through members doesn't
+            // re-fetch both on every open.
+            shifts={allShifts}
+            tracks={tracks}
+            canTouchRole={canTouchRole}
+            canEditMember={canEditMember}
+            collectIsOver18={!!selectedTournament?.collect_is_over_18}
+            collectIsOver21={!!selectedTournament?.collect_is_over_21}
+            isArchived={isArchived}
+            isSelf={currentUser?.id === focused.user.id}
+            // No onRemove/onSelfRemove: removing someone from the tournament
+            // is the roster's job, not this board's — omitting them hides
+            // the control entirely rather than wiring a flow that doesn't
+            // belong here.
+            onClose={() => closePanel('member')}
+            // Roles only: the roles PATCH returns none of the built groups
+            // (event prefs, track statuses), so swapping the row would blank them.
+            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
+              m.id === updated.id ? { ...m, roles: updated.roles } : m
+            )))}
+            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
+            assignmentsVersion={panelAssignmentsVersion}
+            onPrev={() => index > 0 && openPanel('member', belt[index - 1].id)}
+            onNext={() => index < belt.length - 1 && openPanel('member', belt[index + 1].id)}
+            hasPrev={index > 0}
+            hasNext={index >= 0 && index < belt.length - 1}
+          />
+        )
+      }
+      // Not loaded is not the same as not there: the id can arrive from the
+      // URL before the events fetch lands, so an absent event holds the slot
+      // open rather than closing the panel a refresh meant to restore.
+      return focusedEvent && (
+        <EventPanel
+          key={focusedEvent.id}
+          tournamentId={tournamentId}
+          event={focusedEvent}
+          locked={isArchived}
+          canonicalEvents={canonicalEvents}
+          allShifts={allShifts}
+          tracks={tracks}
+          buildings={buildings}
+          roles={roleCatalog}
+          onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+          onBuildingSaved={(building) => setBuildings((cur) => (
+            cur.some((b) => b.id === building.id)
+              ? cur.map((b) => (b.id === building.id ? building : b))
+              : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
+          ))}
+          onClose={() => closePanel('event')}
+          // withOrderedShifts, like the list fetch: the board indexes bars by
+          // position in `shifts`, so a save that came back unsorted would
+          // silently reorder the timeline's columns.
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (
+            e.id === saved.id ? withOrderedShifts(saved) : e
+          )))}
+          onDeleted={(id) => {
+            setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))
+            closePanel('event')
+          }}
+          // -1 means the open event is filtered out of the current view, so
+          // there is no "next" from it to speak of — both arrows go quiet
+          // rather than jumping to a row chosen by accident.
+          onPrev={() => eventIndex > 0 && openEventPanel(visibleEvents[eventIndex - 1].id)}
+          onNext={() => eventIndex >= 0 && eventIndex < visibleEvents.length - 1
+            && openEventPanel(visibleEvents[eventIndex + 1].id)}
+          hasPrev={eventIndex > 0}
+          hasNext={eventIndex >= 0 && eventIndex < visibleEvents.length - 1}
+        />
+      )
+    }
 
     setPanel(
       <div style={{ display: 'flex', height: '100%' }}>
@@ -1743,20 +1100,26 @@ export default function AssignmentsPage() {
           width={BELT_PANEL_WIDTH}
           headerActions={
             <>
-              <Button
-                type="button" variant="secondary" size="sm" iconOnly
-                title="Configure member cards"
-                onClick={() => setShowMemberDisplayModal(true)}
-              >
-                <IconEye size={14} />
-              </Button>
-              <Button
-                type="button" variant={memberFilterActive ? 'primary' : 'secondary'}
-                size="sm" iconOnly title="Filter members"
-                onClick={() => setShowMemberFilterModal(true)}
-              >
-                <IconFilter size={14} />
-              </Button>
+              <DisplayButton
+                size="sm" iconOnly label="Configure member cards"
+                active={memberDisplayActive}
+                onOpen={() => setShowMemberDisplayModal(true)}
+                onReset={() => applyMemberDisplay(memberDisplayDefaults)}
+              />
+              <FilterButton
+                size="sm" iconOnly label="Filter members"
+                active={memberFilterActive}
+                onOpen={() => setShowMemberFilterModal(true)}
+                // Back to the tab's own filters, not to nothing: this tab's
+                // unfiltered state *is* the day it is staffing.
+                onClear={() => applyMemberFilters(memberFilterDefaults)}
+              />
+              <SortButton
+                size="sm" iconOnly label="Sort members"
+                active={!sameSortRules(memberSort, DEFAULT_BELT_SORT)}
+                onOpen={openMemberSortModal}
+                onReset={() => applyMemberSort(DEFAULT_BELT_SORT)}
+              />
             </>
           }
         >
@@ -1785,7 +1148,7 @@ export default function AssignmentsPage() {
                   memberQuery || memberFilterActive ? (
                     <Button
                       size="sm" variant="secondary"
-                      onClick={() => { setMemberQuery(''); applyMemberFilters(emptyMembersFilter()) }}
+                      onClick={() => { setMemberQuery(''); applyMemberFilters(memberFilterDefaults) }}
                     >
                       Clear filters
                     </Button>
@@ -1800,49 +1163,47 @@ export default function AssignmentsPage() {
                   selected={focusedId === member.id}
                   display={memberDisplay}
                   allShifts={allShifts}
-                  onOpen={() => setFocusedId(member.id)}
+                  onOpen={openMemberPanel}
                 />
               ))
             )}
           </div>
         </DockedPanel>
 
-        {focused && (
-          <MemberPanel
-            key={focused.id}
-            tournamentId={tournamentId}
-            membershipId={focused.id}
-            allRoles={roleCatalog}
-            canTouchRole={canTouchRole}
-            canEditMember={canEditMember}
-            collectIsOver18={!!selectedTournament?.collect_is_over_18}
-            collectIsOver21={!!selectedTournament?.collect_is_over_21}
-            isArchived={isArchived}
-            isSelf={currentUser?.id === focused.user.id}
-            // No onRemove/onSelfRemove: removing someone from the tournament
-            // is the roster's job, not this board's — omitting them hides
-            // the control entirely rather than wiring a flow that doesn't
-            // belong here.
-            onClose={() => setFocusedId(null)}
-            // Roles only: the roles PATCH returns none of the built groups
-            // (event prefs, track statuses), so swapping the row would blank them.
-            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
-              m.id === updated.id ? { ...m, roles: updated.roles } : m
-            )))}
-            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
-            assignmentsVersion={panelAssignmentsVersion}
-            onPrev={() => index > 0 && setFocusedId(belt[index - 1].id)}
-            onNext={() => index < belt.length - 1 && setFocusedId(belt[index + 1].id)}
-            hasPrev={index > 0}
-            hasNext={index >= 0 && index < belt.length - 1}
-          />
+        {/* The stack itself: one box the width of the widest panel, with
+            each panel pinned to its right edge and ordered back to front.
+            Right-aligned rather than left, so a narrower panel on top leaves
+            the one behind it showing along the inside edge instead of
+            floating over its middle. */}
+        {panelStack.length > 0 && (
+          <div style={{
+            position: 'relative', width: stackWidth, height: '100%', overflow: 'hidden',
+          }}>
+            {panelStack.map((ref, depth) => (
+              <div
+                key={ref.kind}
+                style={{
+                  position: 'absolute', top: 0, right: 0, height: '100%',
+                  width: PANEL_WIDTH[ref.kind], zIndex: depth + 1,
+                }}
+              >
+                {panelFor(ref)}
+              </div>
+            ))}
+          </div>
         )}
       </div>,
-      BELT_PANEL_WIDTH + (focused ? MEMBER_PANEL_WIDTH : 0),
+      BELT_PANEL_WIDTH + stackWidth,
     )
   }, [
-    focused, focusedId, belt, members, allShifts, memberQuery, memberFilters, panelAssignmentsVersion,
-    memberFilterActive, memberDisplay, applyMemberFilters, setPanel, clearPanel,
+    panelStack, focused, focusedId, focusedEvent, visibleEvents, openEventPanel,
+    belt, members, allShifts, memberQuery,
+    memberFilters, memberFilterDefaults, panelAssignmentsVersion, memberFilterActive,
+    memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
+    applyMemberFilters, memberSort, applyMemberSort, openMemberSortModal,
+    canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
+    openMemberPanel,
+    setPanel, clearPanel,
   ])
 
   // Unmount only — leaving the page must not leave the panels behind.
@@ -1861,7 +1222,12 @@ export default function AssignmentsPage() {
   function targetShiftIds(target: Record<string, unknown>, event: TournamentEvent) {
     if (target.kind === 'shift') return [target.shiftId as number]
     if (target.kind === 'allday') {
-      return event.shifts.length > 0 ? event.shifts.map((s) => s.id) : [null]
+      // One track's worth, not the event's: the target lives in that track's
+      // own timeline body, and an event running two days must never staff
+      // somebody across both because they aimed at one.
+      const trackId = target.trackId as number
+      const onTrack = event.shifts.filter((s) => s.track_id === trackId)
+      return onTrack.length > 0 ? onTrack.map((s) => s.id) : [null]
     }
     return [null]
   }
@@ -1919,6 +1285,11 @@ export default function AssignmentsPage() {
         show('This drop names no track to assign against.', 'error')
         return
       }
+      // Each cell is billed to the track its own shift falls on, the way
+      // rebuildLane does it — a drop spanning two days must not file Day 2's
+      // rows under Day 1 just because the target named that one first.
+      const trackForShift = (shiftId: number | null) =>
+        (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef
       // The track is part of a cell's identity, not just its payload: two
       // unpinned rows for the same person and role differ only by it, so
       // dragging a chip from Test Writing to Test Reviewing has to read as a
@@ -1934,8 +1305,9 @@ export default function AssignmentsPage() {
       const kept: Assignment[] = []
       const added: Assignment[] = []
       for (const shiftId of shiftIds) {
+        const rowTrack = trackForShift(shiftId)
         for (const role of rolesToKeep) {
-          const found = reusable.get(cellKey(shiftId, trackRef.id, role))
+          const found = reusable.get(cellKey(shiftId, rowTrack.id, role))
           if (found) { kept.push(found); continue }
           added.push({
             ...template,
@@ -1943,7 +1315,7 @@ export default function AssignmentsPage() {
             event: eventRef,
             role,
             shift: shiftFor(shiftId),
-            track: trackRef,
+            track: rowTrack,
             updated_at: new Date().toISOString(),
           })
         }
@@ -1997,7 +1369,9 @@ export default function AssignmentsPage() {
       const newRows: Assignment[] = shiftIds.map((shiftId) => ({
         id: nextLocalId(),
         event: eventRef,
-        track: trackRef,
+        // From the shift, not from the target: an all-shifts drop on an event
+        // running two days writes each row against the day it lands on.
+        track: (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
         member: {
           user_id: member.user!.id,
           membership_id: member.id,
@@ -2027,7 +1401,11 @@ export default function AssignmentsPage() {
   // slot, which is outside <main>, so a context inside this page could never
   // reach it. Behaviour still belongs here; only the context moved.
   useRegisterBoardDnd('board', {
-    onDragEnd: handleDragEnd,
+    onDragEnd: (event) => {
+      lastDropAt.current = Date.now()
+      handleDragEnd(event)
+    },
+    labelFor,
     renderOverlay: (activeId) => {
       const label = labelFor(activeId)
       if (!label) return null
@@ -2056,7 +1434,7 @@ export default function AssignmentsPage() {
   if (!canView) {
     return (
       <div>
-        <PageHeader heading="Assignments" />
+        <CollapsibleHeader heading="Assignments" />
         <Card radius="lg" style={{ padding: '8px' }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -2080,8 +1458,14 @@ export default function AssignmentsPage() {
     // No padding or max-width of its own: the shell's <main> already supplies
     // 22px/24px, and a centred max-width fought the docked panels for space.
     <div>
-      <PageHeader
+      {/* Tabs are hidden in simple mode: with one track, All is the only
+          tab there could be — so the header collapses to the title alone,
+          which is what the bar then shows. */}
+      <CollapsibleHeader
         heading="Assignments"
+        tabs={simple ? undefined : headerTabs}
+        activeKey={activeTrackId === null ? 'all' : String(activeTrackId)}
+        onChange={pickTab}
       />
 
       {loadError && (
@@ -2105,16 +1489,16 @@ export default function AssignmentsPage() {
               font="sans"
               fullWidth
             />
-            <Button
-              size="md"
-              variant={eventFilterActive ? 'primary' : 'secondary'}
-              onClick={() => setShowEventFilterModal(true)}
-            >
-              <IconFilter size={14} /> Filter
-            </Button>
-            <Button size="md" variant="secondary" onClick={() => setShowEventDisplayModal(true)}>
-              <IconEye size={14} /> Display
-            </Button>
+            <FilterButton
+              active={eventFilterActive}
+              onOpen={() => setShowEventFilterModal(true)}
+              onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+            />
+            <SortButton
+              active={eventSortActive}
+              onOpen={() => setShowEventSortModal(true)}
+              onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
+            />
           </div>
           <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
 
@@ -2134,21 +1518,33 @@ export default function AssignmentsPage() {
               }
             />
           ) : (
-            visibleEvents.map((event) => (
+            // The whole list is one grid, and each row a subgrid of it, so
+            // the name column is exactly as wide as the longest name on
+            // screen and every timeline still starts on the same line. A
+            // per-row `auto` column would fit each name and leave the rows
+            // ragged; a fixed one aligns them and pads most rows with air.
+            //
+            // fit-content, so one very long name wraps at 220px instead of
+            // taking the width off every row's timeline.
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'fit-content(220px) 1fr',
+              gap: '8px', minWidth: 0,
+            }}>
+            {visibleEvents.map((event) => (
               <EventRow
                 key={event.id}
                 event={event}
-                rowAssignments={byEvent.get(event.id) ?? []}
+                rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
                 roleCatalog={roleCatalog}
                 flagsFor={flagsFor}
-                display={eventDisplay}
-                onResize={handleResize}
-                onResizeCommit={handleResizeCommit}
-                onToggleRole={handleToggleRole}
-                onPickRole={handlePickRole}
-                onRemove={handleRemove}
+                activeTrackId={activeTrackId}
+                simple={simple}
+                selected={event.id === focusedEventId}
+                onOpen={canManageEvents ? openEventPanel : undefined}
+                handlers={boardHandlers}
               />
-            ))
+            ))}
+            </div>
           )}
         </div>
 
@@ -2159,19 +1555,24 @@ export default function AssignmentsPage() {
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
-          trackOptions={trackOptions}
-          showStaffing
+          // The tab already picked a track; only the All tab offers the choice.
+          trackOptions={activeTrackId === null ? trackOptions : undefined}
+          buildingOptions={buildingOptions}
+          shiftOptions={shiftOptions}
           filters={eventFilters}
           onApply={applyEventFilters}
           onClose={() => setShowEventFilterModal(false)}
         />
       )}
-      {showEventDisplayModal && (
-        <EventDisplayModal
-          display={eventDisplay}
-          tracks={tracks}
-          onApply={applyEventDisplay}
-          onClose={() => setShowEventDisplayModal(false)}
+      {showEventSortModal && (
+        <SortModal
+          title="Sort events"
+          fields={EVENT_SORT_OPTIONS}
+          rules={eventSort}
+          defaults={DEFAULT_EVENT_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => applyEventSort(next as SortRule<EventSortField>[])}
+          onClose={() => setShowEventSortModal(false)}
         />
       )}
       {/* No `options` — the roster's own modal fetches the real tournament's
@@ -2181,6 +1582,7 @@ export default function AssignmentsPage() {
           tournamentId={tournamentId}
           roleOptions={roleCatalog.map((r) => ({ value: String(r.id), label: r.label }))}
           filters={memberFilters}
+          defaults={memberFilterDefaults}
           onApply={applyMemberFilters}
           onClose={() => setShowMemberFilterModal(false)}
         />
@@ -2188,9 +1590,48 @@ export default function AssignmentsPage() {
       {showMemberDisplayModal && (
         <MemberDisplayModal
           display={memberDisplay}
+          defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
+          // "form_field:{id}" in the catalog; the card hides by the bare id.
+          customFields={(catalog?.custom_fields ?? []).map((f) => ({ id: f.key.split(':')[1], label: f.label }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
+        />
+      )}
+      {showMemberSortModal && (
+        <SortModal
+          title="Sort members"
+          fields={memberSortFields}
+          rules={memberSort}
+          defaults={DEFAULT_BELT_SORT}
+          tiebreakLabel={MEMBER_SORT_TIEBREAK}
+          onApply={(next) => applyMemberSort(next as SortRule<MemberSortField>[])}
+          onClose={() => setShowMemberSortModal(false)}
+        />
+      )}
+      {pendingRoleChange && (
+        <ConfirmModal
+          title="Change default role"
+          description={
+            <>
+              {pendingRoleChange.track.name}&rsquo;s default role is changing from{' '}
+              <strong>{pendingRoleChange.oldRole.label}</strong> to{' '}
+              <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{' '}
+              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{' '}
+              {pendingRoleChange.affected.length === 1 ? 'assignment' : 'assignments'} on this
+              track to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on
+              this track is left alone.
+            </>
+          }
+          confirmLabel="Change role"
+          variant="primary"
+          onConfirm={() => applyDefaultRoleChange(
+            pendingRoleChange.track, pendingRoleChange.newRole, pendingRoleChange.affected,
+          )}
+          onClose={() => {
+            pendingRoleChange.resolve()
+            setPendingRoleChange(null)
+          }}
         />
       )}
     </div>

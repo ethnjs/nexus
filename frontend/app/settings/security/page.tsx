@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { authApi, ApiError } from "@/lib/api";
-import { checkPassword, validatePassword, PasswordChecks } from "@/lib/auth";
+import { checkPassword, EMPTY_PASSWORD_CHECKS, validatePassword, PasswordChecks } from "@/lib/auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
@@ -13,10 +13,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { SessionList } from "@/components/settings/SessionList";
 
-const EMPTY_CHECKS: PasswordChecks = {
-  length: false, upper: false, lower: false, number: false, symbol: false, confirm: false,
-};
-
 export default function SecuritySettingsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -24,7 +20,7 @@ export default function SecuritySettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_CHECKS);
+  const [checks, setChecks] = useState<PasswordChecks>(EMPTY_PASSWORD_CHECKS);
 
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +57,7 @@ export default function SecuritySettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setChecks(EMPTY_CHECKS);
+      setChecks(EMPTY_PASSWORD_CHECKS);
       setSuccess(true);
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {

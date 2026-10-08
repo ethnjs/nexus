@@ -179,7 +179,7 @@ export default function AdminUniversitiesPage() {
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px", overflowX: "auto" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}

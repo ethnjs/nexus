@@ -158,7 +158,7 @@ def reorder_onboarding_forms(
     expected_ids = set(rows_by_form_id)
     if len(submitted_ids) != len(set(submitted_ids)) or set(submitted_ids) != expected_ids:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="forms must cover exactly the current onboarding forms, no more and no fewer",
         )
 
@@ -166,7 +166,7 @@ def reorder_onboarding_forms(
     expected_orders = set(range(1, len(rows) + 1))
     if set(submitted_orders) != expected_orders:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="orders must be a unique, contiguous sequence from 1 through the number of onboarding forms",
         )
 
