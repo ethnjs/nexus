@@ -1,11 +1,18 @@
 import asyncio
-import resend
+import logging
+import time
+from functools import lru_cache
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 
+import boto3
+from botocore.config import Config
+
 from app.core.config import get_settings
 from app.core.auth import create_verification_token, RateLimitedError
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +117,8 @@ def _render_email_html(
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
                 <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{footnote}</p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">Questions? Email <a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a></p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_ORG_LINE}</p>
               </td>
             </tr>
           </table>
@@ -127,22 +136,97 @@ def _cta_url(path: str, token: Optional[str] = None) -> str:
     return f"{base}?token={token}" if token else base
 
 
+_SUPPORT_EMAIL = "support@nexus.socalscioly.org"
+_SUPPORT_LINK = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+_ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
+# ---------------------------------------------------------------------------
+# Sending (Amazon SES v2)
+#
+# boto3 is synchronous, so each send runs in a worker thread via
+# asyncio.to_thread — SDK retry backoff sleeps happen there too, never on
+# the event loop. Standard retry mode is pinned explicitly: boto3's default
+# (legacy) doesn't treat SES v2's TooManyRequestsException as retryable.
+# ---------------------------------------------------------------------------
+
+@lru_cache()
+def _get_ses_client(access_key_id: str, secret_access_key: str, region: str, max_attempts: int):
+    # Dedicated Session rather than boto3.client(): the default session isn't
+    # thread-safe, but the client it produces is, and it's shared across threads.
+    session = boto3.session.Session(
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
+    )
+    return session.client(
+        "sesv2",
+        config=Config(retries={"mode": "standard", "total_max_attempts": max_attempts}),
+    )
+
+
+class _SendRateLimiter:
+    """
+    Spaces sends at least `interval` seconds apart so a burst (a staff invite
+    to dozens of addresses) stays under SES's per-second sending quota instead
+    of getting throttled. SDK retries are only the backstop.
+
+    Pacing is per process. With 2+ uvicorn workers or replicas, each paces
+    independently and the combined rate becomes N x SES_MAX_SEND_RATE — until
+    this is replaced with a shared limiter, set SES_MAX_SEND_RATE to
+    quota / N.
+    """
+
+    def __init__(self) -> None:
+        self._next_slot = 0.0
+
+    async def wait(self, interval: float) -> None:
+        # No lock: nothing is awaited between reading and advancing
+        # _next_slot, so concurrent callers on the event loop can't interleave.
+        now = time.monotonic()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+
+
+_rate_limiter = _SendRateLimiter()
+
+
 async def _send(to: str, subject: str, text: str, html: str) -> None:
+    text = f"{text}\n\nQuestions? Email {_SUPPORT_EMAIL}\n{_ORG_LINE}"
     settings = get_settings()
-    resend.api_key = settings.resend_api_key
 
-    params: resend.Emails.SendParams = {
-        "from": "NEXUS <verify@nexus.socalscioly.org>",
-        "to": to,
-        "subject": subject,
-        "text": text,
-        "html": html,
-    }
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
+        if settings.app_env == "production":
+            raise RuntimeError("SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set")
+        logger.warning("SES not configured, skipping email to %s: %s", to, subject)
+        if settings.app_env == "development":
+            logger.warning("Skipped email body:\n%s", text)
+        return
 
-    await resend.Emails.send_async(params)
+    client = _get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+    await _rate_limiter.wait(1 / settings.ses_max_send_rate)
+    await asyncio.to_thread(
+        client.send_email,
+        FromEmailAddress=settings.email_from_address,
+        Destination={"ToAddresses": [to]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": text, "Charset": "UTF-8"},
+                    "Html": {"Data": html, "Charset": "UTF-8"},
+                },
+            },
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +242,7 @@ async def send_verification_email(to: str, token: str) -> None:
         ],
         cta_label="Verify email",
         cta_url=url,
-        footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
+        footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Verify your email on NEXUS", f"Please verify your email: {url}", html)
 
@@ -228,7 +312,8 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
         heading="Your email address is being changed",
         body_lines=[
             f"A request was made to change the email on your NEXUS account to {new_email}.",
-            "If you made this request, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
         cta_label="Secure your account",
         cta_url=url,
@@ -256,7 +341,7 @@ async def send_password_reset_email(to: str, token: str) -> None:
         ],
         cta_label="Reset password",
         cta_url=url,
-        footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
+        footnote=f"This link expires in 1 hour. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Reset your password on NEXUS", f"Reset your password: {url}", html)
 
@@ -284,9 +369,10 @@ async def send_password_changed_notice(to: str) -> None:
         heading="Your password was changed",
         body_lines=[
             "The password on your NEXUS account was just changed.",
-            "If you made this change, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
-        cta_label="Reset password",
+        cta_label="Secure your account",
         cta_url=url,
         footnote=_CONTACT_SUPPORT,
     )
@@ -342,9 +428,13 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
         ],
         cta_label="Join tournament",
         cta_url=join_url,
-        footnote="If you weren't expecting this, you can ignore this email.",
+        footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_LINK} to stop receiving invites.",
     )
-    await _send(to, f"You're invited to help run {tournament_name}", f"Join {tournament_name}: {join_url}", html)
+    text = (
+        f"Join {tournament_name}: {join_url}\n\n"
+        f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites."
+    )
+    await _send(to, f"You're invited to help run {tournament_name}", text, html)
 
 
 async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, join_url: str) -> list[str]:
