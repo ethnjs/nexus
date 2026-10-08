@@ -63,8 +63,9 @@ class UserSession(Base):
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
-# VerificationToken — backs signup verify, email-change, password reset.
-# Only the hash is stored; raw token is emailed. new_email is set for
+# VerificationToken — backs signup verify, email change and revert, password
+# reset, and account setup. Only the SHA-256 hash is stored (see
+# app/core/auth.py _hash_token); raw token is emailed. new_email is set for
 # email_change* purposes only (for revert, it's the address to revert TO).
 # ---------------------------------------------------------------------------
 class VerificationToken(Base):
@@ -74,7 +75,7 @@ class VerificationToken(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     token_hash = Column(String(255), nullable=False, index=True, unique=True)
-    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
+    purpose = Column(String(32), nullable=False)  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
     new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
 
     expires_at = Column(DateTime(timezone=True), nullable=False)
