@@ -115,7 +115,9 @@ export function SplitButton({
         {iconOnly ? icon : <>{icon}{icon ? ' ' : null}{label}</>}
       </Button>
 
-      <div style={{ width: '1px', background: dividerColor, flexShrink: 0 }} />
+      {/* A border, not a 1px-wide fill: borders snap to whole device pixels,
+          so the line is the same hairline at any zoom or label width. */}
+      <div style={{ width: 0, borderLeft: `1px solid ${dividerColor}`, flexShrink: 0 }} />
 
       {action ? (
         <Button
