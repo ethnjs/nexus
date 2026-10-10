@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from app.models.models import Tournament, TournamentMembership, TournamentRole, User
 
 
+# What a role can map to in each external system. Validated in the role
+# schemas rather than as Postgres enums, so a new value needs no migration.
+TORUS_ROLES = frozenset({"writer", "reviewer", "tournament_director", "test_coordinator"})
+DUOSMIUM_ROLES = frozenset({"tournament_director", "scoremaster", "event_supervisor"})
+# The RoleUpdate fields an explicit null clears. Everything else treats null
+# as "not sent" — a role can't lose its label, permissions or rank.
+NULLABLE_ROLE_FIELDS = frozenset({"torus_role", "duosmium_role"})
+
+
 def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["TournamentRole"]:
     """
     Attaches member_count as a transient attribute on each role — RoleRead

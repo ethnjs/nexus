@@ -693,6 +693,11 @@ class TournamentRole(Base):
     # touch. Owner isn't a role — sits above rank 1 structurally.
     rank = Column(Integer, nullable=False)
 
+    # What this role is in each external system the exports feed (#108).
+    # Strings, not enums — see TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
+    torus_role = Column(String(32), nullable=True)
+    duosmium_role = Column(String(32), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

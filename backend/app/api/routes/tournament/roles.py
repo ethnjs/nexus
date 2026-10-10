@@ -17,7 +17,9 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.roles import validate_rank_bound, validate_role_action, with_member_counts
+from app.core.tournament.roles import (
+    NULLABLE_ROLE_FIELDS, validate_rank_bound, validate_role_action, with_member_counts,
+)
 from app.db.session import get_db
 from app.models.models import (
     TournamentMembership, TournamentRole, TournamentTrack, TournamentTrackAssignment, User,
@@ -194,7 +196,10 @@ def create_role(
     log_action(
         db, tournament_id, current_user.id, ROLE_CREATED,
         target_type="role", target_id=role.id,
-        extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
+        extra_data={
+            "label": role.label, "rank": role.rank, "permissions": role.permissions,
+            "torus_role": role.torus_role, "duosmium_role": role.duosmium_role,
+        },
     )
 
     db.commit()
@@ -218,7 +223,10 @@ def update_role(
     require_not_archived(tournament)
 
     role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
-    updates = payload.model_dump(exclude_none=True)
+    updates = {
+        field: value for field, value in payload.model_dump(exclude_unset=True).items()
+        if value is not None or field in NULLABLE_ROLE_FIELDS
+    }
 
     target_rank = updates.get("rank", role.rank)
     validate_rank_bound(current_user, tournament, target_rank, db)
