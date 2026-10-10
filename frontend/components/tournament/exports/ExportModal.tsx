@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Assignment, DisplayConfigCatalog, DuosmiumRole, ExportPreset, ExportPresetInput, MembershipFull,
@@ -302,6 +302,7 @@ export function ExportModal({
   // ---- Render ------------------------------------------------------------
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const mouseDownOnOverlay = useRef(false);
   if (!mounted) return null;
 
   const memberFilterActive = isFilterActive(memberFilters);
@@ -310,9 +311,21 @@ export function ExportModal({
     : [];
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="Export" style={{
-      position: "fixed", inset: 0, zIndex: 200, background: "var(--color-bg)",
-      display: "flex", flexDirection: "column",
+    <div
+      className="modal-overlay"
+      style={{
+        position: "fixed", inset: 0, zIndex: 200, padding: "10px",
+        background: "rgba(0,0,0,0.35)", display: "flex",
+      }}
+      // Both press and release on the overlay, like Modal: a text selection
+      // dragged out of an input must not close the screen.
+      onMouseDown={(e) => { mouseDownOnOverlay.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (mouseDownOnOverlay.current && e.target === e.currentTarget) requestClose(); }}
+    >
+    <div role="dialog" aria-modal="true" aria-label="Export" className="modal-panel" style={{
+      flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden",
+      background: "var(--color-bg)", border: "1px solid var(--color-border)",
+      borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
     }}>
       <header style={{
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
@@ -496,6 +509,7 @@ export function ExportModal({
           onClose={() => setConfirmDelete(false)}
         />
       )}
+    </div>
     </div>,
     document.body,
   );
