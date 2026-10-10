@@ -60,6 +60,17 @@ const SHIFTS_OPTIONS: FilterOption[] = [
   { value: "none", label: "No shifts" },
 ];
 
+/** Divisions the loaded events have, plus "No division" only when some event
+ *  lacks one — otherwise it's a row that can only ever match nothing. */
+export function eventDivisionOptions(events: TournamentEvent[]): FilterOption[] {
+  const options = [...new Set(events.map((e) => e.division))]
+    .filter((d): d is NonNullable<typeof d> => d !== null)
+    .map((d) => ({ value: d, label: `Division ${d}` }));
+  return events.some((e) => e.division === null)
+    ? [...options, { value: EVENT_FILTER_UNSET, label: "No division" }]
+    : options;
+}
+
 /** Tracks the loaded events run on, in first-seen (schedule) order. */
 export function eventTrackOptions(events: TournamentEvent[]): FilterOption[] {
   const seen = new Map<number, string>();

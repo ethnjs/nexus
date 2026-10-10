@@ -17,6 +17,16 @@ export function toCsv(rows: string[][]): string {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+/** "2026 UCI", "TORUS", "Test Writer Day 1" -> "2026-uci-torus-test-writer-day-1". */
+export function exportFilename(parts: (string | null | undefined)[]): string {
+  return parts
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "export";
+}
+
 export function copyText(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
