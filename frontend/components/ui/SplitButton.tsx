@@ -3,6 +3,7 @@
 import { ReactNode, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
+import { FormPopover } from '@/components/ui/FormPopover'
 import { IconChevronDown } from '@/components/ui/Icons'
 
 export interface SplitButtonOption {
@@ -16,6 +17,15 @@ export interface SplitButtonOption {
   /** Renders inert with a tooltip instead of attempted-then-rejected — e.g. Delete when responses already exist. */
   disabled?: boolean
   disabledReason?: string
+}
+
+/** A chevron menu with its own content, for when a flat option list isn't
+ *  enough (sections, a footer, nested panels). */
+export interface SplitButtonMenu {
+  /** Receives close() so a choice can dismiss the menu itself. */
+  render: (close: () => void) => ReactNode
+  width?: number
+  onOpenChange?: (open: boolean) => void
 }
 
 /** A right segment that acts on click rather than opening a menu — e.g. the
@@ -42,6 +52,10 @@ interface SplitButtonProps {
   /** Replaces the chevron and its menu with one direct action. Takes
    *  precedence over `options` — a segment can't be both. */
   action?: SplitButtonAction
+  /** A custom menu instead of `options`. `action` still wins over both. */
+  menu?: SplitButtonMenu
+  /** Tooltip and accessible name for the primary segment. */
+  title?: string
   variant?: 'primary' | 'secondary' | 'ghost'
   size?: 'sm' | 'md'
   loading?: boolean
@@ -62,6 +76,8 @@ export function SplitButton({
   onClick,
   options = [],
   action,
+  menu,
+  title,
   variant = 'secondary',
   size = 'sm',
   loading = false,
@@ -70,6 +86,18 @@ export function SplitButton({
 }: SplitButtonProps) {
   const [open, setOpen] = useState(false)
   const dividerColor = variant === 'primary' ? 'rgba(255,255,255,0.24)' : 'var(--color-border)'
+  const chevron = (
+    <Button
+      variant={variant}
+      size={size}
+      disabled={disabled || loading}
+      iconOnly
+      aria-label="More options"
+      style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
+    >
+      <IconChevronDown size={12} style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+    </Button>
+  )
 
   return (
     <div style={{ display: 'inline-flex', alignItems: 'stretch' }}>
@@ -80,7 +108,7 @@ export function SplitButton({
         disabled={disabled || primaryDisabled}
         onClick={onClick}
         iconOnly={iconOnly}
-        title={iconOnly ? label : undefined}
+        title={iconOnly ? label : title}
         aria-label={iconOnly ? label : undefined}
         style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 }}
       >
@@ -102,20 +130,19 @@ export function SplitButton({
         >
           {action.icon}
         </Button>
+      ) : menu ? (
+        <FormPopover
+          trigger={chevron}
+          width={menu.width ?? 260}
+          align="right"
+          onOpenChange={(next) => { setOpen(next); menu.onOpenChange?.(next) }}
+          panelStyle={{ padding: 0, maxHeight: 'none', overflow: 'hidden' }}
+        >
+          {menu.render}
+        </FormPopover>
       ) : (
       <Popover
-        trigger={
-          <Button
-            variant={variant}
-            size={size}
-            disabled={disabled || loading}
-            iconOnly
-            aria-label="More options"
-            style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
-          >
-            <IconChevronDown size={12} style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-          </Button>
-        }
+        trigger={chevron}
         items={options}
         getKey={(opt) => opt.label}
         align="right"
