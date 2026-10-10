@@ -2460,11 +2460,12 @@ export const displayConfigApi = {
 // Saved custom exports, shared by every staff member of the tournament. The
 // built-ins (TORUS, Duosmium, email list) are frontend code, never rows here.
 
-/** What one exported row is. */
-export type ExportRowType = 'member' | 'event' | 'assignment'
+/** What one exported row is: a member, or an event with its members. */
+export type ExportRowType = 'member' | 'event'
 
-/** How a shift-like column writes its values: shift names or `08:00-12:00`. */
-export type ExportColumnMode = 'names' | 'times'
+/** How a column writes its values. Shift-like columns: shift names or
+ *  `08:00-12:00`. The per-event Members column: full name or email. */
+export type ExportColumnMode = 'names' | 'times' | 'full_name' | 'email'
 
 export interface ExportPresetColumn {
   key:   string

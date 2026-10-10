@@ -241,7 +241,7 @@ export function ExportModal({
   const result = useMemo(() => {
     if (!choice || !members || loadingMembers) return null;
     if (choice.kind === "custom" && !ctx) return null;
-    return computeExport(choice, members, eventIdsFor(choice, eventFilters, events, assignments), ctx);
+    return computeExport(choice, members, events, eventIdsFor(choice, eventFilters, events, assignments), ctx);
   }, [choice, members, loadingMembers, ctx, eventFilters, events, assignments]);
 
   // ---- Output ------------------------------------------------------------

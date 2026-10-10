@@ -3,19 +3,20 @@ the server only validates the recipe a preset stores."""
 
 import re
 
-# What one exported row is.
-ROW_TYPES = frozenset({"member", "event", "assignment"})
+# What one exported row is: a member, or an event with its members.
+ROW_TYPES = frozenset({"member", "event"})
 
-# How a shift-like column (assigned shifts, availability) writes its values:
-# shift names, or 24-hour ranges like "08:00-12:00".
-COLUMN_MODES = frozenset({"names", "times"})
+# How a column writes its values. Shift-like columns: shift names, or 24-hour
+# ranges like "08:00-12:00". The per-event members column: full name or email.
+# Which column takes which isn't checked; one that doesn't apply falls back.
+COLUMN_MODES = frozenset({"names", "times", "full_name", "email"})
 
 # Mirrors the column registry in frontend/lib/exports/columns.ts. Names shared
 # with the members table mean the same thing there.
 EXPORT_FIXED_COLUMNS = frozenset({
     "first_name", "last_name", "email", "phone", "shirt_size", "dietary_restriction",
-    "roles", "over_18", "over_21",
-    "event", "tracks", "assigned_role", "track", "shift",
+    "roles", "over_18", "over_21", "tracks",
+    "event", "location", "members",
 })
 
 # One column per entity. Ids aren't checked against the catalog: a deleted

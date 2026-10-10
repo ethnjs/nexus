@@ -1,13 +1,13 @@
 import type {
-  DisplayConfigSort, ExportPresetColumn, ExportRowType, MembershipField, MembershipFull,
+  DisplayConfigSort, ExportPresetColumn, ExportRowType, MembershipField, MembershipFull, TournamentEvent,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import {
-  CellValue, ExportColumn, ExportContext, ExportRow, Spread, resolveExportColumn,
+  CellValue, ExportColumn, ExportContext, ExportRow, Spread, columnMode, resolveExportColumn,
 } from "@/lib/exports/columns";
 import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 
-// Roster rows -> an export table. Pure: the modal fetches, this shapes.
+// Roster and event rows -> an export table. Pure: the caller fetches, this shapes.
 
 export interface ExportSpec {
   rowType:       ExportRowType;
@@ -16,7 +16,7 @@ export interface ExportSpec {
   includeHeader: boolean;
   // Frontend-only track picker: null = every track.
   trackId:       number | null;
-  // Events passing the modal's event filters; null = no event filter.
+  // Events passing the event filters; null = no event filter.
   eventIds:      Set<number> | null;
 }
 
@@ -34,37 +34,53 @@ export function fieldsForColumns(columns: ExportPresetColumn[], ctx: ExportConte
   return [...groups];
 }
 
-/** One ExportRow per member, per (member, event) or per assignment, after the
- *  track and event scopes trim each member's assignments. */
-export function buildExportRows(members: MembershipFull[], spec: ExportSpec): ExportRow[] {
-  const rows: ExportRow[] = [];
-  for (const member of members) {
-    const assignments = (member.assignments ?? []).filter((a) => (
-      (spec.trackId === null || a.track.id === spec.trackId)
-      && (spec.eventIds === null || spec.eventIds.has(a.event.id))
-    ));
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
-    if (spec.rowType === "member") {
-      rows.push({ member, event: null, assignments });
-    } else if (spec.rowType === "assignment") {
-      for (const assignment of assignments) {
-        rows.push({ member, event: assignment.event, assignments: [assignment] });
-      }
-    } else {
-      // Same event across tracks and shifts collapses into one row.
-      const byEvent = new Map<number, typeof assignments>();
-      for (const assignment of assignments) {
-        byEvent.set(assignment.event.id, [...(byEvent.get(assignment.event.id) ?? []), assignment]);
-      }
-      const events = [...byEvent.values()]
-        .map((group) => ({ event: group[0].event, assignments: group }))
-        .sort((a, b) => eventNameWithDivision(a.event).localeCompare(eventNameWithDivision(b.event)));
-      for (const { event, assignments: group } of events) {
-        rows.push({ member, event, assignments: group });
-      }
+function byName(a: MembershipFull, b: MembershipFull): number {
+  return collator.compare(a.user.last_name ?? "", b.user.last_name ?? "")
+    || collator.compare(a.user.first_name ?? "", b.user.first_name ?? "")
+    || collator.compare(a.user.email, b.user.email);
+}
+
+/**
+ * One row per member, or one per event.
+ *
+ * Event rows come from the event list, not from assignments, so an event
+ * nobody is staffing still gets a row — the gap is the point. Its members are
+ * the (already filtered) roster's, assigned to it on the export's track.
+ */
+export function buildExportRows(members: MembershipFull[], events: TournamentEvent[], spec: ExportSpec): ExportRow[] {
+  const counts = (a: { track: { id: number }; event: { id: number } }) => (
+    (spec.trackId === null || a.track.id === spec.trackId)
+    && (spec.eventIds === null || spec.eventIds.has(a.event.id))
+  );
+
+  if (spec.rowType === "member") {
+    return members.map((member) => ({
+      kind: "member", member, assignments: (member.assignments ?? []).filter(counts),
+    }));
+  }
+
+  const assigned = new Map<number, Set<MembershipFull>>();
+  for (const member of members) {
+    for (const a of member.assignments ?? []) {
+      if (!counts(a)) continue;
+      // A Set: the same person on two shifts of one event appears once.
+      assigned.set(a.event.id, (assigned.get(a.event.id) ?? new Set()).add(member));
     }
   }
-  return rows;
+  return events
+    .filter((event) => (
+      (spec.trackId === null || event.track_details.some((d) => d.track_id === spec.trackId))
+      && (spec.eventIds === null || spec.eventIds.has(event.id))
+    ))
+    .sort((a, b) => collator.compare(eventNameWithDivision(a), eventNameWithDivision(b)))
+    .map((event) => ({
+      kind: "event",
+      event,
+      members: [...(assigned.get(event.id) ?? [])].sort(byName),
+      trackId: spec.trackId,
+    }));
 }
 
 function isSpread(value: CellValue): value is Spread {
@@ -76,17 +92,23 @@ function cellText(value: string | string[]): string {
   return Array.isArray(value) ? value.join(MULTI_VALUE_SEPARATOR) : value;
 }
 
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-
-export function buildExportTable(members: MembershipFull[], spec: ExportSpec, ctx: ExportContext): ExportTable {
+export function buildExportTable(
+  members: MembershipFull[],
+  events: TournamentEvent[],
+  spec: ExportSpec,
+  ctx: ExportContext,
+): ExportTable {
   // Stale or wrong-row-type columns drop out rather than erroring.
   const resolved = spec.columns
-    .map((c) => ({ column: resolveExportColumn(c.key, ctx), mode: c.mode ?? "names" }))
-    .filter((c): c is { column: ExportColumn; mode: "names" | "times" } => (
-      c.column !== null && c.column.rowTypes.includes(spec.rowType)
+    .map((c) => {
+      const column = resolveExportColumn(c.key, ctx);
+      return column && { column, mode: columnMode(column, c.mode) };
+    })
+    .filter((c): c is { column: ExportColumn; mode: ReturnType<typeof columnMode> } => (
+      c !== null && c.column.rowTypes.includes(spec.rowType)
     ));
 
-  const rows = buildExportRows(members, spec);
+  const rows = buildExportRows(members, events, spec);
   const values = rows.map((row) => resolved.map(({ column, mode }) => column.value(row, mode)));
 
   // A spread column is as wide as its longest value across every row.
@@ -105,7 +127,7 @@ export function buildExportTable(members: MembershipFull[], spec: ExportSpec, ct
   });
 
   // Sort on the first cell a column produces. Array.sort is stable, so ties
-  // keep roster order.
+  // keep the rows' own order (roster order, or event name).
   const sortIndexes = spec.sorts
     .map((sort) => ({ index: resolved.findIndex((c) => c.column.key === sort.field), direction: sort.direction }))
     .filter((sort) => sort.index !== -1);

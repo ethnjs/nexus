@@ -740,7 +740,7 @@ class TournamentExportPreset(Base):
         nullable=False, index=True,
     )
     name = Column(String(255), nullable=False)
-    # What one row is: "member" | "event" (person x event) | "assignment".
+    # What one row is: "member" | "event" (an event and its members).
     row_type = Column(String(16), nullable=False)
     # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
     # Objects, not strings, so a column can carry its own options.

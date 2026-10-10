@@ -66,6 +66,8 @@ export function eventIdsFor(
 export function computeExport(
   choice: ExportChoice,
   members: MembershipFull[],
+  // Every event: per-event rows include the ones nobody is staffing.
+  events: TournamentEvent[],
   eventIds: Set<number> | null,
   ctx: ExportContext | null,
 ): ExportResult {
@@ -77,7 +79,7 @@ export function computeExport(
   if (!ctx) throw new Error("A custom export needs the column catalog");
 
   const { shape } = choice;
-  const table = buildExportTable(members, {
+  const table = buildExportTable(members, events, {
     rowType: shape.row_type, columns: shape.columns, sorts: shape.sorts,
     includeHeader: shape.include_header, trackId: choice.trackId, eventIds,
   }, ctx);
@@ -131,7 +133,9 @@ export async function runExport(
   memberFilters: MembersFilterState,
   eventFilters: EventsFilterState,
 ): Promise<ExportResult> {
-  const needsEvents = usesEventFilters(choice) && isEventsFilterActive(eventFilters);
+  // Event filters judge events; per-event rows are built from them.
+  const needsEvents = (usesEventFilters(choice) && isEventsFilterActive(eventFilters))
+    || (choice.kind === "custom" && choice.shape.row_type === "event");
   const [catalog, events, assignments] = await Promise.all([
     choice.kind === "custom" ? displayConfigApi.getCatalog(tournament.id) : Promise.resolve<DisplayConfigCatalog | null>(null),
     needsEvents ? tournamentEventsApi.list(tournament.id) : Promise.resolve<TournamentEvent[]>([]),
@@ -142,5 +146,5 @@ export async function runExport(
     fields: fieldsForChoice(choice, ctx),
     filters: membersFilterParams(memberFilters),
   });
-  return computeExport(choice, members, eventIdsFor(choice, eventFilters, events, assignments), ctx);
+  return computeExport(choice, members, events, eventIdsFor(choice, eventFilters, events, assignments), ctx);
 }

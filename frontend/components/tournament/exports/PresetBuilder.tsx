@@ -7,7 +7,7 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { DisplayConfigSort, ExportColumnMode, ExportPresetColumn, ExportRowType } from "@/lib/api";
-import type { ExportColumn, ExportColumnGroup } from "@/lib/exports/columns";
+import { ExportColumn, ExportColumnGroup, columnMode } from "@/lib/exports/columns";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -30,14 +30,8 @@ export interface BuilderDraft {
 }
 
 const ROW_TYPE_OPTIONS = [
-  { value: "member",     label: "Per member",     description: "One row per person" },
-  { value: "event",      label: "Per event",      description: "One row per person and event" },
-  { value: "assignment", label: "Per assignment", description: "One row per assignment" },
-];
-
-const MODE_OPTIONS = [
-  { value: "names", label: "Names" },
-  { value: "times", label: "Times" },
+  { value: "member", label: "Per member", description: "One row per person" },
+  { value: "event",  label: "Per event",  description: "One row per event" },
 ];
 
 // "" is the dropdown's "every track"; a track id otherwise.
@@ -215,8 +209,13 @@ function ColumnRow({ column, resolved, onMode, onRemove }: ColumnRowProps) {
       }}>
         {resolved ? resolved.header : `${column.key} (no longer available — skipped)`}
       </span>
-      {resolved?.hasModes && (
-        <ButtonGroup size="sm" options={MODE_OPTIONS} value={column.mode ?? "names"} onChange={(v) => onMode(v as ExportColumnMode)} />
+      {resolved && resolved.modes.length > 0 && (
+        <ButtonGroup
+          size="sm"
+          options={[...resolved.modes]}
+          value={columnMode(resolved, column.mode)}
+          onChange={(v) => onMode(v as ExportColumnMode)}
+        />
       )}
       <Button type="button" variant="ghost" size="xs" iconOnly title="Remove column" onClick={onRemove}>
         <IconX size={12} />
