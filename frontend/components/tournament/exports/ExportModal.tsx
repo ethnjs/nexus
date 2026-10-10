@@ -7,21 +7,23 @@ import {
   RoleWithMemberCount, TorusRole, Tournament, TournamentEvent, assignmentsApi, displayConfigApi,
   exportPresetsApi, membersApi, rolesApi, tournamentEventsApi,
 } from "@/lib/api";
-import { BUILTINS, BuiltinId, buildDuosmium, buildEmailList, buildTorus } from "@/lib/exports/builtins";
-import { buildExportTable, fieldsForColumns } from "@/lib/exports/build";
+import { BUILTINS, BuiltinId } from "@/lib/exports/builtins";
 import { availableExportColumns, exportContext, resolveExportColumn } from "@/lib/exports/columns";
-import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
-import { copyText, downloadText, exportFilename, toCsv } from "@/lib/exports/output";
-import { tournamentDisplayName } from "@/lib/tournamentDisplay";
+import { copyText, downloadText } from "@/lib/exports/output";
+import {
+  ExportOutput, ExportPage, RememberedExport, presetKey, writeLastExport, writeOutput,
+} from "@/lib/exports/remembered";
+import {
+  ExportChoice, computeExport, eventIdsFor, exportFilenameFor, fieldsForChoice, trackNamesOf,
+} from "@/lib/exports/run";
 import { useToast } from "@/lib/useToast";
 import { useActionToast } from "@/lib/useActionToast";
 import {
-  MembersFilterModal, MembersFilterState, membersFilterFromStored, membersFilterParams, membersFilterToStored,
+  MembersFilterModal, MembersFilterState, membersFilterFromStored, membersFilterParams,
 } from "@/components/tournament/members/MembersFilterModal";
 import {
   EVENT_TYPE_OPTIONS, EventsFilterModal, EventsFilterState, eventBuildingOptions, eventCategoryOptions,
-  eventDivisionOptions, eventPassesFilters, eventShiftOptions, eventTrackOptions, eventsFilterFromStored,
-  eventsFilterToStored, isEventsFilterActive,
+  eventDivisionOptions, eventShiftOptions, eventTrackOptions, eventsFilterFromStored, isEventsFilterActive,
 } from "@/components/tournament/events/EventsFilterModal";
 import { isFilterActive } from "@/components/ui/FilterModal";
 import { BuiltinOptions } from "@/components/tournament/exports/BuiltinOptions";
@@ -40,7 +42,7 @@ type Selection =
 
 const EMPTY_DRAFT: BuilderDraft = { name: "", row_type: null, columns: [], sorts: [], include_header: true };
 
-const ALL_DUOSMIUM_ROLES: DuosmiumRole[] = ["tournament_director", "scoremaster", "event_supervisor"];
+export const ALL_DUOSMIUM_ROLES: DuosmiumRole[] = ["tournament_director", "scoremaster", "event_supervisor"];
 
 function draftFromPreset(preset: ExportPreset): BuilderDraft {
   return {
@@ -49,28 +51,42 @@ function draftFromPreset(preset: ExportPreset): BuilderDraft {
   };
 }
 
-/** Everything a saved preset stores, as one string — the dirty check. */
-function snapshot(draft: BuilderDraft, members: MembersFilterState, events: EventsFilterState): string {
-  return JSON.stringify([draft, membersFilterToStored(members), eventsFilterToStored(events)]);
+/** Everything a saved preset stores, as one string — the dirty check. Not
+ *  the filters: those belong to the page, never to a preset. */
+function snapshot(draft: BuilderDraft): string {
+  return JSON.stringify(draft);
+}
+
+/** What the Export button reruns. An unsaved custom export can't be rerun. */
+function rememberedOf(choice: ExportChoice): RememberedExport | null {
+  if (choice.kind === "custom") {
+    return choice.presetId === null ? null : { kind: "saved", presetId: choice.presetId, trackId: choice.trackId };
+  }
+  return choice;
 }
 
 interface ExportModalProps {
   tournament: Tournament;
+  // Which page opened it — the Export button remembers per page.
+  page: ExportPage;
   // Copies of the page's filters; nothing here writes back to the page.
   initialMemberFilters: MembersFilterState;
   initialEventFilters:  EventsFilterState;
   // The page's track tab, if it has one.
   initialTrackId: number | null;
+  // Saved presets were added, edited or deleted — the button's menu refreshes.
+  onPresetsChanged?: () => void;
   onClose: () => void;
 }
 
 export function ExportModal({
-  tournament, initialMemberFilters, initialEventFilters, initialTrackId, onClose,
+  tournament, page, initialMemberFilters, initialEventFilters, initialTrackId, onPresetsChanged, onClose,
 }: ExportModalProps) {
   const tournamentId = tournament.id;
   const { show } = useToast();
   const runAction = useActionToast();
   const tracks = useMemo(() => tournament.tracks.map((t) => ({ id: t.id, name: t.name })), [tournament.tracks]);
+  const trackNames = useMemo(() => trackNamesOf(tournament), [tournament]);
 
   // ---- Data the screen needs once ----------------------------------------
   const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null);
@@ -118,9 +134,8 @@ export function ExportModal({
 
   // TORUS and Duosmium always need one track; "All tracks" is custom-only.
   const effectiveTrackId = builtin?.usesTrack ? trackId ?? tracks[0]?.id ?? null : trackId;
-  const trackName = tracks.find((t) => t.id === effectiveTrackId)?.name ?? null;
 
-  const current = snapshot(draft, memberFilters, eventFilters);
+  const current = snapshot(draft);
   const dirty = isCustom && current !== baseline;
 
   // ---- Child modals, confirms and Escape ---------------------------------
@@ -157,14 +172,9 @@ export function ExportModal({
 
   function selectPreset(preset: ExportPreset) {
     guard(() => {
-      // A saved preset brings its own filters, replacing the modal's.
       const nextDraft = draftFromPreset(preset);
-      const nextMembers = membersFilterFromStored(preset.member_filters);
-      const nextEvents = eventsFilterFromStored(preset.event_filters);
       setDraft(nextDraft);
-      setMemberFilters(nextMembers);
-      setEventFilters(nextEvents);
-      setBaseline(snapshot(nextDraft, nextMembers, nextEvents));
+      setBaseline(snapshot(nextDraft));
       setSelection({ kind: "saved", id: preset.id });
     });
   }
@@ -172,23 +182,43 @@ export function ExportModal({
   function startNew() {
     guard(() => {
       setDraft(EMPTY_DRAFT);
-      setBaseline(snapshot(EMPTY_DRAFT, memberFilters, eventFilters));
+      setBaseline(snapshot(EMPTY_DRAFT));
       setSelection({ kind: "new" });
     });
   }
 
-  // ---- The roster fetch --------------------------------------------------
+  // ---- The export, fully decided -----------------------------------------
   const ctx = useMemo(() => (catalog ? exportContext(catalog, tournament.timezone) : null), [catalog, tournament.timezone]);
 
-  const fields = useMemo(() => {
-    if (builtin) return builtin.fields;
-    if (!isCustom || !ctx || !draft.row_type) return null;
-    const groups = new Set(fieldsForColumns(draft.columns, ctx));
-    // Event and assignment rows are built from assignments.
-    if (draft.row_type !== "member") groups.add("assignments");
-    return [...groups];
-  }, [builtin, isCustom, ctx, draft.row_type, draft.columns]);
+  const blocked = useMemo((): string | null => {
+    if (builtin?.usesTrack && effectiveTrackId === null) return "This tournament has no tracks yet";
+    if (builtin?.id === "duosmium" && duosmiumRoles.length === 0) return "Pick at least one Duosmium role";
+    if (builtin?.usesDivision && !division) return "This tournament has no divisions yet";
+    if (isCustom && !draft.row_type) return "Pick what one row is to start";
+    if (isCustom && draft.columns.length === 0) return "Add a column to start";
+    return null;
+  }, [builtin, effectiveTrackId, duosmiumRoles, division, isCustom, draft.row_type, draft.columns.length]);
 
+  const choice = useMemo((): ExportChoice | null => {
+    if (blocked || !selection) return null;
+    if (builtin?.id === "torus") return { kind: "torus", trackId: effectiveTrackId!, role: torusRole };
+    if (builtin?.id === "duosmium") return { kind: "duosmium", trackId: effectiveTrackId!, division, roles: duosmiumRoles };
+    if (builtin?.id === "email_list") return { kind: "email_list" };
+    if (!draft.row_type) return null;
+    return {
+      kind: "custom",
+      presetId: savedPreset?.id ?? null,
+      shape: { ...draft, row_type: draft.row_type },
+      trackId,
+    };
+  }, [blocked, selection, builtin, effectiveTrackId, torusRole, division, duosmiumRoles, draft, savedPreset, trackId]);
+
+  // ---- The roster fetch --------------------------------------------------
+  // A custom export can't name its field groups until the catalog resolves its columns.
+  const fields = useMemo(
+    () => (choice && (choice.kind !== "custom" || ctx) ? fieldsForChoice(choice, ctx) : null),
+    [choice, ctx],
+  );
   const memberParams = useMemo(() => membersFilterParams(memberFilters), [memberFilters]);
   const fetchKey = fields ? JSON.stringify([fields, memberParams]) : null;
   const [members, setMembers] = useState<MembershipFull[] | null>(null);
@@ -207,77 +237,36 @@ export function ExportModal({
 
   const loadingMembers = fetchKey !== null && membersKey !== fetchKey;
 
-  // ---- Event filters -> the events that count ----------------------------
-  const eventIds = useMemo(() => {
-    if (!usesEventFilters || !isEventsFilterActive(eventFilters)) return null;
-    const byEvent = new Map<number, Assignment[]>();
-    for (const a of assignments) byEvent.set(a.event.id, [...(byEvent.get(a.event.id) ?? []), a]);
-    const showsTrack = (id: number) => effectiveTrackId === null || id === effectiveTrackId;
-    return new Set(events
-      .filter((event) => eventPassesFilters(event, eventFilters, { assignmentsFor: (id) => byEvent.get(id) ?? [], showsTrack }))
-      .map((event) => event.id));
-  }, [usesEventFilters, eventFilters, assignments, events, effectiveTrackId]);
-
-  // ---- The export itself -------------------------------------------------
-  const blocked = useMemo((): string | null => {
-    if (builtin?.usesTrack && effectiveTrackId === null) return "This tournament has no tracks yet";
-    if (builtin?.id === "duosmium" && duosmiumRoles.length === 0) return "Pick at least one Duosmium role";
-    if (builtin?.usesDivision && !division) return "This tournament has no divisions yet";
-    if (isCustom && !draft.row_type) return "Pick what one row is to start";
-    if (isCustom && draft.columns.length === 0) return "Add a column to start";
-    return null;
-  }, [builtin, effectiveTrackId, duosmiumRoles, division, isCustom, draft.row_type, draft.columns.length]);
-
   const result = useMemo(() => {
-    if (!members || blocked || !ctx) return null;
-    if (builtin?.id === "torus") {
-      return { header: null, ...buildTorus(members, torusRole, { trackId: effectiveTrackId!, eventIds }) };
-    }
-    if (builtin?.id === "duosmium") {
-      return { header: null, ...buildDuosmium(members, duosmiumRoles, { trackId: effectiveTrackId!, eventIds, division }) };
-    }
-    if (builtin?.id === "email_list") return { header: null, ...buildEmailList(members) };
-    if (!isCustom || !draft.row_type) return null;
-
-    const table = buildExportTable(members, {
-      rowType: draft.row_type, columns: draft.columns, sorts: draft.sorts,
-      includeHeader: draft.include_header, trackId, eventIds,
-    }, ctx);
-    const stale = draft.columns.filter((c) => !resolveExportColumn(c.key, ctx)).length;
-    return {
-      header: table.header,
-      rows: table.rows,
-      text: toCsv(table.header ? [table.header, ...table.rows] : table.rows),
-      warnings: stale > 0
-        ? [`${stale} column${stale === 1 ? "" : "s"} no longer available (a deleted track or form field) — skipped.`]
-        : [],
-    };
-  }, [members, blocked, ctx, builtin, torusRole, duosmiumRoles, division, effectiveTrackId, eventIds, isCustom, draft, trackId]);
+    if (!choice || !members || loadingMembers) return null;
+    if (choice.kind === "custom" && !ctx) return null;
+    return computeExport(choice, members, eventIdsFor(choice, eventFilters, events, assignments), ctx);
+  }, [choice, members, loadingMembers, ctx, eventFilters, events, assignments]);
 
   // ---- Output ------------------------------------------------------------
-  function filename(): string {
-    const scope = (() => {
-      if (builtin?.id === "torus") {
-        const label = EXTERNAL_SYSTEMS.find((s) => s.field === "torus_role")!.roles[torusRole].label;
-        return [label, trackName];
-      }
-      if (builtin?.id === "duosmium") return [trackName, `division ${division}`];
-      if (builtin) return [];
-      return [trackId === null ? null : trackName];
-    })();
-    const presetName = builtin ? builtin.label : draft.name.trim() || "export";
-    return exportFilename([tournamentDisplayName(tournament), presetName, ...scope]);
+  /** Remembers this export for the button, and this output for the preset. */
+  function remember(output: ExportOutput) {
+    if (!choice) return;
+    const remembered = rememberedOf(choice);
+    if (!remembered) return;
+    writeLastExport(tournamentId, page, remembered);
+    writeOutput(tournamentId, presetKey(remembered), output);
   }
 
   function copy() {
     if (!result) return;
     copyText(result.text)
-      .then(() => show(`Copied ${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`, "success"))
+      .then(() => {
+        remember("copy");
+        show(`Copied ${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`, "success");
+      })
       .catch(() => show("Couldn't copy to the clipboard.", "error"));
   }
 
   function download(kind: "csv" | "txt") {
-    if (result) downloadText(filename(), result.text, kind);
+    if (!result || !choice) return;
+    downloadText(exportFilenameFor(choice, tournament, trackNames), result.text, kind);
+    remember(kind);
   }
 
   // ---- Saving ------------------------------------------------------------
@@ -289,8 +278,6 @@ export function ExportModal({
     const body: ExportPresetInput = {
       name: draft.name.trim(), row_type: draft.row_type, columns: draft.columns, sorts: draft.sorts,
       include_header: draft.include_header,
-      member_filters: membersFilterToStored(memberFilters),
-      event_filters: eventsFilterToStored(eventFilters),
     };
     setSaving(true);
     try {
@@ -302,8 +289,9 @@ export function ExportModal({
       setPresets((list) => [...list.filter((p) => p.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
       const nextDraft = draftFromPreset(saved);
       setDraft(nextDraft);
-      setBaseline(snapshot(nextDraft, memberFilters, eventFilters));
+      setBaseline(snapshot(nextDraft));
       setSelection({ kind: "saved", id: saved.id });
+      onPresetsChanged?.();
     } catch {
       // runAction already showed the error; the draft stays for a retry.
     } finally {
@@ -445,7 +433,7 @@ export function ExportModal({
                 header={result?.header ?? null}
                 rows={result?.rows ?? []}
                 warnings={result?.warnings ?? []}
-                loading={!blocked && (loadingMembers || !ctx)}
+                loading={!blocked && (loadingMembers || (isCustom && !ctx))}
                 blocked={blocked}
                 onCopy={copy}
                 onDownload={download}
@@ -503,6 +491,7 @@ export function ExportModal({
             setPresets((list) => list.filter((p) => p.id !== savedPreset.id));
             setSelection(null);
             setDraft(EMPTY_DRAFT);
+            onPresetsChanged?.();
           }}
           onClose={() => setConfirmDelete(false)}
         />

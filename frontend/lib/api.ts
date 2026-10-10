@@ -2476,10 +2476,6 @@ export interface ExportPresetInput {
   name:            string
   row_type:        ExportRowType
   columns:         ExportPresetColumn[]
-  // Roster query params, same shape the members page sends.
-  member_filters:  Record<string, string[]>
-  // The events/assignments board's filter vocabulary.
-  event_filters:   Record<string, string[]>
   // Every field must be one of `columns`' keys.
   sorts:           DisplayConfigSort[]
   include_header:  boolean

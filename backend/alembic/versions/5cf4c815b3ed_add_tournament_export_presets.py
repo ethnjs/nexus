@@ -27,8 +27,6 @@ def upgrade() -> None:
         sa.Column('name', sa.String(length=255), nullable=False),
         sa.Column('row_type', sa.String(length=16), nullable=False),
         sa.Column('columns', sa.JSON(), nullable=False),
-        sa.Column('member_filters', sa.JSON(), nullable=False),
-        sa.Column('event_filters', sa.JSON(), nullable=False),
         sa.Column('sorts', sa.JSON(), nullable=False),
         sa.Column('include_header', sa.Boolean(), nullable=False),
         sa.Column('created_by', sa.Integer(), nullable=True),
