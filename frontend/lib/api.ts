@@ -2453,3 +2453,55 @@ export const displayConfigApi = {
   getCatalog: (tournamentId: number) =>
     api.get<DisplayConfigCatalog>(`/tournaments/${tournamentId}/display-config/catalog/`),
 }
+
+// -------------------------------------------------------------------------
+// Export presets — nested under /tournaments/{id}/export-presets/
+// -------------------------------------------------------------------------
+// Saved custom exports, shared by every staff member of the tournament. The
+// built-ins (TORUS, Duosmium, email list) are frontend code, never rows here.
+
+/** What one exported row is. */
+export type ExportRowType = 'member' | 'event' | 'assignment'
+
+/** How a shift-like column writes its values: shift names or `08:00-12:00`. */
+export type ExportColumnMode = 'names' | 'times'
+
+export interface ExportPresetColumn {
+  key:   string
+  mode?: ExportColumnMode | null
+}
+
+// Matches ExportPresetCreate. Lists and dicts are whole-value on update.
+export interface ExportPresetInput {
+  name:            string
+  row_type:        ExportRowType
+  columns:         ExportPresetColumn[]
+  // Roster query params, same shape the members page sends.
+  member_filters:  Record<string, string[]>
+  // The events/assignments board's filter vocabulary.
+  event_filters:   Record<string, string[]>
+  // Every field must be one of `columns`' keys.
+  sorts:           DisplayConfigSort[]
+  include_header:  boolean
+}
+
+// Matches ExportPresetRead. Read leniently server-side, so a column whose
+// track or form field was deleted can still be here — skip what won't resolve.
+export interface ExportPreset extends ExportPresetInput {
+  id:            number
+  tournament_id: number
+  created_by:    number | null
+  created_at:    string
+  updated_at:    string
+}
+
+export const exportPresetsApi = {
+  list: (tournamentId: number) =>
+    api.get<ExportPreset[]>(`/tournaments/${tournamentId}/export-presets/`),
+  create: (tournamentId: number, body: ExportPresetInput) =>
+    api.post<ExportPreset>(`/tournaments/${tournamentId}/export-presets/`, body),
+  update: (tournamentId: number, presetId: number, body: Partial<ExportPresetInput>) =>
+    api.patch<ExportPreset>(`/tournaments/${tournamentId}/export-presets/${presetId}/`, body),
+  delete: (tournamentId: number, presetId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/export-presets/${presetId}/`),
+}
