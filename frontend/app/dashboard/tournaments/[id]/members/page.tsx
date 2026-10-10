@@ -54,6 +54,8 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { rowActivation } from "@/lib/rowActivation";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconTrash, IconMembers } from "@/components/ui/Icons";
+import { ExportButton } from "@/components/tournament/exports/ExportButton";
+import { EVENTS_FILTER_KEYS } from "@/components/tournament/events/EventsFilterModal";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -234,6 +236,9 @@ const MemberRow = memo(function MemberRow({
     </div>
   );
 });
+
+// The roster has no event filters; the export screen starts with none.
+const NO_EVENT_FILTERS = emptyFilterState(EVENTS_FILTER_KEYS);
 
 export default function MembersPage() {
   const params = useParams();
@@ -708,6 +713,17 @@ export default function MembersPage() {
               onOpen={openSortModal}
               onReset={() => applySort(DEFAULT_MEMBER_SORT)}
             />
+            {/* Exports exactly what the roster's filters show; no event filters here. */}
+            {selectedTournament && (
+              <ExportButton
+                iconOnly={compactToolbar}
+                tournament={selectedTournament}
+                page="members"
+                memberFilters={filters}
+                eventFilters={NO_EVENT_FILTERS}
+                trackId={null}
+              />
+            )}
             {canManageMembers && (
               <Button
                 type="button" variant={selectMode ? "primary" : "secondary"} size="md"

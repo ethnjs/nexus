@@ -99,6 +99,7 @@ import {
   type MemberDisplayState,
 } from '@/components/tournament/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/tournament/assignments/MemberCard'
+import { ExportButton } from '@/components/tournament/exports/ExportButton'
 import { EventRow } from '@/components/tournament/assignments/EventRow'
 import {
   fullName, laneKeyOf, withOrderedShifts, type BoardHandlers,
@@ -1499,6 +1500,19 @@ export default function AssignmentsPage() {
               onOpen={() => setShowEventSortModal(true)}
               onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
             />
+            {/* The belt's member filters and this tab's event filters and track:
+                exports what the board shows. Locked for manage_events-only staff,
+                who can't read the roster an export is built from. */}
+            {selectedTournament && (
+              <ExportButton
+                tournament={selectedTournament}
+                page="assignments"
+                memberFilters={memberFilters}
+                eventFilters={eventFilters}
+                trackId={activeTrackId}
+                lockedReason={canManageMembers ? null : 'Exporting needs the Manage members permission.'}
+              />
+            )}
           </div>
           <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
 
