@@ -332,7 +332,7 @@ export function ExportModal({
     }}>
       <header style={{
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
-        padding: "12px 16px", borderBottom: "1px solid var(--color-border)",
+        padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "var(--color-surface)",
       }}>
         <h2 style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 400, color: "var(--color-text-primary)" }}>
           Export
@@ -342,10 +342,12 @@ export function ExportModal({
         </Button>
       </header>
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexWrap: "wrap" }}>
+      {/* No wrap: a wrapped line can outgrow the panel, which left main with
+          no height bound for its own scroll to work against. */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <nav style={{
           width: "240px", maxWidth: "100%", flexShrink: 0, overflowY: "auto",
-          padding: "12px 8px", borderRight: "1px solid var(--color-border)",
+          padding: "12px 8px", borderRight: "1px solid var(--color-border)", background: "var(--color-surface)",
           display: "flex", flexDirection: "column", gap: "2px",
         }}>
           <NavHeading>Built-in</NavHeading>
@@ -370,7 +372,7 @@ export function ExportModal({
           </div>
         </nav>
 
-        <main style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "16px" }}>
+        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", padding: "16px" }}>
           {loadError ? (
             <EmptyState title="Something went wrong" description={loadError} />
           ) : !selection ? (

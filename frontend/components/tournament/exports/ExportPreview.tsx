@@ -4,10 +4,23 @@ import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
+import { Card } from "@/components/ui/Card";
+import table from "@/components/ui/Table.module.css";
 import { IconCopy, IconExport } from "@/components/ui/Icons";
 
 // The first rows of what will be exported — enough to check the shape.
 export const PREVIEW_ROWS = 25;
+
+// Narrowest a column gets before the table scrolls sideways instead.
+const MIN_COLUMN_WIDTH = 140;
+
+const CELL_TEXT: React.CSSProperties = {
+  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
+};
+
+// Long values (an email, a list of events) wrap inside their cell instead of
+// overflowing into the next one.
+const WRAP: React.CSSProperties = { minWidth: 0, whiteSpace: "normal", overflowWrap: "anywhere" };
 
 interface ExportPreviewProps {
   header:   string[] | null;
@@ -60,39 +73,33 @@ export function ExportPreview({ header, rows, warnings, loading, blocked, onCopy
       ) : rows.length === 0 ? (
         <EmptyState size="sm" title="Nothing to export" description="No one matches this export and its filters." />
       ) : (
-        <div style={{ overflowX: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "var(--font-mono)", fontSize: "12px" }}>
+        <Card radius="lg" className={table.scroll} style={{ padding: "4px 12px" }}>
+          {/* The app's table shell. Columns share the width but never get
+              narrower than a readable minimum; past that the card scrolls. */}
+          <div
+            className={table.table}
+            style={{
+              gridTemplateColumns: `repeat(${width}, minmax(${MIN_COLUMN_WIDTH}px, 1fr))`,
+              minWidth: `${width * MIN_COLUMN_WIDTH}px`,
+            }}
+          >
+            {/* Only when the export has one: what shows is what gets exported. */}
             {header && (
-              <thead>
-                <tr>
-                  {header.map((cell, i) => (
-                    <th key={i} style={{
-                      textAlign: "left", padding: "6px 10px", whiteSpace: "nowrap",
-                      fontFamily: "var(--font-sans)", fontWeight: 600, color: "var(--color-text-secondary)",
-                      background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)",
-                    }}>
-                      {cell}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+              <div className={table.header} style={{ paddingTop: "8px", paddingBottom: "8px" }}>
+                {Array.from({ length: width }, (_, i) => <span key={i} style={WRAP}>{header[i] ?? ""}</span>)}
+              </div>
             )}
-            <tbody>
-              {shown.map((row, r) => (
-                <tr key={r}>
-                  {Array.from({ length: width }, (_, i) => (
-                    <td key={i} style={{
-                      padding: "6px 10px", whiteSpace: "nowrap", color: "var(--color-text-primary)",
-                      borderTop: r === 0 ? "none" : "1px solid var(--color-border)",
-                    }}>
-                      {row[i] ?? ""}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            {shown.map((row, r) => (
+              // Thinner than a page table's rows, and top-aligned so a wrapped
+              // cell doesn't push its neighbours to the middle.
+              <div key={r} className={table.row} style={{ paddingTop: "6px", paddingBottom: "6px", alignItems: "start" }}>
+                {Array.from({ length: width }, (_, i) => (
+                  <span key={i} style={{ ...CELL_TEXT, ...WRAP }}>{row[i] ?? ""}</span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );
