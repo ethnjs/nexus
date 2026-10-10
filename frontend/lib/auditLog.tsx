@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { externalRoleLabel, externalSystemFor } from "@/lib/exports/externalSystems";
 import { AuditLogEntry } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 
@@ -295,6 +296,11 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
         }
         if (c.field === "rank") return "Rank changed";
         if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;
+        const system = externalSystemFor(c.field);
+        if (system) {
+          const field = system.field;
+          return `${system.label} role: ${externalRoleLabel(field, c.old as string | null)} → ${externalRoleLabel(field, c.new as string | null)}`;
+        }
         return `${c.field}: ${c.old} → ${c.new}`;
       }),
     };

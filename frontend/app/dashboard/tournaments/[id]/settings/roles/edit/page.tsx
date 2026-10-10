@@ -18,11 +18,22 @@ import { TabStrip } from "@/components/ui/TabStrip";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import { RoleMembersTab } from "@/components/tournament/settings/RoleMembersTab";
 import { RoleDraft, RoleEditorForm } from "@/components/tournament/settings/RoleEditorForm";
+import { EXTERNAL_ROLE_FIELDS } from "@/lib/exports/externalSystems";
 import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
+
+function draftFromRole(role: Role): RoleDraft {
+  return {
+    label: role.label,
+    permissions: role.permissions as Permission[],
+    torus_role: role.torus_role,
+    duosmium_role: role.duosmium_role,
+  };
+}
 
 function draftDiffers(draft: RoleDraft, role: Role): boolean {
   return draft.label.trim() !== role.label
-    || JSON.stringify([...draft.permissions].sort()) !== JSON.stringify([...role.permissions].sort());
+    || JSON.stringify([...draft.permissions].sort()) !== JSON.stringify([...role.permissions].sort())
+    || EXTERNAL_ROLE_FIELDS.some((field) => draft[field] !== role[field]);
 }
 
 export default function RoleEditorPage() {
@@ -109,8 +120,8 @@ export default function RoleEditorPage() {
   // unsaved — so its fields live in `roles` itself rather than in `drafts`.
   const draftFor = useCallback((role: Role): RoleDraft => (
     isTempRole(role)
-      ? { label: role.label, permissions: role.permissions as Permission[] }
-      : drafts[role.id] ?? { label: role.label, permissions: role.permissions as Permission[] }
+      ? draftFromRole(role)
+      : drafts[role.id] ?? draftFromRole(role)
   ), [drafts]);
 
   const setDraft = useCallback((roleId: number, patch: Partial<RoleDraft>) => {
@@ -121,7 +132,7 @@ export default function RoleEditorPage() {
     setDrafts((cur) => {
       const role = rolesRef.current?.find((r) => r.id === roleId);
       if (!role) return cur;
-      const base = cur[roleId] ?? { label: role.label, permissions: role.permissions as Permission[] };
+      const base = cur[roleId] ?? draftFromRole(role);
       return { ...cur, [roleId]: { ...base, ...patch } };
     });
   }, []);
@@ -172,6 +183,8 @@ export default function RoleEditorPage() {
       label: t.label.trim(),
       permissions: t.permissions as Permission[],
       rank: draftRanks.get(t.id) ?? t.rank,
+      torus_role: t.torus_role,
+      duosmium_role: t.duosmium_role,
     }).then((role) => { landed.set(t.id, role.id); return role; }));
 
     try {
@@ -191,6 +204,8 @@ export default function RoleEditorPage() {
         ...edits.map((r) => rolesApi.update(tournamentId, r.id, {
           label: drafts[r.id].label.trim(),
           permissions: drafts[r.id].permissions,
+          torus_role: drafts[r.id].torus_role,
+          duosmium_role: drafts[r.id].duosmium_role,
         })),
       ]);
       setDrafts({});
@@ -248,6 +263,8 @@ export default function RoleEditorPage() {
         id,
         tournament_id: tournamentId,
         label: defaultNewRoleLabel(list.map((r) => r.label)),
+        torus_role: null,
+        duosmium_role: null,
         permissions: [],
         rank: nextBottomRank(list),
         member_count: 0,

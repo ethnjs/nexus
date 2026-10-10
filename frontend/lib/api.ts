@@ -947,9 +947,16 @@ export interface Role {
   label:          string
   permissions:    string[]
   rank:           number
+  // What this role is in TORUS / Duosmium, for the exports. null = unmapped.
+  torus_role:     TorusRole | null
+  duosmium_role:  DuosmiumRole | null
   created_at:     string
   updated_at:     string
 }
+
+// Mirror TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
+export type TorusRole = "writer" | "reviewer" | "tournament_director" | "test_coordinator"
+export type DuosmiumRole = "tournament_director" | "scoremaster" | "event_supervisor"
 
 // Matches RoleWithMemberCount — only the role list/CRUD endpoints compute
 // this count; roles nested inside membership responses stay plain Role.
@@ -1387,9 +1394,11 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
 }
 
 export interface RoleDefinition {
-  label:       string
-  permissions: Permission[]
-  rank:        number
+  label:          string
+  permissions:    Permission[]
+  rank:           number
+  torus_role?:    TorusRole | null
+  duosmium_role?: DuosmiumRole | null
 }
 
 // Matches RoleBulkReorder — final ranks are computed client-side by the

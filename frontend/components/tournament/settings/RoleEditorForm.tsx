@@ -6,12 +6,17 @@ import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow"
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { Button } from "@/components/ui/Button";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { EXTERNAL_SYSTEMS, ExternalRoleValues } from "@/lib/exports/externalSystems";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 
-export interface RoleDraft {
+export interface RoleDraft extends ExternalRoleValues {
   label:       string;
   permissions: Permission[];
 }
+
+// "" stands in for null: Dropdown values are strings.
+const NONE = "";
 
 interface RoleEditorFormProps {
   tournamentId: number;
@@ -57,6 +62,27 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
           </SettingsRow>
         ))}
       </SettingsSection>
+
+      {EXTERNAL_SYSTEMS.map((system) => (
+        <SettingsSection key={system.field} title={system.label}>
+          <SettingsRow
+            label={`${system.label} role`}
+            helper={`Maps this role to a ${system.label} role.`}
+            last
+          >
+            <Dropdown
+              fullWidth
+              locked={locked}
+              value={draft[system.field] ?? NONE}
+              onChange={(value) => setDraft(role.id, { [system.field]: value || null })}
+              options={[
+                { value: NONE, label: "None" },
+                ...Object.entries(system.roles).map(([value, info]) => ({ value, label: info.label })),
+              ]}
+            />
+          </SettingsRow>
+        </SettingsSection>
+      ))}
 
       {!locked && (
         <SettingsSection title="Danger Zone" variant="danger">
