@@ -40,6 +40,7 @@ export function Modal({ title, onClose, children, footer, width = 440, closeOnOv
 
   return createPortal(
     <div
+      className="modal-overlay"
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(0,0,0,0.35)',
@@ -60,6 +61,7 @@ export function Modal({ title, onClose, children, footer, width = 440, closeOnOv
       }}
     >
       <div
+        className="modal-panel"
         style={{
           background: variant === 'danger' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
           border: variant === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
