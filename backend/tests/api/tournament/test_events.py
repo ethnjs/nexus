@@ -258,7 +258,8 @@ def test_list_events_requires_manage_events(
     client, td_user, other_tournament, db
 ):
     """There's no separate read-only view_events tier — listing requires
-    manage_events, same as write. A no-permission role is forbidden."""
+    manage_events or manage_members (exports read it). A no-permission role
+    is forbidden."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 403

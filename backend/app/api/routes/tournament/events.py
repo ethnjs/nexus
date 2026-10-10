@@ -7,7 +7,7 @@ from app.core.tournament import get_scoped_or_404, get_tournament, require_not_a
 from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, require_catalog_read, require_permission,
+    MANAGE_EVENTS, MANAGE_MEMBERS, require_catalog_read, require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
@@ -295,7 +295,9 @@ def list_events(
     public: bool = Query(False),
     requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
+    # MANAGE_MEMBERS too: exports filter by event, and the export gate is the
+    # roster's. Mirrors GET /assignments/. Event writes stay MANAGE_EVENTS.
+    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS, MANAGE_MEMBERS)),
 ) -> list[EventRead] | list[EventMemberRead] | list[dict]:
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)

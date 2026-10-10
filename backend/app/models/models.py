@@ -378,7 +378,10 @@ class Tournament(Base):
     )
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
+    export_presets = relationship(
+        "TournamentExportPreset", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    join_codes =relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
     tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
@@ -714,6 +717,49 @@ class TournamentRole(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentExportPreset — a saved custom export (#110), shared by every
+# staff member of the tournament. The built-in presets (TORUS, Duosmium,
+# email list) live in frontend code, never here.
+#
+# Rows are built client-side from the roster, so this only stores the recipe.
+# Every JSON value is validated on write and read leniently: a deleted track
+# or form field leaves an inert column behind, never a 500.
+# ---------------------------------------------------------------------------
+class TournamentExportPreset(Base):
+    __tablename__ = "tournament_export_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name = Column(String(255), nullable=False)
+    # What one row is: "member" | "event" (person x event) | "assignment".
+    row_type = Column(String(16), nullable=False)
+    # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
+    # Objects, not strings, so a column can carry its own options.
+    columns = Column(JSON, nullable=False, default=list)
+    # Roster query-param filters and the board's event filters, same shapes
+    # as display_config stores them.
+    member_filters = Column(JSON, nullable=False, default=dict)
+    event_filters = Column(JSON, nullable=False, default=dict)
+    # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
+    sorts = Column(JSON, nullable=False, default=list)
+    include_header = Column(Boolean, nullable=False, default=True)
+    # Null once the creator's account is deleted; the preset stays.
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    tournament = relationship("Tournament", back_populates="export_presets")
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_export_preset_name"),
     )
 
 

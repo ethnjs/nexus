@@ -311,12 +311,12 @@ def require_permission(
     return _dependency
 
 
-def require_catalog_read(permission: str, tournament_id_param: str = "tournament_id"):
+def require_catalog_read(*permissions: str, tournament_id_param: str = "tournament_id"):
     """Dependency factory for a catalog GET that serves two audiences.
 
     `?public=true` is the member-facing read: holding a membership is the
     whole gate, and the route answers with the member-facing shape. Anything
-    else is the staff read and needs `permission`.
+    else is the staff read and needs any one of `permissions`.
 
     A query param rather than a parallel /me/ route because it is one
     collection either way — and because the two shapes are the same for most
@@ -337,7 +337,7 @@ def require_catalog_read(permission: str, tournament_id_param: str = "tournament
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Tournament not found",
             )
-        if not public and not has_permission(current_user, tournament_id, permission, db):
+        if not public and not any(has_permission(current_user, tournament_id, p, db) for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
