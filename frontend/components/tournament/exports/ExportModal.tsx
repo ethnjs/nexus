@@ -16,6 +16,7 @@ import {
 import {
   ExportChoice, computeExport, eventIdsFor, exportFilenameFor, fieldsForChoice, trackNamesOf,
 } from "@/lib/exports/run";
+import { useExitAnimation } from "@/lib/useExitAnimation";
 import { useToast } from "@/lib/useToast";
 import { useActionToast } from "@/lib/useActionToast";
 import {
@@ -303,6 +304,7 @@ export function ExportModal({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const mouseDownOnOverlay = useRef(false);
+  const exitRef = useExitAnimation<HTMLDivElement>();
   if (!mounted) return null;
 
   const memberFilterActive = isFilterActive(memberFilters);
@@ -312,6 +314,7 @@ export function ExportModal({
 
   return createPortal(
     <div
+      ref={exitRef}
       className="modal-overlay"
       style={{
         position: "fixed", inset: 0, zIndex: 200, padding: "10px",

@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useExitAnimation } from '@/lib/useExitAnimation'
 
 type ModalVariant = 'normal' | 'danger'
 
@@ -28,6 +29,8 @@ export function Modal({ title, onClose, children, footer, width = 440, closeOnOv
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  const exitRef = useExitAnimation<HTMLDivElement>()
+
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
@@ -40,6 +43,7 @@ export function Modal({ title, onClose, children, footer, width = 440, closeOnOv
 
   return createPortal(
     <div
+      ref={exitRef}
       className="modal-overlay"
       style={{
         position: 'fixed', inset: 0,
