@@ -3,7 +3,7 @@
 import type { DuosmiumRole, TorusRole } from "@/lib/api";
 import type { BuiltinInfo } from "@/lib/exports/builtins";
 import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { PanelField } from "@/components/tournament/exports/PanelField";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 
@@ -90,12 +90,8 @@ export function BuiltinOptions({
 
   if (rows.length === 0) return null;
   return (
-    <SettingsSection title={builtin.label}>
-      {rows.map((row, i) => (
-        <SettingsRow key={row.label} label={row.label} last={i === rows.length - 1}>
-          {row.control}
-        </SettingsRow>
-      ))}
-    </SettingsSection>
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {rows.map((row) => <PanelField key={row.label} label={row.label}>{row.control}</PanelField>)}
+    </div>
   );
 }

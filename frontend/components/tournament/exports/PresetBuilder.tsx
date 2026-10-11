@@ -1,23 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
-} from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { DisplayConfigSort, ExportColumnMode, ExportPresetColumn, ExportRowType } from "@/lib/api";
 import { ExportColumn, ExportColumnGroup, columnMode } from "@/lib/exports/columns";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { PanelField } from "@/components/tournament/exports/PanelField";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Input } from "@/components/ui/Input";
-import { SortButton } from "@/components/ui/SortButton";
-import { SortModal } from "@/components/ui/SortModal";
 import { Switch } from "@/components/ui/Switch";
-import { IconGripVertical, IconX } from "@/components/ui/Icons";
-import type { SortRule } from "@/lib/sorting";
+import { IconX } from "@/components/ui/Icons";
 
 /** A custom preset being edited. row_type starts null: there's no default,
  *  the TD picks one before columns are offered. */
@@ -34,6 +25,13 @@ const ROW_TYPE_OPTIONS = [
   { value: "event",  label: "Per event",  description: "One row per event" },
 ];
 
+// What identifies a row — added up front when the row type is picked.
+// Removable: some exports (an email list) don't want them.
+const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
+  member: ["first_name", "last_name"],
+  event:  ["event"],
+};
+
 // "" is the dropdown's "every track"; a track id otherwise.
 const ALL_TRACKS = "";
 
@@ -47,27 +45,24 @@ interface PresetBuilderProps {
   tracks:    { id: number; name: string }[];
   trackId:   number | null;
   onTrackChange: (trackId: number | null) => void;
-  // Lets the parent ignore Escape while the sort modal is up.
-  onChildModal: (open: boolean) => void;
 }
 
 export function PresetBuilder({
-  draft, onChange, available, resolve, tracks, trackId, onTrackChange, onChildModal,
+  draft, onChange, available, resolve, tracks, trackId, onTrackChange,
 }: PresetBuilderProps) {
-  const [showSort, setShowSort] = useState(false);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const selected = new Set(draft.columns.map((c) => c.key));
 
-  function openSort(open: boolean) {
-    setShowSort(open);
-    onChildModal(open);
-  }
-
   function changeRowType(rowType: ExportRowType) {
+    if (rowType === draft.row_type) return;
     // Columns that don't apply to the new row type go, and the sorts on them.
-    const columns = draft.columns.filter((c) => resolve(c.key)?.rowTypes.includes(rowType));
-    const keys = new Set(columns.map((c) => c.key));
-    onChange({ row_type: rowType, columns, sorts: draft.sorts.filter((s) => keys.has(s.field)) });
+    const kept = draft.columns.filter((c) => resolve(c.key)?.rowTypes.includes(rowType));
+    const keptKeys = new Set(kept.map((c) => c.key));
+    const defaults = DEFAULT_COLUMNS[rowType].filter((key) => !keptKeys.has(key)).map((key) => ({ key }));
+    onChange({
+      row_type: rowType,
+      columns: [...defaults, ...kept],
+      sorts: draft.sorts.filter((s) => keptKeys.has(s.field)),
+    });
   }
 
   function removeColumn(key: string) {
@@ -81,13 +76,6 @@ export function PresetBuilder({
     onChange({ columns: draft.columns.map((c) => (c.key === key ? { ...c, mode } : c)) });
   }
 
-  function handleDragEnd({ active, over }: DragEndEvent) {
-    if (!over || active.id === over.id) return;
-    const from = draft.columns.findIndex((c) => c.key === active.id);
-    const to = draft.columns.findIndex((c) => c.key === over.id);
-    onChange({ columns: arrayMove(draft.columns, from, to) });
-  }
-
   const addOptions = available
     .map((group) => ({
       group: group.title,
@@ -95,85 +83,57 @@ export function PresetBuilder({
     }))
     .filter((group) => group.options.length > 0);
 
-  const sortFields = draft.columns
-    .map((c) => resolve(c.key))
-    .filter((c): c is ExportColumn => c !== null)
-    .map((c) => ({ value: c.key, label: c.header }));
-
   return (
-    <div>
-      <SettingsSection title="Export">
-        <SettingsRow label="Name">
-          <Input fullWidth value={draft.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="e.g. Lunch counts" />
-        </SettingsRow>
-        <SettingsRow label="Rows" helper="What one row of the export is.">
-          <ButtonGroup
-            options={ROW_TYPE_OPTIONS}
-            value={draft.row_type ?? ""}
-            onChange={(value) => changeRowType(value as ExportRowType)}
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <PanelField label="Name">
+        <Input fullWidth value={draft.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="e.g. Lunch counts" />
+      </PanelField>
+      <PanelField label="Rows" helper="What one row of the export is.">
+        <ButtonGroup
+          options={ROW_TYPE_OPTIONS}
+          value={draft.row_type ?? ""}
+          onChange={(value) => changeRowType(value as ExportRowType)}
+        />
+      </PanelField>
+      {tracks.length > 1 && (
+        <PanelField label="Track" helper="Narrows the columns offered and the assignments exported. Not saved.">
+          <Dropdown
+            fullWidth
+            value={trackId === null ? ALL_TRACKS : String(trackId)}
+            onChange={(value) => onTrackChange(value === ALL_TRACKS ? null : Number(value))}
+            options={[{ value: ALL_TRACKS, label: "All tracks" }, ...tracks.map((t) => ({ value: String(t.id), label: t.name }))]}
           />
-        </SettingsRow>
-        {tracks.length > 1 && (
-          <SettingsRow label="Track" helper="Narrows the columns offered and the assignments exported. Not saved." last>
-            <Dropdown
-              fullWidth
-              value={trackId === null ? ALL_TRACKS : String(trackId)}
-              onChange={(value) => onTrackChange(value === ALL_TRACKS ? null : Number(value))}
-              options={[{ value: ALL_TRACKS, label: "All tracks" }, ...tracks.map((t) => ({ value: String(t.id), label: t.name }))]}
-            />
-          </SettingsRow>
-        )}
-      </SettingsSection>
-
-      {draft.row_type && (
-        <SettingsSection title="Columns">
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 16px" }}>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={draft.columns.map((c) => c.key)} strategy={verticalListSortingStrategy}>
-                {draft.columns.map((column) => (
-                  <ColumnRow
-                    key={column.key}
-                    column={column}
-                    resolved={resolve(column.key)}
-                    onMode={(mode) => setMode(column.key, mode)}
-                    onRemove={() => removeColumn(column.key)}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-            <Dropdown
-              fullWidth
-              searchable
-              value=""
-              placeholder="Add column…"
-              options={addOptions}
-              emptyMessage="Every column is already added"
-              onChange={(key) => key && onChange({ columns: [...draft.columns, { key }] })}
-            />
-          </div>
-          <SettingsRow label="Sort" contentStyle={{ display: "flex", justifyContent: "flex-end" }}>
-            <SortButton
-              active={draft.sorts.length > 0}
-              onOpen={() => openSort(true)}
-              onReset={() => onChange({ sorts: [] })}
-            />
-          </SettingsRow>
-          <SettingsRow label="Header row" helper="Column names as the first row." last contentStyle={{ display: "flex", justifyContent: "flex-end" }}>
-            <Switch checked={draft.include_header} onChange={(checked) => onChange({ include_header: checked })} />
-          </SettingsRow>
-        </SettingsSection>
+        </PanelField>
       )}
 
-      {showSort && (
-        <SortModal
-          title="Sort export"
-          fields={sortFields}
-          rules={draft.sorts as SortRule[]}
-          defaults={[]}
-          tiebreakLabel="roster order"
-          onApply={(rules) => onChange({ sorts: rules.map((r) => ({ field: r.field, direction: r.direction })) })}
-          onClose={() => openSort(false)}
-        />
+      {draft.row_type && (
+        <>
+          <PanelField label="Columns" helper="In the order added.">
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {draft.columns.map((column) => (
+                <ColumnRow
+                  key={column.key}
+                  column={column}
+                  resolved={resolve(column.key)}
+                  onMode={(mode) => setMode(column.key, mode)}
+                  onRemove={() => removeColumn(column.key)}
+                />
+              ))}
+              <Dropdown
+                fullWidth
+                searchable
+                value=""
+                placeholder="Add column…"
+                options={addOptions}
+                emptyMessage="Every column is already added"
+                onChange={(key) => key && onChange({ columns: [...draft.columns, { key }] })}
+              />
+            </div>
+          </PanelField>
+          <PanelField label="Header row" helper="Column names as the first row." inline>
+            <Switch checked={draft.include_header} onChange={(checked) => onChange({ include_header: checked })} />
+          </PanelField>
+        </>
       )}
     </div>
   );
@@ -188,20 +148,11 @@ interface ColumnRowProps {
 }
 
 function ColumnRow({ column, resolved, onMode, onRemove }: ColumnRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: column.key });
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        // Translate, not Transform: rows differ in height when one has a mode toggle.
-        transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1,
-        display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px",
-        border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", background: "var(--color-bg)",
-      }}
-    >
-      <span {...attributes} {...listeners} style={{ display: "flex", cursor: "grab", color: "var(--color-text-tertiary)" }}>
-        <IconGripVertical size={14} />
-      </span>
+    <div style={{
+      display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "6px 6px 6px 10px",
+      border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", background: "var(--color-bg)",
+    }}>
       <span style={{
         flex: 1, minWidth: 0, fontFamily: "var(--font-sans)", fontSize: "13px",
         color: resolved ? "var(--color-text-primary)" : "var(--color-text-tertiary)",

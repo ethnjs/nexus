@@ -8,7 +8,7 @@ import {
   exportPresetsApi, membersApi, rolesApi, tournamentEventsApi,
 } from "@/lib/api";
 import { BUILTINS, BuiltinId } from "@/lib/exports/builtins";
-import { availableExportColumns, exportContext, resolveExportColumn } from "@/lib/exports/columns";
+import { ExportColumn, availableExportColumns, exportContext, resolveExportColumn } from "@/lib/exports/columns";
 import { copyText, downloadText } from "@/lib/exports/output";
 import {
   ExportOutput, ExportPage, RememberedExport, presetKey, writeLastExport, writeOutput,
@@ -34,7 +34,10 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { IconExport, IconPlus, IconX } from "@/components/ui/Icons";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { IconChevronLeft, IconCopy, IconExport, IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
+import type { SortRule } from "@/lib/sorting";
 
 type Selection =
   | { kind: "builtin"; id: BuiltinId }
@@ -119,6 +122,8 @@ export function ExportModal({
 
   // ---- What's being exported ---------------------------------------------
   const [selection, setSelection] = useState<Selection | null>(null);
+  // The side panel: the export list, or the picked export's settings slid in over it.
+  const [panel, setPanel] = useState<"list" | "config">("list");
   const [memberFilters, setMemberFilters] = useState(initialMemberFilters);
   const [eventFilters, setEventFilters] = useState(initialEventFilters);
   const [trackId, setTrackId] = useState<number | null>(initialTrackId);
@@ -142,10 +147,10 @@ export function ExportModal({
   // ---- Child modals, confirms and Escape ---------------------------------
   const [showMemberFilters, setShowMemberFilters] = useState(false);
   const [showEventFilters, setShowEventFilters] = useState(false);
-  const [builderModalOpen, setBuilderModalOpen] = useState(false);
+  const [showSort, setShowSort] = useState(false);
   const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const childModalOpen = showMemberFilters || showEventFilters || builderModalOpen
+  const childModalOpen = showMemberFilters || showEventFilters || showSort
     || pendingDiscard !== null || confirmDelete;
 
   /** Runs `action`, first confirming when it would throw away unsaved edits. */
@@ -168,7 +173,10 @@ export function ExportModal({
 
   // ---- Switching what's selected -----------------------------------------
   function selectBuiltin(id: BuiltinId) {
-    guard(() => setSelection({ kind: "builtin", id }));
+    guard(() => {
+      setSelection({ kind: "builtin", id });
+      setPanel("config");
+    });
   }
 
   function selectPreset(preset: ExportPreset) {
@@ -177,6 +185,7 @@ export function ExportModal({
       setDraft(nextDraft);
       setBaseline(snapshot(nextDraft));
       setSelection({ kind: "saved", id: preset.id });
+      setPanel("config");
     });
   }
 
@@ -185,6 +194,7 @@ export function ExportModal({
       setDraft(EMPTY_DRAFT);
       setBaseline(snapshot(EMPTY_DRAFT));
       setSelection({ kind: "new" });
+      setPanel("config");
     });
   }
 
@@ -308,9 +318,18 @@ export function ExportModal({
   if (!mounted) return null;
 
   const memberFilterActive = isFilterActive(memberFilters);
+  const resolve = (key: string): ExportColumn | null => (ctx ? resolveExportColumn(key, ctx) : null);
   const columnGroups = isCustom && draft.row_type && catalog && ctx
     ? availableExportColumns(catalog, draft.row_type, trackId, ctx)
     : [];
+  const sortFields = draft.columns
+    .map((c) => resolve(c.key))
+    .filter((c): c is ExportColumn => c !== null)
+    .map((c) => ({ value: c.key, label: c.header }));
+  const loading = !blocked && (loadingMembers || (isCustom && !ctx));
+  const canOutput = !loading && !blocked && (result?.rows.length ?? 0) > 0;
+  const showConfig = panel === "config" && selection !== null;
+  const panelTitle = builtin?.label ?? savedPreset?.name ?? "New export";
 
   return createPortal(
     <div
@@ -345,120 +364,196 @@ export function ExportModal({
       {/* No wrap: a wrapped line can outgrow the panel, which left main with
           no height bound for its own scroll to work against. */}
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        <nav style={{
-          width: "240px", maxWidth: "100%", flexShrink: 0, overflowY: "auto",
-          padding: "12px 8px", borderRight: "1px solid var(--color-border)", background: "var(--color-surface)",
-          display: "flex", flexDirection: "column", gap: "2px",
+        {/* Two panes in a clipped window; the track slides one pane-width
+            left to swap them. Each pane scrolls on its own. */}
+        <aside style={{
+          width: "360px", maxWidth: "100%", flexShrink: 0, overflow: "hidden",
+          borderRight: "1px solid var(--color-border)", background: "var(--color-surface)",
         }}>
-          <NavHeading>Built-in</NavHeading>
-          {BUILTINS.map((b) => (
-            <NavItem key={b.id} active={builtin?.id === b.id} onClick={() => selectBuiltin(b.id)}>{b.label}</NavItem>
-          ))}
-          <NavHeading>Saved</NavHeading>
-          {presets.length === 0 && (
-            <span style={{ padding: "4px 10px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-              None yet
-            </span>
-          )}
-          {presets.map((p) => (
-            <NavItem key={p.id} active={selection?.kind === "saved" && selection.id === p.id} onClick={() => selectPreset(p)}>
-              {p.name}
-            </NavItem>
-          ))}
-          <div style={{ padding: "8px 2px 0" }}>
-            <Button type="button" variant="secondary" size="sm" fullWidth onClick={startNew}>
-              <IconPlus size={12} /> New export
-            </Button>
-          </div>
-        </nav>
-
-        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", padding: "16px" }}>
-          {loadError ? (
-            <EmptyState title="Something went wrong" description={loadError} />
-          ) : !selection ? (
-            <EmptyState
-              icon={<IconExport size={20} />}
-              title="Pick an export"
-              description="Choose a built-in export or a saved one, or start a new one."
-            />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1100px" }}>
-              {builtin && (
-                <BuiltinOptions
-                  builtin={builtin}
-                  tracks={tracks}
-                  trackId={effectiveTrackId}
-                  onTrackChange={setTrackId}
-                  divisions={tournament.division}
-                  division={division}
-                  onDivisionChange={setDivision}
-                  torusRole={torusRole}
-                  onTorusRoleChange={setTorusRole}
-                  duosmiumRoles={duosmiumRoles}
-                  onDuosmiumRolesChange={setDuosmiumRoles}
-                />
+          <div className="export-panel-track" style={{
+            display: "flex", width: "200%", height: "100%",
+            // Margin, not transform: a transform would trap the dropdowns'
+            // position: fixed menus inside this clipped strip.
+            marginLeft: showConfig ? "-100%" : 0,
+          }}>
+            {/* inert: the off-screen pane must not take Tab focus. */}
+            <nav inert={showConfig} style={{
+              width: "50%", overflowY: "auto", padding: "12px 8px",
+              display: "flex", flexDirection: "column", gap: "2px",
+            }}>
+              <NavHeading>Built-in</NavHeading>
+              {BUILTINS.map((b) => (
+                <NavItem key={b.id} active={builtin?.id === b.id} onClick={() => selectBuiltin(b.id)}>{b.label}</NavItem>
+              ))}
+              <NavHeading>Saved</NavHeading>
+              {presets.length === 0 && (
+                <span style={{ padding: "4px 10px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                  None yet
+                </span>
               )}
-              {isCustom && (
-                <PresetBuilder
-                  draft={draft}
-                  onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
-                  available={columnGroups}
-                  resolve={(key) => (ctx ? resolveExportColumn(key, ctx) : null)}
-                  tracks={tracks}
-                  trackId={trackId}
-                  onTrackChange={setTrackId}
-                  onChildModal={setBuilderModalOpen}
-                />
-              )}
+              {presets.map((p) => (
+                <NavItem key={p.id} active={selection?.kind === "saved" && selection.id === p.id} onClick={() => selectPreset(p)}>
+                  {p.name}
+                </NavItem>
+              ))}
+              <div style={{ padding: "8px 2px 0" }}>
+                <Button type="button" variant="secondary" size="sm" fullWidth onClick={startNew}>
+                  <IconPlus size={12} /> New export
+                </Button>
+              </div>
+            </nav>
 
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                <FilterButton
-                  label="Filter members"
-                  active={memberFilterActive}
-                  onOpen={() => setShowMemberFilters(true)}
-                  onClear={() => setMemberFilters(membersFilterFromStored({}))}
-                />
-                {/* Hidden, not just inert, where they don't apply — so a TD
-                    never thinks they narrowed something they didn't. */}
-                {usesEventFilters && (
-                  <FilterButton
-                    label="Filter events"
-                    active={isEventsFilterActive(eventFilters)}
-                    onOpen={() => setShowEventFilters(true)}
-                    onClear={() => setEventFilters(eventsFilterFromStored({}))}
+            <section inert={!showConfig} style={{ width: "50%", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "12px 8px 0" }}>
+                {/* Back keeps the selection and its preview; only the panel changes. */}
+                <Button type="button" variant="ghost" size="sm" iconOnly title="All exports" onClick={() => setPanel("list")}>
+                  <IconChevronLeft size={14} />
+                </Button>
+                <span style={{
+                  flex: 1, minWidth: 0, fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600,
+                  color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {panelTitle}
+                </span>
+              </div>
+              <div style={{ flex: 1, padding: "16px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                {builtin && (
+                  <BuiltinOptions
+                    builtin={builtin}
+                    tracks={tracks}
+                    trackId={effectiveTrackId}
+                    onTrackChange={setTrackId}
+                    divisions={tournament.division}
+                    division={division}
+                    onDivisionChange={setDivision}
+                    torusRole={torusRole}
+                    onTorusRoleChange={setTorusRole}
+                    duosmiumRoles={duosmiumRoles}
+                    onDuosmiumRolesChange={setDuosmiumRoles}
                   />
                 )}
+                {builtin && !builtinHasOptions(builtin, tracks.length, tournament.division.length) && (
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                    Nothing to set up.
+                  </span>
+                )}
                 {isCustom && (
-                  <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
-                    {savedPreset && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} style={{ color: "var(--color-danger)" }}>
-                        Delete
-                      </Button>
-                    )}
-                    {savedPreset && (
-                      <Button type="button" variant="secondary" size="sm" disabled={!canSave} onClick={() => save(true)}>
-                        Save as new
-                      </Button>
-                    )}
-                    <Button type="button" variant="primary" size="sm" disabled={!canSave || (savedPreset !== null && !dirty)} onClick={() => save(false)}>
-                      {saving ? "Saving…" : "Save"}
+                  <PresetBuilder
+                    draft={draft}
+                    onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+                    available={columnGroups}
+                    resolve={resolve}
+                    tracks={tracks}
+                    trackId={trackId}
+                    onTrackChange={setTrackId}
+                  />
+                )}
+                {savedPreset && (
+                  <div style={{ marginTop: "auto" }}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} style={{ color: "var(--color-danger)" }}>
+                      <IconTrash size={12} /> Delete preset
                     </Button>
                   </div>
                 )}
               </div>
+            </section>
+          </div>
+        </aside>
 
-              <ExportPreview
-                header={result?.header ?? null}
-                rows={result?.rows ?? []}
-                warnings={result?.warnings ?? []}
-                loading={!blocked && (loadingMembers || (isCustom && !ctx))}
-                blocked={blocked}
-                onCopy={copy}
-                onDownload={download}
+        {/* Relative so the toolbar floats over main without scrolling with it. */}
+        <div style={{ flex: 1, minWidth: 0, position: "relative", display: "flex" }}>
+          {/* Bottom padding keeps the last rows clear of the toolbar. */}
+          <main style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: selection ? "16px 16px 88px" : "16px" }}>
+            {loadError ? (
+              <EmptyState title="Something went wrong" description={loadError} />
+            ) : !selection ? (
+              <EmptyState
+                icon={<IconExport size={20} />}
+                title="Pick an export"
+                description="Choose a built-in export or a saved one, or start a new one."
               />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                  <FilterButton
+                    label="Member"
+                    active={memberFilterActive}
+                    onOpen={() => setShowMemberFilters(true)}
+                    onClear={() => setMemberFilters(membersFilterFromStored({}))}
+                  />
+                  {/* Hidden, not just inert, where they don't apply — so a TD
+                      never thinks they narrowed something they didn't. */}
+                  {usesEventFilters && (
+                    <FilterButton
+                      label="Event"
+                      active={isEventsFilterActive(eventFilters)}
+                      onOpen={() => setShowEventFilters(true)}
+                      onClear={() => setEventFilters(eventsFilterFromStored({}))}
+                    />
+                  )}
+                  {/* Built-ins have a fixed order; only a custom export sorts. */}
+                  {isCustom && draft.row_type && (
+                    <SortButton
+                      active={draft.sorts.length > 0}
+                      onOpen={() => setShowSort(true)}
+                      onReset={() => setDraft((d) => ({ ...d, sorts: [] }))}
+                    />
+                  )}
+                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                    {loading ? "Loading…" : result ? `${result.rows.length} row${result.rows.length === 1 ? "" : "s"}` : ""}
+                  </span>
+                </div>
+
+                <ExportPreview
+                  header={result?.header ?? null}
+                  rows={result?.rows ?? []}
+                  warnings={result?.warnings ?? []}
+                  loading={loading}
+                  blocked={blocked}
+                />
+              </div>
+            )}
+          </main>
+
+          {selection && !loadError && (
+            <div style={{
+              position: "absolute", left: "50%", bottom: "20px", transform: "translateX(-50%)",
+              display: "flex", alignItems: "center", gap: "8px", padding: "8px",
+              background: "var(--color-surface)", border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", whiteSpace: "nowrap",
+            }}>
+              {isCustom && (
+                <>
+                  {savedPreset && (
+                    <Button type="button" variant="secondary" size="sm" disabled={!canSave} onClick={() => save(true)}>
+                      Save as new
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!canSave || (savedPreset !== null && !dirty)}
+                    title={draft.name.trim() === "" ? "Name this export to save it" : undefined}
+                    onClick={() => save(false)}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
+                  <span aria-hidden style={{ width: "1px", alignSelf: "stretch", margin: "2px 4px", background: "var(--color-border)" }} />
+                </>
+              )}
+              <Button type="button" variant="secondary" size="sm" disabled={!canOutput} onClick={() => download("csv")}>
+                <IconExport size={12} /> CSV
+              </Button>
+              <Button type="button" variant="secondary" size="sm" disabled={!canOutput} onClick={() => download("txt")}>
+                <IconExport size={12} /> TXT
+              </Button>
+              <Button type="button" variant="primary" size="sm" disabled={!canOutput} onClick={copy}>
+                <IconCopy size={12} /> Copy
+              </Button>
             </div>
           )}
-        </main>
+        </div>
       </div>
 
       {showMemberFilters && (
@@ -481,6 +576,17 @@ export function ExportModal({
           filters={eventFilters}
           onApply={setEventFilters}
           onClose={() => setShowEventFilters(false)}
+        />
+      )}
+      {showSort && (
+        <SortModal
+          title="Sort export"
+          fields={sortFields}
+          rules={draft.sorts as SortRule[]}
+          defaults={[]}
+          tiebreakLabel="roster order"
+          onApply={(rules) => setDraft((d) => ({ ...d, sorts: rules.map((r) => ({ field: r.field, direction: r.direction })) }))}
+          onClose={() => setShowSort(false)}
         />
       )}
       {pendingDiscard && (
@@ -508,6 +614,7 @@ export function ExportModal({
             show("Export deleted", "success");
             setPresets((list) => list.filter((p) => p.id !== savedPreset.id));
             setSelection(null);
+            setPanel("list");
             setDraft(EMPTY_DRAFT);
             onPresetsChanged?.();
           }}
@@ -518,6 +625,12 @@ export function ExportModal({
     </div>,
     document.body,
   );
+}
+
+/** Mirrors BuiltinOptions' own checks — whether it renders anything at all. */
+function builtinHasOptions(builtin: (typeof BUILTINS)[number], trackCount: number, divisionCount: number): boolean {
+  return (builtin.usesTrack && trackCount > 1) || builtin.id === "torus" || builtin.id === "duosmium"
+    || (builtin.usesDivision && divisionCount > 1);
 }
 
 function NavHeading({ children }: { children: React.ReactNode }) {
