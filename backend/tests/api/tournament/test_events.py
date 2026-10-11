@@ -270,6 +270,21 @@ def test_list_events_non_member_gets_404(client, td_user, other_tournament):
     assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 404
 
 
+def test_manage_members_alone_can_list_but_not_write_events(client, td_user, other_tournament, db):
+    """Exports filter by event, and the export gate is manage_members — so
+    that alone opens the staff read. Writes still need manage_events."""
+    from app.models.models import TournamentRole
+    db.add(TournamentRole(
+        tournament_id=other_tournament.id, label="Roster Only", permissions=["manage_members"], rank=25,
+    ))
+    db.commit()
+    grant_role(db, other_tournament, td_user, "Roster Only")
+    login(client, "td@test.com", "tdpass")
+
+    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 200
+    assert _make_event(client, other_tournament.id).status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # ?public=true — the member-facing read
 # ---------------------------------------------------------------------------
