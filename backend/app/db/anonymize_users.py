@@ -5,7 +5,7 @@ everything else stay, so the copy still reads like the real tournament. IDs are
 never touched, which is what keeps form field keys and JSON configs valid.
 
     python -m app.db.anonymize_users
-    python -m app.db.anonymize_users --keep you@example.com --password test1234
+    python -m app.db.anonymize_users --keep <your-email> --password test1234
     python -m app.db.anonymize_users --dry-run
 
 Run from backend/ with the venv active and DATABASE_URL pointing at the copy.
@@ -20,9 +20,9 @@ from sqlalchemy import String, case, cast, func, text, true, update
 
 from app.core.config import get_settings
 
-# .test is reserved (RFC 2606) and never resolves, so a stray reset or invite
-# email from the copy can't reach anyone even if a real Resend key is set.
-EMAIL_DOMAIN = "nexus.test"
+# Same domain as the dev seed accounts. Unregistered, so mail to it bounces.
+# Not .test: EmailStr rejects special-use TLDs, 500ing every read.
+EMAIL_DOMAIN = "nexus.dev"
 
 
 def build_parser() -> argparse.ArgumentParser:

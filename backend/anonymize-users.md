@@ -7,7 +7,7 @@ data without being able to email, text, or log in as real people.
 ```bash
 cd backend
 DATABASE_URL="<test DB public URL>" APP_ENV=preview \
-  uv run python -m app.db.anonymize_users --keep you@example.com
+  uv run python -m app.db.anonymize_users --keep <your-email>
 ```
 
 It refuses to run unless `APP_ENV` is `development` or `preview`. `--force`
@@ -19,7 +19,7 @@ overrides that; there is no reason to use it.
 
 | Column | Becomes |
 | --- | --- |
-| `users.email` | `user<id>@nexus.test` |
+| `users.email` | `user<id>@nexus.dev` |
 | `users.phone` | `555-<id, zero-padded to 7>` — blank phones stay blank |
 | `users.hashed_password` | the hash of `--password` (default `test1234`) |
 | `sessions`, `verification_tokens` | truncated |
@@ -32,9 +32,10 @@ form field keys (`availability_7`, `lunch_7_veg`), field configs, answer values,
 whole database and scrubbing in place keeps all of those valid; remapping ids
 would mean rewriting them inside JSON, and a missed one fails silently.
 
-**Why `.test`.** It's a reserved TLD (RFC 2606) that never resolves, so a reset
-or invite email fired from the copy can't reach anyone, even with a live Resend
-key.
+**Why `nexus.dev`.** It matches the dev seed accounts, and it's unregistered,
+so a reset or invite email fired from the copy bounces. Not `.test`: Pydantic's
+`EmailStr` rejects special-use TLDs, so every response containing a user email
+would fail validation and 500.
 
 **Why truncate sessions and tokens.** Prod sessions mean nothing on the copy,
 and an unused password-reset token would let someone set a password on it.
@@ -50,7 +51,7 @@ and an unused password-reset token would let someone set a password on it.
 | `--dry-run` | off | Print counts, then roll back |
 | `--force` | off | Run outside `development`/`preview` |
 
-Log in afterwards as `user<id>@nexus.test` / `test1234`. Ids are in the
+Log in afterwards as `user<id>@nexus.dev` / `test1234`. Ids are in the
 `users` table.
 
 ---
@@ -90,8 +91,8 @@ real emails and live sessions sit in a running app.
    cd backend
    export DATABASE_URL="<TEST_URL>" APP_ENV=preview
    uv run alembic upgrade head
-   uv run python -m app.db.anonymize_users --keep you@example.com --dry-run
-   uv run python -m app.db.anonymize_users --keep you@example.com
+   uv run python -m app.db.anonymize_users --keep <your-email> --dry-run
+   uv run python -m app.db.anonymize_users --keep <your-email>
    ```
    Real environment variables take precedence over `.env`, so this hits Railway,
    not the local DB.
