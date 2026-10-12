@@ -1,13 +1,10 @@
 "use client";
 
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { ExportPreset, TorusRole, Tournament, exportPresetsApi } from "@/lib/api";
+import { ExportOutput, ExportPreset, TorusRole, Tournament, exportPresetsApi } from "@/lib/api";
 import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { copyText, downloadText } from "@/lib/exports/output";
-import {
-  ExportPage, RememberedExport, forgetLastExport, presetKey, readLastExport, readOutput, writeLastExport,
-} from "@/lib/exports/remembered";
-import { ExportChoice, exportFilenameFor, exportLabel, runExport, trackNamesOf } from "@/lib/exports/run";
+import { ExportChoice, exportFilenameFor, runExport, trackNamesOf } from "@/lib/exports/run";
 import { useToast } from "@/lib/useToast";
 import type { MembersFilterState } from "@/components/tournament/members/MembersFilterModal";
 import type { EventsFilterState } from "@/components/tournament/events/EventsFilterModal";
@@ -34,7 +31,6 @@ type Panel =
 
 interface ExportButtonProps {
   tournament: Tournament;
-  page: ExportPage;
   // The page's current filters: a one-click export exports what the page shows.
   memberFilters: MembersFilterState;
   eventFilters: EventsFilterState;
@@ -48,14 +44,13 @@ interface ExportButtonProps {
 }
 
 export function ExportButton({
-  tournament, page, memberFilters, eventFilters, trackId, lockedReason, size = "md", iconOnly = false,
+  tournament, memberFilters, eventFilters, trackId, lockedReason, size = "md", iconOnly = false,
 }: ExportButtonProps) {
   const { show } = useToast();
   const tracks = tournament.tracks;
   const trackNames = useMemo(() => trackNamesOf(tournament), [tournament]);
 
   const [presets, setPresets] = useState<ExportPreset[] | null>(null);
-  const [last, setLast] = useState<RememberedExport | null>(null);
   const [running, setRunning] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [panels, setPanels] = useState<Panel[]>([{ id: "root" }]);
@@ -69,38 +64,9 @@ export function ExportButton({
     refreshPresets();
   }, [refreshPresets, lockedReason]);
 
-  // Re-read after the screen closes: exporting from it updates the memory.
-  useEffect(() => {
-    if (!modalOpen) setLast(readLastExport(tournament.id, page));
-  }, [tournament.id, page, modalOpen]);
-
-  /** The remembered export as a runnable choice, or null when it no longer
-   *  resolves (a deleted track or preset). */
-  const toChoice = useCallback((remembered: RememberedExport): ExportChoice | null => {
-    if (remembered.kind === "saved") {
-      const preset = presets?.find((p) => p.id === remembered.presetId);
-      if (!preset) return null;
-      return { kind: "custom", presetId: preset.id, shape: preset, trackId: remembered.trackId };
-    }
-    if (remembered.kind !== "email_list" && !trackNames.has(remembered.trackId)) return null;
-    return remembered;
-  }, [presets, trackNames]);
-
-  const lastChoice = last && presets ? toChoice(last) : null;
-
-  // A remembered export that stopped resolving is forgotten, not kept broken.
-  useEffect(() => {
-    if (last && presets && !lastChoice) {
-      forgetLastExport(tournament.id, page);
-      setLast(null);
-    }
-  }, [last, presets, lastChoice, tournament.id, page]);
-
-  async function run(remembered: RememberedExport) {
-    const choice = toChoice(remembered);
-    if (!choice) return;
-    writeLastExport(tournament.id, page, remembered);
-    setLast(remembered);
+  /** Runs one menu pick. A saved preset goes where it says; a built-in is
+   *  copied, since TORUS, Duosmium and email lists all get pasted. */
+  async function run(choice: ExportChoice, output: ExportOutput) {
     setRunning(true);
     try {
       const result = await runExport(tournament, choice, memberFilters, eventFilters);
@@ -108,7 +74,6 @@ export function ExportButton({
         show("Nothing to export with the current filters.", "error");
         return;
       }
-      const output = readOutput(tournament.id, presetKey(remembered));
       if (output === "copy") {
         await copyText(result.text);
         show(`Copied ${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`, "success");
@@ -136,9 +101,9 @@ export function ExportButton({
     else finish({ kind: "duosmium", trackId: nextTrackId, division: tournament.division[0] ?? "", roles: ALL_DUOSMIUM_ROLES }, close);
   }
 
-  function finish(remembered: RememberedExport, close: () => void) {
+  function finish(choice: ExportChoice, close: () => void) {
     close();
-    run(remembered);
+    run(choice, choice.kind === "custom" ? choice.shape.output_type : "copy");
   }
 
   // The track a built-in should start from: the page's tab, else the only one.
@@ -165,7 +130,7 @@ export function ExportButton({
             ) : presets.length === 0 ? (
               <MenuNote>None yet</MenuNote>
             ) : presets.map((preset) => (
-              <MenuItem key={preset.id} onClick={() => finish({ kind: "saved", presetId: preset.id, trackId }, close)}>
+              <MenuItem key={preset.id} onClick={() => finish({ kind: "custom", presetId: preset.id, shape: preset, trackId }, close)}>
                 {preset.name}
               </MenuItem>
             ))}
@@ -246,19 +211,16 @@ export function ExportButton({
     );
   }
 
-  const label = lastChoice ? `Export ${exportLabel(lastChoice, trackNames)}` : "Export";
-
   const button = (
     <SplitButton
-      label={label}
+      label="Export"
       icon={<IconExport size={size === "sm" ? 14 : 16} />}
       iconOnly={iconOnly}
-      title={lastChoice ? undefined : "Pick or build an export"}
       variant="secondary"
       size={size}
       loading={running}
       disabled={Boolean(lockedReason)}
-      onClick={() => (last && lastChoice ? run(last) : setModalOpen(true))}
+      onClick={() => setModalOpen(true)}
       menu={{
         width: MENU_WIDTH,
         render: renderMenu,
@@ -276,7 +238,6 @@ export function ExportButton({
       {modalOpen && (
         <ExportModal
           tournament={tournament}
-          page={page}
           initialMemberFilters={memberFilters}
           initialEventFilters={eventFilters}
           initialTrackId={trackId}

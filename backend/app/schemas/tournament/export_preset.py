@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.tournament.display_config import KNOWN_SORT_DIRECTIONS
-from app.core.tournament.export_presets import COLUMN_MODES, ROW_TYPES, is_known_export_column
+from app.core.tournament.export_presets import COLUMN_MODES, OUTPUT_TYPES, ROW_TYPES, is_known_export_column
 
 
 class ExportPresetColumn(BaseModel):
@@ -59,6 +59,12 @@ def _validate_row_type(value: str) -> str:
     return value
 
 
+def _validate_output_type(value: str) -> str:
+    if value not in OUTPUT_TYPES:
+        raise ValueError(f"Invalid output_type '{value}'. Must be one of: {sorted(OUTPUT_TYPES)}")
+    return value
+
+
 def _validate_columns(value: list[ExportPresetColumn]) -> list[ExportPresetColumn]:
     keys = [column.key for column in value]
     if len(keys) != len(set(keys)):
@@ -83,11 +89,17 @@ class ExportPresetCreate(BaseModel):
     columns: list[ExportPresetColumn] = []
     sorts: list[ExportPresetSort] = []
     include_header: bool = True
+    output_type: str = "copy"
 
     @field_validator("name")
     @classmethod
     def _check_name(cls, value: str) -> str:
         return _validate_name(value)
+
+    @field_validator("output_type")
+    @classmethod
+    def _check_output_type(cls, value: str) -> str:
+        return _validate_output_type(value)
 
     @field_validator("row_type")
     @classmethod
@@ -109,11 +121,17 @@ class ExportPresetUpdate(BaseModel):
     columns: list[ExportPresetColumn] | None = None
     sorts: list[ExportPresetSort] | None = None
     include_header: bool | None = None
+    output_type: str | None = None
 
     @field_validator("name")
     @classmethod
     def _check_name(cls, value: str | None) -> str | None:
         return None if value is None else _validate_name(value)
+
+    @field_validator("output_type")
+    @classmethod
+    def _check_output_type(cls, value: str | None) -> str | None:
+        return None if value is None else _validate_output_type(value)
 
     @field_validator("row_type")
     @classmethod
@@ -139,6 +157,7 @@ class ExportPresetRead(BaseModel):
     columns: list[dict]
     sorts: list[dict]
     include_header: bool
+    output_type: str
     created_by: int | None
     created_at: datetime
     updated_at: datetime

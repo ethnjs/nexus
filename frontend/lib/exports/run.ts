@@ -111,12 +111,6 @@ function presetName(choice: ExportChoice): string {
   return BUILTINS.find((b) => b.id === choice.kind)!.label;
 }
 
-/** "TORUS: Test Writers, Day 1", "Lunch counts". */
-export function exportLabel(choice: ExportChoice, trackNames: Map<number, string>): string {
-  const scope = scopeParts(choice, trackNames);
-  return scope.length > 0 ? `${presetName(choice)}: ${scope.join(", ")}` : presetName(choice);
-}
-
 export function exportFilenameFor(choice: ExportChoice, tournament: Tournament, trackNames: Map<number, string>): string {
   return exportFilename([tournamentDisplayName(tournament), presetName(choice), ...scopeParts(choice, trackNames)]);
 }

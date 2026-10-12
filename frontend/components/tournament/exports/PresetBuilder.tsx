@@ -1,6 +1,6 @@
 "use client";
 
-import type { DisplayConfigSort, ExportColumnMode, ExportPresetColumn, ExportRowType } from "@/lib/api";
+import type { DisplayConfigSort, ExportColumnMode, ExportOutput, ExportPresetColumn, ExportRowType } from "@/lib/api";
 import { ExportColumn, ExportColumnGroup, columnMode } from "@/lib/exports/columns";
 import { PanelField } from "@/components/tournament/exports/PanelField";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +18,7 @@ export interface BuilderDraft {
   columns:        ExportPresetColumn[];
   sorts:          DisplayConfigSort[];
   include_header: boolean;
+  output_type:    ExportOutput;
 }
 
 const ROW_TYPE_OPTIONS = [
@@ -37,6 +38,12 @@ const FIXED_COLUMNS: Record<ExportRowType, ReadonlySet<string>> = {
   member: new Set(),
   event:  new Set(["event", "members"]),
 };
+
+const OUTPUT_OPTIONS = [
+  { value: "copy", label: "Copy" },
+  { value: "txt",  label: "TXT" },
+  { value: "csv",  label: "CSV" },
+];
 
 // "" is the dropdown's "every track"; a track id otherwise.
 const ALL_TRACKS = "";
@@ -139,6 +146,13 @@ export function PresetBuilder({
           </PanelField>
           <PanelField label="Header row" helper="Column names as the first row." inline>
             <Switch checked={draft.include_header} onChange={(checked) => onChange({ include_header: checked })} />
+          </PanelField>
+          <PanelField label="Export type">
+            <ButtonGroup
+              options={OUTPUT_OPTIONS}
+              value={draft.output_type}
+              onChange={(value) => onChange({ output_type: value as ExportOutput })}
+            />
           </PanelField>
         </>
       )}

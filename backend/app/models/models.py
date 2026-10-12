@@ -748,6 +748,8 @@ class TournamentExportPreset(Base):
     # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
     sorts = Column(JSON, nullable=False, default=list)
     include_header = Column(Boolean, nullable=False, default=True)
+    # Where the one-click export sends it: "copy" | "csv" | "txt".
+    output_type = Column(String(8), nullable=False, default="copy", server_default="copy")
     # Null once the creator's account is deleted; the preset stays.
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

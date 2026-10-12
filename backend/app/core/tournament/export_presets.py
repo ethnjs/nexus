@@ -6,6 +6,9 @@ import re
 # What one exported row is: a member, or an event with its members.
 ROW_TYPES = frozenset({"member", "event"})
 
+# Where a saved export goes: the clipboard, or a downloaded file.
+OUTPUT_TYPES = frozenset({"copy", "csv", "txt"})
+
 # How a column writes its values. Shift-like columns: shift names, or 24-hour
 # ranges like "08:00-12:00". full_name/email are the members column's old
 # modes, kept so presets saved with them still re-save; the frontend ignores them.

@@ -1506,7 +1506,6 @@ export default function AssignmentsPage() {
             {selectedTournament && (
               <ExportButton
                 tournament={selectedTournament}
-                page="assignments"
                 memberFilters={memberFilters}
                 eventFilters={eventFilters}
                 trackId={activeTrackId}

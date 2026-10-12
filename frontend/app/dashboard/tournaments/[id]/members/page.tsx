@@ -718,7 +718,6 @@ export default function MembersPage() {
               <ExportButton
                 iconOnly={compactToolbar}
                 tournament={selectedTournament}
-                page="members"
                 memberFilters={filters}
                 eventFilters={NO_EVENT_FILTERS}
                 trackId={null}

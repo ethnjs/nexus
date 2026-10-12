@@ -2467,6 +2467,8 @@ export type ExportRowType = 'member' | 'event'
  *  `08:00-12:00`. The per-event Members column: full name or email. */
 export type ExportColumnMode = 'names' | 'times' | 'full_name' | 'email'
 
+export type ExportOutput = 'copy' | 'csv' | 'txt'
+
 export interface ExportPresetColumn {
   key:   string
   mode?: ExportColumnMode | null
@@ -2480,6 +2482,8 @@ export interface ExportPresetInput {
   // Every field must be one of `columns`' keys.
   sorts:           DisplayConfigSort[]
   include_header:  boolean
+  // Where the Export menu sends this preset.
+  output_type:     ExportOutput
 }
 
 // Matches ExportPresetRead. Read leniently server-side, so a column whose

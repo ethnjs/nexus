@@ -310,3 +310,28 @@ def test_deleting_tournament_deletes_its_presets(client, td_user, td_tournament,
     assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 204
     db.expire_all()
     assert db.get(TournamentExportPreset, preset["id"]) is None
+
+
+# ---------------------------------------------------------------------------
+# Output type
+# ---------------------------------------------------------------------------
+
+def test_output_type_defaults_to_copy(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert _create(client, td_tournament.id)["output_type"] == "copy"
+
+
+def test_output_type_round_trips(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    preset = _create(client, td_tournament.id, output_type="csv")
+    assert preset["output_type"] == "csv"
+    response = client.patch(_url(td_tournament.id, preset["id"]), json={"output_type": "txt"})
+    assert response.status_code == 200
+    assert client.get(_url(td_tournament.id)).json()[0]["output_type"] == "txt"
+
+
+def test_output_type_rejects_unknown_value(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(_url(td_tournament.id), json=_payload(output_type="pdf")).status_code == 422
+    preset = _create(client, td_tournament.id)
+    assert client.patch(_url(td_tournament.id, preset["id"]), json={"output_type": "pdf"}).status_code == 422

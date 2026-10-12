@@ -11,9 +11,6 @@ import { BUILTINS, BuiltinId } from "@/lib/exports/builtins";
 import { ExportColumn, availableExportColumns, exportContext, resolveExportColumn } from "@/lib/exports/columns";
 import { copyText, downloadText } from "@/lib/exports/output";
 import {
-  ExportOutput, ExportPage, RememberedExport, presetKey, writeLastExport, writeOutput,
-} from "@/lib/exports/remembered";
-import {
   ExportChoice, computeExport, eventIdsFor, exportFilenameFor, fieldsForChoice, trackNamesOf,
 } from "@/lib/exports/run";
 import { useExitAnimation } from "@/lib/useExitAnimation";
@@ -44,14 +41,16 @@ type Selection =
   | { kind: "saved"; id: number }
   | { kind: "new" };
 
-const EMPTY_DRAFT: BuilderDraft = { name: "", row_type: null, columns: [], sorts: [], include_header: true };
+const EMPTY_DRAFT: BuilderDraft = {
+  name: "", row_type: null, columns: [], sorts: [], include_header: true, output_type: "copy",
+};
 
 export const ALL_DUOSMIUM_ROLES: DuosmiumRole[] = ["tournament_director", "scoremaster", "event_supervisor"];
 
 function draftFromPreset(preset: ExportPreset): BuilderDraft {
   return {
     name: preset.name, row_type: preset.row_type, columns: preset.columns,
-    sorts: preset.sorts, include_header: preset.include_header,
+    sorts: preset.sorts, include_header: preset.include_header, output_type: preset.output_type,
   };
 }
 
@@ -61,18 +60,8 @@ function snapshot(draft: BuilderDraft): string {
   return JSON.stringify(draft);
 }
 
-/** What the Export button reruns. An unsaved custom export can't be rerun. */
-function rememberedOf(choice: ExportChoice): RememberedExport | null {
-  if (choice.kind === "custom") {
-    return choice.presetId === null ? null : { kind: "saved", presetId: choice.presetId, trackId: choice.trackId };
-  }
-  return choice;
-}
-
 interface ExportModalProps {
   tournament: Tournament;
-  // Which page opened it — the Export button remembers per page.
-  page: ExportPage;
   // Copies of the page's filters; nothing here writes back to the page.
   initialMemberFilters: MembersFilterState;
   initialEventFilters:  EventsFilterState;
@@ -84,7 +73,7 @@ interface ExportModalProps {
 }
 
 export function ExportModal({
-  tournament, page, initialMemberFilters, initialEventFilters, initialTrackId, onPresetsChanged, onClose,
+  tournament, initialMemberFilters, initialEventFilters, initialTrackId, onPresetsChanged, onClose,
 }: ExportModalProps) {
   const tournamentId = tournament.id;
   const { show } = useToast();
@@ -255,20 +244,10 @@ export function ExportModal({
   }, [choice, members, loadingMembers, ctx, eventFilters, events, assignments]);
 
   // ---- Output ------------------------------------------------------------
-  /** Remembers this export for the button, and this output for the preset. */
-  function remember(output: ExportOutput) {
-    if (!choice) return;
-    const remembered = rememberedOf(choice);
-    if (!remembered) return;
-    writeLastExport(tournamentId, page, remembered);
-    writeOutput(tournamentId, presetKey(remembered), output);
-  }
-
   function copy() {
     if (!result) return;
     copyText(result.text)
       .then(() => {
-        remember("copy");
         show(`Copied ${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`, "success");
       })
       .catch(() => show("Couldn't copy to the clipboard.", "error"));
@@ -277,7 +256,6 @@ export function ExportModal({
   function download(kind: "csv" | "txt") {
     if (!result || !choice) return;
     downloadText(exportFilenameFor(choice, tournament, trackNames), result.text, kind);
-    remember(kind);
   }
 
   // ---- Saving ------------------------------------------------------------
@@ -288,7 +266,7 @@ export function ExportModal({
     if (!draft.row_type) return;
     const body: ExportPresetInput = {
       name: draft.name.trim(), row_type: draft.row_type, columns: draft.columns, sorts: draft.sorts,
-      include_header: draft.include_header,
+      include_header: draft.include_header, output_type: draft.output_type,
     };
     setSaving(true);
     try {
@@ -328,6 +306,8 @@ export function ExportModal({
     .map((c) => ({ value: c.key, label: c.header }));
   const loading = !blocked && (loadingMembers || (isCustom && !ctx));
   const canOutput = !loading && !blocked && (result?.rows.length ?? 0) > 0;
+  // A custom export's saved type leads; built-ins are mostly pasted, so Copy.
+  const primaryOutput = isCustom ? draft.output_type : "copy";
   const showConfig = panel === "config" && selection !== null;
   const panelTitle = builtin?.label ?? savedPreset?.name ?? "New export";
 
@@ -542,13 +522,13 @@ export function ExportModal({
                   <span aria-hidden style={{ width: "1px", alignSelf: "stretch", margin: "2px 4px", background: "var(--color-border)" }} />
                 </>
               )}
-              <Button type="button" variant="secondary" size="sm" disabled={!canOutput} onClick={() => download("csv")}>
+              <Button type="button" variant={primaryOutput === "csv" ? "primary" : "secondary"} size="sm" disabled={!canOutput} onClick={() => download("csv")}>
                 <IconExport size={12} /> CSV
               </Button>
-              <Button type="button" variant="secondary" size="sm" disabled={!canOutput} onClick={() => download("txt")}>
+              <Button type="button" variant={primaryOutput === "txt" ? "primary" : "secondary"} size="sm" disabled={!canOutput} onClick={() => download("txt")}>
                 <IconExport size={12} /> TXT
               </Button>
-              <Button type="button" variant="primary" size="sm" disabled={!canOutput} onClick={copy}>
+              <Button type="button" variant={primaryOutput === "copy" ? "primary" : "secondary"} size="sm" disabled={!canOutput} onClick={copy}>
                 <IconCopy size={12} /> Copy
               </Button>
             </div>
