@@ -17,11 +17,12 @@ import { useExitAnimation } from "@/lib/useExitAnimation";
 import { useToast } from "@/lib/useToast";
 import { useActionToast } from "@/lib/useActionToast";
 import {
-  MembersFilterModal, MembersFilterState, membersFilterFromStored, membersFilterParams,
+  MembersFilterModal, MembersFilterState, membersFilterFromStored, membersFilterParams, membersFilterToStored,
 } from "@/components/tournament/members/MembersFilterModal";
 import {
   EVENT_TYPE_OPTIONS, EventsFilterModal, EventsFilterState, eventBuildingOptions, eventCategoryOptions,
-  eventDivisionOptions, eventShiftOptions, eventTrackOptions, eventsFilterFromStored, isEventsFilterActive,
+  eventDivisionOptions, eventShiftOptions, eventTrackOptions, eventsFilterFromStored, eventsFilterToStored,
+  isEventsFilterActive,
 } from "@/components/tournament/events/EventsFilterModal";
 import { isFilterActive } from "@/components/ui/FilterModal";
 import { externalRoleLabel } from "@/lib/exports/externalSystems";
@@ -56,17 +57,18 @@ function draftFromPreset(preset: ExportPreset): BuilderDraft {
   };
 }
 
-/** Everything a saved preset stores, as one string — the dirty check. Not
- *  the filters: those belong to the page, never to a preset. */
-function snapshot(draft: BuilderDraft): string {
-  return JSON.stringify(draft);
+/** Everything a saved preset stores, as one string — the dirty check. */
+function snapshot(draft: BuilderDraft, members: MembersFilterState, events: EventsFilterState): string {
+  return JSON.stringify([draft, membersFilterToStored(members), eventsFilterToStored(events)]);
 }
+
+// Every export starts from everyone: never the opening page's filters.
+const NO_MEMBER_FILTERS = membersFilterFromStored({});
+const NO_EVENT_FILTERS = eventsFilterFromStored({});
 
 interface ExportModalProps {
   tournament: Tournament;
   // Copies of the page's filters; nothing here writes back to the page.
-  initialMemberFilters: MembersFilterState;
-  initialEventFilters:  EventsFilterState;
   // The page's track tab, if it has one.
   initialTrackId: number | null;
   // Saved presets were added, edited or deleted — the button's menu refreshes.
@@ -75,7 +77,7 @@ interface ExportModalProps {
 }
 
 export function ExportModal({
-  tournament, initialMemberFilters, initialEventFilters, initialTrackId, onPresetsChanged, onClose,
+  tournament, initialTrackId, onPresetsChanged, onClose,
 }: ExportModalProps) {
   const tournamentId = tournament.id;
   const { show } = useToast();
@@ -115,8 +117,8 @@ export function ExportModal({
   const [selection, setSelection] = useState<Selection | null>(null);
   // The side panel: the export list, or the picked export's settings slid in over it.
   const [panel, setPanel] = useState<"list" | "config">("list");
-  const [memberFilters, setMemberFilters] = useState(initialMemberFilters);
-  const [eventFilters, setEventFilters] = useState(initialEventFilters);
+  const [memberFilters, setMemberFilters] = useState(NO_MEMBER_FILTERS);
+  const [eventFilters, setEventFilters] = useState(NO_EVENT_FILTERS);
   const [trackId, setTrackId] = useState<number | null>(initialTrackId);
   const [torusRole, setTorusRole] = useState<TorusRole>("writer");
   const [duosmiumRoles, setDuosmiumRoles] = useState<DuosmiumRole[]>(ALL_DUOSMIUM_ROLES);
@@ -132,7 +134,7 @@ export function ExportModal({
   // TORUS and Duosmium always need one track; "All tracks" is custom-only.
   const effectiveTrackId = builtin?.usesTrack ? trackId ?? tracks[0]?.id ?? null : trackId;
 
-  const current = snapshot(draft);
+  const current = snapshot(draft, memberFilters, eventFilters);
   const dirty = isCustom && current !== baseline;
 
   // ---- Child modals, confirms and Escape ---------------------------------
@@ -165,6 +167,8 @@ export function ExportModal({
   // ---- Switching what's selected -----------------------------------------
   function selectBuiltin(id: BuiltinId) {
     guard(() => {
+      setMemberFilters(NO_MEMBER_FILTERS);
+      setEventFilters(NO_EVENT_FILTERS);
       setSelection({ kind: "builtin", id });
       setPanel("config");
     });
@@ -173,8 +177,12 @@ export function ExportModal({
   function selectPreset(preset: ExportPreset) {
     guard(() => {
       const nextDraft = draftFromPreset(preset);
+      const nextMembers = membersFilterFromStored(preset.member_filters);
+      const nextEvents = eventsFilterFromStored(preset.event_filters);
       setDraft(nextDraft);
-      setBaseline(snapshot(nextDraft));
+      setMemberFilters(nextMembers);
+      setEventFilters(nextEvents);
+      setBaseline(snapshot(nextDraft, nextMembers, nextEvents));
       setSelection({ kind: "saved", id: preset.id });
       setPanel("config");
     });
@@ -183,7 +191,9 @@ export function ExportModal({
   function startNew() {
     guard(() => {
       setDraft(EMPTY_DRAFT);
-      setBaseline(snapshot(EMPTY_DRAFT));
+      setMemberFilters(NO_MEMBER_FILTERS);
+      setEventFilters(NO_EVENT_FILTERS);
+      setBaseline(snapshot(EMPTY_DRAFT, NO_MEMBER_FILTERS, NO_EVENT_FILTERS));
       setSelection({ kind: "new" });
       setPanel("config");
     });
@@ -210,10 +220,13 @@ export function ExportModal({
     return {
       kind: "custom",
       presetId: savedPreset?.id ?? null,
-      shape: { ...draft, row_type: draft.row_type },
+      shape: {
+        ...draft, row_type: draft.row_type,
+        member_filters: membersFilterToStored(memberFilters), event_filters: eventsFilterToStored(eventFilters),
+      },
       trackId,
     };
-  }, [blocked, selection, builtin, effectiveTrackId, torusRole, division, duosmiumRoles, draft, savedPreset, trackId]);
+  }, [blocked, selection, builtin, effectiveTrackId, torusRole, division, duosmiumRoles, draft, savedPreset, trackId, memberFilters, eventFilters]);
 
   // ---- The roster fetch --------------------------------------------------
   // A custom export can't name its field groups until the catalog resolves its columns.
@@ -269,6 +282,7 @@ export function ExportModal({
     const body: ExportPresetInput = {
       name: draft.name.trim(), row_type: draft.row_type, columns: draft.columns, sorts: draft.sorts,
       include_header: draft.include_header, output_type: draft.output_type,
+      member_filters: membersFilterToStored(memberFilters), event_filters: eventsFilterToStored(eventFilters),
     };
     setSaving(true);
     try {
@@ -280,7 +294,7 @@ export function ExportModal({
       setPresets((list) => [...list.filter((p) => p.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
       const nextDraft = draftFromPreset(saved);
       setDraft(nextDraft);
-      setBaseline(snapshot(nextDraft));
+      setBaseline(snapshot(nextDraft, memberFilters, eventFilters));
       setSelection({ kind: "saved", id: saved.id });
       onPresetsChanged?.();
     } catch {
@@ -469,7 +483,7 @@ export function ExportModal({
                     label="Member"
                     active={memberFilterActive}
                     onOpen={() => setShowMemberFilters(true)}
-                    onClear={() => setMemberFilters(membersFilterFromStored({}))}
+                    onClear={() => setMemberFilters(NO_MEMBER_FILTERS)}
                   />
                   {/* Hidden, not just inert, where they don't apply — so a TD
                       never thinks they narrowed something they didn't. */}
@@ -478,7 +492,7 @@ export function ExportModal({
                       label="Event"
                       active={isEventsFilterActive(eventFilters)}
                       onOpen={() => setShowEventFilters(true)}
-                      onClear={() => setEventFilters(eventsFilterFromStored({}))}
+                      onClear={() => setEventFilters(NO_EVENT_FILTERS)}
                     />
                   )}
                   {/* Built-ins have a fixed order; only a custom export sorts. */}

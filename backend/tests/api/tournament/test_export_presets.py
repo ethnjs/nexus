@@ -232,8 +232,10 @@ def test_create_rejects_invalid_payloads(client, td_user, td_tournament):
         "repeated column":     _payload(columns=[{"key": "email"}, {"key": "email"}], sorts=[]),
         "sort not a column":   _payload(sorts=[{"field": "phone", "direction": "asc"}]),
         "bad sort direction":  _payload(sorts=[{"field": "email", "direction": "sideways"}]),
-        # Presets never store filters — who's exported is the page's call.
-        "filters":             {**_payload(), "filters": {"role": ["3"]}},
+        # Filters are split by vocabulary; there's no bare "filters" field.
+        "bare filters field":  {**_payload(), "filters": {"role": ["3"]}},
+        "unknown member key":  _payload(member_filters={"shoe_size": ["9"]}),
+        "unknown event key":   _payload(event_filters={"role": ["3"]}),
         "extra column option": _payload(columns=[{"key": "email", "width": 3}], sorts=[]),
     }
     for label, payload in cases.items():
@@ -335,3 +337,46 @@ def test_output_type_rejects_unknown_value(client, td_user, td_tournament):
     assert client.post(_url(td_tournament.id), json=_payload(output_type="pdf")).status_code == 422
     preset = _create(client, td_tournament.id)
     assert client.patch(_url(td_tournament.id, preset["id"]), json={"output_type": "pdf"}).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
+
+def test_filters_default_to_empty(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    preset = _create(client, td_tournament.id)
+    assert preset["member_filters"] == {}
+    assert preset["event_filters"] == {}
+
+
+def test_filters_round_trip(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    preset = _create(
+        client, td_tournament.id,
+        member_filters={"role": ["3"], "track": ["7:confirmed"]},
+        event_filters={"division": ["C"]},
+    )
+    assert preset["member_filters"] == {"role": ["3"], "track": ["7:confirmed"]}
+    assert preset["event_filters"] == {"division": ["C"]}
+
+    response = client.patch(_url(td_tournament.id, preset["id"]), json={"member_filters": {}})
+    assert response.status_code == 200
+    body = client.get(_url(td_tournament.id)).json()[0]
+    assert body["member_filters"] == {}
+    # Left out of the PATCH, so untouched.
+    assert body["event_filters"] == {"division": ["C"]}
+
+
+def test_filters_keep_unresolvable_values(client, td_user, td_tournament):
+    """Keys are checked, values aren't: a since-deleted track is inert."""
+    login(client, "td@test.com", "tdpass")
+    preset = _create(client, td_tournament.id, member_filters={"track": ["99999:confirmed"]})
+    assert preset["member_filters"] == {"track": ["99999:confirmed"]}
+
+
+def test_update_rejects_unknown_filter_keys(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    preset = _create(client, td_tournament.id)
+    for body in ({"member_filters": {"shoe_size": ["9"]}}, {"event_filters": {"role": ["3"]}}):
+        assert client.patch(_url(td_tournament.id, preset["id"]), json=body).status_code == 422, body

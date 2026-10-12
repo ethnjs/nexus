@@ -1506,8 +1506,6 @@ export default function AssignmentsPage() {
             {selectedTournament && (
               <ExportButton
                 tournament={selectedTournament}
-                memberFilters={memberFilters}
-                eventFilters={eventFilters}
                 trackId={activeTrackId}
                 lockedReason={canManageMembers ? null : 'Exporting needs the Manage members permission.'}
               />

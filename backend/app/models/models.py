@@ -726,8 +726,7 @@ class TournamentRole(Base):
 # email list) live in frontend code, never here.
 #
 # Rows are built client-side from the roster, so this only stores the recipe:
-# the export's shape. No filters — who is exported is always the page's
-# current filters, so what the table shows is what gets exported.
+# the export's shape and who it covers (its own filters, never the page's).
 # Validated on write and read leniently: a deleted track or form field leaves
 # an inert column behind, never a 500.
 # ---------------------------------------------------------------------------
@@ -745,6 +744,10 @@ class TournamentExportPreset(Base):
     # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
     # Objects, not strings, so a column can carry its own options.
     columns = Column(JSON, nullable=False, default=list)
+    # Roster query-param filters and the board's event filters, same shapes
+    # as display_config stores them.
+    member_filters = Column(JSON, nullable=False, default=dict, server_default="{}")
+    event_filters = Column(JSON, nullable=False, default=dict, server_default="{}")
     # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
     sorts = Column(JSON, nullable=False, default=list)
     include_header = Column(Boolean, nullable=False, default=True)

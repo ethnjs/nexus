@@ -6,8 +6,8 @@ import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { copyText, downloadText } from "@/lib/exports/output";
 import { ExportChoice, exportFilenameFor, runExport, trackNamesOf } from "@/lib/exports/run";
 import { useToast } from "@/lib/useToast";
-import type { MembersFilterState } from "@/components/tournament/members/MembersFilterModal";
-import type { EventsFilterState } from "@/components/tournament/events/EventsFilterModal";
+import { membersFilterFromStored } from "@/components/tournament/members/MembersFilterModal";
+import { eventsFilterFromStored } from "@/components/tournament/events/EventsFilterModal";
 import { ALL_DUOSMIUM_ROLES, ExportModal } from "@/components/tournament/exports/ExportModal";
 import { Button } from "@/components/ui/Button";
 import { SplitButton } from "@/components/ui/SplitButton";
@@ -31,9 +31,6 @@ type Panel =
 
 interface ExportButtonProps {
   tournament: Tournament;
-  // The page's current filters: a one-click export exports what the page shows.
-  memberFilters: MembersFilterState;
-  eventFilters: EventsFilterState;
   // The page's track tab, if it has one.
   trackId: number | null;
   // Why exporting isn't allowed here, if it isn't.
@@ -44,7 +41,7 @@ interface ExportButtonProps {
 }
 
 export function ExportButton({
-  tournament, memberFilters, eventFilters, trackId, lockedReason, size = "md", iconOnly = false,
+  tournament, trackId, lockedReason, size = "md", iconOnly = false,
 }: ExportButtonProps) {
   const { show } = useToast();
   const tracks = tournament.tracks;
@@ -69,9 +66,15 @@ export function ExportButton({
   async function run(choice: ExportChoice, output: ExportOutput) {
     setRunning(true);
     try {
-      const result = await runExport(tournament, choice, memberFilters, eventFilters);
+      // A saved preset brings its own filters; a built-in covers everyone.
+      // Never the page's — what's exported shouldn't depend on where you are.
+      const custom = choice.kind === "custom" ? choice.shape : null;
+      const result = await runExport(
+        tournament, choice,
+        membersFilterFromStored(custom?.member_filters), eventsFilterFromStored(custom?.event_filters),
+      );
       if (result.rows.length === 0) {
-        show("Nothing to export with the current filters.", "error");
+        show("Nothing to export.", "error");
         return;
       }
       if (output === "copy") {
@@ -238,8 +241,6 @@ export function ExportButton({
       {modalOpen && (
         <ExportModal
           tournament={tournament}
-          initialMemberFilters={memberFilters}
-          initialEventFilters={eventFilters}
           initialTrackId={trackId}
           onPresetsChanged={refreshPresets}
           onClose={() => setModalOpen(false)}

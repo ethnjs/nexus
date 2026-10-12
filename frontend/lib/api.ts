@@ -2479,6 +2479,9 @@ export interface ExportPresetInput {
   name:            string
   row_type:        ExportRowType
   columns:         ExportPresetColumn[]
+  // Who it covers: roster query-param filters, and the board's event filters.
+  member_filters:  Record<string, string[]>
+  event_filters:   Record<string, string[]>
   // Every field must be one of `columns`' keys.
   sorts:           DisplayConfigSort[]
   include_header:  boolean
