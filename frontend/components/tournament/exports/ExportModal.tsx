@@ -24,7 +24,9 @@ import {
   eventDivisionOptions, eventShiftOptions, eventTrackOptions, eventsFilterFromStored, isEventsFilterActive,
 } from "@/components/tournament/events/EventsFilterModal";
 import { isFilterActive } from "@/components/ui/FilterModal";
+import { externalRoleLabel } from "@/lib/exports/externalSystems";
 import { BuiltinOptions } from "@/components/tournament/exports/BuiltinOptions";
+import { Banner } from "@/components/ui/Banner";
 import { ExportPreview } from "@/components/tournament/exports/ExportPreview";
 import { BuilderDraft, PresetBuilder } from "@/components/tournament/exports/PresetBuilder";
 import { Button } from "@/components/ui/Button";
@@ -311,6 +313,14 @@ export function ExportModal({
   const showConfig = panel === "config" && selection !== null;
   const panelTitle = builtin?.label ?? savedPreset?.name ?? "New export";
 
+  // TORUS/Duosmium roles no NEXUS role maps to — those export nobody. Roles
+  // arrive with the catalog, so a null catalog means "not loaded", not "none".
+  const unmappedRoles = !catalog ? [] : builtin?.id === "torus"
+    ? (roles.some((r) => r.torus_role === torusRole) ? [] : [externalRoleLabel("torus_role", torusRole)])
+    : builtin?.id === "duosmium"
+      ? duosmiumRoles.filter((d) => !roles.some((r) => r.duosmium_role === d)).map((d) => externalRoleLabel("duosmium_role", d))
+      : [];
+
   return createPortal(
     <div
       ref={exitRef}
@@ -483,6 +493,23 @@ export function ExportModal({
                     {loading ? "Loading…" : result ? `${result.rows.length} row${result.rows.length === 1 ? "" : "s"}` : ""}
                   </span>
                 </div>
+
+                {unmappedRoles.length > 0 && (
+                  <Banner
+                    variant="danger"
+                    message={`Assign ${builtin!.label} ${unmappedRoles.join(" and ")} to a role in tournament settings.`}
+                    action={(
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(`/dashboard/tournaments/${tournamentId}/settings/roles`, "_blank", "noopener,noreferrer")}
+                      >
+                        Role settings
+                      </Button>
+                    )}
+                  />
+                )}
 
                 <ExportPreview
                   header={result?.header ?? null}
