@@ -59,6 +59,18 @@ def main(argv: list[str] | None = None) -> int:
 
     db = SessionLocal()
     try:
+        # Looked up before the update, so a typo'd --keep shows up here rather
+        # than as a kept account that was quietly scrubbed.
+        found = dict(
+            db.query(func.lower(User.email), User.id)
+            .filter(func.lower(User.email).in_(keep))
+        ) if keep else {}
+        for email in keep:
+            if email in found:
+                print(f"kept           : {email} (id {found[email]})")
+            else:
+                print(f"not found      : {email} - no account matches, nothing kept")
+
         scrub = func.lower(User.email).notin_(keep) if keep else true()
         result = db.execute(
             update(User)
