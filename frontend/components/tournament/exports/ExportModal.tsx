@@ -654,7 +654,9 @@ function NavItem({ active, onClick, children }: { active: boolean; onClick: () =
       onClick={onClick}
       style={{
         justifyContent: "flex-start", fontWeight: active ? 600 : 500,
-        background: active ? "var(--color-accent-subtle)" : undefined,
+        // Longhand: Button's hover sets backgroundColor, and React warns when
+        // a shorthand and its longhand mix on one element.
+        backgroundColor: active ? "var(--color-accent-subtle)" : undefined,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}
     >
