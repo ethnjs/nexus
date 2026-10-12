@@ -69,7 +69,10 @@ def apply_default_role_template(
         log_action(
             db, tournament_id, current_user.id, ROLE_CREATED,
             target_type="role", target_id=role.id,
-            extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
+            extra_data={
+                "label": role.label, "rank": role.rank, "permissions": role.permissions,
+                "torus_role": role.torus_role, "duosmium_role": role.duosmium_role,
+            },
         )
 
     db.commit()

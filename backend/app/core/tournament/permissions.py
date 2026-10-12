@@ -73,6 +73,8 @@ DEFAULT_ROLES: list[dict] = [
         "label":       "Tournament Director",
         "rank":        10,
         "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
+        "torus_role":    "tournament_director",
+        "duosmium_role": "tournament_director",
     },
     {
         "label":       "Volunteer Coordinator",
@@ -83,6 +85,7 @@ DEFAULT_ROLES: list[dict] = [
         "label":       "Test Coordinator",
         "rank":        20,
         "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES, MANAGE_FORMS],
+        "torus_role":    "test_coordinator",
     },
     {
         "label":       "Runner",
@@ -93,11 +96,13 @@ DEFAULT_ROLES: list[dict] = [
         "label":       "Scoremaster",
         "rank":        30,
         "permissions": [],
+        "duosmium_role": "scoremaster",
     },
     {
         "label":       "Lead Event Supervisor",
         "rank":        40,
         "permissions": [],
+        "duosmium_role": "event_supervisor",
     },
     {
         "label":       "Volunteer",
@@ -123,11 +128,13 @@ DEFAULT_ROLES: list[dict] = [
         "label":       "Test Writer",
         "rank":        50,
         "permissions": [],
+        "torus_role":    "writer",
     },
     {
         "label":       "Test Reviewer",
         "rank":        50,
         "permissions": [],
+        "torus_role":    "reviewer",
     },
 ]
 

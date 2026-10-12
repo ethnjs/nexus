@@ -3,6 +3,7 @@
 from tests.conftest import future_date, grant_role, login
 from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
 from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
+from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 from app.models.models import (
     AuditLogEntry, Tournament, TournamentMembership, TournamentTrackAssignment, TournamentRole, User,
 )
@@ -145,6 +146,30 @@ def test_apply_template_owner_can_apply_on_empty_tournament(client, td_user, db)
     volunteer_role = next(r for r in data if r["label"] == "Volunteer")
     assert volunteer_role["rank"] == 50
     assert volunteer_role["permissions"] == []
+
+
+def test_apply_template_maps_torus_and_duosmium_roles(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client)
+
+    data = client.post(f"/tournaments/{tournament_id}/roles/apply-template/").json()
+    by_label = {r["label"]: r for r in data}
+    assert by_label["Tournament Director"]["torus_role"] == "tournament_director"
+    assert by_label["Tournament Director"]["duosmium_role"] == "tournament_director"
+    assert by_label["Test Coordinator"]["torus_role"] == "test_coordinator"
+    assert by_label["Test Writer"]["torus_role"] == "writer"
+    assert by_label["Test Reviewer"]["torus_role"] == "reviewer"
+    assert by_label["Scoremaster"]["duosmium_role"] == "scoremaster"
+    assert by_label["Lead Event Supervisor"]["duosmium_role"] == "event_supervisor"
+    assert by_label["Volunteer"]["torus_role"] is None
+    assert by_label["Volunteer"]["duosmium_role"] is None
+
+
+def test_default_roles_external_mappings_are_valid():
+    # DEFAULT_ROLES bypasses the role schemas, so check its values here.
+    for role in DEFAULT_ROLES:
+        assert role.get("torus_role") in TORUS_ROLES | {None}
+        assert role.get("duosmium_role") in DUOSMIUM_ROLES | {None}
 
 
 def test_apply_template_logs_role_created_per_row_no_template_action(client, td_user, db):
