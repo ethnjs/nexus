@@ -120,10 +120,28 @@ export function buildExportTable(
   ));
   const spreads = resolved.map((_, i) => values.some((row) => isSpread(row[i])));
 
+  // host column index -> the partner interleaved into it. A partner whose
+  // host isn't in the export spreads on its own.
+  const partners = new Map<number, number>();
+  resolved.forEach(({ column }, i) => {
+    const host = column.pairsWith ? resolved.findIndex((c) => c.column.key === column.pairsWith) : -1;
+    if (host !== -1 && spreads[host] && spreads[i]) {
+      partners.set(host, i);
+      widths[host] = Math.max(widths[host], widths[i]);
+    }
+  });
+  const absorbed = new Set(partners.values());
+  const spreadOf = (value: CellValue) => (isSpread(value) ? value.spread : []);
+
   const cellsOf = (row: CellValue[]): string[] => row.flatMap((value, i) => {
+    if (absorbed.has(i)) return [];
     if (!spreads[i]) return [cellText(value as string | string[])];
-    const spread = isSpread(value) ? value.spread : [];
-    return Array.from({ length: widths[i] }, (_, n) => spread[n] ?? "");
+    const partner = partners.get(i);
+    return Array.from({ length: widths[i] }, (_, n) => (
+      partner === undefined
+        ? [spreadOf(value)[n] ?? ""]
+        : [spreadOf(value)[n] ?? "", spreadOf(row[partner])[n] ?? ""]
+    )).flat();
   });
 
   // Sort on the first cell a column produces. Array.sort is stable, so ties
@@ -147,11 +165,16 @@ export function buildExportTable(
   }
 
   const header = spec.includeHeader
-    ? resolved.flatMap(({ column }, i) => (
-      spreads[i]
-        ? Array.from({ length: widths[i] }, (_, n) => `${column.header} ${n + 1}`)
-        : [column.header]
-    ))
+    ? resolved.flatMap(({ column }, i) => {
+      if (absorbed.has(i)) return [];
+      if (!spreads[i]) return [column.header];
+      const partner = partners.get(i);
+      return Array.from({ length: widths[i] }, (_, n) => (
+        partner === undefined
+          ? [`${column.header} ${n + 1}`]
+          : [`${column.header} ${n + 1}`, `${resolved[partner].column.header} ${n + 1}`]
+      )).flat();
+    })
     : null;
 
   return { header, rows: order.map((i) => cellsOf(values[i])) };

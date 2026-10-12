@@ -26,10 +26,16 @@ const ROW_TYPE_OPTIONS = [
 ];
 
 // What identifies a row — added up front when the row type is picked.
-// Removable: some exports (an email list) don't want them.
+// A member row's are removable (an email list doesn't want names); an event
+// row is meaningless without its event and who's on it.
 const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
   member: ["first_name", "last_name"],
   event:  ["event", "members"],
+};
+// UI-only: the backend doesn't enforce it.
+const FIXED_COLUMNS: Record<ExportRowType, ReadonlySet<string>> = {
+  member: new Set(),
+  event:  new Set(["event", "members"]),
 };
 
 // "" is the dropdown's "every track"; a track id otherwise.
@@ -115,6 +121,7 @@ export function PresetBuilder({
                   key={column.key}
                   column={column}
                   resolved={resolve(column.key)}
+                  fixed={FIXED_COLUMNS[draft.row_type!].has(column.key)}
                   onMode={(mode) => setMode(column.key, mode)}
                   onRemove={() => removeColumn(column.key)}
                 />
@@ -143,11 +150,13 @@ interface ColumnRowProps {
   column:   ExportPresetColumn;
   // Null when the column no longer resolves (a deleted track or field).
   resolved: ExportColumn | null;
+  // Can't be removed for this row type.
+  fixed:    boolean;
   onMode:   (mode: ExportColumnMode) => void;
   onRemove: () => void;
 }
 
-function ColumnRow({ column, resolved, onMode, onRemove }: ColumnRowProps) {
+function ColumnRow({ column, resolved, fixed, onMode, onRemove }: ColumnRowProps) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "6px 6px 6px 10px",
@@ -168,9 +177,11 @@ function ColumnRow({ column, resolved, onMode, onRemove }: ColumnRowProps) {
           onChange={(v) => onMode(v as ExportColumnMode)}
         />
       )}
-      <Button type="button" variant="ghost" size="xs" iconOnly title="Remove column" onClick={onRemove}>
-        <IconX size={12} />
-      </Button>
+      {!fixed && (
+        <Button type="button" variant="ghost" size="xs" iconOnly title="Remove column" onClick={onRemove}>
+          <IconX size={12} />
+        </Button>
+      )}
     </div>
   );
 }

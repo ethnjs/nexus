@@ -59,6 +59,9 @@ export interface ExportColumn {
   // The ways this column can write its values; the first is the default.
   modes:    readonly ColumnModeOption[];
   value:    (row: ExportRow, mode: ExportColumnMode) => CellValue;
+  // A spread column whose cells interleave with another spread's, one pair
+  // per person, written where that column sits.
+  pairsWith?: string;
 }
 
 export const TRACK_EVENTS_PREFIX = "track_events:";
@@ -72,10 +75,6 @@ const NO_MODES: readonly ColumnModeOption[] = [];
 const SHIFT_MODES: readonly ColumnModeOption[] = [
   { value: "names", label: "Names" },
   { value: "times", label: "Times" },
-];
-const PERSON_MODES: readonly ColumnModeOption[] = [
-  { value: "full_name", label: "Name" },
-  { value: "email", label: "Email" },
 ];
 
 /** The mode a column uses when the preset doesn't name one it offers. */
@@ -193,10 +192,13 @@ const FIXED: Record<string, FixedDef> = {
   },
   // Everyone assigned, one per column, after the event's own columns.
   members: {
-    header: "Member", groups: ["assignments", "contact"], rowTypes: EVENT_ROWS, modes: PERSON_MODES,
-    value: () => ofEvent((r, mode) => ({
-      spread: r.members.map((m) => (mode === "email" ? m.user.email : userName(m.user))),
-    })),
+    header: "Member", groups: ["assignments"], rowTypes: EVENT_ROWS,
+    value: () => ofEvent((r) => ({ spread: r.members.map((m) => userName(m.user)) })),
+  },
+  // Each member's email beside their name: Member 1, Email 1, …
+  member_emails: {
+    header: "Email", groups: ["assignments", "contact"], rowTypes: EVENT_ROWS, pairsWith: "members",
+    value: () => ofEvent((r) => ({ spread: r.members.map((m) => m.user.email) })),
   },
 };
 
@@ -321,6 +323,7 @@ export function resolveExportColumn(key: string, ctx: ExportContext): ExportColu
       rowTypes: fixed.rowTypes,
       modes: fixed.modes ?? NO_MODES,
       value: fixed.value(ctx),
+      pairsWith: fixed.pairsWith,
     };
   }
   return entityColumn(key, ctx);
@@ -350,7 +353,7 @@ export function availableExportColumns(
   const lunchTrack = (key: string) => Number(key.slice(LUNCH_PREFIX.length).split(":")[0]);
 
   const groups: { title: string; keys: string[] }[] = [
-    { title: "Event", keys: ["event", "location", "members"] },
+    { title: "Event", keys: ["event", "location", "members", "member_emails"] },
     {
       title: "Member",
       keys: ["first_name", "last_name", "email", "phone", "shirt_size", "dietary_restriction", "roles", "over_18", "over_21"],
