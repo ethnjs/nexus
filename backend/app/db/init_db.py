@@ -53,45 +53,41 @@ def seed_dev_data(db: Session) -> None:
 
     No tournament is created — tournament setup is handled separately.
 
-    Idempotent — skips if admin already exists.
+    Idempotent per account — any email that already exists is skipped. A prod
+    copy run through anonymize_users already holds user<id>@nexus.dev rows.
     """
     from app.models.models import User
     from app.core.auth import hash_password
 
-    # Skip if already seeded
-    if db.query(User).filter(User.email == "admin@nexus.dev").first():
+    # Admin account — full site-wide access, bypasses all tournament checks.
+    # 15 regular user accounts — user1@nexus.dev .. user15@nexus.dev, all password "user1234"
+    wanted = [("admin@nexus.dev", "admin1234", "Admin", "User", "admin")] + [
+        (f"user{i}@nexus.dev", "user1234", "User", str(i), "user") for i in range(1, 16)
+    ]
+    existing = {
+        email for (email,) in
+        db.query(User.email).filter(User.email.in_([w[0] for w in wanted]))
+    }
+    missing = [w for w in wanted if w[0] not in existing]
+    if not missing:
         print("Dev seed already exists, skipping.")
         return
 
-    # Admin account — full site-wide access, bypasses all tournament checks.
-    admin = User(
-        email="admin@nexus.dev",
-        hashed_password=hash_password("admin1234"),
-        first_name="Admin",
-        last_name="User",
-        role="admin",
-        status="active",
-    )
-    db.add(admin)
-
-    # 15 regular user accounts — user1@nexus.dev .. user15@nexus.dev, all password "user1234"
-    users = [
+    db.add_all(
         User(
-            email=f"user{i}@nexus.dev",
-            hashed_password=hash_password("user1234"),
-            first_name="User",
-            last_name=str(i),
-            role="user",
+            email=email,
+            hashed_password=hash_password(password),
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
             status="active",
         )
-        for i in range(1, 16)
-    ]
-    db.add_all(users)
-
+        for email, password, first_name, last_name, role in missing
+    )
     db.commit()
 
-    print("Seeded: admin@nexus.dev / admin1234  (role=admin)")
-    print("Seeded: user1@nexus.dev .. user15@nexus.dev / user1234  (role=user)")
+    for email, password, *_, role in missing:
+        print(f"Seeded: {email} / {password}  (role={role})")
 
 
 if __name__ == "__main__":

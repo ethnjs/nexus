@@ -258,7 +258,8 @@ def test_list_events_requires_manage_events(
     client, td_user, other_tournament, db
 ):
     """There's no separate read-only view_events tier — listing requires
-    manage_events, same as write. A no-permission role is forbidden."""
+    manage_events or manage_members (exports read it). A no-permission role
+    is forbidden."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 403
@@ -267,6 +268,21 @@ def test_list_events_requires_manage_events(
 def test_list_events_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 404
+
+
+def test_manage_members_alone_can_list_but_not_write_events(client, td_user, other_tournament, db):
+    """Exports filter by event, and the export gate is manage_members — so
+    that alone opens the staff read. Writes still need manage_events."""
+    from app.models.models import TournamentRole
+    db.add(TournamentRole(
+        tournament_id=other_tournament.id, label="Roster Only", permissions=["manage_members"], rank=25,
+    ))
+    db.commit()
+    grant_role(db, other_tournament, td_user, "Roster Only")
+    login(client, "td@test.com", "tdpass")
+
+    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 200
+    assert _make_event(client, other_tournament.id).status_code == 403
 
 
 # ---------------------------------------------------------------------------

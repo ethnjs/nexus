@@ -14,13 +14,12 @@ import { OnboardingProgress } from "@/components/tournament/members/OnboardingPr
 import { PreferenceOptionLine } from "@/components/tournament/members/sections/EventPreferencesSection";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 
-// Namespaces shared with the backend's display_config — a column key means
-// the same thing here as it does on the panel.
-export const TRACK_PREFIX = "track:";
-export const AVAILABILITY_TRACK_PREFIX = "availability_track:";
-export const LUNCH_PREFIX = "lunch:";
-export const EVENT_PREF_PREFIX = "event_pref:";
-export const FORM_FIELD_PREFIX = "form_field:";
+import {
+  AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
+} from "@/lib/memberColumnKeys";
+
+// Re-exported so existing importers keep working; the definitions live in lib.
+export { AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX };
 
 // Grid track per kind of data, not per individual column. Width is a property
 // of what the cell holds — every track badge is about as wide as every other

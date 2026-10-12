@@ -378,7 +378,10 @@ class Tournament(Base):
     )
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
+    export_presets = relationship(
+        "TournamentExportPreset", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    join_codes =relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
     tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
@@ -693,6 +696,11 @@ class TournamentRole(Base):
     # touch. Owner isn't a role — sits above rank 1 structurally.
     rank = Column(Integer, nullable=False)
 
+    # What this role is in each external system the exports feed (#108).
+    # Strings, not enums — see TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
+    torus_role = Column(String(32), nullable=True)
+    duosmium_role = Column(String(32), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -709,6 +717,52 @@ class TournamentRole(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentExportPreset — a saved custom export (#110), shared by every
+# staff member of the tournament. The built-in presets (TORUS, Duosmium,
+# email list) live in frontend code, never here.
+#
+# Rows are built client-side from the roster, so this only stores the recipe:
+# the export's shape and who it covers (its own filters, never the page's).
+# Validated on write and read leniently: a deleted track or form field leaves
+# an inert column behind, never a 500.
+# ---------------------------------------------------------------------------
+class TournamentExportPreset(Base):
+    __tablename__ = "tournament_export_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name = Column(String(255), nullable=False)
+    # What one row is: "member" | "event" (an event and its members).
+    row_type = Column(String(16), nullable=False)
+    # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
+    # Objects, not strings, so a column can carry its own options.
+    columns = Column(JSON, nullable=False, default=list)
+    # Roster query-param filters and the board's event filters, same shapes
+    # as display_config stores them.
+    member_filters = Column(JSON, nullable=False, default=dict, server_default="{}")
+    event_filters = Column(JSON, nullable=False, default=dict, server_default="{}")
+    # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
+    sorts = Column(JSON, nullable=False, default=list)
+    include_header = Column(Boolean, nullable=False, default=True)
+    # Where the one-click export sends it: "copy" | "csv" | "txt".
+    output_type = Column(String(8), nullable=False, default="copy", server_default="copy")
+    # Null once the creator's account is deleted; the preset stays.
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    tournament = relationship("Tournament", back_populates="export_presets")
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_export_preset_name"),
     )
 
 

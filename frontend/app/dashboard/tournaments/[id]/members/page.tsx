@@ -54,6 +54,7 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { rowActivation } from "@/lib/rowActivation";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconTrash, IconMembers } from "@/components/ui/Icons";
+import { ExportButton } from "@/components/tournament/exports/ExportButton";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -708,6 +709,14 @@ export default function MembersPage() {
               onOpen={openSortModal}
               onReset={() => applySort(DEFAULT_MEMBER_SORT)}
             />
+            {/* Exports exactly what the roster's filters show; no event filters here. */}
+            {selectedTournament && (
+              <ExportButton
+                iconOnly={compactToolbar}
+                tournament={selectedTournament}
+                trackId={null}
+              />
+            )}
             {canManageMembers && (
               <Button
                 type="button" variant={selectMode ? "primary" : "secondary"} size="md"

@@ -26,6 +26,7 @@ from app.api.routes.tournament import tracks as tournament_tracks
 from app.api.routes.tournament import buildings as tournament_buildings
 from app.api.routes.tournament import zones as tournament_zones
 from app.api.routes.tournament import display_config as tournament_display_config
+from app.api.routes.tournament import export_presets as tournament_export_presets
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes import chapter as chapter_core
 from app.api.routes.chapter import admin as chapter_admin
@@ -130,6 +131,7 @@ app.include_router(tournament_zones.router,                 prefix="", dependenc
 app.include_router(tournament_zones.assignments_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_display_config.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_assignments.router,           prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_export_presets.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface FormPopoverProps {
   /** The element that toggles the panel — an icon button, a chip, whatever. */
@@ -27,6 +27,9 @@ interface FormPopoverProps {
       it — for a popover meant to stay open while the user works elsewhere
       on the page (e.g. editing the card the trigger belongs to). */
   closeOnOutsideClick?: boolean;
+  /** Overrides the panel's own box — e.g. no padding and no scroll, for a
+      menu that lays out its own scrolling body and pinned footer. */
+  panelStyle?: CSSProperties;
 }
 
 const PANEL_GAP = 6;
@@ -41,7 +44,7 @@ const PANEL_MAX_HEIGHT = 400;
 // trigger when there's no room below).
 export function FormPopover({
   trigger, children, width = 260, side = "bottom", align = "right",
-  open: controlledOpen, onOpenChange, closeOnOutsideClick = true,
+  open: controlledOpen, onOpenChange, closeOnOutsideClick = true, panelStyle,
 }: FormPopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
@@ -162,6 +165,7 @@ export function FormPopover({
           boxSizing: "border-box", padding: "14px",
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
+          ...panelStyle,
         }}>
           {children(() => setOpen(false))}
         </div>

@@ -3,6 +3,7 @@
 from tests.conftest import future_date, grant_role, login
 from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
 from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
+from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 from app.models.models import (
     AuditLogEntry, Tournament, TournamentMembership, TournamentTrackAssignment, TournamentRole, User,
 )
@@ -145,6 +146,30 @@ def test_apply_template_owner_can_apply_on_empty_tournament(client, td_user, db)
     volunteer_role = next(r for r in data if r["label"] == "Volunteer")
     assert volunteer_role["rank"] == 50
     assert volunteer_role["permissions"] == []
+
+
+def test_apply_template_maps_torus_and_duosmium_roles(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client)
+
+    data = client.post(f"/tournaments/{tournament_id}/roles/apply-template/").json()
+    by_label = {r["label"]: r for r in data}
+    assert by_label["Tournament Director"]["torus_role"] == "tournament_director"
+    assert by_label["Tournament Director"]["duosmium_role"] == "tournament_director"
+    assert by_label["Test Coordinator"]["torus_role"] == "test_coordinator"
+    assert by_label["Test Writer"]["torus_role"] == "writer"
+    assert by_label["Test Reviewer"]["torus_role"] == "reviewer"
+    assert by_label["Scoremaster"]["duosmium_role"] == "scoremaster"
+    assert by_label["Lead Event Supervisor"]["duosmium_role"] == "event_supervisor"
+    assert by_label["Volunteer"]["torus_role"] is None
+    assert by_label["Volunteer"]["duosmium_role"] is None
+
+
+def test_default_roles_external_mappings_are_valid():
+    # DEFAULT_ROLES bypasses the role schemas, so check its values here.
+    for role in DEFAULT_ROLES:
+        assert role.get("torus_role") in TORUS_ROLES | {None}
+        assert role.get("duosmium_role") in DUOSMIUM_ROLES | {None}
 
 
 def test_apply_template_logs_role_created_per_row_no_template_action(client, td_user, db):
@@ -780,3 +805,94 @@ def test_assign_roles_non_member_forbidden(client, td_user, other_tournament, ot
         json={"add": [role_id], "is_tournament_wide": True},
     )
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# External-system roles (TORUS / Duosmium) — what exports map a role to
+# ---------------------------------------------------------------------------
+
+def test_create_role_round_trips_external_roles(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/roles/", json={
+        "label": "Exam Writer", "permissions": [], "rank": 5,
+        "torus_role": "writer", "duosmium_role": "event_supervisor",
+    })
+    assert response.status_code == 201
+    assert response.json()["torus_role"] == "writer"
+    assert response.json()["duosmium_role"] == "event_supervisor"
+
+    listed = client.get(f"/tournaments/{td_tournament.id}/roles/").json()
+    role = next(r for r in listed if r["label"] == "Exam Writer")
+    assert (role["torus_role"], role["duosmium_role"]) == ("writer", "event_supervisor")
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == ROLE_CREATED)
+        .order_by(AuditLogEntry.id.desc())
+        .first()
+    )
+    assert entry.extra_data["torus_role"] == "writer"
+    assert entry.extra_data["duosmium_role"] == "event_supervisor"
+
+
+def test_create_role_external_roles_default_to_none(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/roles/", json={
+        "label": "Photographer", "permissions": [], "rank": 5,
+    })
+    assert response.json()["torus_role"] is None
+    assert response.json()["duosmium_role"] is None
+
+
+def test_create_role_rejects_invalid_external_roles(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    for field, value in (("torus_role", "scoremaster"), ("duosmium_role", "writer")):
+        response = client.post(f"/tournaments/{td_tournament.id}/roles/", json={
+            "label": "Photographer", "permissions": [], "rank": 5, field: value,
+        })
+        assert response.status_code == 422, field
+
+
+def test_update_role_sets_external_roles_and_logs_the_change(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/",
+        json={"torus_role": "reviewer", "duosmium_role": "scoremaster"},
+    )
+    assert response.status_code == 200
+    assert (response.json()["torus_role"], response.json()["duosmium_role"]) == ("reviewer", "scoremaster")
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == ROLE_UPDATED)
+        .order_by(AuditLogEntry.id.desc())
+        .first()
+    )
+    assert {"field": "torus_role", "old": None, "new": "reviewer"} in entry.extra_data["changes"]
+    assert {"field": "duosmium_role", "old": None, "new": "scoremaster"} in entry.extra_data["changes"]
+
+
+def test_update_role_explicit_null_clears_external_role(client, td_user, td_tournament, db):
+    """Unlike label or rank, an explicit null here means "none" — while
+    leaving the field out leaves it alone."""
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/",
+        json={"torus_role": "writer", "duosmium_role": "event_supervisor"},
+    )
+
+    response = client.patch(f"/tournaments/{td_tournament.id}/roles/{role_id}/", json={"torus_role": None})
+    assert response.status_code == 200
+    assert response.json()["torus_role"] is None
+    assert response.json()["duosmium_role"] == "event_supervisor"
+
+
+def test_update_role_rejects_invalid_external_role(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/", json={"torus_role": "not_a_role"},
+    )
+    assert response.status_code == 422
