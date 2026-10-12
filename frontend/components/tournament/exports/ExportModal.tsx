@@ -560,7 +560,9 @@ export function ExportModal({
                   >
                     {saving ? "Saving…" : "Save"}
                   </Button>
-                  <span aria-hidden style={{ width: "1px", alignSelf: "stretch", margin: "2px 4px", background: "var(--color-border)" }} />
+                  {/* A border, not a 1px fill: the bar's translateX(-50%) lands on a
+                      half pixel at odd widths, and only a border snaps back. */}
+                  <span aria-hidden style={{ width: 0, alignSelf: "stretch", margin: "2px 4px", borderLeft: "1px solid var(--color-border)" }} />
                 </>
               )}
               <Button type="button" variant={primaryOutput === "csv" ? "primary" : "secondary"} size="sm" disabled={!canOutput} onClick={() => download("csv")}>
