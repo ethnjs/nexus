@@ -29,7 +29,7 @@ const ROW_TYPE_OPTIONS = [
 // Removable: some exports (an email list) don't want them.
 const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
   member: ["first_name", "last_name"],
-  event:  ["event"],
+  event:  ["event", "members"],
 };
 
 // "" is the dropdown's "every track"; a track id otherwise.
