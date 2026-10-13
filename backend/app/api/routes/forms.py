@@ -791,7 +791,6 @@ def bulk_update_fields(
             # Nothing is flagged: the question and its answers are exactly as
             # they were left, so there's nothing for a responder to review.
             unarchiving = field.is_archived
-            type_changed = entry.question_type != field.question_type
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it

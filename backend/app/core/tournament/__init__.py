@@ -2,19 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TypeVar
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentEvent, TournamentMembership, User
-
-T = TypeVar("T")
+from app.models.models import Tournament, TournamentEvent, TournamentMembership
 
 
 def tournament_local_date(tournament: Tournament, moment: datetime):
@@ -27,7 +23,9 @@ def tournament_local_date(tournament: Tournament, moment: datetime):
     return moment.astimezone(ZoneInfo(tournament.timezone)).date()
 
 
-def get_scoped_or_404(db: Session, model: type[T], id_: int, tournament_id: int, label: str) -> T:
+def get_scoped_or_404[T](
+    db: Session, model: type[T], id_: int, tournament_id: int, label: str
+) -> T:
     """
     Fetch a row by id, scoped to tournament_id via its own tournament_id
     column. 404s on either a missing row or a tournament mismatch — the two
