@@ -1,202 +1,81 @@
 # Member seeding
 
-`app/db/seed_members.py` fills a tournament with believable members: profiles,
-prior experience, and onboarding form responses.
-
-Tournament roles are deliberately not seeded — assign those yourself.
+`app/db/seed_members.py` fills a tournament with believable members: profiles, prior experience, and onboarding form responses. It doesn't assign tournament roles.
 
 ```bash
 cd backend
-python -m app.db.seed_members --tournament 3
+uv run python -m app.db.seed_members --tournament 3 --create 50
 ```
 
-It refuses to run unless `APP_ENV` is `development` or `preview`. `--force`
-overrides that; there is no reason to use it.
+It refuses to run unless `APP_ENV` is `development` or `preview`.
 
----
+## How it works
 
-## The one thing that matters
+**The script never writes track statuses, availability, lunch or event preferences directly.** It answers the tournament's onboarding forms and lets the real submission path produce those rows. Writing them directly produces states no respondent could reach, such as a member interested in test writing with no test-writing event preference, and those then look like bugs in whatever screen shows them.
 
-**The script does not write track statuses, availability, or event
-preferences.** It answers the tournament's onboarding forms and lets the real
-submission path produce those rows.
+For each member it walks each onboarding form from the first field, picks an answer, and recomputes reachability before choosing the next question, so branching and required rules are obeyed. The finished answers go through the same helpers `POST /forms/{id}/responses/` uses (`_store_answers`, `_write_through_reserved_fields`, `advance_onboarding_progress`).
 
-Writing them directly is what produces states no respondent could have reached:
-a member `interested` in Test Writing with no test-writing event preference,
-availability on a day they declined, a Writer's Class interest without the
-test-writing interest that gates it. Those states then look like bugs in
-whatever screen renders them.
+As a result, editing the onboarding forms needs no seeder changes, and seeded rows carry the same provenance (`source_response_id`, `source_field_id`) as a real submission.
 
-So instead, for each member the script:
-
-1. Walks the form from the lowest-order field.
-2. Picks an answer for the current question.
-3. Recomputes reachability with that answer applied, which decides what comes
-   next — a `submit_form` option ends the walk, a `next_field_id` jumps, and
-   everything else falls through in order.
-4. Repeats until nothing reachable is unanswered.
-5. Hands the finished answer set to `_store_answers`,
-   `_write_through_reserved_fields` and `advance_onboarding_progress` — the
-   same helpers `POST /forms/{id}/responses/` calls.
-
-Step 3 is the whole trick. Recomputing after *every* pick is what stops a "No"
-answer from also carrying answers to the questions it skips, and what
-guarantees a required follow-up is present whenever its gate is open.
-
-The payoff: **edit the onboarding forms and the seeder follows the new rules
-with no changes.** Add a branch, make a question required, regroup an
-availability option — the next run obeys it, because it is replaying
-submissions rather than imitating their results.
-
-It also means the seeded data carries real provenance: every
-`tournament_membership_track_statuses` row points back at the
-`form_responses` row and `form_fields` id that set it, exactly as a live
-submission would.
-
----
+Nothing is hardcoded to a database. Tracks, shifts, events, universities and forms are looked up at runtime, so one command works against dev and preview. Profile dates are anchored to the tournament's own year rather than today, so graduation year, grade and birth date agree with each other.
 
 ## Flags
 
 | Flag | Default | What it does |
 | --- | --- | --- |
-| `-t`, `--tournament ID` | required | Tournament to seed. |
-| `--email-prefix PREFIX` | `test` | Seeds accounts whose email starts with this. |
-| `--email-domain DOMAIN` | `nexus.dev` | Domain for accounts this run creates. |
-| `--limit N` | all | Only the first N matching accounts. |
-| `--rng-seed N` | `0` | RNG seed. Same value, same fake people. Not a count. |
-| `--dry-run` | off | Roll back instead of committing. |
-| `--force` | off | Allow running outside development/preview. |
+| `-t`, `--tournament ID` | required | Tournament to seed |
+| `--email-prefix PREFIX` | `test` | Seed accounts whose email starts with this |
+| `--email-domain DOMAIN` | `nexus.dev` | Domain for accounts this run creates |
+| `--limit N` | all | Only the first N matching accounts |
+| `-c`, `--create N` | off | Seed N members in total, creating whichever of `PREFIX1`..`PREFIXN` don't exist yet |
+| `--password PW` | `test1234` | Password for accounts this run creates |
+| `--rng-seed N` | `0` | Random seed. The same value gives the same fake people. It's not a count. |
+| `--stop-every N` | `5` | Every Nth member stops after the first form (`0` turns it off) |
+| `--unstarted-every N` | `11` | Every Nth member submits nothing (`0` turns it off) |
+| `--dry-run` | off | Roll back instead of committing |
+| `--force` | off | Run outside `development`/`preview` |
 
-`--rng-seed` is a starting point for the random number generator, never a
-count. Same value, same fake people: reset the database, re-run with the same
-seed, and `test1` comes back with the same major, birth date and form answers.
-A different value gives a different population that is equally reproducible.
-It's what lets you get back to a member who triggered a layout bug instead of
-re-rolling until it maybe reappears.
+These are on by default, and each has a `--no-` form (`--no-onboarding`):
 
-To control *how many* members you get, use `--create`.
+| Flag | What it covers |
+| --- | --- |
+| `--onboarding` | Replays onboarding form submissions |
+| `--profiles` | Overwrites user profile fields |
+| `--experience` | Adds prior competition and volunteer history |
+| `--enroll` | Creates memberships for matching accounts that lack one |
+| `--age-consent` | Consents to age disclosure when the tournament collects it |
 
-### Account creation
+**`--create N` is a target, not an amount to add.** With `test1`..`test15` already present, `--create 50` creates `test16`..`test50`. Running it twice still leaves fifty. Existing accounts are never renamed or given a new password, but they are re-seeded like everyone else. New accounts get a random name and a verified email, so they can log in immediately.
 
-| Flag | Default | What it does |
-| --- | --- | --- |
-| `-c`, `--create N` | off | Seed N members total, creating whichever of `PREFIX1..PREFIXN` don't exist yet. |
-| `--password PW` | `test1234` | Password for accounts this run creates. |
-
-Without it the script only seeds accounts that already exist, which is why a
-fresh database used to come back empty.
-
-**N is a target, not a quantity to add.** With `test1`..`test15` already
-there, `--create 50` creates `test16`..`test50` and you end up with fifty
-members. `--create 50` twice creates fifty accounts, not a hundred; `--create
-60` afterwards adds ten.
-
-It works that out by asking the database which of `PREFIX1..PREFIXN` exist and
-inserting the gaps, rather than counting existing accounts and making up the
-difference — with a sparse population (`test3`, `test7`, `test40`) a count
-would have to invent numbers and could collide with one already there.
-
-Existing accounts are never touched — no password reset, no rename. They are
-still re-seeded (profile, experience, onboarding) like everyone else.
-
-New accounts get a random name from a pool and `email_verified=True`, so they
-can log in immediately. Names use their own RNG, so growing the population
-doesn't change the profile data `--rng-seed` produces for everybody else.
-
-### What to seed
-
-Each takes a `--no-` counterpart (`--no-onboarding`, `--no-profiles`, …).
-
-| Flag | Default | What it covers |
-| --- | --- | --- |
-| `--onboarding` | on | Replays the onboarding form submissions. |
-| `--profiles` | on | Overwrites user profile fields. |
-| `--experience` | on | Prior competition/volunteer history. |
-| `--enroll` | on | Creates memberships for matching accounts that lack one. |
-
-### Onboarding completion mix
-
-| Flag | Default | What it does |
-| --- | --- | --- |
-| `--stop-every N` | `5` | Every Nth member stops after the first form. |
-| `--unstarted-every N` | `11` | Every Nth member submits nothing. |
-
-A fixed cadence, not a dice roll — partway-through onboarding states are
-guaranteed to exist rather than depending on how the seed happens to land.
-`0` disables either one.
-
----
+Without `--create`, only existing accounts are seeded.
 
 ## Recipes
 
 ```bash
-# See what it would do, change nothing.
-python -m app.db.seed_members -t 3 --dry-run
+# Preview without changing anything
+uv run python -m app.db.seed_members -t 3 --dry-run
 
-# Local dev, where the accounts are member*@nexus.dev.
-python -m app.db.seed_members -t 3 --email-prefix member
+# Seed the dev accounts user1..user15@nexus.dev
+uv run python -m app.db.seed_members -t 3 --email-prefix user
 
-# Profiles and experience only, leaving onboarding responses untouched.
-python -m app.db.seed_members -t 3 --no-onboarding
+# Profiles and experience only, leaving onboarding responses alone
+uv run python -m app.db.seed_members -t 3 --no-onboarding
 
-# Everyone fully onboarded, no partial states.
-python -m app.db.seed_members -t 3 --stop-every 0 --unstarted-every 0
+# Everyone fully onboarded
+uv run python -m app.db.seed_members -t 3 --stop-every 0 --unstarted-every 0
 
-# A different population, same shape.
-python -m app.db.seed_members -t 3 --rng-seed 7
-
-# Just a handful, for a quick screen check.
-python -m app.db.seed_members -t 3 --limit 5
-
-# Fifty members on a database that has none yet.
-python -m app.db.seed_members -t 3 --create 50
-
-# A second tournament, reusing the same fifty people.
-python -m app.db.seed_members -t 4 --create 50
+# A different but equally reproducible population
+uv run python -m app.db.seed_members -t 3 --rng-seed 7
 ```
-
----
 
 ## What it resets
 
-Re-running is safe, but not because the writes are idempotent — the script
-clears its own targets first:
+Re-running is safe because the script first clears what it's about to write, for the seeded accounts on this tournament:
 
-- `form_answers` and `form_responses` for the seeded accounts on this
-  tournament's onboarding forms
-- `tournament_membership_track_statuses`, `..._availability`,
-  `..._event_preferences`, `..._lunch` for those memberships
-- `onboarded_at` back to `NULL`
+- their onboarding `form_responses` and `form_answers`,
+- their track status, availability, event preference and lunch rows,
+- and `onboarded_at`.
 
-That reset is required, not tidiness. `sync_track_statuses` only ever upserts
-(it cannot delete, and refuses `confirmed → interested` outright), and a second
-`POST` for the same `(form, user)` is a 409. Without the reset, a second run
-would blend into the first.
+The reset is required. Track-status write-through only upserts and refuses some transitions (see `track-status-rules.md`), and a second response to the same form is a 409, so a second run would otherwise blend into the first.
 
-It does **not** touch memberships it did not create, tournament configuration,
-forms, events, or any account outside `--email-prefix`. `--create` only ever
-inserts — it never rewrites an account that already exists.
-
----
-
-## Portability
-
-Nothing is hardcoded to a database. Tracks, shifts, tournament events,
-universities, the catalog events and the onboarding forms are all looked up at
-runtime by ownership, so the same invocation works against dev and preview
-where the ids differ.
-
-Profile years are anchored to the tournament's own year (via
-`Tournament.last_day`, itself derived from the primary tracks) rather than to
-today — so graduation year, year level and date of birth agree with each other
-and with the tournament being seeded.
-
----
-
-## Where this lives
-
-- `app/db/seed_members.py` — the script
-- `app/core/form/branching.py` — the reachability walk it replays
-- `app/core/form/write_through.py` — how answers become structural rows
-- `form-question-types-reference.md` — reserved field keys and question types
-- `track-status-rules.md` — why the reset above is necessary
+It never touches tournament configuration, forms, events, or accounts outside `--email-prefix`.

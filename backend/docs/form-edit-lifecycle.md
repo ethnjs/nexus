@@ -1,388 +1,141 @@
-# Form Edit Lifecycle
+# Form edit lifecycle
 
-**Target-state specification.** Describes how editing a form that already has
-responses should behave. Companion to `form-question-types-reference.md`,
-which covers config/option shapes.
+How editing a form that already has responses behaves: what gets flagged for respondents, how fields and options are retired, and how answers reach the tournament's structural tables. Field and option shapes are in `form-question-types-reference.md`; track status rules are in `track-status-rules.md`.
 
 ## Principles
 
-1. **Edits mutate in place.** A field keeps its `id` across every edit —
-   `question_type`, `field_key`, options, all of it. Archiving is for taking
-   a question out of use, never a step in changing one.
-2. **Answers are self-describing.** A stored answer records the shape it was
-   answered under, so reading history never depends on the field's current
-   configuration.
-3. **Stored answers are never rewritten.** No migration, no replay, no
-   recompute. See Write-through.
-4. **Intent is declared, not inferred.** A diff cannot distinguish "we ran out
-   of shirts" from "this option was never valid." The TD says which.
-5. **`field_key` is a name, not an identity.** It's a display and
-   write-through label. Only `field_id` identifies a question.
+1. **Edits mutate in place.** A field keeps its `id` through every edit, including `question_type` and `field_key` changes. Archiving takes a question out of use; it is never a step in changing one.
+2. **Answers describe themselves.** Each `FormAnswer` records the `question_type` and `field_key` it was given under, plus option snapshots, so history reads correctly whatever the field's current config.
+3. **Stored answers are never rewritten.** There's no migration, replay or recompute of old answers.
+4. **The TD declares intent.** A diff can't tell "we ran out of shirts" from "this option was never valid", so the TD picks the verb.
 
-## Identity
+## Draft vs. history-preserving
 
-| Identifier | Mutable | Role |
-|---|---|---|
-| `FormField.id` | never | The question. What answers and pending updates reference. |
-| `FormField.field_key` | freely | Display name + write-through semantics. Unique among **live** fields per tournament; an archived field's key is released. |
-| Option `option_id` | never | The choice. What answers reference. |
+A form is **history-preserving** once it's published or has any response (`_is_history_preserving`). Until then, the builder's save (`PUT /forms/{id}/fields/`) applies edits destructively: removed fields and options are deleted outright. Everything below applies to history-preserving forms.
 
-Because identity lives on `field_id`, renaming a `field_key` requires no
-bookkeeping — nothing else keys off it.
+The save sends the complete target field list, and the whole batch is validated together and committed or rolled back as one.
 
-## Answer storage
+## Pending updates
 
-`FormAnswer` stores `field_id`, the selected `option_id`(s), a
-`{option_id, value, label}` snapshot taken at submit time, and the
-`question_type` **and** `field_key` it was answered under.
+A pending update asks a previous respondent to look at a question again. There's one `FormResponsePendingUpdate` row per (response, field), with the set of `reasons` that opened it. Reasons from one save are unioned.
 
-Answer shape is a function of `(question_type, field_key)` — a preset key
-stores entity ids where a standard key stores text. Recording both is what
-makes every in-place change safe to read back: a pre-change answer is still
-interpreted by the rules that were in force when it was given.
-
-Two read paths, deliberately different:
-
-- **Responses view** (form submissions) — render the snapshot verbatim. Shows
-  what the respondent actually saw.
-- **Member profile** (current truth) — resolve `option_id` against the field's
-  *current* config and use today's `value`/`label`. Fall back to the snapshot
-  only when the option no longer exists.
-
-## When a pending update is raised
-
-A pending update asks a previous responder to look at a question again. One
-row per (response, field), carrying the set of `reasons` that opened it —
-several can apply to the same field in one save, so they union rather than
-override.
-
-**Mandatory — always raised, TD cannot suppress:**
+**Mandatory**, always raised:
 
 | Change | `reason` | Who is flagged |
 |---|---|---|
-| `question_type` changes shape class (below) | `question_type_changed` | everyone who answered |
+| `question_type` moves to another shape class | `question_type_changed` | everyone who answered |
 | Option added or unarchived | `option_added` | everyone who answered |
-| Option invalidated | `option_invalidated` | only those who selected it |
-| Option regrouped (preset keys) | `option_regrouped` | everyone who answered |
-| Field becomes required | `now_required` | only those who left it blank |
+| Option invalidated | `option_invalidated` | those who picked it |
+| Option regrouped on an entity-backed preset | `option_regrouped` | everyone who answered |
+| Field becomes required | `now_required` | those who left it blank |
 
-An added option flags everyone because a previous responder may have settled
-for a lesser choice when their real answer wasn't offered. Unarchiving an
-option is identical in effect, so it's treated the same.
+An added option flags everyone because a respondent may have settled for a lesser choice. Regrouping means an option's `value` now covers different shifts or events while its id and label stay the same ("Morning" no longer includes the 7am shift), so a stored answer commits the respondent to something they never picked.
 
-**Regrouping** applies to entity-backed presets only, where an option's `value`
-is the set of shifts or events it covers rather than display text. Changing it
-leaves the `option_id` and the label alone, so nothing else notices — but
-"Morning" quietly stops including the 7am shift, and a stored answer now
-commits the respondent to something they never picked. On a plain question the
-same edit is cosmetic and raises nothing.
+**TD's choice**, per field at save time (`notify_responders`):
 
-**Never raised:**
+| Change | `reason` | Default |
+|---|---|---|
+| `field_key` moves between a preset and a plain key | `key_changed` | on |
+| Question label, description or option label changes | `text_changed` | off |
 
-| Change |
-|---|
-| `question_type` changes within its shape class |
-| Option `value` edited (TD-facing text only) |
-| Option archived |
-| Field archived |
-| Field order, `display_style`, branching targets |
+`key_changed` defaults on because skipping it is invisible: write-through only runs on submit, so existing respondents never reach the structural tables unless they resubmit. The save-time confirmation modal (`POST /forms/{id}/fields/classify/`) lists every flagged question, shows mandatory reasons locked on, and lets the TD toggle the rest.
 
-**TD's choice:**
-
-| Change | `reason` | Default | Why it's a judgment call |
-|---|---|---|---|
-| `field_key` moves between preset and standard | `key_changed` | **on** | Nothing changed for the respondent — the labels can be identical, and their answer is still correct. But write-through is forward-only, so their data won't reach `MembershipAvailability` / `TournamentMembershipLunch` / `TournamentMembershipEventPreference` / track statuses unless they resubmit. The TD is deciding whether they need that data for people who already answered. |
-| Question label | `text_changed` | off | Rewording may or may not change what's being asked. |
-| Question description | `text_changed` | off | Same. |
-| Option label (respondent-facing text) | `text_changed` | off | Same. |
-
-The preset toggle defaults **on** because silently leaving existing responders
-out of write-through is the more surprising outcome. The confirmation modal
-should say so, not just show a switch.
+**Never raised:** a `question_type` change within its shape class, an option `value` edit, archiving an option or field, and changes to order, `display_style` or branching targets.
 
 ### Shape classes
 
-A `question_type` change matters only when the stored answer shape changes.
-
-| Class | Types | Stored shape |
+| Class | Types | Stored answer |
 |---|---|---|
 | text | `short_text`, `long_text` | string |
-| single-select | `single_select_radio`, `single_select_dropdown` | one snapshot |
+| single select | `single_select_radio`, `single_select_dropdown` | one snapshot |
 | multi | `multi_select_checkbox` | list of snapshots |
 | ranked | `ranked_choice` | `{rank: snapshot}` |
 | bool | `acknowledgment` | boolean |
 
-Within a class → presentational, no pending update. Across classes →
-mandatory.
-
-## Save-time confirmation
-
-Shown only when the form is history-preserving, and only when the save
-contains at least one change that could raise a pending update.
-
-A modal lists every edited question with a per-question toggle:
-
-- **Mandatory** changes appear with the toggle on and locked, so the TD sees
-  the full blast radius before committing.
-- **TD's choice** changes appear editable, at the default for that change
-  type (see the table above — not all default off).
-- Where a default carries a non-obvious consequence, the row states it. A
-  preset key change that's toggled off should read as "existing responses
-  won't be written through," not as a bare switch.
-- Questions whose edits never raise a pending update aren't listed.
-
-This is the last chance to reconsider before responders are asked to redo
-work.
-
 ## Option lifecycle
 
-Four verbs. The TD picks; the system never guesses.
+| Verb | How the save expresses it | Pending update |
+|---|---|---|
+| **Add** | new option without an `option_id` | everyone |
+| **Archive** (ran out; answers stay valid) | option sent back with `is_archived: true` | nobody |
+| **Unarchive** | option sent back with `is_archived: false` | everyone |
+| **Invalidate** (never valid; answers are wrong) | option left out of the payload | those who picked it |
 
-| Verb | Meaning | Storage | Pending update |
-|---|---|---|---|
-| **Add** | new choice available | appended | everyone |
-| **Archive** | ran out; existing answers still valid | `is_archived: true` | nobody |
-| **Unarchive** | an archived option is available again | `is_archived: false` | everyone |
-| **Invalidate** | never valid; existing answers are wrong | removed | only those who selected it |
-
-All four keep the same `field_id` — the question didn't change, its choices
-did. An invalidated option's past answers still render from their snapshot;
-they're flagged as stale, not corrupted.
-
-Archived options are never shown to respondents and never appear as editable
-rows in the builder. They live in storage only.
+The field keeps its id in every case. An invalidated option's past answers still render from their snapshots. Archived options are never shown to respondents and don't appear as editable rows in the builder.
 
 ## Field lifecycle
 
-| Action | Effect | Answers | Pending update |
+| Action | How | Answers | Pending updates |
 |---|---|---|---|
-| **Edit** | mutate in place; `id` preserved | untouched | per the tiers above |
-| **Archive** | `is_archived: true`; key released | kept as history | **open ones deleted** |
-| **Unarchive** | `is_archived: false` | re-link automatically via `field_id` | none |
-| **Invalidate** | row **deleted** | **purged**, with write-through cleanup | deleted with the field |
+| **Edit** | field sent with its `id` | untouched | per the tables above |
+| **Archive** | field left out of the payload | kept as history; key released | open ones deleted |
+| **Unarchive** | archived field's `id` sent again | reattach through `field_id` | none |
+| **Invalidate** | `DELETE /forms/{id}/fields/{field_id}/` | deleted, with write-through cleanup | deleted with the field |
 
-Archiving or invalidating a field **deletes its open pending updates.** A flag
-on a field the respondent can no longer answer is unclearable by construction
-— `PATCH` would reject the field, and the question isn't rendered. This is not
-optional cleanup; skipping it strands respondents permanently.
+Archiving deletes open pending updates because a flag on a question the respondent can no longer answer could never clear. Unarchiving rechecks that the key hasn't been claimed meanwhile and that branching still resolves.
 
-**Unarchive** works because editing never changes `field_id`, so `FormAnswer`
-rows still point at the field. On unarchive, re-validate: `next_field_id` may
-point at something since archived, and the `field_key` may have been claimed by
-a live field while it was gone.
+Invalidate is the only destructive action and can't be undone. It has its own endpoint so a client bug in the bulk save can't reach it, and it returns 409 if removing the field would leave the form invalid, for example while a live option still branches to it.
 
-**Invalidate** is the only destructive action, and the only one that can't be
-undone: the field row and its answers are gone. It's for a question that should
-never have been asked, whose answers aren't history worth keeping. It has its
-own endpoint rather than a flag in the bulk update, so a client can't reach it
-by accident, and it requires explicit confirmation.
+Archived fields appear in a collapsed **Archived questions** section of the builder. They don't take part in `order` or branching, and unarchiving appends to the end.
 
-It's refused when a live option still branches to the field. The row would
-stop existing while something still pointed at it, leaving the form
-unpublishable for a reason nothing on screen would explain — better to make
-the TD clear the branch first.
-
-Archived fields appear in the builder in a collapsed **Archived questions**
-section, never inline — they must not participate in `order` or be selectable
-as branching targets. Unarchiving appends to the end of `order`.
-
-## Response routes
+## Responses
 
 | Route | Access | Behavior |
 |---|---|---|
-| `POST /forms/{id}/responses/` | view | **Create only.** `409` if this user already has a response. Validates every required field; writes through every answer. |
-| `PATCH /forms/{id}/responses/me/` | view | **Gated edit.** Body carries `{field_id, value}` for one or more fields. |
-| `GET /forms/{id}/responses/` | manage | all responses, with each respondent's name and email |
-| `DELETE /forms/{id}/responses/{response_id}/` | manage | removes one response; write-through rows stay. `409` on an archived form. |
-| `GET /forms/{id}/responses/me/` | view | own response |
+| `POST /forms/{id}/responses/` | view | Create only; 409 if the user already responded. Validates required fields and writes through every answer. |
+| `PATCH /forms/{id}/responses/me/` | view | Edits the given fields. |
+| `GET /forms/{id}/responses/me/` | view | Own response |
+| `GET /forms/{id}/responses/` | manage | All responses, with respondent names and emails |
+| `DELETE /forms/{id}/responses/{response_id}/` | manage | Deletes one response; write-through rows stay. 409 on an archived form. |
 
-`PATCH` rejects with `403` any `field_id` that does not have an open pending
-update for this response. That is the whole gate: a respondent can only touch
-what the TD asked them to revisit, enforced server-side rather than by the UI.
+A submitted response is locked. `PATCH` returns 403 for any field without an open pending update on this response, so respondents can change only what the TD asked them to revisit. To fix something else, they ask the TD to flag it. There's no TD override for editing someone else's response.
 
-The exception is a form with `allow_response_edits` on: every live question
-is open, and the client sends only the answers that changed.
+With `allow_response_edits` on, every live question is open and the client sends only the answers that changed. Required-field validation then runs over the merged response, because a changed branching answer can make an unanswered required question reachable.
 
-- Only the patched fields' answers are replaced. Everything else is untouched.
-- Required-field validation applies to the patched fields only — the rest
-  already satisfied it at creation. With `allow_response_edits` it runs over
-  the merged response instead: a changed branching answer can make a
-  required question reachable that was never answered.
-- Each patched field's pending update is cleared.
-- Write-through is re-derived, bounded by what the patched questions govern —
-  see below. It is *not* limited to the patched fields themselves.
+On `PATCH`:
 
-## Clearing a pending update
+- only the patched answers are replaced,
+- each patched field's pending update clears (individually; unpatched flags stay open),
+- and write-through runs again, scoped as described below.
 
-A pending update clears when its field is patched — explicitly, one at a time.
-If a TD flags three questions and the respondent answers one, the other two
-stay open.
-
-`created_at` is retained for display and ordering ("flagged 3 days ago"), not
-for clearing.
-
-## The respondent's update flow
-
-A submitted response is **not freely editable.** A respondent may only change
-questions that carry a pending update — enforced by `PATCH`, not by the UI.
-
-The form reopens with full context, but only the flagged questions are live:
-
-- Every previously answered question renders prefilled.
-- Questions with a pending update render blank, highlighted, and editable.
-- Every other question renders read-only, showing its prior answer. It is
-  **not** resubmitted — `PATCH` carries only the flagged fields.
-- The respondent is never asked to retype answers that didn't change.
-
-A respondent who needs to correct something that isn't flagged asks the TD,
-who can raise a pending update for that question. There is no self-serve path,
-because an unrestricted edit to an old response can overwrite newer state
-elsewhere (see Write-through).
+The respondent's update view shows prior answers read-only and opens only the flagged questions for editing. A pending update's `created_at` is for display ("flagged 3 days ago") only.
 
 ## Write-through
 
-**Write-through is forward-only.** It runs at submission time and never
-recomputes from stored answers. Replaying historical answers would apply them
-out of submission order — an old form's "interested" would overwrite a newer
-form's "confirmed."
+Answers to reserved-key questions on tournament forms are copied into structural tables (`_write_through_reserved_fields`). **Write-through runs forward only**, at submission, and is never replayed from stored answers. A replay would apply answers out of order, so an old form's "interested" could overwrite a newer form's "confirmed". For the same reason, moving a field between a preset and a plain key doesn't rewrite old answers; only new submissions write through under the new key.
 
-This is why answers are never rewritten when a `field_key` moves between
-preset and standard: the old answers keep their original semantics, and only
-new submissions write through under the new key.
+The one exception is a field that becomes a lunch question: its existing answers are replayed into `TournamentMembershipLunch` once (`_backfill_lunch_write_through`), since lunch rows have a single owning field. The same replay would be unsafe for the shared tables.
 
-### Availability is bounded by day, not by field or form
+### Availability is scoped by track
 
-Every `availability_*` question across every form feeds one shared
-`MembershipAvailability` pool, so a submission must not be allowed to disturb
-shifts it didn't ask about — answering a Sunday form has to leave the Saturday
-availability another form collected exactly as it was.
+Every `availability_*` question on every form feeds one `TournamentMembershipAvailability` pool per member. A submission may add the shifts its selected options cover and remove shifts only on the tracks its availability questions ask about. Shifts on other tracks, possibly collected by another form, are left alone.
 
-The boundary is the **day**: an `availability_{YYYYMMDD}` question governs
-every tournament shift falling on that date. A submission may add the shifts
-its selected options cover, and remove only shifts on the days it asked about.
-Everything outside is untouched.
+The boundary is every shift on the track, not just the shifts the options currently list. If a TD regroups an option so it no longer includes a shift, that shift still belongs to the track, so a respondent who drops it loses it instead of keeping it forever.
 
-Day, rather than "the shifts this question's options currently list" — those
-are not the same set. If a TD regroups an option so it no longer mentions a
-shift, that shift still belongs to the day being asked about, so a respondent
-who drops it must actually lose it. Ownership by option contents would leave it
-claimed by nothing and stuck in the pool forever.
+All availability questions in a submission are unioned (selections and tracks) before a single write, so one question's removals can't undo another's additions. Availability is recomputed from the whole response on `PATCH`, since the diff is idempotent.
 
-Two consequences:
+### Track statuses are scoped by patched field
 
-- An `availability_{date}` question's options may only reference shifts on that
-  date. A stray shift from another day would be added by one question and
-  removed by that day's own question, order deciding the winner; it's rejected
-  at validation instead.
-- Several availability questions in one submission are unioned — both their
-  selections and the days they cover — before a single write. Applied one at a
-  time, a later question's removals could undo an earlier one's additions where
-  their days overlap.
+Track statuses only ever upsert, guarded by the transition rule in `track-status-rules.md`. On `PATCH`, only the patched fields write track statuses; replaying an untouched field would re-assert a status the respondent didn't touch. Provenance (`source_response_id`, `source_field_id`) is recorded for debugging and isn't used for ordering.
 
-**Rows already written stay, by design.** Moving a question away from a preset
-does not remove what it previously wrote to `MembershipAvailability` or track
-statuses. Those tables are shared — multiple questions, across multiple forms,
-contribute to the same rows, so no single field owns any of them and none can
-be safely withdrawn. Lunch and event preference are the exception: each is
-keyed by a value only one field can ever produce — (membership, category) for
-lunch, (membership, suffix) for event preference — so each has a single owner
-and can be deleted.
+### Cleanup on invalidate
 
-Cleanup on **Invalidate**:
-
-| Target | Rule |
+| Table | Rule |
 |---|---|
-| `TournamentMembershipLunch` | keyed by (membership, category) — delete the field's rows |
-| `TournamentMembershipEventPreference` | keyed by (membership, suffix) — delete the field's rows |
-| `MembershipAvailability` | **never deleted.** Another question may cover the same day, and the invalidated field's own contribution can't be separated from theirs after the fact. |
-| Track statuses | **never deleted.** A track's state may have been set by a later form; removing this field's contribution can't be done without replay. |
+| `TournamentMembershipLunch` | Deleted for the field. Keyed by (membership, track, category), so the field is the only writer. |
+| `TournamentMembershipEventPreference` | Deleted for the field. One question per track, so the field is the only writer. |
+| `TournamentMembershipAvailability` | **Kept.** Other questions may cover the same track, and this field's share can't be separated out. |
+| `TournamentMembershipTrackStatus` | **Kept.** A later form may have set the status; removing this field's contribution would need a replay. |
 
-A blanket "reset all availability" is a separate, explicit TD action, not a
-side effect of editing one field. It should stay rare — re-collecting form
-responses is expensive in practice.
+Editing a field never resets availability wholesale. If that's ever needed, it should be its own explicit TD action.
 
-## Storage
-
-- `FormAnswer` records `field_id`, the selected `option_id`(s), the
-  `{option_id, value, label}` snapshot, and the `question_type` / `field_key`
-  the answer was given under.
-- `field_key` is unique among **live** fields within a tournament. Archived
-  fields do not reserve their keys, and may share a key with a live field.
-
-### `FormResponsePendingUpdate`
+## `FormResponsePendingUpdate`
 
 | Column | Notes |
 |---|---|
 | `response_id` | the flagged response |
-| `field_id` | the field to answer to clear it. Never `field_key` — a key is a TD-editable name, so keying history on it strands the flag the moment the question is renamed. |
-| `reasons` | set of the `reason` values above; unioned when several apply |
-| `created_at` | display and ordering ("flagged 3 days ago") |
+| `field_id` | the field to answer to clear it; never `field_key`, which the TD can rename |
+| `reasons` | set of `reason` values |
+| `created_at` | display and ordering |
 
-Unique on `(response_id, field_id)`.
-
-`field_id` points at the field the respondent can *act on*, which is not
-always the field they originally answered — where a question is replaced
-rather than edited, the flag follows the successor.
-
-A row is cleared when that field is patched, and deleted outright when the
-field is archived or invalidated.
-
-## Track status ordering
-
-Track statuses live in `TournamentMembershipTrackStatus`, one row per
-(membership, track). Write-through **only ever upserts** — the rows are shared
-across questions and forms, so no field owns one and none can withdraw its
-contribution.
-
-Ordering is enforced by a transition rule rather than by comparing submission
-times, because the only damage an out-of-order write can do *is* a demotion:
-
-| stored → incoming | `interested` | `confirmed` | `declined` |
-|---|---|---|---|
-| *(unset)* | ✓ | ✓ | ✓ |
-| `interested` | ✓ | ✓ | ✓ |
-| `confirmed` | ✗ | ✓ | ✓ |
-| `declined` | ✗ | ✓ | ✓ |
-
-In one sentence: **a track never falls back to `interested` once it's moved
-past it.** `declined → confirmed` stays open so someone who changes their mind
-can commit without TD intervention. A refused write is skipped silently, not
-rejected — it's a legitimate outcome of the rules, not a client error.
-
-Three structural rules still apply, and the transition rule closes what they
-left open:
-
-1. **Forward-only write-through** — historical answers are never replayed.
-2. **Locked responses** — a respondent can only edit questions the TD flagged.
-3. **Patch-scoped write-through** — `PATCH` writes track statuses only for the
-   fields it actually carried. Unlike availability, there's no idempotent diff
-   to fall back on, so replaying an unpatched field would re-assert a status
-   the respondent didn't touch on this request. Availability keeps its
-   whole-response recompute; the two scopes deliberately differ.
-
-The exposure this used to name — a TD flagging a track question on an *older*
-form, whose answer then demotes a newer form's status — is closed by the table
-above, with no notion of "which response is newer" needed.
-
-**Cost:** no form can walk a mistaken `confirmed` back down to `interested`.
-Correcting that needs a path that bypasses the guard; the planned member
-self-edit of their own membership is one, and `confirmed → declined` is
-already allowed without it.
-
-### Which field wins
-
-Two questions in one submission can name the same track. Field order in the
-form decides intent — later fields overwrite earlier ones — and the transition
-rule then decides whether that intent lands. Within a single
-`multi_select_checkbox`, validation already rejects two options assigning one
-track conflicting statuses, so only the cross-field case needs a rule.
-
-Provenance (`source_response_id`, `source_field_id`) is recorded for debugging
-only. It is not load-bearing: the transition rule, not the history, is what
-keeps writes ordered. A NULL `source_response_id` means the status did not come
-from a form.
-
-## Out of scope
-
-A TD editing another user's response. Responses are locked to flagged fields
-and there is no TD override.
+Unique on `(response_id, field_id)`. A row clears when the field is patched and is deleted when the field is archived or invalidated.
