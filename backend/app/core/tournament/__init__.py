@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import TypedDict
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, status
@@ -57,7 +58,12 @@ def tournament_display_name(tournament: Tournament) -> str:
     return f"{tournament.first_day.year} {label}" if tournament.first_day else label
 
 
-def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, dict[str, int]]:
+class TournamentCounts(TypedDict):
+    event_count: int
+    volunteer_count: int
+
+
+def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, TournamentCounts]:
     """{tournament_id: {"event_count": n, "volunteer_count": n}} for the ids given.
 
     Two grouped queries for the whole list, not per row. The obvious
@@ -68,7 +74,7 @@ def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, d
     Ids with nothing to count are still present, at zero: a caller building a
     response shouldn't have to distinguish "no events" from "not in the dict".
     """
-    counts: dict[int, dict[str, int]] = {
+    counts: dict[int, TournamentCounts] = {
         tid: {"event_count": 0, "volunteer_count": 0} for tid in tournament_ids
     }
     if not counts:
