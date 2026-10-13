@@ -1,49 +1,36 @@
 # Audit log conventions
 
-Pulled from `backend/app/core/tournament/audit.py` and every `log_action()`
-call site — ground truth, not aspirational.
+The tournament audit log records who did what, to what, and when. Actions are defined in `app/core/tournament/audit.py` and written with `log_action()`.
 
-## Naming
+## Writing an entry
 
-- `action`: snake_case, `{noun}_{past-participle}` (e.g. `role_created`,
-  `join_code_deactivated`, `staff_invite_sent`). Always a named constant in
-  `audit.py`, never an inline string literal at the call site.
-- `target_type`: singular snake_case noun matching the primary model the
-  action affects — `"role"`, `"join_code"`, `"tournament"`.
+- **`action`** is snake_case `{noun}_{past_participle}` (`role_created`, `join_code_deactivated`). Define it as a constant in `audit.py`; never pass an inline string.
+- **`target_type`** is the singular snake_case name of the affected model (`"role"`, `"track"`, `"tournament"`).
+- **`target_id`** is the affected row's id. Leave it `None` when the action touches several rows, and list them in `extra_data` instead.
+- **`extra_data`** is a dict of whatever the action name and target don't already say, or `None` when there's nothing to add.
+- `log_action()` never commits. Call it before the route's own `db.commit()`, so the entry is written in the same transaction as the action.
 
-## `target_id`
+Adding an action means adding it to `ALL_ACTIONS` in `audit.py`, and to `ALL_AUDIT_ACTIONS`, `ACTION_LABELS` and `DESCRIBERS` in `frontend/lib/auditLog.tsx`. The two lists are kept in sync by hand.
 
-- Set to the specific row's id when the action affects **one** row.
-- Omitted (`None`) when the action affects **multiple** rows at once — the
-  bulk role-reorder route logs one entry with `target_type="role"` and no
-  `target_id`, listing every affected role inside `extra_data` instead.
+## `extra_data` by action
 
-## `extra_data`
+Shapes differ between actions, and sometimes between variants of one action. Check this table rather than copying a neighboring action.
 
-- A dict, included whenever there's something worth recording beyond the
-  target itself.
-- Can be omitted (`None`) entirely when the action name alone is
-  self-explanatory — `tournament_archived`/`tournament_unarchived` log with
-  no `extra_data` at all.
-- `log_action()` never commits itself — every call site invokes it before
-  the route's own `db.commit()`, so the log entry lands in the same
-  transaction as the action it describes.
-
-## `extra_data` shapes by action
-
-| action | extra_data |
+| action | `extra_data` |
 |---|---|
 | `role_created` | `{"label": str, "rank": int, "permissions": [str]}` |
-| `role_updated` (single-role `PATCH`) | `{"changes": [{"field": str, "old": any, "new": any}, ...]}` — a **list**. `permissions` changes are special-cased to `{"field": "permissions", "added": [str], "removed": [str]}` instead of raw old/new arrays. |
-| `role_updated` (bulk reorder, `PATCH .../reorder-bulk/`) | `{"bulk_reorder": {"before": [{"role_id": int, "label": str, "rank": int}, ...], "after": [...same...]}}` — **a different shape under the same action name.** Full snapshot of *every* role in the tournament (rank-ordered) on both sides, not just the moved ones, so unmoved roles act as anchors in the rendered diff. Logged only when at least one rank actually changed. No `target_id` on this variant. Entries written before this change use the legacy delta shape: `bulk_reorder` as a **list** of `{"role_id", "label", "old", "new"}` for changed roles only. |
+| `role_updated` (single role) | `{"changes": [{"field": str, "old": any, "new": any}]}`. A `permissions` change is recorded as `{"field": "permissions", "added": [str], "removed": [str]}` instead. |
+| `role_updated` (bulk reorder) | `{"bulk_reorder": {"before": [{"role_id": int, "label": str, "rank": int}], "after": [...]}}`. Both sides list every role in the tournament, so unmoved roles anchor the diff. Logged only when a rank changed, and with no `target_id`. Older entries used `{"bulk_reorder": [{"role_id", "label", "old", "new"}]}`, listing changed roles only. |
 | `role_deleted` | `{"label": str, "rank": int, "members_affected": int}` |
 | `join_code_created` | `{"code": str, "label": str \| null, "expires_in_hours": int \| null, "expires_at": str \| null}` |
-| `join_code_updated` | `{"changes": {"label": {"old","new"}}, "add_hours": int, "expires_at": {"old","new"}}` — present only for whichever fields changed. |
+| `join_code_updated` | Any of `{"changes": {"label": {"old", "new"}}, "add_hours": int, "expires_at": {"old", "new"}}`, only for what changed |
 | `join_code_deactivated` | `{"code": str}` |
-| `staff_invite_sent` | `{"emails": [str], "join_code": str, "failed": [str]}` — `failed` key **omitted entirely** when nothing failed, not present-as-empty. |
+| `staff_invite_sent` | `{"emails": [str], "join_code": str, "failed": [str]}`. `failed` is left out entirely when nothing failed. |
 | `tournament_verified` | `{"is_verified": bool}` |
-| `tournament_archived` | none (`extra_data=None`) — except the daily auto-archive job, which logs `{"auto_archived": true}` to distinguish itself from a manual archive. |
-| `tournament_unarchived` | none (`extra_data=None`) |
-| `ownership_transferred` | `{"old": {"id": int | null, "name": str}, "new": {"id": int, "name": str}}` |
-| `form_response_deleted` | `{"form_id": str, "form_name": str, "respondent_name": str}` — `target_type="membership"`, `target_id` the respondent's membership. Chapter forms aren't logged (no tournament log to write to). |
-
+| `tournament_archived` | `None` when archived by hand. The daily auto-archive job logs `{"auto_archived": true}`. |
+| `tournament_unarchived` | `None` |
+| `ownership_transferred` | `{"old": {"id": int \| null, "name": str}, "new": {"id": int, "name": str}}` |
+| `track_delete_pending` | `{"name": str, "blocked_by": [str]}` when shifts, events or form fields still point at the track. A track with no blockers is deleted at once and logs `{"name": str, "blocked_by": [], "purged_immediately": true}`. |
+| `track_delete_cancelled` | `{"name": str}` |
+| `track_purged` | `{"name": str, "member_rows_deleted": int}`. Logged when the last blocker on a pending track is removed, as a side effect of that edit. |
+| `form_response_deleted` | `{"form_id": str, "form_name": str, "respondent_name": str}`, with `target_type="membership"`. Chapter forms aren't logged because chapters have no audit log. |

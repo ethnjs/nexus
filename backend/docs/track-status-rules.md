@@ -1,109 +1,59 @@
 # Track status rules
 
-A member's status on a track is one of `interested`, `confirmed`, `declined` —
-plus the synthetic `pending`, which is not stored. `pending` is what
-`build_track_statuses` pads in for a track the member has no row for at all,
-so a coordinator can tell "hasn't answered" apart from "this track doesn't
-exist". It is never accepted on a write.
+A member's status on a track is `interested`, `confirmed` or `declined`, stored as one `TournamentMembershipTrackStatus` row per (membership, track). Reads also show a synthetic `pending` for a track with no row (`build_track_statuses`), so coordinators can tell "hasn't answered" from "doesn't apply". `pending` is never accepted on a write.
 
-Two writers reach these rows, and they follow **different** rules. That is the
-whole point of this document: the difference is deliberate, and collapsing the
-two would break one of them.
+Two writers change these rows, and **their rules differ on purpose**. Collapsing them into one would break one of them.
 
----
+## Form write-through
 
-## Writer 1 — form write-through (`can_set_track_status`)
+Applies when a form response sets a status, through a `track_status_{suffix}` question or an `availability_{track}` question with `track_status_enabled`. Rows are only ever upserted, never deleted.
 
-Applies when a form response sets a status, via a `track_status_{suffix}`
-question or an `availability_{track}` question that opted in with
-`config.track_status_enabled`.
+**The rule: `confirmed` never falls back to `interested`** (`can_set_track_status`).
 
-**The whole rule: `confirmed` never falls back to `interested`.** Everything
-else is permitted — `interested → confirmed`, either → `declined`,
-`declined → confirmed` *or* `→ interested` for someone who changes their mind,
-and any status rewritten as itself.
+| stored → incoming | `interested` | `confirmed` | `declined` |
+|---|---|---|---|
+| none | ✓ | ✓ | ✓ |
+| `interested` | ✓ | ✓ | ✓ |
+| `confirmed` | ✗ | ✓ | ✓ |
+| `declined` | ✓ | ✓ | ✓ |
 
-`declined` is deliberately not a floor. A member who opts out on their own page
-and then fills in a form saying they're interested is giving newer information
-about the same question, and treating the opt-out as final made that form
-silently do nothing. Re-entry from `declined` was already allowed for
-`confirmed`; `interested` was the odd one out, and a declined track has no
-ordering left to protect.
+This keeps statuses ordered without comparing submission times. A TD can flag a track question on an *older* form, and the respondent's patch to it could otherwise demote a track a newer form already confirmed. A demotion is the only damage an out-of-order write can do, so refusing it closes the hole.
 
-This is what keeps statuses ordered, in place of comparing submission times.
-Write-through runs forward, but a TD can raise a pending update on a track
-question in an *older* form, and that patch would otherwise demote a track a
-newer form already confirmed. Since the only damage an out-of-order write can
-do is a demotion, refusing demotions closes the hole without any notion of
-"which response is newer".
+`declined` is deliberately not a floor. A member who opts out on their own page and later tells a form they're interested is giving newer information, and treating the opt-out as final made that form silently do nothing.
 
-The cost is that no form can walk a mistaken `confirmed` back down to
-`interested`. That needs a path which bypasses this guard — which is the next
-writer.
+A refused write is **skipped silently**, not raised. It's a legitimate outcome of the rules, not a client error worth failing a submission over.
 
-A write the rule refuses is **skipped silently**, not raised. It is a
-legitimate outcome of the rules — a respondent answering what they were asked
-— rather than a client error worth failing a whole submission over.
+The cost is that no form can walk a mistaken `confirmed` back to `interested`. The second writer can.
 
----
+## The member's own page
 
-## Writer 2 — the member, on their own page (`_set_track_status`)
+Applies to `PUT /tournaments/{id}/members/me/track-statuses/{track_id}/` and the `status` field of `PUT /tournaments/{id}/members/me/availability/{track_id}/` (`_set_track_status`).
 
-Applies to `PUT /members/me/track-statuses/{track_id}/` and to the `status`
-field on `PUT /members/me/availability/{track_id}/`.
+Two gates come first, for every self-service write on the track (availability, lunch and event preferences as well as status):
 
-Two gates come before the table below, and apply to every self-service write
-on the track (availability, lunch, and event preferences as well as status):
+- **The track isn't locked** (`lock_responses`, checked by `require_track_unlocked`). This includes declining.
+- **The member has already answered** (`require_track_answered`): a status row must exist, and only form write-through creates one. The first answer always goes through a form, where the questions have context, so `pending` is never a starting point here.
 
-- **The track must not be locked** (`lock_responses`, `require_track_unlocked`).
-  Declining included — see the model.
-- **The member must already have answered** (`require_track_answered`): a
-  status row has to exist, and only a form's write-through creates one. The
-  first answer on a track always goes through a form, where the questions sit
-  in context; this page is for changing it afterwards. So `pending` is never
-  a starting point here.
+When both fail, the lock is reported, since answering the form wouldn't help. A track pending deletion returns 409.
 
-When both fail, the lock is what's reported — answering the form wouldn't help.
-
-| status | allowed when |
+| Status | Allowed when |
 |---|---|
-| `declined` | **always** — opting out is the member's own call, on any track |
-| `confirmed` | only when the track's `allow_confirm` is on |
-| `interested` | only when `allow_confirm` is **off** |
+| `declined` | always |
+| `confirmed` | the track's `allow_confirm` is on |
+| `interested` | the track's `allow_confirm` is off |
 
-The reasoning behind each:
+- **Declining is always allowed.** Withdrawing is the volunteer's call and information the TD needs.
+- **Confirming needs `allow_confirm`.** On most tracks `confirmed` means the TD staffed them. `allow_confirm` is the TD saying self-confirming means the same thing on this track.
+- **`interested` needs `allow_confirm` off.** It's the way back in for a member who can't confirm themselves. With self-confirm on, `declined → confirmed` is available directly, so the middle state is rejected.
 
-- **`declined` is unconditional.** A volunteer withdrawing is information the
-  TD needs, and nothing about a track can make it not their decision.
-
-- **`confirmed` needs `allow_confirm`.** On most tracks `confirmed` means *the
-  TD staffed them*, and only the TD knows when that is true. `allow_confirm`
-  is the TD saying "on this track, confirming yourself is the same thing".
-
-- **`interested` requires `allow_confirm` to be off**, which reads backwards
-  until you see what it is for: it is the way back in for a member who cannot
-  confirm themselves. With self-confirm *on*, `declined → confirmed` is
-  available directly and the middle state would be a step to nowhere, so it is
-  rejected rather than silently allowed.
-
-**Walking `confirmed` back down to `interested` is what write-through
-refuses**, and that is the intended difference. That guard exists to stop a *stale form write*
-from demoting a track a newer form already advanced. A member acting on their
-own page is neither stale nor out of order — and without this exception, a
-mistaken "Not available" click would be a one-way door.
-
-An archived (pending-delete) track rejects both writers with a 409. The rows
-are about to be cascaded away; inviting an answer would be inviting the member
-to act on something that is already leaving.
-
----
+**Walking `confirmed` back to `interested` is allowed here** (when `allow_confirm` is off), which is exactly what write-through refuses. That guard stops stale form writes; a member acting on their own page is neither stale nor out of order, and without this a mistaken "Not available" click would be a one-way door.
 
 ## Where this lives
 
-| | |
+| Rule | Code |
 |---|---|
-| the monotonic rule | `app/core/form/write_through.py` — `can_set_track_status` |
-| the self-service rule | `app/api/routes/tournament/memberships.py` — `_set_track_status` |
-| the lock and first-answer gates | `app/core/tournament/tracks.py` — `require_track_unlocked`, `require_track_answered` |
-| `pending` padding | `app/core/tournament/memberships.py` — `build_track_statuses` |
-| the `allow_confirm` flag | `TournamentTrack.allow_confirm`, surfaced on `MembershipTrackStatusRead` so the member page can tell whether to offer a Confirm control at all |
+| Write-through transition rule | `app/core/form/write_through.py`: `can_set_track_status`, `sync_track_statuses` |
+| Self-service rule | `app/api/routes/tournament/memberships.py`: `_set_track_status` |
+| Lock and first-answer gates | `app/core/tournament/tracks.py`: `require_track_unlocked`, `require_track_answered` |
+| `pending` padding | `app/core/tournament/memberships.py`: `build_track_statuses` |
+| `allow_confirm` | `TournamentTrack.allow_confirm`, exposed on `MembershipTrackStatusRead` so the member page knows whether to offer Confirm |
