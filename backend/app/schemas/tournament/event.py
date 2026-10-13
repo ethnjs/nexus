@@ -114,7 +114,7 @@ class EventTrackDetailRead(EventTrackDetail):
     already spells out in full."""
 
     building_name: str | None = None
-    needs: list[EventStaffingNeedRead] = []
+    needs: list[EventStaffingNeedRead] = []  # ty: ignore[invalid-attribute-override]
 
     @classmethod
     def from_row(cls, detail) -> EventTrackDetailRead:
