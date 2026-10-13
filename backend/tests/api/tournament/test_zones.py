@@ -155,7 +155,7 @@ def test_moving_an_event_changes_contents_with_no_zone_edit(
     steinhaus = _building(client, td_tournament.id, [track], name="Steinhaus")
     anatomy = _event(client, td_tournament.id, track, "Anatomy", rowland["id"], "2")
 
-    north = _zone(
+    _zone(
         client,
         td_tournament.id,
         track,
@@ -163,8 +163,8 @@ def test_moving_an_event_changes_contents_with_no_zone_edit(
         members=[
             {"kind": "building", "building_id": rowland["id"]},
         ],
-    ).json()
-    south = _zone(
+    )
+    _zone(
         client,
         td_tournament.id,
         track,
@@ -172,7 +172,7 @@ def test_moving_an_event_changes_contents_with_no_zone_edit(
         members=[
             {"kind": "building", "building_id": steinhaus["id"]},
         ],
-    ).json()
+    )
     assert _coverage(client, td_tournament.id, track)["zones"][0]["event_ids"] == [anatomy["id"]]
 
     client.patch(
