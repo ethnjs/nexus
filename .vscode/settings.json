@@ -11,6 +11,8 @@
   ],
   // ty only reads config from the workspace root, and the backend's lives in backend/.
   "ty.configurationFile": "backend/ty.toml",
+  // Match CI: a signature change can break files that aren't open.
+  "ty.diagnosticMode": "workspace",
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
   }
