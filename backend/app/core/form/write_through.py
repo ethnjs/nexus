@@ -32,19 +32,24 @@ def parse_lunch_field_key(field_key: str) -> tuple[int, str]:
     """Splits a `lunch_{track_id}_{category}` field_key (already known to
     match LUNCH_FIELD_KEY_PATTERN) into its track and category parts."""
     match = LUNCH_FIELD_KEY_PATTERN.match(field_key)
+    assert match is not None
     return int(match.group(1)), match.group(2)
 
 
 def parse_availability_field_key(field_key: str) -> int:
     """The track an `availability_{track_id}` field covers (already known to
     match AVAILABILITY_FIELD_KEY_PATTERN)."""
-    return int(AVAILABILITY_FIELD_KEY_PATTERN.match(field_key).group(1))
+    match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
+    assert match is not None
+    return int(match.group(1))
 
 
 def parse_event_preference_field_key(field_key: str) -> int:
     """The track an `event_preference_{track_id}` field covers (already known
     to match EVENT_PREFERENCE_FIELD_KEY_PATTERN)."""
-    return int(EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key).group(1))
+    match = EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key)
+    assert match is not None
+    return int(match.group(1))
 
 
 def shift_ids_on_tracks(db: Session, tournament_id: int, track_ids: set[int]) -> set[int]:

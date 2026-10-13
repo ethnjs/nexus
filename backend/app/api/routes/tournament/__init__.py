@@ -80,7 +80,7 @@ def list_my_tournaments(
         .all()
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
-    return [TournamentSummary(**_serialize(t), **counts[t.id]) for t in tournaments]
+    return [TournamentSummary(**counts[t.id], **_serialize(t)) for t in tournaments]
 
 
 # ---------------------------------------------------------------------------

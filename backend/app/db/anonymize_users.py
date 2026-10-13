@@ -17,6 +17,7 @@ import argparse
 import sys
 
 from sqlalchemy import String, case, cast, func, text, true, update
+from sqlalchemy.engine import CursorResult
 
 from app.core.config import get_settings
 
@@ -92,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             .execution_options(synchronize_session=False)
         )
+        assert isinstance(result, CursorResult)
         print(f"users scrubbed : {result.rowcount}")
 
         # Prod sessions and pending reset/verify tokens mean nothing here, and

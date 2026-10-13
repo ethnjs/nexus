@@ -42,7 +42,7 @@ def list_all_tournaments(
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
     return [
-        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id]) for t in tournaments
+        AdminTournamentRead(**counts[t.id], **_serialize(t), owner=t.owner) for t in tournaments
     ]
 
 

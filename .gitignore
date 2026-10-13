@@ -1,5 +1,7 @@
-# IDE
-.vscode/
+# IDE (shared VS Code settings are committed)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 
 # Claude (personal files; CLAUDE.md and .claude/rules/ are shared)

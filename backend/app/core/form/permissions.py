@@ -30,6 +30,7 @@ def require_form_not_archived(form: Form) -> None:
     into the dependencies because they also gate reads, and an archived
     tournament's forms stay readable. Chapter forms have nothing to freeze with."""
     if form.owner_type == "tournament":
+        assert form.tournament is not None
         require_not_archived(form.tournament)
 
 
@@ -44,6 +45,7 @@ def require_form_manage_access(
     form = _load_form_or_404(form_id, db)
 
     if form.owner_type == "tournament":
+        assert form.tournament_id is not None
         if not has_any_membership(current_user, form.tournament_id, db):
             # 404 to avoid leaking tournament existence, matching require_permission()
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
@@ -52,6 +54,7 @@ def require_form_manage_access(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
             )
     else:
+        assert form.chapter_id is not None
         require_officer_or_lead(form.chapter_id, db, current_user)
 
     return form
@@ -68,6 +71,7 @@ def require_form_view_access(
     form = _load_form_or_404(form_id, db)
 
     if form.owner_type == "tournament":
+        assert form.tournament_id is not None
         if not has_any_membership(current_user, form.tournament_id, db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"

@@ -317,7 +317,9 @@ class TestReadSchema:
         row = _assign(db, event, mr, shift)
         db.commit()
 
-        assert "event_count" not in AssignmentRead.from_row(row).shift.model_dump()
+        nested = AssignmentRead.from_row(row).shift
+        assert nested is not None
+        assert "event_count" not in nested.model_dump()
 
     def test_event_name_resolves_through_the_catalog_row(
         self, db, td_tournament, other_user, event_factory, event_category

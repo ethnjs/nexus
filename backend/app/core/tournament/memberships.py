@@ -92,7 +92,7 @@ def resolve_person_refs(
         )
         .all()
     )
-    resolved: dict[int, PersonRefResponse] = {
+    resolved: dict[int | None, PersonRefResponse] = {
         m.user_id: PersonRefResponse(
             user_id=m.user_id,
             membership_id=m.id,

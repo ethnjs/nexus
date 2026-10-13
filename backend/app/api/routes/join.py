@@ -83,6 +83,7 @@ def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTou
 
 def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapter:
     # Chapter invites aren't built yet — target_id is all there is to preview.
+    assert join_code.chapter_id is not None
     return JoinPreviewChapter(target_id=join_code.chapter_id)
 
 

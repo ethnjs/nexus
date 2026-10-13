@@ -10,7 +10,6 @@ from __future__ import annotations
 import secrets
 import string
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -21,18 +20,12 @@ AMBIGUOUS_CHARS = set("0O1Il")
 ALLOWED_CHARS = "".join(c for c in string.ascii_letters + string.digits if c not in AMBIGUOUS_CHARS)
 
 
-class JoinCodeLike(Protocol):
-    code: str
-    is_active: bool
-    expires_at: datetime | None
-
-
 def generate_join_code(length: int = 8) -> str:
     """Cryptographically secure random alphanumeric code, ambiguous characters excluded."""
     return "".join(secrets.choice(ALLOWED_CHARS) for _ in range(length))
 
 
-def is_join_code_expired(join_code: JoinCodeLike) -> bool:
+def is_join_code_expired(join_code: JoinCode) -> bool:
     """Return whether a join code has passed its optional expiration time."""
     if join_code.expires_at is None:
         return False
@@ -55,9 +48,7 @@ def get_unique_join_code(db: Session, max_retries: int = 10) -> str:
     )
 
 
-def apply_join_code_update(
-    join_code: JoinCodeLike, label: str | None, add_hours: int | None
-) -> None:
+def apply_join_code_update(join_code: JoinCode, label: str | None, add_hours: int | None) -> None:
     """
     Apply a label change and/or extend expiry by `add_hours`. Extension is
     cumulative from the code's current expires_at (or from now, if the code
@@ -73,7 +64,7 @@ def apply_join_code_update(
         join_code.expires_at = base + timedelta(hours=add_hours)
 
 
-def deactivate_join_code(join_code: JoinCodeLike) -> None:
+def deactivate_join_code(join_code: JoinCode) -> None:
     """Deactivate a join code. One-way — 400 if it's already inactive."""
     if not join_code.is_active:
         raise HTTPException(

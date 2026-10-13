@@ -33,7 +33,7 @@ def get_scoped_or_404[T](
     are indistinguishable to the caller, which also prevents cross-tournament
     ID probing. Shared by every {event,join-code,membership,role} lookup.
     """
-    obj = db.query(model).filter(model.id == id_).first()
+    obj = db.get(model, id_)
     if not obj or getattr(obj, "tournament_id", None) != tournament_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
     return obj

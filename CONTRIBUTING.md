@@ -55,7 +55,7 @@ git config core.hooksPath .githooks
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
-- **pre-commit** lints and formats staged backend files with Ruff, applying safe fixes. CI runs the same checks. To run them by hand from `backend/`: `uv run ruff check --fix` and `uv run ruff format`.
+- **pre-commit** lints and formats staged backend files with Ruff, applying safe fixes, then type-checks the staged backend with [ty](https://docs.astral.sh/ty/). CI runs the same checks. To run them by hand from `backend/`: `uv run ruff check --fix`, `uv run ruff format` and `uv run ty check`. In VS Code, install the recommended ty and Ruff extensions; `.vscode/settings.json` points both at the versions in `backend/.venv` and makes Ruff the Python formatter. The ty extension replaces Pylance's language server.
 - **post-checkout** gives each git worktree its own database (`scripts/setup-worktree-db.sh`), so branches with different migrations don't collide. The main checkout keeps the default `nexus` database.
 
 ### Tests
@@ -67,7 +67,7 @@ uv run pytest tests/api/test_forms.py   # one file
 uv run pytest                           # everything (about 15 minutes)
 ```
 
-Tests run against `nexus_test`. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff and the full suite on every PR that touches `backend/`.
+Tests run against `nexus_test`. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff, ty and the full suite on every PR that touches `backend/`.
 
 The frontend has no test suite. Check UI changes by clicking through them in a browser, and run `pnpm lint` and `pnpm exec tsc --noEmit`.
 

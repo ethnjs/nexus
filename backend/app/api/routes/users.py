@@ -244,6 +244,7 @@ def get_me(
             .filter(User.id == current_user.id)
             .first()
         )
+        assert user is not None
         response = UserMeFullResponse.model_validate(user, from_attributes=True)
         response.missing_profile_fields = compute_missing_profile_fields(user)
         return response

@@ -1,13 +1,14 @@
-name: Backend Tests
+name: Backend CI
 
 on:
   pull_request:
     branches: [staging, main]
     paths:
       - "backend/**"
+      - ".github/workflows/backend.yml"
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     services:
@@ -30,7 +31,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -46,6 +47,9 @@ jobs:
         run: |
           uv run ruff check .
           uv run ruff format --check .
+
+      - name: Type check
+        run: uv run ty check
 
       - name: Run pytest
         env:

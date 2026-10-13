@@ -256,6 +256,7 @@ async def request_email_change(
     await send_email_change_requested_notice(db, user.id, user.email, body.new_email)
 
     token_row = get_pending_email_change(db, user.id)
+    assert token_row is not None
     return EmailPendingChangeResponse(
         new_email=token_row.new_email,
         can_resend_at=token_row.created_at + RATE_LIMIT_WINDOW,
@@ -278,6 +279,7 @@ def confirm_email_change(token: str, db: Session = Depends(get_db)):
     token_row = consume_verification_token(db, token, "email_change")
     if token_row is None:
         raise HTTPException(400, "Invalid or expired token")
+    assert token_row.new_email is not None
 
     user = find_user_by_id(db, token_row.user_id)
 
@@ -318,6 +320,7 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
 
     user = find_user_by_id(db, token_row.user_id)
     original_email = token_row.new_email  # reused column — see VerificationToken.new_email comment
+    assert original_email is not None
 
     now = datetime.now(UTC)
 

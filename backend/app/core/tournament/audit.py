@@ -54,7 +54,7 @@ ALL_ACTIONS: list[str] = [
 def log_action(
     db: Session,
     tournament_id: int,
-    actor_id: int,
+    actor_id: int | None,
     action: str,
     target_type: str | None = None,
     target_id: int | None = None,

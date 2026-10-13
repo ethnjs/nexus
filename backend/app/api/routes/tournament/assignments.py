@@ -211,6 +211,8 @@ def update_assignment(
         assignment.role_id = role.id
 
     if "tournament_shift_id" in payload.model_fields_set:
+        # _scoped_assignment inner-joins the event, so this is never None.
+        assert assignment.tournament_event is not None
         shift = validate_shift_on_event(
             db,
             assignment.tournament_event,

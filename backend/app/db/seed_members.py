@@ -202,13 +202,6 @@ STUDENT_STATUSES = ["Undergraduate", "Graduate", "Non-Student"]
 STUDENT_STATUS_WEIGHTS = [13, 5, 3]
 
 
-class FakeUser:
-    """`_write_through_reserved_fields` only reads `.id` off `current_user`."""
-
-    def __init__(self, user_id: int) -> None:
-        self.id = user_id
-
-
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
@@ -371,7 +364,7 @@ def submit_response(db: Session, form, membership, answers_by_field: dict, activ
     ]
     _store_answers(db, response, {f.id: f for f in active_fields}, payload)
     _write_through_reserved_fields(
-        db, form, active_fields, answers_by_field, FakeUser(membership.user_id), response
+        db, form, active_fields, answers_by_field, membership.user, response
     )
     return response
 

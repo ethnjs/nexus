@@ -17,7 +17,7 @@ Setup, the release process and PR conventions for humans are in `CONTRIBUTING.md
 
 ## Running tests
 
-Backend tests are slow: one API test file takes about 100 seconds, and the full suite about 15 minutes. A whole directory like `tests/api/tournament/` takes nearly as long as the full suite. CI runs Ruff and the full suite on every backend PR.
+Backend tests are slow: one API test file takes about 100 seconds, and the full suite about 15 minutes. A whole directory like `tests/api/tournament/` takes nearly as long as the full suite. CI runs Ruff, ty and the full suite on every backend PR.
 
 - **Scope:** run the test files your change touches. In a multi-step task, write tests as you go and run them once the steps are done, not after each step. Run the full suite, a whole directory, or `tests/test_migrations.py` (which builds a scratch database from every migration) only once, at the end, as a final check.
 - **Run in the background** (`run_in_background: true` on the Bash/PowerShell call) for anything longer than re-running a single test while debugging, and keep working meanwhile.

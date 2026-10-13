@@ -103,7 +103,8 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     return the normalized dict (unknown keys stripped, values coerced).
     Raises FormFieldValidationError on any mismatch."""
     schema_cls = QUESTION_TYPE_CONFIG_SCHEMAS.get(question_type)
-    _require(schema_cls is not None, f"unknown question_type '{question_type}'")
+    if schema_cls is None:
+        raise FormFieldValidationError(f"unknown question_type '{question_type}'")
 
     try:
         parsed = schema_cls.model_validate(config or {})
