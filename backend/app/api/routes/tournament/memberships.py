@@ -728,8 +728,8 @@ def update_my_event_preferences(
         )
 
     if field.question_type == "ranked_choice":
-        ranks = [sel.rank for sel in payload.selections]
-        if any(rank is None for rank in ranks):
+        ranks = [sel.rank for sel in payload.selections if sel.rank is not None]
+        if len(ranks) < len(payload.selections):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Every selection on a ranked question needs a rank",

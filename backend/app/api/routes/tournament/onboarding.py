@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.routes.forms import _to_list_read
@@ -122,13 +123,12 @@ def add_onboarding_form(
         )
 
     max_order = (
-        db.query(TournamentForm.order)
+        db.query(func.max(TournamentForm.order))
         .filter(TournamentForm.tournament_id == tournament_id, TournamentForm.is_onboarding == True)
-        .order_by(TournamentForm.order.desc())
-        .first()
+        .scalar()
     )
     tf.is_onboarding = True
-    tf.order = (max_order[0] if max_order else 0) + 1
+    tf.order = (max_order or 0) + 1
     recompute_onboarding(db, tournament_id)
 
     db.commit()
@@ -182,7 +182,9 @@ def reorder_onboarding_forms(
 
     db.commit()
     creators = resolve_person_refs(db, tournament_id, {r.form.created_by for r in rows})
-    ordered = sorted(rows_by_form_id.values(), key=lambda r: r.order)
+    ordered = [
+        rows_by_form_id[item.form_id] for item in sorted(payload.forms, key=lambda i: i.order)
+    ]
     return [_read(r, creators[r.form.created_by]) for r in ordered]
 
 
