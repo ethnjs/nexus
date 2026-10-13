@@ -335,7 +335,7 @@ def _resolve_chapter_creators(
         .filter(ChapterMembership.chapter_id == chapter_id, ChapterMembership.user_id.in_(user_ids))
         .all()
     )
-    resolved: dict[int, PersonRefResponse] = {
+    resolved: dict[int | None, PersonRefResponse] = {
         m.user_id: PersonRefResponse(
             user_id=m.user_id,
             membership_id=m.id,

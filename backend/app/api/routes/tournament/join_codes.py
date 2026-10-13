@@ -39,7 +39,9 @@ from app.services.email_service import send_staff_invite_emails
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
-def _to_response(join_code: JoinCode, creators: dict[int, PersonRefResponse]) -> JoinCodeResponse:
+def _to_response(
+    join_code: JoinCode, creators: dict[int | None, PersonRefResponse]
+) -> JoinCodeResponse:
     return JoinCodeResponse(
         id=join_code.id,
         code=join_code.code,
