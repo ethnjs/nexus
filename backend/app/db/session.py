@@ -5,8 +5,7 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# In CI/test environments DATABASE_URL may be blank — conftest provides its
-# own in-memory engine, so we skip building one here to avoid a crash on import.
+# Tests build their own engine from TEST_DATABASE_URL, so DATABASE_URL may be blank.
 if settings.database_url:
     # SQLite needs this pragma for foreign key enforcement
     # PostgreSQL enforces FKs by default, so this is a no-op there
@@ -30,11 +29,10 @@ if settings.database_url:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
-
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 else:
     engine = None
-    SessionLocal = None
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
@@ -51,7 +49,7 @@ def get_db():
         def my_route(db: Session = Depends(get_db)):
             ...
     """
-    if SessionLocal is None:
+    if engine is None:
         raise RuntimeError("DATABASE_URL is not set")
     db = SessionLocal()
     try:
