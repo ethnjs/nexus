@@ -377,4 +377,8 @@ async def send_staff_invite_emails(
         *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
         return_exceptions=True,
     )
-    return [email for email, result in zip(to_emails, results) if isinstance(result, Exception)]
+    return [
+        email
+        for email, result in zip(to_emails, results, strict=True)
+        if isinstance(result, Exception)
+    ]

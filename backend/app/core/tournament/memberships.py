@@ -568,7 +568,9 @@ def enrich_built_groups(
         return
 
     if wants(requested, ONBOARDING):
-        for response, progress in zip(responses, onboarding_reads(db, tournament.id, memberships)):
+        for response, progress in zip(
+            responses, onboarding_reads(db, tournament.id, memberships), strict=True
+        ):
             response.onboarding = progress
 
     if wants(requested, LUNCH):
@@ -581,7 +583,7 @@ def enrich_built_groups(
             for row in membership.lunch_selections
         }
         types = lunch_question_types(db, tournament.id, keys)
-        for membership, response in zip(memberships, responses):
+        for membership, response in zip(memberships, responses, strict=True):
             response.lunch = build_lunch_rows(membership.lunch_selections, types)
 
     if wants(requested, CUSTOM):
@@ -590,7 +592,7 @@ def enrich_built_groups(
             tournament.id,
             [m.user_id for m in memberships],
         )
-        for membership, response in zip(memberships, responses):
+        for membership, response in zip(memberships, responses, strict=True):
             response.custom_responses = by_user.get(membership.user_id, [])
 
     if wants(requested, EVENT_PREFS):
@@ -598,5 +600,5 @@ def enrich_built_groups(
         # against the form options that produced it, and the reversal is
         # keyed by which questions that member actually answered. No client
         # asks a roster for this today; batch it if one starts.
-        for membership, response in zip(memberships, responses):
+        for membership, response in zip(memberships, responses, strict=True):
             response.event_preferences = build_event_preferences(db, membership)

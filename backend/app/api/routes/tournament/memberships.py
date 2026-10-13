@@ -159,7 +159,7 @@ def _resolve_join_code_creators(
     if not creator_ids:
         return
     creators = resolve_person_refs(db, tournament_id, creator_ids)
-    for m, resp in zip(memberships, responses):
+    for m, resp in zip(memberships, responses, strict=True):
         if m.join_code is not None:
             resp.join_code.creator = creators[m.join_code.created_by]
 
@@ -274,7 +274,7 @@ def list_memberships(
             gate_age_flags(membership, resp.model_dump(mode="json", exclude=exclude)),
             tournament,
         )
-        for membership, resp in zip(memberships, responses)
+        for membership, resp in zip(memberships, responses, strict=True)
     ]
     return JSONResponse(data)
 

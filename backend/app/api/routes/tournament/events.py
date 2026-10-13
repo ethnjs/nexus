@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import pairwise
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -302,7 +304,7 @@ def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
     event once at a time, which is the rule assignments build on. Adjacent
     (end == start) is fine; only strict overlap is rejected."""
     ordered = sorted(shifts, key=lambda s: s.start)
-    for earlier, later in zip(ordered, ordered[1:]):
+    for earlier, later in pairwise(ordered):
         if later.start < earlier.end:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

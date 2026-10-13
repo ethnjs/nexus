@@ -157,7 +157,7 @@ class SheetsService:
         result_dicts: list[dict[str, Any]] = []
         for row in rows:
             padded = row + [""] * (len(headers) - len(row))
-            result_dicts.append(dict(zip(headers, padded)))
+            result_dicts.append(dict(zip(headers, padded, strict=False)))
         return result_dicts
 
     def get_rows_with_headers(
