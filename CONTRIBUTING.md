@@ -31,7 +31,7 @@ In development, startup runs `alembic upgrade head` and seeds these accounts:
 
 API docs are at [localhost:8001/docs](http://localhost:8001/docs) (Swagger) and [localhost:8001/reference](http://localhost:8001/reference) (Scalar). Both are served only when `APP_ENV` is `development` or `preview`. Production serves only the spec at `/openapi.json`, which the docs site renders.
 
-Email (verification, password reset, invites) is sent through Amazon SES and needs `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; `.env.example` lists the other SES settings. Without the keys, development logs each email, including its links, instead of sending it. The seeded accounts don't need it.
+Email (verification, password reset, invites) is sent through Amazon SES and needs `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; `.env.example` lists the other SES settings. Without the keys, development logs each email, including its links, instead of sending it. The seeded accounts don't need it. To see every email as recipients do, see [backend/docs/email-previews.md](backend/docs/email-previews.md).
 
 Add dependencies with `uv add <pkg>`, or `uv add --dev <pkg>` for dev-only tools. Commit `pyproject.toml` and `uv.lock` together, and never edit either one's versions by hand.
 

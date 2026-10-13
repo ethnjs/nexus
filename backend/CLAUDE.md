@@ -19,6 +19,7 @@ Ruff is the only linter and formatter (config in `pyproject.toml`; line length 1
 - `app/models/models.py`: every model, in one file.
 - `app/services/`: Google Sheets and Forms clients, sheet sync, and email (Amazon SES). Every email goes through `email_service._send()`, which the tests' autouse `mock_send_email` patches; keep new senders going through it.
 - `app/db/`: session, startup seeding, and dev scripts (`seed_members.py`, `anonymize_users.py`, documented in `docs/`).
+- `scripts/render_emails.py`: renders every email to `tmp_emails/` for previewing without sending; see `docs/email-previews.md`. Add new senders to it.
 
 ## Routes
 

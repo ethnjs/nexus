@@ -1,26 +1,14 @@
-"""Temporary preview of every email template. Not part of the app.
+"""Write every email template to tmp_emails/ for previewing in a browser. Nothing is sent.
 
-From backend/:
+    uv run python -m scripts.render_emails
 
-    uv run python scripts/render_emails.py
-
-Links use FRONTEND_URL. Set FRONTEND_URL=https://nexus.socalscioly.org
-for samples that show the real domain.
-
-Calls the real send functions in email_service, so template and constant
-changes there show up here. Nothing is sent: the SES call is intercepted
-after _send has finished building the message.
-
-Writes HTML files to backend/tmp_emails/. Open index.html in a browser.
+Run from backend/. See docs/email-previews.md.
 """
 
 import asyncio
-import sys
-from collections.abc import Callable
+import html
 from pathlib import Path
 from typing import Any
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
 from app.services import email_service
@@ -32,60 +20,60 @@ OLD = "current-address@example.com"
 TOKEN = "placeholder-token"
 TOURNAMENT = "2026 SoCal Invitational"
 
-captured: list[tuple[str, str, str, str]] = []
 
+class _CapturingClient:
+    """Stands in for the SES client, recording each message _send builds."""
 
-async def _capture_ses_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> None:
-    content = kwargs["Content"]["Simple"]
-    captured.append(
-        (
-            kwargs["Destination"]["ToAddresses"][0],
-            content["Subject"]["Data"],
-            content["Body"]["Text"]["Data"],
-            content["Body"]["Html"]["Data"],
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str, str, str]] = []
+
+    def send_email(self, **kwargs: Any) -> dict[str, str]:
+        content = kwargs["Content"]["Simple"]
+        self.sent.append(
+            (
+                kwargs["Destination"]["ToAddresses"][0],
+                content["Subject"]["Data"],
+                content["Body"]["Text"]["Data"],
+                content["Body"]["Html"]["Data"],
+            )
         )
-    )
+        return {"MessageId": "preview"}
 
 
-def _token(*_args: Any, **_kwargs: Any) -> str:
-    return TOKEN
-
-
-async def main() -> None:
-    # _send returns before SES when AWS keys are blank. Fill them so the real
-    # function runs through to the send call, which is what we capture.
+async def _render_all(client: _CapturingClient) -> None:
     settings = get_settings()
-    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
-        settings.aws_access_key_id = "preview"
-        settings.aws_secret_access_key = "preview"
+    # _send skips without keys; the placeholders never reach AWS because the client is replaced.
+    settings.aws_access_key_id = "preview"
+    settings.aws_secret_access_key = "preview"
     settings.ses_max_send_rate = 1000
-    # Same shape join_codes.py builds
-    join = f"{settings.frontend_url.rstrip('/')}/join?code=ABC123"
+    email_service._get_ses_client = lambda *_args: client
+    email_service.create_verification_token = lambda *_args, **_kwargs: TOKEN
 
-    email_service.asyncio.to_thread = _capture_ses_call
-    email_service.create_verification_token = _token
-
+    join_url = f"{settings.frontend_url.rstrip('/')}/join?code=ABC123"
     await email_service.send_verification_email(TO, TOKEN)
     await email_service.send_email_change_email(NEW, TOKEN)
     await email_service.send_email_change_requested_notice(None, 1, OLD, NEW)
     await email_service.send_password_reset_email(TO, TOKEN)
     await email_service.send_password_changed_notice(TO)
     await email_service.send_account_setup_email(TO, TOKEN)
-    await email_service.send_staff_invite_email(TO, TOURNAMENT, join)
+    await email_service.send_staff_invite_email(TO, TOURNAMENT, join_url)
 
+
+def _write_files(sent: list[tuple[str, str, str, str]]) -> None:
     OUT.mkdir(exist_ok=True)
     (OUT / ".gitignore").write_text("*\n", encoding="utf-8")
     cards = []
-    for i, (to, subject, text, html) in enumerate(captured, start=1):
+    for i, (to, subject, text, body_html) in enumerate(sent, start=1):
         slug = f"{i:02d}"
-        (OUT / f"{slug}.html").write_text(html, encoding="utf-8")
+        (OUT / f"{slug}.html").write_text(body_html, encoding="utf-8")
         (OUT / f"{slug}.txt").write_text(
             f"To: {to}\nSubject: {subject}\n\n{text}", encoding="utf-8"
         )
         cards.append(
-            f"<section><h2>{subject}</h2><p>To: {to}</p>"
-            f'<iframe src="{slug}.html" title="{subject}"></iframe>'
-            f"<details><summary>Plain text</summary><pre>{_escape(text)}</pre></details></section>"
+            f"<section><h2>{html.escape(subject)}</h2><p>To: {html.escape(to)}</p>"
+            f'<iframe src="{slug}.html" title="{html.escape(subject)}"></iframe>'
+            f"<details><summary>Plain text</summary><pre>{html.escape(text)}</pre></details>"
+            "</section>"
         )
 
     (OUT / "index.html").write_text(
@@ -105,12 +93,14 @@ async def main() -> None:
         + "</main></body></html>",
         encoding="utf-8",
     )
-    print(f"Wrote {len(captured)} emails to {OUT / 'index.html'}")
 
 
-def _escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def main() -> None:
+    client = _CapturingClient()
+    asyncio.run(_render_all(client))
+    _write_files(client.sent)
+    print(f"Wrote {len(client.sent)} emails to {OUT / 'index.html'}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

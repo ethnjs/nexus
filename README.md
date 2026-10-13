@@ -48,6 +48,7 @@ nexus/
 │   │   └── services/   # Google Sheets/Forms, sheet sync, email
 │   ├── alembic/        # Migrations
 │   ├── docs/           # Design notes for the trickier subsystems
+│   ├── scripts/        # Dev tools outside the app, such as email previews
 │   └── tests/          # pytest suite
 ├── frontend/           # Next.js app
 │   ├── app/            # Routes
