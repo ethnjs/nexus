@@ -6,10 +6,11 @@ Run everything from `backend/` through uv (`uv run ...`); bare `python` may not 
 uv run uvicorn app.main:app --reload --port 8001
 uv run python -u -m pytest tests/api/test_forms.py -q   # see "Running tests" in root CLAUDE.md
 uv run ruff check --fix && uv run ruff format          # the pre-commit hook and CI run the same
+uv run ty check                                        # likewise
 uv run alembic revision --autogenerate -m "description"
 ```
 
-Ruff is the only linter and formatter (config in `pyproject.toml`; line length 100). There's no type checker in CI, but annotate new functions' parameters and return types. Use modern syntax (`X | None`, built-in generics, PEP 695 generics); Ruff's `UP` rules enforce most of it.
+Ruff is the linter and formatter, and ty the type checker (config for both in `pyproject.toml`; line length 100). Annotate new functions' parameters and return types. Narrow an optional value with an `is not None` check or `assert`, and keep `# ty: ignore[rule]` for checker limits, not real type errors. Use modern syntax (`X | None`, built-in generics, PEP 695 generics); Ruff's `UP` rules enforce most of it.
 
 ## Layout
 

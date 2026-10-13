@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Lints and formats staged backend Python files, applying Ruff's safe fixes.
-# Files with unstaged changes are only checked, so the hook never stages work you left out.
+# Lints and formats staged backend Python files, applying Ruff's safe fixes, then
+# type-checks the backend. Files with unstaged changes are only checked, so the
+# hook never stages work you left out.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -45,5 +46,15 @@ if [[ ${#bad[@]} -gt 0 ]]; then
     echo "pre-commit: these files have unstaged changes, so they weren't fixed:" >&2
     printf '  backend/%s\n' "${bad[@]}" >&2
     echo "Run 'uv run ruff check --fix' and 'uv run ruff format' in backend/, then stage." >&2
+    exit 1
+fi
+
+# Type-check a copy of the index, not the working tree, so unstaged edits can't
+# change the result. The whole backend: a change can break callers that aren't staged.
+snapshot=$(mktemp -d)
+trap 'rm -rf "$snapshot"' EXIT
+git ls-files -z -- '*.py' pyproject.toml | xargs -0 git checkout-index --prefix="$snapshot/" --
+if ! (cd "$snapshot/backend" && uv run --quiet --project "$root/backend" ty check --python "$root/backend/.venv"); then
+    echo "pre-commit: fix the type errors above, then commit again." >&2
     exit 1
 fi
