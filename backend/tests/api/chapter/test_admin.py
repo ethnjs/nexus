@@ -1,12 +1,13 @@
 """Tests for /admin/chapters/ endpoints (app/api/routes/chapter/admin.py)."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
-from app.models.models import AlumniChapter, ChapterMembership
 
+from app.models.models import AlumniChapter, ChapterMembership
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /admin/chapters/ — admin only
 # ---------------------------------------------------------------------------
+
 
 def test_list_chapters_admin_only(client, admin_user, db):
     university = make_university(db)
@@ -30,6 +31,7 @@ def test_list_chapters_unauthenticated(client):
 # ---------------------------------------------------------------------------
 # POST /admin/chapters/ — admin only
 # ---------------------------------------------------------------------------
+
 
 def test_create_chapter_creates_record(client, admin_user, db):
     university = make_university(db)
@@ -83,6 +85,7 @@ def test_create_chapter_non_admin_forbidden(client, td_user):
 # POST /admin/chapters/{chapter_id}/leads/ — admin only
 # ---------------------------------------------------------------------------
 
+
 def test_assign_lead_creates_chapter_membership(client, admin_user, db):
     university = make_university(db)
     chapter = make_chapter(db, university.id)
@@ -93,7 +96,9 @@ def test_assign_lead_creates_chapter_membership(client, admin_user, db):
     res = client.post(f"/admin/chapters/{chapter.id}/leads/", json={"user_id": member.id})
     assert res.status_code == 201
 
-    membership = db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    membership = (
+        db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    )
     assert membership is not None
     assert membership.role == "lead"
 
@@ -104,12 +109,16 @@ def test_assign_lead_non_admin_forbidden(client, td_user, db):
     member = make_user(db, "member2@example.com", password="MemberPass123!")
     login(client, "td@test.com", "tdpass")
 
-    assert client.post(f"/admin/chapters/{chapter.id}/leads/", json={"user_id": member.id}).status_code == 403
+    assert (
+        client.post(f"/admin/chapters/{chapter.id}/leads/", json={"user_id": member.id}).status_code
+        == 403
+    )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /admin/chapters/{chapter_id}/leads/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
+
 
 def test_remove_lead_marks_member(client, admin_user, db):
     university = make_university(db)
@@ -124,7 +133,9 @@ def test_remove_lead_marks_member(client, admin_user, db):
     res = client.delete(f"/admin/chapters/{chapter.id}/leads/{member.id}/")
     assert res.status_code == 204
 
-    membership = db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    membership = (
+        db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    )
     assert membership is not None
     assert membership.role == "member"
 

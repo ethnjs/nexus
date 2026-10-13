@@ -4,6 +4,7 @@ members widget. Counts only, never names: the roster route is where people
 live, and this exists so the overview doesn't have to load all of them to
 add them up.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -13,8 +14,12 @@ from app.core.form.validation import availability_field_track_id, option_shift_i
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.core.tournament.onboarding import onboarding_progress_bulk
 from app.models.models import (
-    Tournament, TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipTrackStatus, TournamentShift, TournamentTrack,
+    Tournament,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipTrackStatus,
+    TournamentShift,
+    TournamentTrack,
 )
 
 STATUSES = ("confirmed", "interested", "declined")
@@ -56,7 +61,8 @@ def covered_options(options: list[Option], held: set[int]) -> list[str]:
     """
     covered = [(option_id, shifts) for option_id, _, shifts in options if shifts <= held]
     return [
-        option_id for option_id, shifts in covered
+        option_id
+        for option_id, shifts in covered
         if not any(shifts < other for _, other in covered)
     ]
 
@@ -81,8 +87,15 @@ def build_member_summary(db: Session, tournament: Tournament) -> dict:
             ).filter(TournamentMembershipTrackStatus.membership_id.in_(member_ids))
         }
         for membership_id, track_id, shift_id in (
-            db.query(TournamentMembershipAvailability.membership_id, TournamentShift.track_id, TournamentShift.id)
-            .join(TournamentShift, TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id)
+            db.query(
+                TournamentMembershipAvailability.membership_id,
+                TournamentShift.track_id,
+                TournamentShift.id,
+            )
+            .join(
+                TournamentShift,
+                TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id,
+            )
             .filter(TournamentMembershipAvailability.membership_id.in_(member_ids))
         ):
             held.setdefault((membership_id, track_id), set()).add(shift_id)
@@ -90,7 +103,9 @@ def build_member_summary(db: Session, tournament: Tournament) -> dict:
     options_by_track = _availability_options(db, tournament.id)
     tracks = (
         db.query(TournamentTrack)
-        .filter(TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived == False)
+        .filter(
+            TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived == False
+        )
         .order_by(TournamentTrack.name)
         .all()
     )
@@ -99,32 +114,45 @@ def build_member_summary(db: Session, tournament: Tournament) -> dict:
     for track in tracks:
         options = options_by_track.get(track.id, [])
         counts = {status: 0 for status in STATUSES}
-        by_option = {option_id: {status: 0 for status in AVAILABILITY_STATUSES} for option_id, _, _ in options}
+        by_option = {
+            option_id: {status: 0 for status in AVAILABILITY_STATUSES}
+            for option_id, _, _ in options
+        }
         for membership_id in member_ids:
             status = status_of.get((membership_id, track.id))
             if status not in counts:
                 continue
             counts[status] += 1
             if status in AVAILABILITY_STATUSES:
-                for option_id in covered_options(options, held.get((membership_id, track.id), set())):
+                for option_id in covered_options(
+                    options, held.get((membership_id, track.id), set())
+                ):
                     by_option[option_id][status] += 1
-        track_entries.append({
-            "track_id": track.id,
-            "name": track.name,
-            **counts,
-            # No row at all — a member who still owes this track an answer.
-            "pending": len(member_ids) - sum(counts.values()),
-            "availability": [
-                {"option_id": option_id, "label": label, **by_option[option_id]}
-                for option_id, label, _ in options
-            ],
-        })
+        track_entries.append(
+            {
+                "track_id": track.id,
+                "name": track.name,
+                **counts,
+                # No row at all — a member who still owes this track an answer.
+                "pending": len(member_ids) - sum(counts.values()),
+                "availability": [
+                    {"option_id": option_id, "label": label, **by_option[option_id]}
+                    for option_id, label, _ in options
+                ],
+            }
+        )
 
-    steps, completed = onboarding_progress_bulk(db, tournament.id, [member.user_id for member in members])
-    onboarding = {
-        "steps": steps,
-        "completed": sum(1 for member in members if completed.get(member.user_id, 0) >= steps),
-        "started": sum(1 for member in members if 0 < completed.get(member.user_id, 0) < steps),
-    } if steps else None
+    steps, completed = onboarding_progress_bulk(
+        db, tournament.id, [member.user_id for member in members]
+    )
+    onboarding = (
+        {
+            "steps": steps,
+            "completed": sum(1 for member in members if completed.get(member.user_id, 0) >= steps),
+            "started": sum(1 for member in members if 0 < completed.get(member.user_id, 0) < steps),
+        }
+        if steps
+        else None
+    )
 
     return {"member_count": len(members), "onboarding": onboarding, "tracks": track_entries}

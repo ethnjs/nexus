@@ -14,6 +14,7 @@ Two rules across the board:
 Each filter is an EXISTS subquery rather than a join, so a member holding
 three of the named roles is returned once, not three times.
 """
+
 from __future__ import annotations
 
 import operator
@@ -22,9 +23,15 @@ from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentTrackAssignment,
-    TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipEventPreference,
+    TournamentMembershipLunch,
+    TournamentMembershipTrackStatus,
+    TournamentRole,
+    TournamentTrackAssignment,
+    User,
+    UserCompetitionExperience,
     UserVolunteerExperience,
 )
 
@@ -43,8 +50,11 @@ ANY = "__any__"
 # its track: "trackId:rank:{op}:{n}" — e.g. "3:rank:le:3", top three on track 3.
 RANK_PREFIX = "rank:"
 RANK_OPS = {
-    "lt": operator.lt, "le": operator.le, "eq": operator.eq,
-    "ge": operator.ge, "gt": operator.gt,
+    "lt": operator.lt,
+    "le": operator.le,
+    "eq": operator.eq,
+    "ge": operator.ge,
+    "gt": operator.gt,
 }
 
 # Lunch-only right-hand sentinels. "Unanswered" is the one thing an EXISTS
@@ -80,9 +90,8 @@ def _lunch_clause(category: str, value: str):
     row: someone who wrote "none" has told you they eat anything, someone
     with no row has told you nothing.
     """
-    in_category = (
-        (TournamentMembershipLunch.membership_id == TournamentMembership.id)
-        & (TournamentMembershipLunch.category == category)
+    in_category = (TournamentMembershipLunch.membership_id == TournamentMembership.id) & (
+        TournamentMembershipLunch.category == category
     )
     if value == LUNCH_UNANSWERED:
         return ~exists().where(in_category)
@@ -152,24 +161,30 @@ def apply_member_filters(
 
         clauses = []
         if any_scope:
-            clauses.append(exists().where(
-                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                & TournamentTrackAssignment.role_id.in_(any_scope)
-            ))
+            clauses.append(
+                exists().where(
+                    (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                    & TournamentTrackAssignment.role_id.in_(any_scope)
+                )
+            )
         for role_id, track_ids in by_role.items():
             # An unnarrowed chip for the same role already covers every track.
             if role_id in any_scope:
                 continue
-            clauses.append(exists().where(
-                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                & (TournamentTrackAssignment.role_id == role_id)
-                & (TournamentTrackAssignment.tournament_track_id.in_(track_ids)
-                   | TournamentTrackAssignment.is_tournament_wide)
-            ))
+            clauses.append(
+                exists().where(
+                    (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                    & (TournamentTrackAssignment.role_id == role_id)
+                    & (
+                        TournamentTrackAssignment.tournament_track_id.in_(track_ids)
+                        | TournamentTrackAssignment.is_tournament_wide
+                    )
+                )
+            )
         if NO_ROLES in roles:
-            clauses.append(~exists().where(
-                TournamentTrackAssignment.membership_id == TournamentMembership.id
-            ))
+            clauses.append(
+                ~exists().where(TournamentTrackAssignment.membership_id == TournamentMembership.id)
+            )
         if clauses:
             query = query.filter(or_(*clauses))
 
@@ -209,7 +224,7 @@ def apply_member_filters(
             if not track_id.isdigit():
                 continue
             if right.startswith(RANK_PREFIX):
-                op, _, n = right[len(RANK_PREFIX):].partition(":")
+                op, _, n = right[len(RANK_PREFIX) :].partition(":")
                 if op in RANK_OPS and n.isdigit():
                     rank_by_track[int(track_id)] = (op, int(n))
             elif right == ANY or right.isdigit():
@@ -220,9 +235,8 @@ def apply_member_filters(
         for track_id in events_by_track.keys() | rank_by_track.keys():
             events = events_by_track.get(track_id, {ANY})
             condition = (
-                (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
-                & (TournamentMembershipEventPreference.track_id == track_id)
-            )
+                TournamentMembershipEventPreference.membership_id == TournamentMembership.id
+            ) & (TournamentMembershipEventPreference.track_id == track_id)
             if ANY not in events:
                 condition &= TournamentMembershipEventPreference.tournament_event_id.in_(
                     [int(event_id) for event_id in events]
@@ -239,16 +253,20 @@ def apply_member_filters(
     # Experience is the user's, not the membership's — these join through
     # user_id rather than membership_id.
     if competition_events:
-        query = query.filter(exists().where(
-            (UserCompetitionExperience.user_id == TournamentMembership.user_id)
-            & UserCompetitionExperience.event_id.in_(competition_events)
-        ))
+        query = query.filter(
+            exists().where(
+                (UserCompetitionExperience.user_id == TournamentMembership.user_id)
+                & UserCompetitionExperience.event_id.in_(competition_events)
+            )
+        )
 
     if volunteer_events:
-        query = query.filter(exists().where(
-            (UserVolunteerExperience.user_id == TournamentMembership.user_id)
-            & UserVolunteerExperience.event_id.in_(volunteer_events)
-        ))
+        query = query.filter(
+            exists().where(
+                (UserVolunteerExperience.user_id == TournamentMembership.user_id)
+                & UserVolunteerExperience.event_id.in_(volunteer_events)
+            )
+        )
 
     if age_flags:
         # is_over_18/21 are hybrid properties derived from date_of_birth, not
@@ -270,10 +288,12 @@ def apply_member_filters(
         if any_tracks and tournament is not None:
             shift_ids |= _shift_ids_on_tracks(query.session, tournament, any_tracks)
         if shift_ids:
-            query = query.filter(exists().where(
-                (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
-                & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
-            ))
+            query = query.filter(
+                exists().where(
+                    (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
+                    & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
+                )
+            )
 
     if assigned:
         # "trackId:assigned|unassigned", per track like track status — "who's
@@ -323,14 +343,21 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
         if membership.age_disclosure != "consented":
             return False
         tournament = membership.tournament
-        if "over_18" in age_flags and tournament.collect_is_over_18 and membership.is_over_18 is True:
+        if (
+            "over_18" in age_flags
+            and tournament.collect_is_over_18
+            and membership.is_over_18 is True
+        ):
             return True
-        if "over_21" in age_flags and tournament.collect_is_over_21 and membership.is_over_21 is True:
+        if (
+            "over_21" in age_flags
+            and tournament.collect_is_over_21
+            and membership.is_over_21 is True
+        ):
             return True
         return False
 
     return [m for m in memberships if matches(m)]
-
 
 
 def build_filter_options(db, tournament) -> dict:
@@ -350,14 +377,21 @@ def build_filter_options(db, tournament) -> dict:
     every canonical event when three are mentioned makes the picker useless.
     """
     from sqlalchemy import func
+
     from app.core.form.validation import (
-        EVENT_PREFERENCE_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
+        EVENT_PREFERENCE_FIELD_KEY_PATTERN,
+        LUNCH_FIELD_KEY_PATTERN,
+        LUNCH_FREE_TEXT_QUESTION_TYPES,
     )
-    from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import unslug
     from app.core.tournament.tracks import track_event_ids
     from app.models.models import (
-        Event, Form, FormField, TournamentEvent, TournamentShift, TournamentTrack,
+        Event,
+        Form,
+        FormField,
+        TournamentEvent,
+        TournamentShift,
+        TournamentTrack,
     )
 
     def scoped(model):
@@ -378,7 +412,9 @@ def build_filter_options(db, tournament) -> dict:
     tracks = [
         {"value": str(track.id), "label": track.name}
         for track in db.query(TournamentTrack)
-        .filter(TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived == False)
+        .filter(
+            TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived == False
+        )
         .order_by(TournamentTrack.name)
     ]
 
@@ -403,13 +439,20 @@ def build_filter_options(db, tournament) -> dict:
             key,
             {"value": key, "label": track_names[key], "options": []},
         )
-        group["options"].append({
-            "value": str(shift.id),
-            "label": f"{shift.label} ({_local_time(tournament, shift.start)}-{_local_time(tournament, shift.end)})",
-        })
+        group["options"].append(
+            {
+                "value": str(shift.id),
+                "label": f"{shift.label} ({_local_time(tournament, shift.start)}-{_local_time(tournament, shift.end)})",
+            }
+        )
 
     lunch_categories = _lunch_groups(
-        db, fields, scoped, unslug, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
+        db,
+        fields,
+        scoped,
+        unslug,
+        LUNCH_FIELD_KEY_PATTERN,
+        LUNCH_FREE_TEXT_QUESTION_TYPES,
     )
 
     # Every tournament event, not just the ones somebody ranked — the filter
@@ -427,7 +470,9 @@ def build_filter_options(db, tournament) -> dict:
         # `name` is only set on custom events, so a catalog-linked one takes
         # its name off the joined Event row.
         for event_id, name, division in db.query(
-            TournamentEvent.id, func.coalesce(TournamentEvent.name, Event.name), TournamentEvent.division,
+            TournamentEvent.id,
+            func.coalesce(TournamentEvent.name, Event.name),
+            TournamentEvent.division,
         )
         .outerjoin(Event, TournamentEvent.event_id == Event.id)
         .filter(TournamentEvent.tournament_id == tournament.id)
@@ -459,7 +504,9 @@ def build_filter_options(db, tournament) -> dict:
         # The question's own rule (validate_event_preference_options), plus
         # anything already ranked there, so an answer outlives its event
         # leaving the track.
-        allowed = {str(e) for e in track_event_ids(db, int(track_id))} if track_id.isdigit() else set()
+        allowed = (
+            {str(e) for e in track_event_ids(db, int(track_id))} if track_id.isdigit() else set()
+        )
         allowed |= {str(e) for t, e in stored_prefs if str(t) == track_id}
         return [option for option in event_options if option["value"] in allowed]
 
@@ -503,7 +550,7 @@ def build_filter_options(db, tournament) -> dict:
 
 
 def _local_time(tournament, moment) -> str:
-    """"7:00 AM" in the tournament's own timezone, for a shift's picker label."""
+    """ "7:00 AM" in the tournament's own timezone, for a shift's picker label."""
     from zoneinfo import ZoneInfo
 
     local = moment.astimezone(ZoneInfo(tournament.timezone))
@@ -519,13 +566,20 @@ def _lunch_groups(db, fields, scoped, unslug, lunch_pattern, free_text_types) ->
     — plus, for dietary restrictions, whether the answer was "none", which is
     a real answer and not the same as never having filled it in.
     """
+
     # `free_text` starts False so a category whose question is gone still
     # offers its stored answers — only a question we can see is free text
     # suppresses them, since listing every distinct essay is no picker at all.
     def group_for(category: str) -> dict:
-        return groups.setdefault(category, {
-            "value": category, "label": unslug(category), "options": [], "free_text": False,
-        })
+        return groups.setdefault(
+            category,
+            {
+                "value": category,
+                "label": unslug(category),
+                "options": [],
+                "free_text": False,
+            },
+        )
 
     def add_option(group: dict, value: str, label: str) -> None:
         if value and all(existing["value"] != value for existing in group["options"]):
@@ -631,15 +685,13 @@ def apply_member_search(
             )
         )
     if role_id is not None:
-        held_role = (
-            db.query(TournamentTrackAssignment.membership_id)
-            .filter(TournamentTrackAssignment.role_id == role_id)
+        held_role = db.query(TournamentTrackAssignment.membership_id).filter(
+            TournamentTrackAssignment.role_id == role_id
         )
         query = query.filter(TournamentMembership.id.in_(held_role))
     if exclude_role_id is not None:
-        held_by_role = (
-            db.query(TournamentTrackAssignment.membership_id)
-            .filter(TournamentTrackAssignment.role_id == exclude_role_id)
+        held_by_role = db.query(TournamentTrackAssignment.membership_id).filter(
+            TournamentTrackAssignment.role_id == exclude_role_id
         )
         query = query.filter(TournamentMembership.id.notin_(held_by_role))
     if max_rank is not None:

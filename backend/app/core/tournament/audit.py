@@ -2,7 +2,9 @@
 Per-tournament audit log — records who did what, to what, when. Not
 cross-tournament, not chapter-wide (tournaments don't live inside chapters).
 """
+
 from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
 from app.models.models import AuditLogEntry
@@ -31,10 +33,20 @@ TRACK_PURGED = "track_purged"
 FORM_RESPONSE_DELETED = "form_response_deleted"
 
 ALL_ACTIONS: list[str] = [
-    ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED,
-    JOIN_CODE_CREATED, JOIN_CODE_UPDATED, JOIN_CODE_DEACTIVATED, STAFF_INVITE_SENT,
-    TOURNAMENT_VERIFIED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED, OWNERSHIP_TRANSFERRED,
-    TRACK_DELETE_PENDING, TRACK_DELETE_CANCELLED, TRACK_PURGED,
+    ROLE_CREATED,
+    ROLE_UPDATED,
+    ROLE_DELETED,
+    JOIN_CODE_CREATED,
+    JOIN_CODE_UPDATED,
+    JOIN_CODE_DEACTIVATED,
+    STAFF_INVITE_SENT,
+    TOURNAMENT_VERIFIED,
+    TOURNAMENT_ARCHIVED,
+    TOURNAMENT_UNARCHIVED,
+    OWNERSHIP_TRANSFERRED,
+    TRACK_DELETE_PENDING,
+    TRACK_DELETE_CANCELLED,
+    TRACK_PURGED,
     FORM_RESPONSE_DELETED,
 ]
 

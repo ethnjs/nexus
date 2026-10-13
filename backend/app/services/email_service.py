@@ -2,15 +2,14 @@ import asyncio
 import logging
 import time
 from functools import lru_cache
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from typing import Optional
 
 import boto3
 from botocore.config import Config
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
+from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
-from app.core.auth import create_verification_token, RateLimitedError
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +67,8 @@ def _render_email_html(
     heading: str,
     body_lines: list[str],
     footnote: str,
-    cta_label: Optional[str] = None,
-    cta_url: Optional[str] = None,
+    cta_label: str | None = None,
+    cta_url: str | None = None,
 ) -> str:
     body_html = "".join(
         f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{line}</p>'
@@ -130,14 +129,16 @@ def _render_email_html(
 """
 
 
-def _cta_url(path: str, token: Optional[str] = None) -> str:
+def _cta_url(path: str, token: str | None = None) -> str:
     settings = get_settings()
     base = f"{settings.frontend_url.rstrip('/')}{path}"
     return f"{base}?token={token}" if token else base
 
 
 _SUPPORT_EMAIL = "support@nexus.socalscioly.org"
-_SUPPORT_LINK = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+_SUPPORT_LINK = (
+    f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+)
 _ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
@@ -151,7 +152,8 @@ _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 # (legacy) doesn't treat SES v2's TooManyRequestsException as retryable.
 # ---------------------------------------------------------------------------
 
-@lru_cache()
+
+@lru_cache
 def _get_ses_client(access_key_id: str, secret_access_key: str, region: str, max_attempts: int):
     # Dedicated Session rather than boto3.client(): the default session isn't
     # thread-safe, but the client it produces is, and it's shared across threads.
@@ -200,7 +202,9 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
 
     if not (settings.aws_access_key_id and settings.aws_secret_access_key):
         if settings.app_env == "production":
-            raise RuntimeError("SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set")
+            raise RuntimeError(
+                "SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
+            )
         logger.warning("SES not configured, skipping email to %s: %s", to, subject)
         if settings.app_env == "development":
             logger.warning("Skipped email body:\n%s", text)
@@ -233,6 +237,7 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
 # Signup verification
 # ---------------------------------------------------------------------------
 
+
 async def send_verification_email(to: str, token: str) -> None:
     url = _cta_url("/verify-email", token)
     html = _render_email_html(
@@ -251,17 +256,18 @@ async def send_signup_verification_email(db: Session, to: str, user_id: int) -> 
     try:
         token = create_verification_token(db, user_id, "signup_verify")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_verification_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send verification email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send verification email") from e
 
 
 # ---------------------------------------------------------------------------
 # Email change
 # ---------------------------------------------------------------------------
+
 
 async def send_email_change_email(to_new_email: str, token: str) -> None:
     url = _cta_url("/confirm-email-change", token)
@@ -275,22 +281,26 @@ async def send_email_change_email(to_new_email: str, token: str) -> None:
         cta_url=url,
         footnote="This link expires in 24 hours. If you didn't request this change, please contact support.",
     )
-    await _send(to_new_email, "Confirm your new email on NEXUS", f"Confirm your new email: {url}", html)
+    await _send(
+        to_new_email, "Confirm your new email on NEXUS", f"Confirm your new email: {url}", html
+    )
 
 
 async def send_email_change_request_email(db: Session, user_id: int, new_email: str) -> None:
     try:
         token = create_verification_token(db, user_id, "email_change", new_email=new_email)
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_email_change_email(new_email, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send email change confirmation")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send email change confirmation") from e
 
 
-async def send_email_change_requested_notice(db: Session, user_id: int, old_email: str, new_email: str) -> None:
+async def send_email_change_requested_notice(
+    db: Session, user_id: int, old_email: str, new_email: str
+) -> None:
     """
     Sent to the OLD email address the moment an email change is requested
     (not once it's confirmed) — the account owner may not be the one who
@@ -303,9 +313,11 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
     about to become the attacker's address).
     """
     try:
-        revert_token = create_verification_token(db, user_id, "email_change_revert", new_email=old_email)
+        revert_token = create_verification_token(
+            db, user_id, "email_change_revert", new_email=old_email
+        )
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     url = _cta_url("/revert-email-change", revert_token)
     html = _render_email_html(
@@ -331,6 +343,7 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
 # Password reset
 # ---------------------------------------------------------------------------
 
+
 async def send_password_reset_email(to: str, token: str) -> None:
     url = _cta_url("/reset-password", token)
     html = _render_email_html(
@@ -350,12 +363,12 @@ async def send_password_reset_request_email(db: Session, user_id: int, to: str) 
     try:
         token = create_verification_token(db, user_id, "password_reset")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_password_reset_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send password reset email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send password reset email") from e
 
 
 async def send_password_changed_notice(to: str) -> None:
@@ -388,6 +401,7 @@ async def send_password_changed_notice(to: str) -> None:
 # Account setup (admin-created invite)
 # ---------------------------------------------------------------------------
 
+
 async def send_account_setup_email(to: str, token: str) -> None:
     url = _cta_url("/account-setup", token)
     html = _render_email_html(
@@ -407,17 +421,18 @@ async def send_account_setup_invite_email(db: Session, user_id: int, to: str) ->
     try:
         token = create_verification_token(db, user_id, "account_setup")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_account_setup_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send account setup email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send account setup email") from e
 
 
 # ---------------------------------------------------------------------------
 # Tournament staff invite
 # ---------------------------------------------------------------------------
+
 
 async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) -> None:
     html = _render_email_html(
@@ -437,7 +452,9 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
     await _send(to, f"You're invited to help run {tournament_name}", text, html)
 
 
-async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, join_url: str) -> list[str]:
+async def send_staff_invite_emails(
+    to_emails: list[str], tournament_name: str, join_url: str
+) -> list[str]:
     """
     Sends one personalized invite email per address, in parallel — not BCC,
     which counts every recipient against quota anyway and has worse
@@ -450,4 +467,8 @@ async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, j
         *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
         return_exceptions=True,
     )
-    return [email for email, result in zip(to_emails, results) if isinstance(result, Exception)]
+    return [
+        email
+        for email, result in zip(to_emails, results, strict=True)
+        if isinstance(result, Exception)
+    ]

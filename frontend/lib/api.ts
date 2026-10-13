@@ -947,9 +947,16 @@ export interface Role {
   label:          string
   permissions:    string[]
   rank:           number
+  // What this role is in TORUS / Duosmium, for the exports. null = unmapped.
+  torus_role:     TorusRole | null
+  duosmium_role:  DuosmiumRole | null
   created_at:     string
   updated_at:     string
 }
+
+// Mirror TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
+export type TorusRole = "writer" | "reviewer" | "tournament_director" | "test_coordinator"
+export type DuosmiumRole = "tournament_director" | "scoremaster" | "event_supervisor"
 
 // Matches RoleWithMemberCount — only the role list/CRUD endpoints compute
 // this count; roles nested inside membership responses stay plain Role.
@@ -1299,7 +1306,7 @@ export const membersApi = {
     api.put<MembershipEventPreference[]>(
       `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`, { selections },
     ),
-  // See backend/track-status-rules.md: `declined` always; `confirmed` only
+  // See backend/docs/track-status-rules.md: `declined` always; `confirmed` only
   // with the track's allow_confirm; `interested` only without it.
   updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
     api.put<MembershipTrackStatus>(
@@ -1387,9 +1394,11 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
 }
 
 export interface RoleDefinition {
-  label:       string
-  permissions: Permission[]
-  rank:        number
+  label:          string
+  permissions:    Permission[]
+  rank:           number
+  torus_role?:    TorusRole | null
+  duosmium_role?: DuosmiumRole | null
 }
 
 // Matches RoleBulkReorder — final ranks are computed client-side by the
@@ -1746,7 +1755,7 @@ export const sheetsApi = {
 }
 
 // -------------------------------------------------------------------------
-// Forms — see backend/form-question-types-reference.md for the full
+// Forms — see backend/docs/form-question-types-reference.md for the full
 // question_type/config/reserved-field_key shape reference this mirrors.
 // -------------------------------------------------------------------------
 export type FormQuestionType =
@@ -2096,7 +2105,7 @@ export const formsApi = {
   // 409s if the form has any responses — check response_count client-side first.
   delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
   // Full ordered target field list — see FormFieldInput and
-  // backend/form-edit-lifecycle.md.
+  // backend/docs/form-edit-lifecycle.md.
   //
   // The submitted config is authoritative, options included. An existing
   // option must be echoed back by its option_id — send it with
@@ -2443,4 +2452,60 @@ export const displayConfigApi = {
   // Every item a TD could hide — surface-agnostic, see build_catalog's docstring.
   getCatalog: (tournamentId: number) =>
     api.get<DisplayConfigCatalog>(`/tournaments/${tournamentId}/display-config/catalog/`),
+}
+
+// -------------------------------------------------------------------------
+// Export presets — nested under /tournaments/{id}/export-presets/
+// -------------------------------------------------------------------------
+// Saved custom exports, shared by every staff member of the tournament. The
+// built-ins (TORUS, Duosmium, email list) are frontend code, never rows here.
+
+/** What one exported row is: a member, or an event with its members. */
+export type ExportRowType = 'member' | 'event'
+
+/** How a column writes its values. Shift-like columns: shift names or
+ *  `08:00-12:00`. The per-event Members column: full name or email. */
+export type ExportColumnMode = 'names' | 'times' | 'full_name' | 'email'
+
+export type ExportOutput = 'copy' | 'csv' | 'txt'
+
+export interface ExportPresetColumn {
+  key:   string
+  mode?: ExportColumnMode | null
+}
+
+// Matches ExportPresetCreate. Lists and dicts are whole-value on update.
+export interface ExportPresetInput {
+  name:            string
+  row_type:        ExportRowType
+  columns:         ExportPresetColumn[]
+  // Who it covers: roster query-param filters, and the board's event filters.
+  member_filters:  Record<string, string[]>
+  event_filters:   Record<string, string[]>
+  // Every field must be one of `columns`' keys.
+  sorts:           DisplayConfigSort[]
+  include_header:  boolean
+  // Where the Export menu sends this preset.
+  output_type:     ExportOutput
+}
+
+// Matches ExportPresetRead. Read leniently server-side, so a column whose
+// track or form field was deleted can still be here — skip what won't resolve.
+export interface ExportPreset extends ExportPresetInput {
+  id:            number
+  tournament_id: number
+  created_by:    number | null
+  created_at:    string
+  updated_at:    string
+}
+
+export const exportPresetsApi = {
+  list: (tournamentId: number) =>
+    api.get<ExportPreset[]>(`/tournaments/${tournamentId}/export-presets/`),
+  create: (tournamentId: number, body: ExportPresetInput) =>
+    api.post<ExportPreset>(`/tournaments/${tournamentId}/export-presets/`, body),
+  update: (tournamentId: number, presetId: number, body: Partial<ExportPresetInput>) =>
+    api.patch<ExportPreset>(`/tournaments/${tournamentId}/export-presets/${presetId}/`, body),
+  delete: (tournamentId: number, presetId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/export-presets/${presetId}/`),
 }

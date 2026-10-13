@@ -1,10 +1,15 @@
 """Tests for /admin/users and /users/me endpoints."""
-from tests.conftest import grant_role, login
+
 from app.core.auth import hash_password
 from app.models.models import (
-    User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience, University,
+    Event,
+    EventCategory,
+    University,
+    User,
+    UserCompetitionExperience,
+    UserVolunteerExperience,
 )
-
+from tests.conftest import grant_role, login
 
 VALID_PHONE = "9495551234"
 
@@ -31,6 +36,7 @@ def _db_user(db, email="alice@example.com", **kwargs):
 # GET /admin/users/ — admin only
 # ---------------------------------------------------------------------------
 
+
 class TestAdminListUsers:
     def test_admin_can_list_users(self, client, admin_user, td_user):
         login(client, "admin@test.com", "adminpass")
@@ -49,6 +55,7 @@ class TestAdminListUsers:
 # ---------------------------------------------------------------------------
 # GET /admin/users/{id}/ — admin only
 # ---------------------------------------------------------------------------
+
 
 class TestAdminGetUser:
     def test_admin_can_get_user(self, client, admin_user, db):
@@ -71,6 +78,7 @@ class TestAdminGetUser:
 # ---------------------------------------------------------------------------
 # GET /admin/users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
+
 
 class TestAdminGetUserByEmail:
     def test_admin_can_get_by_email(self, client, admin_user, db):
@@ -95,6 +103,7 @@ class TestAdminGetUserByEmail:
 # ---------------------------------------------------------------------------
 # PATCH /admin/users/{id} — admin only, role + status only
 # ---------------------------------------------------------------------------
+
 
 class TestAdminUpdateUser:
     def test_admin_can_change_role(self, client, admin_user, db):
@@ -121,7 +130,9 @@ class TestAdminUpdateUser:
     def test_invalid_role_rejected(self, client, admin_user, db):
         alice = _db_user(db)
         login(client, "admin@test.com", "adminpass")
-        assert client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
+        assert (
+            client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
+        )
 
     def test_locking_revokes_existing_session(self, client, admin_user, db):
         # Every move off "active" cuts off an already-logged-in device
@@ -148,7 +159,10 @@ class TestAdminUpdateUser:
         assert client.get("/users/me/").status_code == 200
 
         login(client, "admin@test.com", "adminpass")
-        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"}).status_code == 200
+        assert (
+            client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"}).status_code
+            == 200
+        )
 
         client.cookies.set("access_token", alice_cookie)
         assert client.get("/users/me/").status_code == 401
@@ -171,7 +185,9 @@ class TestAdminUpdateUser:
         the acting admin's own session out."""
         alice = _db_user(db, status="locked")
         login(client, "admin@test.com", "adminpass")
-        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "active"}).status_code == 200
+        assert (
+            client.patch(f"/admin/users/{alice.id}/", json={"status": "active"}).status_code == 200
+        )
         assert client.get("/users/me/").status_code == 200
 
     def test_role_only_update_leaves_sessions_alone(self, client, admin_user, db):
@@ -198,8 +214,16 @@ class TestAdminUpdateUser:
     def test_cannot_deactivate_self(self, client, admin_user, db):
         """A misclick on your own row would revoke your session on the way out."""
         login(client, "admin@test.com", "adminpass")
-        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "deactivated"}).status_code == 400
-        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "locked"}).status_code == 400
+        assert (
+            client.patch(
+                f"/admin/users/{admin_user.id}/", json={"status": "deactivated"}
+            ).status_code
+            == 400
+        )
+        assert (
+            client.patch(f"/admin/users/{admin_user.id}/", json={"status": "locked"}).status_code
+            == 400
+        )
         db.refresh(admin_user)
         assert admin_user.status == "active"
 
@@ -207,8 +231,14 @@ class TestAdminUpdateUser:
         """Only *losing* role or status is guarded — setting what you already
         have must not 400."""
         login(client, "admin@test.com", "adminpass")
-        assert client.patch(f"/admin/users/{admin_user.id}/", json={"role": "admin"}).status_code == 200
-        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "active"}).status_code == 200
+        assert (
+            client.patch(f"/admin/users/{admin_user.id}/", json={"role": "admin"}).status_code
+            == 200
+        )
+        assert (
+            client.patch(f"/admin/users/{admin_user.id}/", json={"status": "active"}).status_code
+            == 200
+        )
 
     def test_can_demote_another_admin(self, client, admin_user, db):
         """The guard is about acting on yourself, not about admins generally."""
@@ -231,6 +261,7 @@ class TestAdminUpdateUser:
 # ---------------------------------------------------------------------------
 # DELETE /admin/users/{id}/ — admin only
 # ---------------------------------------------------------------------------
+
 
 class TestAdminDeleteUser:
     def test_admin_can_delete_user(self, client, admin_user, db):
@@ -264,10 +295,16 @@ class TestAdminDeleteUser:
         """Used to 500: the ORM nulled FormResponse.user_id (NOT NULL) instead
         of letting the DB cascade it."""
         from app.models.models import Form, FormResponse
+
         alice = _db_user(db)
         grant_role(db, td_tournament, alice, "Volunteer")
-        form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup",
-                    created_by=td_tournament.owner_id, status="published")
+        form = Form(
+            owner_type="tournament",
+            tournament_id=td_tournament.id,
+            name="Signup",
+            created_by=td_tournament.owner_id,
+            status="published",
+        )
         db.add(form)
         db.flush()
         db.add(FormResponse(form_id=form.id, user_id=alice.id))
@@ -279,11 +316,18 @@ class TestAdminDeleteUser:
         assert db.query(FormResponse).filter(FormResponse.user_id == alice.id).count() == 0
         assert db.query(Form).filter(Form.id == form.id).first() is not None
 
-    def test_owned_tournament_survives_ownerless(self, client, admin_user, td_user, td_tournament, db):
-        from app.models.models import AuditLogEntry, Form, Tournament
+    def test_owned_tournament_survives_ownerless(
+        self, client, admin_user, td_user, td_tournament, db
+    ):
         from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
-        form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup",
-                    created_by=td_user.id)
+        from app.models.models import AuditLogEntry, Form, Tournament
+
+        form = Form(
+            owner_type="tournament",
+            tournament_id=td_tournament.id,
+            name="Signup",
+            created_by=td_user.id,
+        )
         db.add(form)
         log_action(db, td_tournament.id, td_user.id, TOURNAMENT_ARCHIVED, target_type="tournament")
         db.commit()
@@ -295,11 +339,14 @@ class TestAdminDeleteUser:
         assert tournament is not None
         assert tournament.owner_id is None
         assert db.query(Form).filter(Form.id == form.id).one().created_by is None
-        entry = db.query(AuditLogEntry).filter(AuditLogEntry.tournament_id == td_tournament.id).first()
+        entry = (
+            db.query(AuditLogEntry).filter(AuditLogEntry.tournament_id == td_tournament.id).first()
+        )
         assert entry.actor_id is None
 
     def test_deleted_actor_reads_as_null_ref(self, client, admin_user, td_user, td_tournament, db):
         from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
+
         log_action(db, td_tournament.id, td_user.id, TOURNAMENT_ARCHIVED, target_type="tournament")
         db.commit()
         login(client, "admin@test.com", "adminpass")
@@ -324,25 +371,33 @@ class TestAdminGetUserOwnedTournaments:
 
 
 class TestAdminTransferOwnerless:
-    def test_admin_can_reown_ownerless_tournament(self, client, admin_user, td_user, td_tournament, db):
+    def test_admin_can_reown_ownerless_tournament(
+        self, client, admin_user, td_user, td_tournament, db
+    ):
         from app.models.models import Tournament
+
         alice = _db_user(db)
         grant_role(db, td_tournament, alice, "Volunteer")
         login(client, "admin@test.com", "adminpass")
         assert client.delete(f"/admin/users/{td_user.id}/").status_code == 204
 
         res = client.post(
-            f"/tournaments/{td_tournament.id}/transfer-ownership/", json={"new_owner_id": alice.id},
+            f"/tournaments/{td_tournament.id}/transfer-ownership/",
+            json={"new_owner_id": alice.id},
         )
         assert res.status_code == 200
         assert res.json()["owner_id"] == alice.id
         db.expire_all()
-        assert db.query(Tournament).filter(Tournament.id == td_tournament.id).one().owner_id == alice.id
+        assert (
+            db.query(Tournament).filter(Tournament.id == td_tournament.id).one().owner_id
+            == alice.id
+        )
 
 
 # ---------------------------------------------------------------------------
 # POST /admin/users/{id}/password-reset/ — admin only
 # ---------------------------------------------------------------------------
+
 
 class TestAdminSendPasswordReset:
     def test_admin_can_send_reset(self, client, admin_user, db, mock_send_email):
@@ -390,6 +445,7 @@ class TestAdminSendPasswordReset:
 # POST /users/me/deactivate/ — authenticated self-service deactivation
 # ---------------------------------------------------------------------------
 
+
 class TestDeactivateMe:
     def test_deactivate_success(self, client, td_user, db):
         login(client, "td@test.com", "tdpass")
@@ -429,15 +485,20 @@ class TestDeactivateMe:
     def test_admin_can_deactivate_when_another_admin_exists(self, client, admin_user, db):
         _db_user(db, email="second@example.com", role="admin")
         login(client, "admin@test.com", "adminpass")
-        assert client.post("/users/me/deactivate/", json={"password": "adminpass"}).status_code == 200
+        assert (
+            client.post("/users/me/deactivate/", json={"password": "adminpass"}).status_code == 200
+        )
 
     def test_unauthenticated_forbidden(self, client):
-        assert client.post("/users/me/deactivate/", json={"password": "whatever"}).status_code == 401
+        assert (
+            client.post("/users/me/deactivate/", json={"password": "whatever"}).status_code == 401
+        )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /users/me/ — authenticated self-service hard delete
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteMe:
     def test_delete_success(self, client, td_user, db):
@@ -454,20 +515,37 @@ class TestDeleteMe:
 
     def test_delete_cascades_membership(self, client, admin_user, td_tournament, db):
         from app.models.models import TournamentMembership
+
         grant_role(db, td_tournament, admin_user, "Volunteer")
         # A second admin so the last-admin guard doesn't block the delete —
         # this test is about the membership cascade, not about that rule.
         _db_user(db, email="second@example.com", role="admin")
 
         login(client, "admin@test.com", "adminpass")
-        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0
-        assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
-        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() == 0
+        assert (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == admin_user.id)
+            .count()
+            > 0
+        )
+        assert (
+            client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code
+            == 200
+        )
+        assert (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == admin_user.id)
+            .count()
+            == 0
+        )
 
     def test_owner_can_delete_and_tournament_survives(self, client, td_user, td_tournament, db):
         from app.models.models import Tournament
+
         login(client, "td@test.com", "tdpass")
-        assert client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
+        assert (
+            client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
+        )
         db.expire_all()
         assert db.query(Tournament).filter(Tournament.id == td_tournament.id).one().owner_id is None
 
@@ -482,21 +560,29 @@ class TestDeleteMe:
     def test_admin_can_delete_when_another_admin_exists(self, client, admin_user, db):
         _db_user(db, email="second@example.com", role="admin")
         login(client, "admin@test.com", "adminpass")
-        assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
+        assert (
+            client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code
+            == 200
+        )
 
     def test_non_admin_delete_unaffected_by_admin_guard(self, client, td_user, db):
         """The guard keys off the caller's own role — a regular user deleting
         their account never consults the admin count."""
         login(client, "td@test.com", "tdpass")
-        assert client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
+        assert (
+            client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
+        )
 
     def test_unauthenticated_forbidden(self, client):
-        assert client.request("DELETE", "/users/me/", json={"password": "whatever"}).status_code == 401
+        assert (
+            client.request("DELETE", "/users/me/", json={"password": "whatever"}).status_code == 401
+        )
 
 
 # ---------------------------------------------------------------------------
 # GET /users/me/sessions/ — list active sessions
 # ---------------------------------------------------------------------------
+
 
 class TestListMySessions:
     def test_lists_active_session_with_current_flag(self, client, td_user):
@@ -523,6 +609,7 @@ class TestListMySessions:
 # POST /users/me/sessions/logout-others/ — "log out everywhere" except here
 # ---------------------------------------------------------------------------
 
+
 class TestLogoutOtherSessions:
     def test_revokes_other_sessions_keeps_current(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -548,6 +635,7 @@ class TestLogoutOtherSessions:
 # GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 
+
 class TestGetMe:
     def test_returns_current_user(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -567,6 +655,7 @@ class TestGetMe:
 # ---------------------------------------------------------------------------
 # GET /users/me/?full=true — full shape with experience lists eagerly loaded
 # ---------------------------------------------------------------------------
+
 
 class TestGetMeFull:
     def test_returns_full_shape(self, client, td_user):
@@ -595,10 +684,15 @@ class TestGetMeFull:
         db.commit()
 
         db.add(UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT"))
-        db.add(UserVolunteerExperience(
-            user_id=td_user.id, event_id=event.id,
-            tournament_name="Regionals", year=2025, role="Event Supervisor",
-        ))
+        db.add(
+            UserVolunteerExperience(
+                user_id=td_user.id,
+                event_id=event.id,
+                tournament_name="Regionals",
+                year=2025,
+                role="Event Supervisor",
+            )
+        )
         db.commit()
 
         login(client, "td@test.com", "tdpass")
@@ -624,6 +718,7 @@ class TestGetMeFull:
 # PATCH /users/me/ — authenticated user updates own profile
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateMe:
     def test_can_update_name(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -643,7 +738,9 @@ class TestUpdateMe:
         # not this generic partial-update route. `email` isn't a declared
         # field on UserUpdate, so pydantic silently drops it.
         login(client, "td@test.com", "tdpass")
-        res = client.patch("/users/me/", json={"email": "newemail@test.com", "first_name": "Updated"})
+        res = client.patch(
+            "/users/me/", json={"email": "newemail@test.com", "first_name": "Updated"}
+        )
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
         assert res.json()["first_name"] == "Updated"
@@ -686,6 +783,7 @@ class TestUpdateMe:
 # missing_profile_fields — computed field on UserResponse
 # ---------------------------------------------------------------------------
 
+
 class TestMissingProfileFields:
     def test_fresh_user_has_missing_fields(self, client, td_user):
         # td_user has no profile data — phone and student_status should be missing
@@ -696,17 +794,20 @@ class TestMissingProfileFields:
 
     def test_non_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        client.patch("/users/me/", json={
-            "phone": VALID_PHONE,
-            "date_of_birth": "2000-01-01",
-            "pronouns": "she/her",
-            "student_status": "Non-Student",
-            "employer": "Acme Corp",
-            "has_competition_experience": False,
-            "has_volunteer_experience": False,
-            "shirt_size": "M",
-            "dietary_restriction": "None",
-        })
+        client.patch(
+            "/users/me/",
+            json={
+                "phone": VALID_PHONE,
+                "date_of_birth": "2000-01-01",
+                "pronouns": "she/her",
+                "student_status": "Non-Student",
+                "employer": "Acme Corp",
+                "has_competition_experience": False,
+                "has_volunteer_experience": False,
+                "shirt_size": "M",
+                "dietary_restriction": "None",
+            },
+        )
         assert client.get("/users/me/?full=true").json()["missing_profile_fields"] == []
 
     def test_student_complete_profile(self, client, td_user, db):
@@ -715,20 +816,23 @@ class TestMissingProfileFields:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        client.patch("/users/me/", json={
-            "phone": VALID_PHONE,
-            "date_of_birth": "2000-01-01",
-            "pronouns": "she/her",
-            "student_status": "Undergraduate",
-            "university_id": university.id,
-            "major": "CS",
-            "year_level": 2,
-            "graduation_year": 2027,
-            "has_competition_experience": False,
-            "has_volunteer_experience": False,
-            "shirt_size": "L",
-            "dietary_restriction": "None",
-        })
+        client.patch(
+            "/users/me/",
+            json={
+                "phone": VALID_PHONE,
+                "date_of_birth": "2000-01-01",
+                "pronouns": "she/her",
+                "student_status": "Undergraduate",
+                "university_id": university.id,
+                "major": "CS",
+                "year_level": 2,
+                "graduation_year": 2027,
+                "has_competition_experience": False,
+                "has_volunteer_experience": False,
+                "shirt_size": "L",
+                "dietary_restriction": "None",
+            },
+        )
         assert client.get("/users/me/?full=true").json()["missing_profile_fields"] == []
 
     def test_student_missing_school_fields(self, client, td_user):
@@ -741,17 +845,20 @@ class TestMissingProfileFields:
 
     def test_non_student_does_not_require_university(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        client.patch("/users/me/", json={
-            "phone": VALID_PHONE,
-            "date_of_birth": "2000-01-01",
-            "pronouns": "she/her",
-            "student_status": "Non-Student",
-            "employer": "Acme Corp",
-            "has_competition_experience": False,
-            "has_volunteer_experience": False,
-            "shirt_size": "M",
-            "dietary_restriction": "None",
-        })
+        client.patch(
+            "/users/me/",
+            json={
+                "phone": VALID_PHONE,
+                "date_of_birth": "2000-01-01",
+                "pronouns": "she/her",
+                "student_status": "Non-Student",
+                "employer": "Acme Corp",
+                "has_competition_experience": False,
+                "has_volunteer_experience": False,
+                "shirt_size": "M",
+                "dietary_restriction": "None",
+            },
+        )
         missing = client.get("/users/me/?full=true").json()["missing_profile_fields"]
         assert "university" not in missing
         assert "major" not in missing
@@ -761,6 +868,7 @@ class TestMissingProfileFields:
 # is_profile_complete — boolean field on UserMeSlimResponse (GET /users/me/)
 # ---------------------------------------------------------------------------
 
+
 class TestIsProfileComplete:
     def test_fresh_user_is_not_complete(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -768,17 +876,20 @@ class TestIsProfileComplete:
 
     def test_non_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        client.patch("/users/me/", json={
-            "phone": VALID_PHONE,
-            "date_of_birth": "2000-01-01",
-            "pronouns": "she/her",
-            "student_status": "Non-Student",
-            "employer": "Acme Corp",
-            "has_competition_experience": False,
-            "has_volunteer_experience": False,
-            "shirt_size": "M",
-            "dietary_restriction": "None",
-        })
+        client.patch(
+            "/users/me/",
+            json={
+                "phone": VALID_PHONE,
+                "date_of_birth": "2000-01-01",
+                "pronouns": "she/her",
+                "student_status": "Non-Student",
+                "employer": "Acme Corp",
+                "has_competition_experience": False,
+                "has_volunteer_experience": False,
+                "shirt_size": "M",
+                "dietary_restriction": "None",
+            },
+        )
         assert client.get("/users/me/").json()["is_profile_complete"] is True
 
     def test_student_complete_profile(self, client, td_user, db):
@@ -787,20 +898,23 @@ class TestIsProfileComplete:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        client.patch("/users/me/", json={
-            "phone": VALID_PHONE,
-            "date_of_birth": "2000-01-01",
-            "pronouns": "she/her",
-            "student_status": "Undergraduate",
-            "university_id": university.id,
-            "major": "CS",
-            "year_level": 2,
-            "graduation_year": 2027,
-            "has_competition_experience": False,
-            "has_volunteer_experience": False,
-            "shirt_size": "L",
-            "dietary_restriction": "None",
-        })
+        client.patch(
+            "/users/me/",
+            json={
+                "phone": VALID_PHONE,
+                "date_of_birth": "2000-01-01",
+                "pronouns": "she/her",
+                "student_status": "Undergraduate",
+                "university_id": university.id,
+                "major": "CS",
+                "year_level": 2,
+                "graduation_year": 2027,
+                "has_competition_experience": False,
+                "has_volunteer_experience": False,
+                "shirt_size": "L",
+                "dietary_restriction": "None",
+            },
+        )
         assert client.get("/users/me/").json()["is_profile_complete"] is True
 
     def test_student_missing_school_fields_is_not_complete(self, client, td_user):

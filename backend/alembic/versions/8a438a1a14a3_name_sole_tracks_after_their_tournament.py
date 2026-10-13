@@ -13,20 +13,21 @@ tournament's pending-delete tracks is left alone, as the sync leaves it.
 Downgrade is a no-op: the old names aren't recorded anywhere, and the new
 ones are valid under the old code.
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
-
-revision: str = '8a438a1a14a3'
-down_revision: Union[str, None] = '90c29492df5b'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "8a438a1a14a3"
+down_revision: str | None = "90c29492df5b"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE tournament_tracks AS track
         SET name = COALESCE(NULLIF(TRIM(t.short_name), ''), t.name)
         FROM tournaments AS t
@@ -43,7 +44,8 @@ def upgrade() -> None:
                 AND other.id <> track.id
                 AND other.name = COALESCE(NULLIF(TRIM(t.short_name), ''), t.name)
           )
-    """))
+    """)
+    )
 
 
 def downgrade() -> None:

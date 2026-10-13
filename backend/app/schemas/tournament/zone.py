@@ -48,7 +48,7 @@ class ZoneMember(BaseModel):
         return (v.strip() or None) if v is not None else None
 
     @model_validator(mode="after")
-    def _check_shape(self) -> "ZoneMember":
+    def _check_shape(self) -> ZoneMember:
         if self.kind == KIND_BUILDING:
             wanted, forbidden = ("building_id",), ("floor", "tournament_event_id")
         elif self.kind == KIND_FLOOR:
@@ -84,7 +84,7 @@ class ZoneMemberRead(ZoneMember):
     event_name: str | None = None
 
     @classmethod
-    def from_row(cls, row) -> "ZoneMemberRead":
+    def from_row(cls, row) -> ZoneMemberRead:
         return cls(
             id=row.id,
             kind=row.kind,
@@ -92,9 +92,7 @@ class ZoneMemberRead(ZoneMember):
             building_name=row.building.name if row.building else None,
             floor=row.floor,
             tournament_event_id=row.tournament_event_id,
-            event_name=(
-                row.tournament_event.display_name if row.tournament_event else None
-            ),
+            event_name=(row.tournament_event.display_name if row.tournament_event else None),
         )
 
 
@@ -153,7 +151,7 @@ class ZoneRead(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_row(cls, row, event_ids: list[int]) -> "ZoneRead":
+    def from_row(cls, row, event_ids: list[int]) -> ZoneRead:
         return cls(
             id=row.id,
             tournament_id=row.tournament_id,
@@ -216,7 +214,7 @@ class ZoneAssignmentRead(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_row(cls, row) -> "ZoneAssignmentRead":
+    def from_row(cls, row) -> ZoneAssignmentRead:
         return cls(
             id=row.id,
             zone_id=row.zone_id,

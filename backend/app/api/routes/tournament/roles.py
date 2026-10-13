@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
     ROLE_CREATED,
     ROLE_DELETED,
@@ -13,19 +15,30 @@ from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     MANAGE_ROLES,
     require_any_permission,
-    require_membership,
     require_permission,
 )
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.roles import validate_rank_bound, validate_role_action, with_member_counts
+from app.core.tournament.roles import (
+    NULLABLE_ROLE_FIELDS,
+    validate_rank_bound,
+    validate_role_action,
+    with_member_counts,
+)
 from app.db.session import get_db
 from app.models.models import (
-    TournamentMembership, TournamentRole, TournamentTrack, TournamentTrackAssignment, User,
-)
-from app.schemas.tournament.role import (
-    RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
 )
 from app.schemas.tournament.membership import MembershipFullResponse
+from app.schemas.tournament.role import (
+    RoleAssignmentUpdate,
+    RoleBulkReorder,
+    RoleDefinition,
+    RoleUpdate,
+    RoleWithMemberCount,
+)
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -43,7 +56,11 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/roles", tags=["tournamen
 # roles_template_applied audit action.
 # Registered before "/{role_id}/" so the literal path always wins.
 # ---------------------------------------------------------------------------
-@router.post("/apply-template/", response_model=list[RoleWithMemberCount], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/apply-template/",
+    response_model=list[RoleWithMemberCount],
+    status_code=status.HTTP_201_CREATED,
+)
 def apply_default_role_template(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -52,7 +69,9 @@ def apply_default_role_template(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    existing = db.query(TournamentRole).filter(TournamentRole.tournament_id == tournament_id).first()
+    existing = (
+        db.query(TournamentRole).filter(TournamentRole.tournament_id == tournament_id).first()
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -65,9 +84,19 @@ def apply_default_role_template(
 
     for role in roles:
         log_action(
-            db, tournament_id, current_user.id, ROLE_CREATED,
-            target_type="role", target_id=role.id,
-            extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
+            db,
+            tournament_id,
+            current_user.id,
+            ROLE_CREATED,
+            target_type="role",
+            target_id=role.id,
+            extra_data={
+                "label": role.label,
+                "rank": role.rank,
+                "permissions": role.permissions,
+                "torus_role": role.torus_role,
+                "duosmium_role": role.duosmium_role,
+            },
         )
 
     db.commit()
@@ -124,8 +153,12 @@ def reorder_roles_bulk(
     if changed:
         db.flush()  # so the post-update snapshot query sees the new ranks
         log_action(
-            db, tournament_id, current_user.id, ROLE_UPDATED,
-            target_type="role", extra_data={"bulk_reorder": {"before": before, "after": snapshot()}},
+            db,
+            tournament_id,
+            current_user.id,
+            ROLE_UPDATED,
+            target_type="role",
+            extra_data={"bulk_reorder": {"before": before, "after": snapshot()}},
         )
 
     db.commit()
@@ -178,7 +211,9 @@ def create_role(
 
     existing = (
         db.query(TournamentRole)
-        .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.label == payload.label)
+        .filter(
+            TournamentRole.tournament_id == tournament_id, TournamentRole.label == payload.label
+        )
         .first()
     )
     if existing:
@@ -192,9 +227,19 @@ def create_role(
     db.flush()  # get role.id before logging
 
     log_action(
-        db, tournament_id, current_user.id, ROLE_CREATED,
-        target_type="role", target_id=role.id,
-        extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
+        db,
+        tournament_id,
+        current_user.id,
+        ROLE_CREATED,
+        target_type="role",
+        target_id=role.id,
+        extra_data={
+            "label": role.label,
+            "rank": role.rank,
+            "permissions": role.permissions,
+            "torus_role": role.torus_role,
+            "duosmium_role": role.duosmium_role,
+        },
     )
 
     db.commit()
@@ -218,7 +263,11 @@ def update_role(
     require_not_archived(tournament)
 
     role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
-    updates = payload.model_dump(exclude_none=True)
+    updates = {
+        field: value
+        for field, value in payload.model_dump(exclude_unset=True).items()
+        if value is not None or field in NULLABLE_ROLE_FIELDS
+    }
 
     target_rank = updates.get("rank", role.rank)
     validate_rank_bound(current_user, tournament, target_rank, db)
@@ -226,7 +275,10 @@ def update_role(
     if "label" in updates and updates["label"] != role.label:
         existing = (
             db.query(TournamentRole)
-            .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.label == updates["label"])
+            .filter(
+                TournamentRole.tournament_id == tournament_id,
+                TournamentRole.label == updates["label"],
+            )
             .first()
         )
         if existing:
@@ -242,11 +294,13 @@ def update_role(
             continue
         if field == "permissions":
             old_set, new_set = set(old_value or []), set(value or [])
-            changes.append({
-                "field": "permissions",
-                "added": sorted(new_set - old_set),
-                "removed": sorted(old_set - new_set),
-            })
+            changes.append(
+                {
+                    "field": "permissions",
+                    "added": sorted(new_set - old_set),
+                    "removed": sorted(old_set - new_set),
+                }
+            )
         else:
             changes.append({"field": field, "old": old_value, "new": value})
 
@@ -255,8 +309,12 @@ def update_role(
 
     if changes:
         log_action(
-            db, tournament_id, current_user.id, ROLE_UPDATED,
-            target_type="role", target_id=role.id,
+            db,
+            tournament_id,
+            current_user.id,
+            ROLE_UPDATED,
+            target_type="role",
+            target_id=role.id,
             extra_data={"changes": changes},
         )
 
@@ -296,8 +354,12 @@ def delete_role(
     )
 
     log_action(
-        db, tournament_id, current_user.id, ROLE_DELETED,
-        target_type="role", target_id=role.id,
+        db,
+        tournament_id,
+        current_user.id,
+        ROLE_DELETED,
+        target_type="role",
+        target_id=role.id,
         extra_data={"label": role.label, "rank": role.rank, "members_affected": members_affected},
     )
 
@@ -389,12 +451,14 @@ def update_membership_roles(
     to_remove = [rid for rid in payload.remove if rid in currently_held_ids]
 
     for role_id in to_add:
-        db.add(TournamentTrackAssignment(
-            membership_id=m.id,
-            role_id=role_id,
-            is_tournament_wide=payload.is_tournament_wide,
-            tournament_track_id=payload.track_id,
-        ))
+        db.add(
+            TournamentTrackAssignment(
+                membership_id=m.id,
+                role_id=role_id,
+                is_tournament_wide=payload.is_tournament_wide,
+                tournament_track_id=payload.track_id,
+            )
+        )
 
     if to_remove:
         grant_rows.filter(

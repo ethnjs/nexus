@@ -1,0 +1,7 @@
+# Mechanical commits for `git blame` to skip.
+# Enable locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# refactor(backend): apply ruff safe autofixes
+16db72d42adc4bf6e9da729f6deebfda23385041
+# style(backend): apply ruff format
+3c6811f5e9ead8f423ea43e3e461e03ebe55de14

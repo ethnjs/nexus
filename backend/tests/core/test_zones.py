@@ -5,17 +5,24 @@ rules into an answer (event > floor > building), and the behaviour that
 precedence exists for: an event that moves between buildings moves between
 zones with nothing edited on either zone.
 """
+
 import pytest
 
-from tests.conftest import primary_track_id
-
 from app.core.tournament.zones import (
-    events_by_zone, resolve_track_zones, unzoned_event_ids, zone_for_event,
+    events_by_zone,
+    resolve_track_zones,
+    unzoned_event_ids,
+    zone_for_event,
 )
 from app.models.models import (
-    TournamentBuilding, TournamentBuildingTrack, TournamentEvent, TournamentEventTrack,
-    TournamentZone, TournamentZoneMember,
+    TournamentBuilding,
+    TournamentBuildingTrack,
+    TournamentEvent,
+    TournamentEventTrack,
+    TournamentZone,
+    TournamentZoneMember,
 )
+from tests.conftest import primary_track_id
 
 
 @pytest.fixture
@@ -36,10 +43,15 @@ def _event(db, tournament_id, track_id, name, building=None, floor=None, rooms=N
     event = TournamentEvent(tournament_id=tournament_id, name=name, division="C")
     db.add(event)
     db.flush()
-    db.add(TournamentEventTrack(
-        tournament_event_id=event.id, track_id=track_id,
-        building_id=building.id if building else None, floor=floor, rooms=rooms,
-    ))
+    db.add(
+        TournamentEventTrack(
+            tournament_event_id=event.id,
+            track_id=track_id,
+            building_id=building.id if building else None,
+            floor=floor,
+            rooms=rooms,
+        )
+    )
     db.flush()
     return event
 
@@ -52,17 +64,23 @@ def _zone(db, tournament_id, track_id, name):
 
 
 def _rule(db, zone, track_id, kind, building=None, floor=None, event=None):
-    db.add(TournamentZoneMember(
-        zone_id=zone.id, track_id=track_id, kind=kind,
-        building_id=building.id if building else None, floor=floor,
-        tournament_event_id=event.id if event else None,
-    ))
+    db.add(
+        TournamentZoneMember(
+            zone_id=zone.id,
+            track_id=track_id,
+            kind=kind,
+            building_id=building.id if building else None,
+            floor=floor,
+            tournament_event_id=event.id if event else None,
+        )
+    )
     db.flush()
 
 
 # ---------------------------------------------------------------------------
 # Precedence
 # ---------------------------------------------------------------------------
+
 
 def test_a_building_rule_claims_every_event_in_it(db, td_tournament, track):
     rowland = _building(db, td_tournament.id, track, "Rowland Hall")
@@ -137,6 +155,7 @@ def test_an_event_with_no_building_can_still_be_named_explicitly(db, td_tourname
 # The behaviour precedence exists for
 # ---------------------------------------------------------------------------
 
+
 def test_moving_an_event_moves_it_between_zones_with_no_zone_edit(db, td_tournament, track):
     """The whole reason zones derive their events instead of storing them."""
     rowland = _building(db, td_tournament.id, track, "Rowland Hall")
@@ -149,10 +168,14 @@ def test_moving_an_event_moves_it_between_zones_with_no_zone_edit(db, td_tournam
 
     assert zone_for_event(db, track, anatomy.id) == north.id
 
-    link = db.query(TournamentEventTrack).filter(
-        TournamentEventTrack.tournament_event_id == anatomy.id,
-        TournamentEventTrack.track_id == track,
-    ).one()
+    link = (
+        db.query(TournamentEventTrack)
+        .filter(
+            TournamentEventTrack.tournament_event_id == anatomy.id,
+            TournamentEventTrack.track_id == track,
+        )
+        .one()
+    )
     link.building_id = steinhaus.id
     db.flush()
 
@@ -165,10 +188,14 @@ def test_unplacing_an_event_makes_it_unzoned(db, td_tournament, track):
     north = _zone(db, td_tournament.id, track, "North")
     _rule(db, north, track, "building", building=rowland)
 
-    link = db.query(TournamentEventTrack).filter(
-        TournamentEventTrack.tournament_event_id == anatomy.id,
-        TournamentEventTrack.track_id == track,
-    ).one()
+    link = (
+        db.query(TournamentEventTrack)
+        .filter(
+            TournamentEventTrack.tournament_event_id == anatomy.id,
+            TournamentEventTrack.track_id == track,
+        )
+        .one()
+    )
     link.building_id = None
     link.floor = None
     db.flush()
@@ -185,6 +212,7 @@ def test_an_event_matching_nothing_is_unzoned(db, td_tournament, track):
 # ---------------------------------------------------------------------------
 # Grouping
 # ---------------------------------------------------------------------------
+
 
 def test_events_by_zone_includes_empty_zones(db, td_tournament, track):
     """A zone a TD built and hasn't filled is exactly what they need to see."""

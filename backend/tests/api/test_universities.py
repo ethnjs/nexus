@@ -1,12 +1,17 @@
 """Tests for /universities and /admin/universities endpoints."""
+
 import uuid
 
-from tests.conftest import login
 from app.models.models import AlumniChapter, TournamentTrack, University
+from tests.conftest import login
 
 
 def _university(db, **kwargs):
-    defaults = {"name": f"Test University {uuid.uuid4()}", "abbreviation": "TU", "location": "Test City"}
+    defaults = {
+        "name": f"Test University {uuid.uuid4()}",
+        "abbreviation": "TU",
+        "location": "Test City",
+    }
     defaults.update(kwargs)
     university = University(**defaults)
     db.add(university)
@@ -19,6 +24,7 @@ def _university(db, **kwargs):
 # GET /universities/ — public
 # ---------------------------------------------------------------------------
 
+
 def test_get_universities_returns_created_university(client, db):
     university = _university(db)
     res = client.get("/universities/")
@@ -30,12 +36,18 @@ def test_get_universities_returns_created_university(client, db):
 # POST /admin/universities/ — admin only
 # ---------------------------------------------------------------------------
 
+
 def test_create_university_creates_record(client, admin_user, db):
     login(client, "admin@test.com", "adminpass")
     unique_name = f"New University {uuid.uuid4()}"
-    res = client.post("/admin/universities/", json={
-        "name": unique_name, "abbreviation": "NU", "location": "Nowhere",
-    })
+    res = client.post(
+        "/admin/universities/",
+        json={
+            "name": unique_name,
+            "abbreviation": "NU",
+            "location": "Nowhere",
+        },
+    )
     assert res.status_code == 201
     data = res.json()
     assert data["name"] == unique_name
@@ -71,11 +83,15 @@ def test_create_university_unauthenticated(client):
 # PATCH /admin/universities/{university_id}/ — admin only
 # ---------------------------------------------------------------------------
 
+
 def test_update_university_admin_can_change_fields(client, admin_user, db):
     university = _university(db)
     login(client, "admin@test.com", "adminpass")
 
-    res = client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "NEW", "location": "Elsewhere"})
+    res = client.patch(
+        f"/admin/universities/{university.id}/",
+        json={"abbreviation": "NEW", "location": "Elsewhere"},
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["abbreviation"] == "NEW"
@@ -94,17 +110,28 @@ def test_update_university_not_found(client, admin_user):
 def test_update_university_non_admin_forbidden(client, td_user, db):
     university = _university(db)
     login(client, "td@test.com", "tdpass")
-    assert client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "X"}).status_code == 403
+    assert (
+        client.patch(
+            f"/admin/universities/{university.id}/", json={"abbreviation": "X"}
+        ).status_code
+        == 403
+    )
 
 
 def test_update_university_unauthenticated(client, db):
     university = _university(db)
-    assert client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "X"}).status_code == 401
+    assert (
+        client.patch(
+            f"/admin/universities/{university.id}/", json={"abbreviation": "X"}
+        ).status_code
+        == 401
+    )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /admin/universities/{university_id}/ — admin only
 # ---------------------------------------------------------------------------
+
 
 def test_delete_university_removes_record(client, admin_user, db):
     university = _university(db)

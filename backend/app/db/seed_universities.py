@@ -10,8 +10,8 @@ Run directly:
     python -m app.db.seed_universities
 """
 
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 # name -> (abbreviation, location)
 UNIVERSITIES = {

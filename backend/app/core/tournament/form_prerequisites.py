@@ -4,6 +4,7 @@ TournamentForm.prerequisites is deliberately evaluated here, rather than in a
 route, so listing a member's forms and protecting direct render/submission
 links cannot drift apart.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -69,7 +70,9 @@ def _matches_group(group: object, actual_ids: set[int], *, id_key: str) -> bool:
         return False
 
     required_ids = group.get(id_key, [])
-    if not isinstance(required_ids, list) or not all(isinstance(item, int) for item in required_ids):
+    if not isinstance(required_ids, list) or not all(
+        isinstance(item, int) for item in required_ids
+    ):
         return False
     if not required_ids:
         return True

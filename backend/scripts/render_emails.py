@@ -35,12 +35,14 @@ captured: list[tuple[str, str, str, str]] = []
 
 async def _capture_ses_call(fn, /, *args, **kwargs) -> None:
     content = kwargs["Content"]["Simple"]
-    captured.append((
-        kwargs["Destination"]["ToAddresses"][0],
-        content["Subject"]["Data"],
-        content["Body"]["Text"]["Data"],
-        content["Body"]["Html"]["Data"],
-    ))
+    captured.append(
+        (
+            kwargs["Destination"]["ToAddresses"][0],
+            content["Subject"]["Data"],
+            content["Body"]["Text"]["Data"],
+            content["Body"]["Html"]["Data"],
+        )
+    )
 
 
 def _token(*_args, **_kwargs) -> str:
@@ -75,7 +77,9 @@ async def main() -> None:
     for i, (to, subject, text, html) in enumerate(captured, start=1):
         slug = f"{i:02d}"
         (OUT / f"{slug}.html").write_text(html, encoding="utf-8")
-        (OUT / f"{slug}.txt").write_text(f"To: {to}\nSubject: {subject}\n\n{text}", encoding="utf-8")
+        (OUT / f"{slug}.txt").write_text(
+            f"To: {to}\nSubject: {subject}\n\n{text}", encoding="utf-8"
+        )
         cards.append(
             f"<section><h2>{subject}</h2><p>To: {to}</p>"
             f'<iframe src="{slug}.html" title="{subject}"></iframe>'

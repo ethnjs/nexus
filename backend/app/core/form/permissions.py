@@ -48,7 +48,9 @@ def require_form_manage_access(
             # 404 to avoid leaking tournament existence, matching require_permission()
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
         if not has_permission(current_user, form.tournament_id, MANAGE_FORMS, db):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
     else:
         require_officer_or_lead(form.chapter_id, db, current_user)
 
@@ -67,7 +69,9 @@ def require_form_view_access(
 
     if form.owner_type == "tournament":
         if not has_any_membership(current_user, form.tournament_id, db):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
         if has_permission(current_user, form.tournament_id, MANAGE_FORMS, db):
             return form
 
@@ -75,29 +79,54 @@ def require_form_view_access(
         # Only a site admin can pass has_any_membership without a row; admins
         # already pass MANAGE_FORMS above, so this remains a defensive guard.
         if membership is None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
         if form.status != "published":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available"
+            )
 
         tournament_form = form.tournament_form
         if tournament_form is None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available"
+            )
         if tournament_form.is_onboarding:
             # Their current step, or one they already completed — a finished
             # step stays reachable so its response can be read and revised
             # (flagged updates, allow_response_edits).
-            responded = db.query(FormResponse.id).filter(
-                FormResponse.form_id == form.id, FormResponse.user_id == current_user.id,
-            ).first() is not None
+            responded = (
+                db.query(FormResponse.id)
+                .filter(
+                    FormResponse.form_id == form.id,
+                    FormResponse.user_id == current_user.id,
+                )
+                .first()
+                is not None
+            )
             if not responded and next_required_onboarding_form_id(db, membership) != form.id:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This onboarding form is not currently available")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This onboarding form is not currently available",
+                )
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not meet this form's prerequisites")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not meet this form's prerequisites",
+            )
     else:
-        if current_user.role != "admin" and not db.query(ChapterMembership).filter(
-            ChapterMembership.user_id == current_user.id,
-            ChapterMembership.chapter_id == form.chapter_id,
-        ).first():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        if (
+            current_user.role != "admin"
+            and not db.query(ChapterMembership)
+            .filter(
+                ChapterMembership.user_id == current_user.id,
+                ChapterMembership.chapter_id == form.chapter_id,
+            )
+            .first()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
 
     return form

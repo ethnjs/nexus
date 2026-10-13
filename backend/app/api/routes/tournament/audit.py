@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -87,11 +89,19 @@ def list_audit_log(
 
     actors = resolve_person_refs(db, tournament_id, {entry.actor_id for entry in items})
 
-    role_ids = {entry.target_id for entry in items if entry.target_type == "role" and entry.target_id is not None}
-    roles_by_id = {
-        role.id: RoleRead.model_validate(role)
-        for role in db.query(TournamentRole).filter(TournamentRole.id.in_(role_ids)).all()
-    } if role_ids else {}
+    role_ids = {
+        entry.target_id
+        for entry in items
+        if entry.target_type == "role" and entry.target_id is not None
+    }
+    roles_by_id = (
+        {
+            role.id: RoleRead.model_validate(role)
+            for role in db.query(TournamentRole).filter(TournamentRole.id.in_(role_ids)).all()
+        }
+        if role_ids
+        else {}
+    )
 
     entries = [
         AuditLogEntryRead(

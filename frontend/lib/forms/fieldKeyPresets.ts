@@ -10,7 +10,7 @@ import { FormQuestionType } from "@/lib/api";
 // separate questions. An id rather than a name, so renaming "Day 1" doesn't
 // orphan every key and answer pointing at it.
 //
-// See backend/form-question-types-reference.md ("Reserved field_keys") for
+// See backend/docs/form-question-types-reference.md ("Reserved field_keys") for
 // the full contract, including why availability merges into one centralized
 // pool while event_preference/lunch don't.
 export type PresetKind = "availability" | "event_preference" | "lunch" | "track_status";

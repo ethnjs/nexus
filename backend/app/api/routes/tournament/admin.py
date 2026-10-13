@@ -1,15 +1,16 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.api.routes.tournament import _serialize
 from app.core.auth import require_admin
-from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
 from app.core.tournament import get_tournament, require_not_archived, tournament_counts
+from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
 from app.db.session import get_db
 from app.models.models import Tournament, User
 from app.schemas.tournament import AdminTournamentRead
-from app.api.routes.tournament import _serialize
 
 router = APIRouter(prefix="/admin/tournaments", tags=["tournaments"])
 
@@ -41,8 +42,7 @@ def list_all_tournaments(
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
     return [
-        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id])
-        for t in tournaments
+        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id]) for t in tournaments
     ]
 
 
@@ -63,8 +63,12 @@ def set_tournament_verified(
     tournament.is_verified = payload.is_verified
 
     log_action(
-        db, tournament.id, current_user.id, TOURNAMENT_VERIFIED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament.id,
+        current_user.id,
+        TOURNAMENT_VERIFIED,
+        target_type="tournament",
+        target_id=tournament.id,
         extra_data={"is_verified": payload.is_verified},
     )
 

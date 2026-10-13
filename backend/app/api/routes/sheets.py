@@ -1,12 +1,12 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
-from app.models.models import SheetConfig, Tournament, User
+from app.models.models import SheetConfig, User
 from app.schemas.sheet_config import (
     SheetConfigCreate,
     SheetConfigRead,
@@ -20,10 +20,10 @@ from app.schemas.sheet_config import (
     ValidateMappingsRequest,
     ValidateMappingsResponse,
 )
-from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
-from app.services.sync_service import sync_sheet
+from app.services.sheets_service import SheetsService
 from app.services.sheets_validation import validate_column_mappings
+from app.services.sync_service import sync_sheet
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/sheets", tags=["sheets"])
 
@@ -68,9 +68,9 @@ def validate_sheet(
     try:
         return svc.validate_sheet_url(payload.sheet_url)
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +89,9 @@ def get_sheet_headers(
         try:
             form_questions = forms_svc.get_form_questions(payload.form_url)
         except PermissionError as e:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     try:
         return svc.get_headers(
@@ -101,9 +101,9 @@ def get_sheet_headers(
             form_questions=form_questions,
         )
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,9 @@ def list_sheet_configs(
     return db.query(SheetConfig).filter(SheetConfig.tournament_id == tournament_id).all()
 
 
-@router.post("/configs/", response_model=SheetConfigReadWithWarnings, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/configs/", response_model=SheetConfigReadWithWarnings, status_code=status.HTTP_201_CREATED
+)
 def create_sheet_config(
     tournament_id: int,
     payload: SheetConfigCreate,
@@ -253,6 +255,6 @@ def sync_sheet_config(
     try:
         return sync_sheet(config, db, svc)  # fixed arg order: config, db, sheets_svc
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

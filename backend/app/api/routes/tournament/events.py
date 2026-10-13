@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from itertools import pairwise
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -7,17 +10,33 @@ from app.core.tournament import get_scoped_or_404, get_tournament, require_not_a
 from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, require_catalog_read, require_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_catalog_read,
+    require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
-    SeasonEvent, TournamentBuilding, TournamentBuildingTrack, TournamentEvent,
-    TournamentEventStaffingNeed, TournamentEventTrack, TournamentRole, TournamentShift,
-    TournamentTrack, User,
+    SeasonEvent,
+    TournamentBuilding,
+    TournamentBuildingTrack,
+    TournamentEvent,
+    TournamentEventStaffingNeed,
+    TournamentEventTrack,
+    TournamentRole,
+    TournamentShift,
+    TournamentTrack,
+    User,
 )
 from app.schemas.tournament.event import (
-    EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
-    EventStaffingNeed, EventTrackDetail, EventUpdate,
+    EventCreate,
+    EventLoadDefaultsResponse,
+    EventLoadDefaultsSkipped,
+    EventMemberRead,
+    EventRead,
+    EventStaffingNeed,
+    EventTrackDetail,
+    EventUpdate,
 )
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
@@ -46,8 +65,11 @@ def _validate_division(division: str | None, tournament) -> None:
 
 
 def _apply_shifts_and_tracks(
-    db: Session, event: TournamentEvent, tournament_id: int,
-    shift_ids: list[int] | None, track_details: list[EventTrackDetail] | None,
+    db: Session,
+    event: TournamentEvent,
+    tournament_id: int,
+    shift_ids: list[int] | None,
+    track_details: list[EventTrackDetail] | None,
 ) -> None:
     """Writes an event's shift and track sets, whole-set.
 
@@ -64,13 +86,17 @@ def _apply_shifts_and_tracks(
     """
     if shift_ids is not None:
         shifts = (
-            db.query(TournamentShift)
-            .filter(
-                TournamentShift.tournament_id == tournament_id,
-                TournamentShift.id.in_(shift_ids),
+            (
+                db.query(TournamentShift)
+                .filter(
+                    TournamentShift.tournament_id == tournament_id,
+                    TournamentShift.id.in_(shift_ids),
+                )
+                .all()
             )
-            .all()
-        ) if shift_ids else []
+            if shift_ids
+            else []
+        )
         missing = set(shift_ids) - {s.id for s in shifts}
         if missing:
             raise HTTPException(
@@ -82,7 +108,9 @@ def _apply_shifts_and_tracks(
         # deleted — see detach_shifts_from_assignments. Done before the set is
         # replaced, while the outgoing ids are still readable.
         detach_shifts_from_assignments(
-            db, event.id, {s.id for s in event.shifts} - {s.id for s in shifts},
+            db,
+            event.id,
+            {s.id for s in event.shifts} - {s.id for s in shifts},
         )
         event.shifts = shifts
 
@@ -142,18 +170,25 @@ def _apply_shifts_and_tracks(
 
 
 def _validate_tracks(
-    db: Session, event: TournamentEvent, tournament_id: int, track_ids: list[int],
+    db: Session,
+    event: TournamentEvent,
+    tournament_id: int,
+    track_ids: list[int],
 ) -> None:
     """Every named track exists in this tournament, and no *new* link points
     at one pending deletion."""
     tracks = (
-        db.query(TournamentTrack)
-        .filter(
-            TournamentTrack.tournament_id == tournament_id,
-            TournamentTrack.id.in_(track_ids),
+        (
+            db.query(TournamentTrack)
+            .filter(
+                TournamentTrack.tournament_id == tournament_id,
+                TournamentTrack.id.in_(track_ids),
+            )
+            .all()
         )
-        .all()
-    ) if track_ids else []
+        if track_ids
+        else []
+    )
 
     missing = set(track_ids) - {t.id for t in tracks}
     if missing:
@@ -175,7 +210,9 @@ def _validate_tracks(
 
 
 def _validate_buildings(
-    db: Session, tournament_id: int, details: list[EventTrackDetail],
+    db: Session,
+    tournament_id: int,
+    details: list[EventTrackDetail],
 ) -> None:
     """Each named building belongs to this tournament and is tagged with the
     track it is being used on.
@@ -186,7 +223,8 @@ def _validate_buildings(
     """
     pairs = {
         (detail.building_id, detail.track_id)
-        for detail in details if detail.building_id is not None
+        for detail in details
+        if detail.building_id is not None
     }
     if not pairs:
         return
@@ -231,7 +269,9 @@ def _set_needs(row: TournamentEventTrack, needs: list[EventStaffingNeed]) -> Non
 
 
 def _validate_need_roles(
-    db: Session, tournament_id: int, details: list[EventTrackDetail],
+    db: Session,
+    tournament_id: int,
+    details: list[EventTrackDetail],
 ) -> None:
     """Every role named by a need belongs to this tournament.
 
@@ -245,7 +285,8 @@ def _validate_need_roles(
         return
 
     found = {
-        row_id for (row_id,) in db.query(TournamentRole.id).filter(
+        row_id
+        for (row_id,) in db.query(TournamentRole.id).filter(
             TournamentRole.tournament_id == tournament_id,
             TournamentRole.id.in_(role_ids),
         )
@@ -263,7 +304,7 @@ def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
     event once at a time, which is the rule assignments build on. Adjacent
     (end == start) is fine; only strict overlap is rejected."""
     ordered = sorted(shifts, key=lambda s: s.start)
-    for earlier, later in zip(ordered, ordered[1:]):
+    for earlier, later in pairwise(ordered):
         if later.start < earlier.end:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -295,7 +336,9 @@ def list_events(
     public: bool = Query(False),
     requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
+    # MANAGE_MEMBERS too: exports filter by event, and the export gate is the
+    # roster's. Mirrors GET /assignments/. Event writes stay MANAGE_EVENTS.
+    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS, MANAGE_MEMBERS)),
 ) -> list[EventRead] | list[EventMemberRead] | list[dict]:
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)
@@ -309,8 +352,7 @@ def list_events(
     else:
         query = query.options(*loader_options(requested))
     events = (
-        query
-        .filter(TournamentEvent.tournament_id == tournament_id)
+        query.filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
         .all()
     )
@@ -386,7 +428,7 @@ def create_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This catalog event already exists in this tournament for this division",
-        )
+        ) from None
     db.refresh(event)
     return event
 
@@ -433,7 +475,7 @@ def update_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This catalog event already exists in this tournament for this division",
-        )
+        ) from None
     db.refresh(event)
     return event
 
@@ -459,9 +501,11 @@ def delete_event(
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/events/load-defaults/ — manage_events
 # Bulk-creates TournamentEvent rows from every active SeasonEvent whose
-# division the tournament supports. 
+# division the tournament supports.
 # ---------------------------------------------------------------------------
-@router.post("/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED
+)
 def load_default_events(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -495,11 +539,13 @@ def load_default_events(
     for season_event in active_season_events:
         key = (season_event.event_id, season_event.division)
         if key in existing_pairs or key in seen_pairs:
-            skipped.append(EventLoadDefaultsSkipped(
-                event_id=season_event.event_id,
-                division=season_event.division,
-                name=season_event.event.name,
-            ))
+            skipped.append(
+                EventLoadDefaultsSkipped(
+                    event_id=season_event.event_id,
+                    division=season_event.division,
+                    name=season_event.event.name,
+                )
+            )
             continue
         seen_pairs.add(key)
 

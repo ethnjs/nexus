@@ -1,7 +1,4 @@
-from datetime import date
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -9,18 +6,20 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     assign_option_ids,
-    field_key_taken_in_tournament,
+    changes,
     delete_pending_updates_for_field,
+    field_key_taken_in_tournament,
     flag_pending_updates,
     resolve_field_options,
     selected_option_ids,
     slugify,
     snapshot_answer_value,
 )
-from app.core.form import changes
 from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
 from app.core.form.permissions import (
-    require_form_manage_access, require_form_not_archived, require_form_view_access,
+    require_form_manage_access,
+    require_form_not_archived,
+    require_form_view_access,
 )
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -29,8 +28,6 @@ from app.core.form.validation import (
     LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
     availability_field_track_id,
-    event_preference_field_track_id,
-    validate_preset_track,
     collect_active_field_errors,
     option_shift_ids,
     option_track_assignments,
@@ -44,23 +41,22 @@ from app.core.form.validation import (
     validate_track_status_options,
 )
 from app.core.form.write_through import (
+    event_preference_items_from_answer,
+    lunch_values_from_answer,
     parse_availability_field_key,
     parse_event_preference_field_key,
     parse_lunch_field_key,
     shift_ids_on_tracks,
-    lunch_values_from_answer,
-    event_preference_items_from_answer,
     sync_availability,
     sync_event_preferences,
     sync_lunch,
     sync_track_statuses,
 )
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
-from app.core.tournament.memberships import get_membership_by_user, is_declined
-from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
-from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
+from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
+from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
+from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -83,13 +79,13 @@ from app.schemas.form import (
     FormCreate,
     FormFieldRead,
     FormListRead,
-    MemberFormRead,
     FormRead,
     FormRespondentRead,
     FormResponseCreate,
     FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
+    MemberFormRead,
     TournamentFormPrerequisitesUpdate,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead
@@ -220,7 +216,9 @@ def list_my_tournament_forms(
 ):
     membership = get_membership_by_user(db, tournament_id, current_user.id)
     if membership is None or is_declined(membership):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found"
+        )
 
     rows = (
         db.query(TournamentForm)
@@ -245,19 +243,23 @@ def list_my_tournament_forms(
         if tournament_form.is_onboarding:
             eligible = form.status == "published" and form.id == next_onboarding_form_id
         else:
-            eligible = form.status == "published" and member_meets_form_prerequisites(db, membership, tournament_form)
+            eligible = form.status == "published" and member_meets_form_prerequisites(
+                db, membership, tournament_form
+            )
         if completed or eligible:
-            result.append(MemberFormRead(
-                id=form.id,
-                name=form.name,
-                title=form.title,
-                description=form.description,
-                status=form.status,
-                is_onboarding=tournament_form.is_onboarding,
-                completed=completed,
-                eligible=eligible,
-                allow_response_edits=form.allow_response_edits,
-            ))
+            result.append(
+                MemberFormRead(
+                    id=form.id,
+                    name=form.name,
+                    title=form.title,
+                    description=form.description,
+                    status=form.status,
+                    is_onboarding=tournament_form.is_onboarding,
+                    completed=completed,
+                    eligible=eligible,
+                    allow_response_edits=form.allow_response_edits,
+                )
+            )
     return result
 
 
@@ -316,7 +318,9 @@ def list_chapter_forms(
 
 
 def _resolve_chapter_creators(
-    db: Session, chapter_id: int, user_ids: set[int | None],
+    db: Session,
+    chapter_id: int,
+    user_ids: set[int | None],
 ) -> dict[int | None, PersonRefResponse]:
     """The chapter-side twin of resolve_person_refs — same shape out, so a
     form's creator reads identically whoever owns the form.
@@ -344,10 +348,14 @@ def _resolve_chapter_creators(
     missing_ids = user_ids - resolved.keys()
     if missing_ids:
         users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({
-            u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
-            for u in users
-        })
+        resolved.update(
+            {
+                u.id: PersonRefResponse(
+                    user_id=u.id, first_name=u.first_name, last_name=u.last_name
+                )
+                for u in users
+            }
+        )
     # A null credit FK — the account was deleted. Keyed on None so callers
     # can index by the raw column value without special-casing it.
     if None in user_ids:
@@ -406,7 +414,9 @@ def update_tournament_form_prerequisites(
 
     tournament_form = db.query(TournamentForm).filter(TournamentForm.form_id == form_id).first()
     if tournament_form is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament form not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tournament form not found"
+        )
     if tournament_form.is_onboarding:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -541,15 +551,16 @@ def classify_field_changes(
 
         optional = reasons - changes.MANDATORY_REASONS
         locked = bool(reasons & changes.MANDATORY_REASONS)
-        result.append(FieldChangeRead(
-            field_id=field.id,
-            label=entry.label,
-            reasons=sorted(reasons),
-            locked=locked,
-            notify_default=locked or any(
-                changes.OPTIONAL_REASON_DEFAULTS.get(reason, False) for reason in optional
-            ),
-        ))
+        result.append(
+            FieldChangeRead(
+                field_id=field.id,
+                label=entry.label,
+                reasons=sorted(reasons),
+                locked=locked,
+                notify_default=locked
+                or any(changes.OPTIONAL_REASON_DEFAULTS.get(reason, False) for reason in optional),
+            )
+        )
     return result
 
 
@@ -596,7 +607,9 @@ def update_form(
         try:
             validate_form_for_publish(db, form)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
 
     if payload.name is not None:
         form.name = payload.name
@@ -647,7 +660,9 @@ def delete_form(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
-    has_responses = db.query(FormResponse).filter(FormResponse.form_id == form.id).first() is not None
+    has_responses = (
+        db.query(FormResponse).filter(FormResponse.form_id == form.id).first() is not None
+    )
     if has_responses:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -746,13 +761,20 @@ def bulk_update_fields(
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(
-                    db, form.tournament_id, normalized, availability_field_track_id(field_key),
+                    db,
+                    form.tournament_id,
+                    normalized,
+                    availability_field_track_id(field_key),
                 )
             if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key):
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
-            validate_track_status_options(db, form.tournament_id, field_key, question_type, normalized)
+            validate_track_status_options(
+                db, form.tournament_id, field_key, question_type, normalized
+            )
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
         return normalized
 
     # (field, reasons, removed_option_ids) — resolved into rows after the
@@ -769,7 +791,6 @@ def bulk_update_fields(
             # Nothing is flagged: the question and its answers are exactly as
             # they were left, so there's nothing for a responder to review.
             unarchiving = field.is_archived
-            type_changed = entry.question_type != field.question_type
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it
@@ -787,7 +808,7 @@ def bulk_update_fields(
             # stay attached without any lineage bookkeeping; FormAnswer records
             # the question_type/field_key each answer was given under, so past
             # answers remain readable under the old semantics rather than being
-            # reinterpreted through the new type. See form-edit-lifecycle.md.
+            # reinterpreted through the new type. See backend/docs/form-edit-lifecycle.md.
             if is_history_preserving and not unarchiving:
                 reasons = changes.classify_field_change(
                     field,
@@ -861,7 +882,9 @@ def bulk_update_fields(
     errors = collect_active_field_errors(db, form)
     if errors:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors)
+        )
 
     for field, reasons, removed_option_ids in pending_flags:
         flag_pending_updates(db, field, reasons, removed_option_ids)
@@ -912,7 +935,9 @@ def _active_fields(db: Session, form: Form) -> list[FormField]:
     )
 
 
-def _stored_answer_option_ids(db: Session, response: FormResponse, active_fields: list[FormField]) -> dict:
+def _stored_answer_option_ids(
+    db: Session, response: FormResponse, active_fields: list[FormField]
+) -> dict:
     """The response's answers as option_id lists, in the shape write-through
     expects. A submitted payload carries bare option_ids, but most stored
     answers hold {option_id, value, label} snapshots instead — so replaying
@@ -972,13 +997,15 @@ def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answ
         # under — `value`'s shape is a function of both, so storing them keeps
         # the answer readable after the field is edited rather than
         # reinterpreting it through whatever the field looks like later.
-        db.add(FormAnswer(
-            response_id=response.id,
-            field_id=field.id,
-            value=snapshot_answer_value(field, answer_in.value),
-            question_type=field.question_type,
-            field_key=field.field_key,
-        ))
+        db.add(
+            FormAnswer(
+                response_id=response.id,
+                field_id=field.id,
+                value=snapshot_answer_value(field, answer_in.value),
+                question_type=field.question_type,
+                field_key=field.field_key,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -987,7 +1014,7 @@ def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answ
 # response goes through PATCH below, which only accepts the questions a TD
 # flagged — an unrestricted rewrite of an old response re-fires write-through
 # for fields the respondent never touched, overwriting state a newer form may
-# have set (see form-edit-lifecycle.md). View access, not manage — this is
+# have set (see backend/docs/form-edit-lifecycle.md). View access, not manage — this is
 # what the person filling the form out calls.
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
@@ -1043,7 +1070,9 @@ def submit_form_response(
     if form.owner_type == "tournament":
         # No track scope — a first submission answers the whole form, so every
         # field is legitimately writing for the first time.
-        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user, response)
+        _write_through_reserved_fields(
+            db, form, active_fields, answers_by_field, current_user, response
+        )
 
     db.commit()
     db.refresh(response)
@@ -1054,7 +1083,7 @@ def submit_form_response(
 # PATCH /forms/{form_id}/responses/me/ — edit a submitted response. By default
 # limited to the questions carrying a pending update: replaying answers that
 # didn't change can overwrite state a newer form already set (see the track
-# status ordering note in form-edit-lifecycle.md). A form with
+# status ordering note in backend/docs/form-edit-lifecycle.md). A form with
 # allow_response_edits opens every live question instead — the TD has opted
 # into members revising freely, so the client must send only what changed.
 # The gate is enforced here, not in the UI.
@@ -1122,14 +1151,18 @@ def patch_form_response(
         # Only over what's being patched — the rest of the response already
         # satisfied required validation when it was submitted, and flagged
         # edits can't move a branching answer the TD didn't flag.
-        missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
+        missing_required = missing_required_field_keys(
+            list(fields_by_id.values()), answers_by_field
+        )
     if missing_required:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Missing required field(s): {sorted(missing_required)}",
         )
 
-    duplicate_ranks = duplicate_ranked_choice_field_keys(list(fields_by_id.values()), answers_by_field)
+    duplicate_ranks = duplicate_ranked_choice_field_keys(
+        list(fields_by_id.values()), answers_by_field
+    )
     if duplicate_ranks:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1163,8 +1196,13 @@ def patch_form_response(
         db.flush()
         active_fields = _active_fields(db, form)
         _write_through_reserved_fields(
-            db, form, active_fields, _stored_answer_option_ids(db, response, active_fields), current_user,
-            response, track_scope_field_ids=patched_ids,
+            db,
+            form,
+            active_fields,
+            _stored_answer_option_ids(db, response, active_fields),
+            current_user,
+            response,
+            track_scope_field_ids=patched_ids,
         )
 
     db.commit()
@@ -1183,7 +1221,7 @@ def _write_through_reserved_fields(
 ) -> None:
     """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`/
     `event_preference_{suffix}` answers into their structural tables —
-    tournament-owned forms only (see form-question-types-reference.md). Runs
+    tournament-owned forms only (see backend/docs/form-question-types-reference.md). Runs
     over every active field, not just answered ones, so a reserved field left
     blank clears any previously-synced rows rather than leaving them stale.
 
@@ -1244,10 +1282,12 @@ def _write_through_reserved_fields(
             own_track_id = availability_field_track_id(field.field_key)
             for option_id in selected:
                 for assignment in option_track_assignments(
-                    options_by_id.get(option_id) or {}, own_track_id,
+                    options_by_id.get(option_id) or {},
+                    own_track_id,
                 ):
                     intended_track_statuses[assignment["id"]] = {
-                        "status": assignment["status"], "field_id": field.id,
+                        "status": assignment["status"],
+                        "field_id": field.id,
                     }
 
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
@@ -1269,7 +1309,10 @@ def _write_through_reserved_fields(
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
             lunch_track_id, category = parse_lunch_field_key(field.field_key)
             sync_lunch(
-                db, membership.id, lunch_track_id, category,
+                db,
+                membership.id,
+                lunch_track_id,
+                category,
                 lunch_values_from_answer(field, value),
             )
             continue
@@ -1279,7 +1322,9 @@ def _write_through_reserved_fields(
             # availability's shared per-track pool), so this can sync straight
             # from this field's answer with no cross-field union needed.
             sync_event_preferences(
-                db, membership.id, parse_event_preference_field_key(field.field_key),
+                db,
+                membership.id,
+                parse_event_preference_field_key(field.field_key),
                 event_preference_items_from_answer(field, value),
             )
             continue
@@ -1312,7 +1357,7 @@ def _write_through_reserved_fields(
 # Write-through rows are handled per target: lunch and event preference each
 # have a single owning field and can be cleared, while availability and track
 # statuses are shared with other questions and are left alone — see
-# form-edit-lifecycle.md.
+# backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def invalidate_form_field(
@@ -1322,18 +1367,21 @@ def invalidate_form_field(
 ):
     require_form_not_archived(form)
     field = (
-        db.query(FormField)
-        .filter(FormField.form_id == form.id, FormField.id == field_id)
-        .first()
+        db.query(FormField).filter(FormField.form_id == form.id, FormField.id == field_id).first()
     )
     if field is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form"
+        )
 
     if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
         lunch_track_id, category = parse_lunch_field_key(field.field_key)
         _clear_lunch_write_through(db, form, field, lunch_track_id, category)
 
-    if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
+    if (
+        EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key)
+        and form.owner_type == "tournament"
+    ):
         _clear_event_preference_write_through(db, form, field)
 
     # FormAnswer's FK has no ON DELETE, so its rows go first; pending updates
@@ -1404,12 +1452,17 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
             items = value if isinstance(value, list) else ([value] if value else [])
             value = [i.get("option_id") if isinstance(i, dict) else i for i in items]
         sync_lunch(
-            db, membership_id, lunch_track_id, category,
+            db,
+            membership_id,
+            lunch_track_id,
+            category,
             lunch_values_from_answer(field, value),
         )
 
 
-def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_track_id, category) -> None:
+def _clear_lunch_write_through(
+    db: Session, form: Form, field: FormField, lunch_track_id, category
+) -> None:
     """Drops the lunch rows this field produced, for every member who answered
     it. Keyed by (membership, track, category), so no other question can be
     contributing the same rows."""
@@ -1542,11 +1595,22 @@ def delete_form_response(
         respondent = response.user
         # Stored by value, like ownership_transferred: the log has to read
         # right even after the member leaves or is deleted.
-        respondent_name = f"{respondent.first_name or ''} {respondent.last_name or ''}".strip() or respondent.email
+        respondent_name = (
+            f"{respondent.first_name or ''} {respondent.last_name or ''}".strip()
+            or respondent.email
+        )
         log_action(
-            db, form.tournament_id, current_user.id, FORM_RESPONSE_DELETED,
-            target_type="membership", target_id=membership.id if membership else None,
-            extra_data={"form_id": form.id, "form_name": form.name, "respondent_name": respondent_name},
+            db,
+            form.tournament_id,
+            current_user.id,
+            FORM_RESPONSE_DELETED,
+            target_type="membership",
+            target_id=membership.id if membership else None,
+            extra_data={
+                "form_id": form.id,
+                "form_name": form.name,
+                "respondent_name": respondent_name,
+            },
         )
 
     db.delete(response)

@@ -4,7 +4,9 @@ authority; ties are peers who can't edit each other). Final rank values for
 drag-to-reorder are computed client-side and applied via a bulk endpoint —
 this module just guards who's allowed to touch which ranks.
 """
+
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
@@ -17,7 +19,16 @@ if TYPE_CHECKING:
     from app.models.models import Tournament, TournamentMembership, TournamentRole, User
 
 
-def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["TournamentRole"]:
+# What a role can map to in each external system. Validated in the role
+# schemas rather than as Postgres enums, so a new value needs no migration.
+TORUS_ROLES = frozenset({"writer", "reviewer", "tournament_director", "test_coordinator"})
+DUOSMIUM_ROLES = frozenset({"tournament_director", "scoremaster", "event_supervisor"})
+# The RoleUpdate fields an explicit null clears. Everything else treats null
+# as "not sent" — a role can't lose its label, permissions or rank.
+NULLABLE_ROLE_FIELDS = frozenset({"torus_role", "duosmium_role"})
+
+
+def with_member_counts(db: Session, roles: list[TournamentRole]) -> list[TournamentRole]:
     """
     Attaches member_count as a transient attribute on each role — RoleRead
     reads it via from_attributes. One grouped count query regardless of how
@@ -30,22 +41,29 @@ def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["Tour
     # Distinct memberships, not rows: since #83 one member holds a role
     # through a grant per track plus a row per event or zone they cover, and a
     # plain count would report the same person several times.
-    counts = dict(
-        db.query(
-            TournamentTrackAssignment.role_id,
-            func.count(func.distinct(TournamentTrackAssignment.membership_id)),
+    counts = (
+        dict(
+            db.query(
+                TournamentTrackAssignment.role_id,
+                func.count(func.distinct(TournamentTrackAssignment.membership_id)),
+            )
+            .join(
+                TournamentMembership,
+                TournamentMembership.id == TournamentTrackAssignment.membership_id,
+            )
+            .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
+            .group_by(TournamentTrackAssignment.role_id)
+            .all()
         )
-        .join(TournamentMembership, TournamentMembership.id == TournamentTrackAssignment.membership_id)
-        .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
-        .group_by(TournamentTrackAssignment.role_id)
-        .all()
-    ) if role_ids else {}
+        if role_ids
+        else {}
+    )
     for role in roles:
         role.member_count = counts.get(role.id, 0)
     return roles
 
 
-def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: Session) -> None:
+def validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Session) -> None:
     """
     A MANAGE_ROLES holder can never create or edit a role that outranks (or
     ties) their own highest role. Only the Owner and platform admins are
@@ -84,7 +102,9 @@ def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: S
         )
 
 
-def validate_member_target(actor: "User", tournament: "Tournament", membership: "TournamentMembership", db: Session) -> None:
+def validate_member_target(
+    actor: User, tournament: Tournament, membership: TournamentMembership, db: Session
+) -> None:
     """
     Guards actions taken on a member's own row — removing them from the
     tournament, editing their day-of logistics, or (via validate_role_action)
@@ -121,7 +141,9 @@ def validate_member_target(actor: "User", tournament: "Tournament", membership: 
 
     actor_rank = get_highest_rank(actor, tournament.id, db)
     if actor_rank is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
 
     target_rank = get_highest_rank(membership.user, tournament.id, db)
     if target_rank is not None and target_rank < actor_rank:
@@ -132,10 +154,10 @@ def validate_member_target(actor: "User", tournament: "Tournament", membership: 
 
 
 def validate_role_action(
-    actor: "User",
-    tournament: "Tournament",
-    membership: "TournamentMembership",
-    role: "TournamentRole",
+    actor: User,
+    tournament: Tournament,
+    membership: TournamentMembership,
+    role: TournamentRole,
     db: Session,
 ) -> None:
     """
@@ -163,7 +185,9 @@ def validate_role_action(
 
     actor_rank = get_highest_rank(actor, tournament.id, db)
     if actor_rank is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
 
     if role.rank <= actor_rank:
         raise HTTPException(

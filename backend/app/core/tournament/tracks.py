@@ -25,6 +25,7 @@ Two invariants drive everything here:
    both transitions are audit-logged — the purge happens as a side effect of
    an unrelated edit, with no TD action naming the track.
 """
+
 from __future__ import annotations
 
 from fastapi import HTTPException, status
@@ -33,7 +34,10 @@ from sqlalchemy.orm import Session
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament.audit import TRACK_PURGED, log_action
 from app.models.models import (
-    TournamentEventTrack, TournamentMembershipTrackStatus, TournamentShift, TournamentTrack,
+    TournamentEventTrack,
+    TournamentMembershipTrackStatus,
+    TournamentShift,
+    TournamentTrack,
 )
 
 
@@ -50,17 +54,11 @@ def track_blocking_references(db: Session, tournament_id: int, track_id: int) ->
     track (or deletes them, which has its own availability guard) and the
     track then purges itself."""
     blockers: list[str] = []
-    shift_count = (
-        db.query(TournamentShift)
-        .filter(TournamentShift.track_id == track_id)
-        .count()
-    )
+    shift_count = db.query(TournamentShift).filter(TournamentShift.track_id == track_id).count()
     if shift_count:
         blockers.append(f"{shift_count} shift(s)")
     event_count = (
-        db.query(TournamentEventTrack)
-        .filter(TournamentEventTrack.track_id == track_id)
-        .count()
+        db.query(TournamentEventTrack).filter(TournamentEventTrack.track_id == track_id).count()
     )
     if event_count:
         blockers.append(f"{event_count} event(s)")
@@ -77,8 +75,9 @@ def track_event_ids(db: Session, track_id: int) -> set[int]:
     event_preference question on a track is allowed to offer."""
     return {
         event_id
-        for (event_id,) in db.query(TournamentEventTrack.tournament_event_id)
-        .filter(TournamentEventTrack.track_id == track_id)
+        for (event_id,) in db.query(TournamentEventTrack.tournament_event_id).filter(
+            TournamentEventTrack.track_id == track_id
+        )
     }
 
 
@@ -144,7 +143,9 @@ def track_shift_count(db: Session, track_id: int) -> int:
     return db.query(TournamentShift).filter(TournamentShift.track_id == track_id).count()
 
 
-def live_primary_track_count(db: Session, tournament_id: int, *, excluding_id: int | None = None) -> int:
+def live_primary_track_count(
+    db: Session, tournament_id: int, *, excluding_id: int | None = None
+) -> int:
     query = db.query(TournamentTrack).filter(
         TournamentTrack.tournament_id == tournament_id,
         TournamentTrack.is_primary.is_(True),
@@ -176,8 +177,12 @@ def purge_pending_tracks(db: Session, tournament_id: int, actor_id: int) -> list
         if track_blocking_references(db, tournament_id, track.id):
             continue
         log_action(
-            db, tournament_id, actor_id, TRACK_PURGED,
-            target_type="track", target_id=track.id,
+            db,
+            tournament_id,
+            actor_id,
+            TRACK_PURGED,
+            target_type="track",
+            target_id=track.id,
             extra_data={
                 "name": track.name,
                 "member_rows_deleted": track_member_data_count(db, track.id),
@@ -209,7 +214,9 @@ def sync_sole_track_name(db: Session, tournament) -> None:
     """
     live = (
         db.query(TournamentTrack)
-        .filter(TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived.is_(False))
+        .filter(
+            TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived.is_(False)
+        )
         .all()
     )
     if len(live) != 1:
@@ -228,4 +235,3 @@ def sync_sole_track_name(db: Session, tournament) -> None:
     )
     if taken is None:
         track.name = name
-

@@ -1,18 +1,17 @@
 from __future__ import annotations
+
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TypeVar
+from typing import TypedDict
 from zoneinfo import ZoneInfo
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentEvent, TournamentMembership, User
-
-T = TypeVar("T")
+from app.models.models import Tournament, TournamentEvent, TournamentMembership
 
 
 def tournament_local_date(tournament: Tournament, moment: datetime):
@@ -25,7 +24,9 @@ def tournament_local_date(tournament: Tournament, moment: datetime):
     return moment.astimezone(ZoneInfo(tournament.timezone)).date()
 
 
-def get_scoped_or_404(db: Session, model: type[T], id_: int, tournament_id: int, label: str) -> T:
+def get_scoped_or_404[T](
+    db: Session, model: type[T], id_: int, tournament_id: int, label: str
+) -> T:
     """
     Fetch a row by id, scoped to tournament_id via its own tournament_id
     column. 404s on either a missing row or a tournament mismatch — the two
@@ -47,7 +48,7 @@ def get_tournament(tournament_id: int, db: Session = Depends(get_db)) -> Tournam
 
 
 def tournament_display_name(tournament: Tournament) -> str:
-    """"{year} {short_name or name}" — e.g. "2026 SoCal States" or "2026 Southern California
+    """ "{year} {short_name or name}" — e.g. "2026 SoCal States" or "2026 Southern California
     State Tournament" when no short_name is set. Year comes from
     the tournament's first day (the name itself excludes it, see
     TournamentCreate.name), which is derived from the primary tracks — the year
@@ -57,7 +58,12 @@ def tournament_display_name(tournament: Tournament) -> str:
     return f"{tournament.first_day.year} {label}" if tournament.first_day else label
 
 
-def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, dict[str, int]]:
+class TournamentCounts(TypedDict):
+    event_count: int
+    volunteer_count: int
+
+
+def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, TournamentCounts]:
     """{tournament_id: {"event_count": n, "volunteer_count": n}} for the ids given.
 
     Two grouped queries for the whole list, not per row. The obvious
@@ -68,7 +74,7 @@ def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, d
     Ids with nothing to count are still present, at zero: a caller building a
     response shouldn't have to distinguish "no events" from "not in the dict".
     """
-    counts: dict[int, dict[str, int]] = {
+    counts: dict[int, TournamentCounts] = {
         tid: {"event_count": 0, "volunteer_count": 0} for tid in tournament_ids
     }
     if not counts:

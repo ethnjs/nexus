@@ -18,26 +18,32 @@ Fixture hierarchy:
 
 import os
 from datetime import date, timedelta
+
 import pytest
 
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("API_KEY", "")
 
+from unittest.mock import AsyncMock, MagicMock
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from unittest.mock import MagicMock, AsyncMock
 
-from app.db.session import Base, get_db
-from app.models import models  # noqa: F401
-from app.api.routes.sheets import get_sheets_service, get_forms_service
-from app.services.sheets_service import SheetsService
-from app.services.forms_service import FormsService
+from app.api.routes.sheets import get_forms_service, get_sheets_service
 from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
+from app.db.session import Base, get_db
+from app.models import models  # noqa: F401
 from app.models.models import (
-    Tournament, TournamentMembership, TournamentRole, TournamentTrackAssignment,
-    TournamentTrack, User, Event, EventCategory,
+    Event,
+    EventCategory,
+    Tournament,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
 )
 from app.schemas.sheet_config import (
     FormQuestionOption,
@@ -46,6 +52,8 @@ from app.schemas.sheet_config import (
     SheetHeadersResponse,
     SheetValidateResponse,
 )
+from app.services.forms_service import FormsService
+from app.services.sheets_service import SheetsService
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"
@@ -68,14 +76,16 @@ TOURNAMENT_REQUIRED_FIELDS = {
     "state": "Southern California",
     "level": "invitational",
     "timezone": "America/Los_Angeles",
-    "tracks": [{
-        "name": "Main",
-        "is_primary": True,
-        "start_date": future_date(5, 21),
-        "end_date": future_date(5, 23),
-        "location": "Test Location",
-        "division": ["B", "C"],
-    }],
+    "tracks": [
+        {
+            "name": "Main",
+            "is_primary": True,
+            "start_date": future_date(5, 21),
+            "end_date": future_date(5, 23),
+            "location": "Test Location",
+            "division": ["B", "C"],
+        }
+    ],
 }
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
@@ -101,6 +111,7 @@ def db():
 # ---------------------------------------------------------------------------
 # Auth fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def admin_user(db):
@@ -154,6 +165,7 @@ def other_user(db):
 # Tournament + membership fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     """
     Create a tournament owned by `owner`, populate DEFAULT_ROLES, and give
@@ -176,15 +188,17 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
 
     # The tournament's dates, venue and divisions are derived from this — a
     # tournament without a primary track has no schedule at all.
-    db.add(TournamentTrack(
-        tournament_id=tournament.id,
-        name="Main",
-        is_primary=True,
-        location="Test Location",
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=1),
-        division=["B", "C"],
-    ))
+    db.add(
+        TournamentTrack(
+            tournament_id=tournament.id,
+            name="Main",
+            is_primary=True,
+            location="Test Location",
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+            division=["B", "C"],
+        )
+    )
     db.flush()
 
     role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
@@ -201,9 +215,13 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     db.flush()
     # Tournament-wide: the director role carries permissions, and since #83
     # those are the roles that aren't about a particular day.
-    db.add(TournamentTrackAssignment(
-        membership_id=membership.id, role_id=td_role.id, is_tournament_wide=True,
-    ))
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=membership.id,
+            role_id=td_role.id,
+            is_tournament_wide=True,
+        )
+    )
 
     db.commit()
     db.refresh(tournament)
@@ -233,16 +251,17 @@ def set_display_config(db, tournament, user, config: dict) -> None:
     not the tournament — every surface renders per viewer now, so a test
     has to say *whose* config it is setting."""
     membership = (
-        db.query(TournamentMembership)
-        .filter_by(tournament_id=tournament.id, user_id=user.id)
-        .one()
+        db.query(TournamentMembership).filter_by(tournament_id=tournament.id, user_id=user.id).one()
     )
     membership.display_config = config
     db.commit()
 
 
 def grant_role(
-    db: Session, tournament: Tournament, user: User, role_label: str,
+    db: Session,
+    tournament: Tournament,
+    user: User,
+    role_label: str,
     track_id: int | None = None,
 ) -> TournamentMembership:
     """
@@ -261,11 +280,16 @@ def grant_role(
     """
     membership = (
         db.query(TournamentMembership)
-        .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+        .filter(
+            TournamentMembership.user_id == user.id,
+            TournamentMembership.tournament_id == tournament.id,
+        )
         .first()
     )
     if not membership:
-        membership = TournamentMembership(user_id=user.id, tournament_id=tournament.id, source="manual")
+        membership = TournamentMembership(
+            user_id=user.id, tournament_id=tournament.id, source="manual"
+        )
         db.add(membership)
         db.flush()
 
@@ -275,12 +299,18 @@ def grant_role(
         .first()
     )
     if role is None:
-        raise ValueError(f"No TournamentRole with label={role_label!r} on tournament {tournament.id}")
+        raise ValueError(
+            f"No TournamentRole with label={role_label!r} on tournament {tournament.id}"
+        )
 
-    db.add(TournamentTrackAssignment(
-        membership_id=membership.id, role_id=role.id,
-        is_tournament_wide=track_id is None, tournament_track_id=track_id,
-    ))
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=membership.id,
+            role_id=role.id,
+            is_tournament_wide=track_id is None,
+            tournament_track_id=track_id,
+        )
+    )
     db.commit()
     db.refresh(membership)
     return membership
@@ -300,6 +330,7 @@ def other_tournament(db, other_user):
 # Event / EventCategory fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def event_category_factory(db):
     def _make(name="Chemistry"):
@@ -308,6 +339,7 @@ def event_category_factory(db):
         db.commit()
         db.refresh(category)
         return category
+
     return _make
 
 
@@ -324,6 +356,7 @@ def event_factory(db):
         db.commit()
         db.refresh(event)
         return event
+
     return _make
 
 
@@ -335,6 +368,7 @@ def event(event_factory, event_category):
 # ---------------------------------------------------------------------------
 # Service mocks
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="function")
 def mock_sheets_service() -> MagicMock:
@@ -349,6 +383,7 @@ def mock_forms_service() -> MagicMock:
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def mock_send_email(monkeypatch):
@@ -390,6 +425,7 @@ def client(db, mock_sheets_service, mock_forms_service):
 # Auth helper
 # ---------------------------------------------------------------------------
 
+
 def login(client: TestClient, email: str, password: str):
     """POST /auth/login and store the resulting cookie on the client."""
     return client.post("/auth/login/", json={"email": email, "password": password})
@@ -398,6 +434,7 @@ def login(client: TestClient, email: str, password: str):
 # ---------------------------------------------------------------------------
 # Sheets mock factory
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_sheets_service() -> MagicMock:
     mock = MagicMock(spec=SheetsService)
@@ -413,12 +450,12 @@ def _make_mock_sheets_service() -> MagicMock:
         sheet_name="Form Responses 1",
         sheet_type="volunteers",
         mappings=[
-            MappedHeader(header="Timestamp",     field="__ignore__", type="ignore"),
-            MappedHeader(header="Email Address", field="email",      type="string"),
-            MappedHeader(header="First Name",    field="first_name", type="string"),
-            MappedHeader(header="Last Name",     field="last_name",  type="string"),
-            MappedHeader(header="Phone Number",  field="phone",      type="string"),
-            MappedHeader(header="T-Shirt Size",  field="shirt_size", type="string"),
+            MappedHeader(header="Timestamp", field="__ignore__", type="ignore"),
+            MappedHeader(header="Email Address", field="email", type="string"),
+            MappedHeader(header="First Name", field="first_name", type="string"),
+            MappedHeader(header="Last Name", field="last_name", type="string"),
+            MappedHeader(header="Phone Number", field="phone", type="string"),
+            MappedHeader(header="T-Shirt Size", field="shirt_size", type="string"),
             MappedHeader(
                 header="Availability [8:00 AM - 10:00 AM]",
                 field="availability",
@@ -437,6 +474,7 @@ def _make_mock_sheets_service() -> MagicMock:
 # Forms mock factory
 # Returns plain dicts matching the real FormsService.get_form_questions shape.
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_forms_service() -> MagicMock:
     mock = MagicMock(spec=FormsService)

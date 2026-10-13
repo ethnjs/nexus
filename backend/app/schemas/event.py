@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -32,5 +32,5 @@ class EventCreate(BaseModel):
 
 
 class EventUpdate(BaseModel):
-    name: Optional[str] = None
-    category_id: Optional[int] = None
+    name: str | None = None
+    category_id: int | None = None

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -10,6 +11,7 @@ class DisplayConfigSection(BaseModel):
     fields assigned to it — those are the only sections whose membership is
     user-defined, so `fields` is meaningless on a built-in and ignored there.
     """
+
     id: str
     hidden: bool = False
     # Field ids within this section that are turned off — only meaningful for
@@ -24,6 +26,7 @@ class DisplayConfigSort(BaseModel):
     """One sort key, remembered per viewer. Sorting is done in the client
     (every sortable surface is a single page), so this is view state the
     server only stores and validates."""
+
     field: str
     direction: str = "asc"
 
@@ -41,6 +44,7 @@ class DisplayConfigSurface(BaseModel):
     (surface key -> this) — no wrapper schema needed for that; FastAPI
     handles a plain dict type as both a request body and a response model.
     """
+
     # Namespaced strings like "track:3" or "lunch_category:entree". Used by
     # the panel to drop individual items from a section's contents.
     hidden: list[str] = []
@@ -81,12 +85,14 @@ class DisplayConfigSurface(BaseModel):
 class DisplayConfigCatalogItem(BaseModel):
     """One toggleable item in the config modal's catalog — key is the exact
     namespaced string a Toggle writes into `hidden`, label is what's shown."""
+
     key: str
     label: str
 
 
 class DisplayConfigSectionCatalogItem(BaseModel):
     """One built-in panel section a TD can reorder, hide, or hide pieces of."""
+
     id: str
     label: str
     fields: list[DisplayConfigCatalogItem] = []
@@ -96,6 +102,7 @@ class DisplayConfigCatalog(BaseModel):
     """Every hideable item, grouped by kind — surface-agnostic (see
     build_catalog's docstring); the modal applies whichever surface's saved
     `hidden` set is relevant to check these against."""
+
     tracks: list[DisplayConfigCatalogItem] = []
     # One entry per day the tournament runs shifts on — hiding a day drops
     # that day's shifts from the panel's availability section.

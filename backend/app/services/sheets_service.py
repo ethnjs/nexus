@@ -9,10 +9,13 @@ Pure functions handle header → field/type mapping with this priority:
 
 Exception: availability bracket pattern always → matrix_row regardless of form data.
 """
+
 from __future__ import annotations
+
 import json
 import re
 from typing import Any
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -29,8 +32,8 @@ from app.schemas.sheet_config import (
 )
 from app.services.volunteer_hints import (
     AVAILABILITY_BRACKET_PATTERN,
-    FieldHint,
     MATRIX_ROW_KEY_KEYWORDS,
+    FieldHint,
     match_volunteer_hint,
 )
 
@@ -79,19 +82,15 @@ class SheetsService:
     def validate_sheet_url(self, sheet_url: str) -> SheetValidateResponse:
         spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
         try:
-            metadata = (
-                self._client.spreadsheets()
-                .get(spreadsheetId=spreadsheet_id)
-                .execute()
-            )
+            metadata = self._client.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         except HttpError as e:
             if e.resp.status == 403:
                 raise PermissionError(
                     "Service account does not have access to this spreadsheet. "
                     "Share the sheet with the service account email."
-                )
+                ) from e
             if e.resp.status == 404:
-                raise ValueError("Spreadsheet not found. Check the URL.")
+                raise ValueError("Spreadsheet not found. Check the URL.") from e
             raise
 
         title = metadata.get("properties", {}).get("title", "Untitled")
@@ -142,7 +141,7 @@ class SheetsService:
             )
         except HttpError as e:
             if e.resp.status == 403:
-                raise PermissionError("Service account cannot read this sheet.")
+                raise PermissionError("Service account cannot read this sheet.") from e
             raise
         rows = result.get("values", [])
         return rows[0] if rows else []
@@ -158,7 +157,7 @@ class SheetsService:
         result_dicts: list[dict[str, Any]] = []
         for row in rows:
             padded = row + [""] * (len(headers) - len(row))
-            result_dicts.append(dict(zip(headers, padded)))
+            result_dicts.append(dict(zip(headers, padded, strict=False)))
         return result_dicts
 
     def get_rows_with_headers(
@@ -174,7 +173,7 @@ class SheetsService:
             )
         except HttpError as e:
             if e.resp.status == 403:
-                raise PermissionError("Service account cannot read this sheet.")
+                raise PermissionError("Service account cannot read this sheet.") from e
             raise
 
         rows = result.get("values", [])
@@ -189,6 +188,7 @@ class SheetsService:
 # ---------------------------------------------------------------------------
 # Pure functions — outside the class for easy unit testing
 # ---------------------------------------------------------------------------
+
 
 def _build_question_index(form_questions: list) -> dict[str, dict]:
     """
@@ -246,14 +246,16 @@ def _alias_rules(options: list) -> list[ParseRule]:
         raw = opt.raw if hasattr(opt, "raw") else opt["raw"]
         alias = opt.alias if hasattr(opt, "alias") else opt["alias"]
         if raw != alias:
-            rules.append(ParseRule(
-                condition="contains",
-                match=raw,
-                case_sensitive=False,
-                action="replace",
-                value=alias,
-                is_alias=True,
-            ))
+            rules.append(
+                ParseRule(
+                    condition="contains",
+                    match=raw,
+                    case_sensitive=False,
+                    action="replace",
+                    value=alias,
+                    is_alias=True,
+                )
+            )
     return rules
 
 
@@ -368,9 +370,7 @@ def _build_mappings(headers: list[str], q_index: dict) -> list[MappedHeader]:
                 column_index, header, multi_matrix[column_index], q_index
             )
         else:
-            mapped = _map_header(
-                header, column_index, q_index, claimed_fields, claimed_extra_keys
-            )
+            mapped = _map_header(header, column_index, q_index, claimed_fields, claimed_extra_keys)
         mappings.append(mapped)
 
     return mappings
@@ -591,7 +591,9 @@ def _mapped_from_hint(
 
         # __ignore__ → ignore type
         if field == "__ignore__":
-            return MappedHeader(column_index=column_index, header=header, field="__ignore__", type="ignore")
+            return MappedHeader(
+                column_index=column_index, header=header, field="__ignore__", type="ignore"
+            )
 
         # extra_data without a pre-defined extra_key → slugify the header
         if field == "extra_data" and not extra_key:

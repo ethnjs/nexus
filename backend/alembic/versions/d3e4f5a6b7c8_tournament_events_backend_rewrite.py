@@ -40,16 +40,17 @@ incrementally as the rewrite progresses:
     creation from the creator's browser timezone, immutable after —
     no update path. Existing rows backfilled to "America/Los_Angeles".
 """
-from typing import Sequence, Union
-from alembic import op
+
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import text
 
-
 revision: str = "d3e4f5a6b7c8"
-down_revision: Union[str, None] = "c7b3f4a9d2e1"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "c7b3f4a9d2e1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -70,7 +71,12 @@ def upgrade() -> None:
     op.create_table(
         "tournament_shifts",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("tournament_id", sa.Integer(), sa.ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tournament_id",
+            sa.Integer(),
+            sa.ForeignKey("tournaments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("label", sa.String(length=255), nullable=False),
         sa.Column("start", sa.DateTime(timezone=True), nullable=False),
         sa.Column("end", sa.DateTime(timezone=True), nullable=False),
@@ -79,8 +85,18 @@ def upgrade() -> None:
     )
     op.create_table(
         "tournament_event_shifts",
-        sa.Column("tournament_event_id", sa.Integer(), sa.ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True),
-        sa.Column("tournament_shift_id", sa.Integer(), sa.ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "tournament_event_id",
+            sa.Integer(),
+            sa.ForeignKey("tournament_events.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "tournament_shift_id",
+            sa.Integer(),
+            sa.ForeignKey("tournament_shifts.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -90,7 +106,9 @@ def upgrade() -> None:
     # catalog-linked rows
     # ------------------------------------------------------------------
     op.drop_constraint("uq_tournament_event_division", "tournament_events", type_="unique")
-    op.alter_column("tournament_events", "division", existing_type=sa.String(length=4), nullable=True)
+    op.alter_column(
+        "tournament_events", "division", existing_type=sa.String(length=4), nullable=True
+    )
     op.alter_column("tournament_events", "name", existing_type=sa.String(length=255), nullable=True)
 
     op.drop_column("tournament_events", "blocks")
@@ -98,10 +116,16 @@ def upgrade() -> None:
 
     op.add_column(
         "tournament_events",
-        sa.Column("event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="SET NULL"), nullable=True
+        ),
     )
-    op.add_column("tournament_events", sa.Column("start_time", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("tournament_events", sa.Column("end_time", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "tournament_events", sa.Column("start_time", sa.DateTime(timezone=True), nullable=True)
+    )
+    op.add_column(
+        "tournament_events", sa.Column("end_time", sa.DateTime(timezone=True), nullable=True)
+    )
 
     op.create_index(
         "uq_tournament_event_catalog_division",
@@ -111,7 +135,9 @@ def upgrade() -> None:
         postgresql_where=text("event_id IS NOT NULL"),
     )
 
-    op.alter_column("tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=True)
+    op.alter_column(
+        "tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=True
+    )
 
     # ------------------------------------------------------------------
     # season_events — new table
@@ -119,7 +145,9 @@ def upgrade() -> None:
     op.create_table(
         "season_events",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("year", sa.Integer(), nullable=False),
         sa.Column("division", sa.String(length=4), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.false()),
@@ -132,7 +160,9 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     op.add_column(
         "tournaments",
-        sa.Column("timezone", sa.String(length=64), nullable=False, server_default="America/Los_Angeles"),
+        sa.Column(
+            "timezone", sa.String(length=64), nullable=False, server_default="America/Los_Angeles"
+        ),
     )
     op.alter_column("tournaments", "timezone", server_default=None)
 
@@ -158,18 +188,26 @@ def downgrade() -> None:
     # Any rows with NULL volunteers_needed get 2 (the old default) so the
     # NOT NULL constraint below doesn't fail.
     op.execute("UPDATE tournament_events SET volunteers_needed = 2 WHERE volunteers_needed IS NULL")
-    op.alter_column("tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=False)
+    op.alter_column(
+        "tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=False
+    )
 
     op.drop_column("tournament_events", "end_time")
     op.drop_column("tournament_events", "start_time")
     op.drop_column("tournament_events", "event_id")
 
     op.add_column("tournament_events", sa.Column("category", sa.String(length=255), nullable=True))
-    op.add_column("tournament_events", sa.Column("blocks", sa.JSON(), nullable=False, server_default="[]"))
+    op.add_column(
+        "tournament_events", sa.Column("blocks", sa.JSON(), nullable=False, server_default="[]")
+    )
     op.alter_column("tournament_events", "blocks", server_default=None)
 
-    op.alter_column("tournament_events", "division", existing_type=sa.String(length=4), nullable=False)
-    op.alter_column("tournament_events", "name", existing_type=sa.String(length=255), nullable=False)
+    op.alter_column(
+        "tournament_events", "division", existing_type=sa.String(length=4), nullable=False
+    )
+    op.alter_column(
+        "tournament_events", "name", existing_type=sa.String(length=255), nullable=False
+    )
     op.create_unique_constraint(
         "uq_tournament_event_division", "tournament_events", ["tournament_id", "name", "division"]
     )

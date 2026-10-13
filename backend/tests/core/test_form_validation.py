@@ -3,11 +3,10 @@
 field_key pairing, branching option targets, availability's TournamentShift
 resolution, and the aggregate whole-form publish pass. See
 tests/api/test_forms.py for the route-level wiring of these checks."""
-from datetime import date, datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from tests.api.chapter._helpers import make_chapter, make_university
 
 from app.core.form.validation import (
     FormFieldValidationError,
@@ -19,16 +18,17 @@ from app.core.form.validation import (
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
-    validate_track_status_options,
     validate_tournament_preset,
+    validate_track_status_options,
 )
 from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
+from tests.api.chapter._helpers import make_chapter, make_university
 from tests.conftest import primary_track_id
-
 
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
+
 
 def _make_form(db, user, tournament, **overrides):
     defaults = dict(
@@ -60,7 +60,15 @@ def _make_chapter_form(db, user, chapter, **overrides):
     return form
 
 
-def _make_field(db, form, *, order=1, field_key="favorite_color", question_type="single_select_dropdown", **overrides):
+def _make_field(
+    db,
+    form,
+    *,
+    order=1,
+    field_key="favorite_color",
+    question_type="single_select_dropdown",
+    **overrides,
+):
     defaults = dict(
         form_id=form.id,
         order=order,
@@ -85,8 +93,10 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
 
 
 def _make_shift(db, tournament, label="Saturday", day=None):
-    start = datetime(2026, 3, 15, tzinfo=timezone.utc) if day is None else day
-    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
+    start = datetime(2026, 3, 15, tzinfo=UTC) if day is None else day
+    shift = TournamentShift(
+        tournament_id=tournament.id,
+        track_id=primary_track_id(db, tournament.id),
         label=label,
         start=start,
         end=start + timedelta(hours=8),
@@ -113,6 +123,7 @@ def chapter(db):
 # validate_field_config — per-question_type shape
 # ---------------------------------------------------------------------------
 
+
 class TestValidateFieldConfig:
     def test_unknown_question_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
@@ -127,7 +138,9 @@ class TestValidateFieldConfig:
             validate_field_config("acknowledgment", {"required": True})
 
     def test_acknowledgment_valid_passes(self):
-        normalized = validate_field_config("acknowledgment", {"required": True, "confirm_label": "I understand"})
+        normalized = validate_field_config(
+            "acknowledgment", {"required": True, "confirm_label": "I understand"}
+        )
         assert normalized == {"required": True, "confirm_label": "I understand"}
 
     def test_single_select_missing_options_rejected(self):
@@ -193,7 +206,9 @@ class TestValidateFieldConfig:
                 "multi_select_checkbox",
                 {
                     "required": True,
-                    "options": [{"option_id": "opt_1", "value": "a", "label": "A", "next_field_id": 5}],
+                    "options": [
+                        {"option_id": "opt_1", "value": "a", "label": "A", "next_field_id": 5}
+                    ],
                 },
             )
 
@@ -201,7 +216,11 @@ class TestValidateFieldConfig:
         with pytest.raises(FormFieldValidationError):
             validate_field_config(
                 "ranked_choice",
-                {"required": True, "ranks": 1, "options": [{"option_id": "opt_1", "value": "a", "label": "A"}]},
+                {
+                    "required": True,
+                    "ranks": 1,
+                    "options": [{"option_id": "opt_1", "value": "a", "label": "A"}],
+                },
             )
 
     def test_ranked_choice_ranks_exceeds_options_rejected(self):
@@ -248,6 +267,7 @@ class TestValidateFieldConfig:
 # validate_reserved_field_key
 # ---------------------------------------------------------------------------
 
+
 class TestValidateReservedFieldKey:
     def test_availability_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
@@ -257,7 +277,9 @@ class TestValidateReservedFieldKey:
     def test_availability_allowed_types_pass(self, question_type):
         validate_reserved_field_key("availability_7", question_type)  # no raise
 
-    @pytest.mark.parametrize("question_type", ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"])
+    @pytest.mark.parametrize(
+        "question_type", ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"]
+    )
     def test_event_preference_allowed_types_pass(self, question_type):
         validate_reserved_field_key("event_preference_7", question_type)  # no raise
 
@@ -291,12 +313,15 @@ class TestValidateReservedFieldKey:
 
 
 class TestValidateTournamentPreset:
-    @pytest.mark.parametrize("field_key", [
-        "availability_7",
-        "event_preference_7",
-        "lunch_7_protein",
-        "track_status_interest",
-    ])
+    @pytest.mark.parametrize(
+        "field_key",
+        [
+            "availability_7",
+            "event_preference_7",
+            "lunch_7_protein",
+            "track_status_interest",
+        ],
+    )
     def test_presets_reject_chapter_owned_forms(self, field_key):
         with pytest.raises(FormFieldValidationError, match="tournament-owned"):
             validate_tournament_preset(field_key, None)
@@ -309,11 +334,15 @@ class TestValidateTournamentPreset:
 # validate_branching_options
 # ---------------------------------------------------------------------------
 
+
 class TestValidateBranchingOptions:
     def test_missing_next_field_id_target_rejected(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         db.commit()
-        config = {"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": 9999}]}
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": 9999}],
+        }
         with pytest.raises(FormFieldValidationError):
             validate_branching_options(db, form.id, "single_select_radio", config)
 
@@ -321,22 +350,33 @@ class TestValidateBranchingOptions:
         form = _make_form(db, td_user, td_tournament)
         target = _make_field(db, form, field_key="target")
         db.commit()
-        config = {"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": target.id}]}
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": target.id}],
+        }
         validate_branching_options(db, form.id, "single_select_radio", config)  # no raise
 
     def test_self_reference_rejected(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form, field_key="self_ref")
         db.commit()
-        config = {"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": field.id}]}
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": field.id}],
+        }
         with pytest.raises(FormFieldValidationError):
-            validate_branching_options(db, form.id, "single_select_radio", config, field_id=field.id)
+            validate_branching_options(
+                db, form.id, "single_select_radio", config, field_id=field.id
+            )
 
     def test_archived_target_rejected(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         target = _make_field(db, form, field_key="target", is_archived=True)
         db.commit()
-        config = {"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": target.id}]}
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": target.id}],
+        }
         with pytest.raises(FormFieldValidationError):
             validate_branching_options(db, form.id, "single_select_radio", config)
 
@@ -346,12 +386,15 @@ class TestValidateBranchingOptions:
         # multi_select_checkbox options can't structurally carry next_field_id
         # (the schema forbids it) — validate_branching_options just skips
         # non-branching types entirely regardless of config contents.
-        validate_branching_options(db, form.id, "multi_select_checkbox", {"options": []})  # no raise
+        validate_branching_options(
+            db, form.id, "multi_select_checkbox", {"options": []}
+        )  # no raise
 
 
 # ---------------------------------------------------------------------------
 # validate_availability_options
 # ---------------------------------------------------------------------------
+
 
 class TestValidateAvailabilityOptions:
     def test_chapter_owned_form_skips_check(self, db):
@@ -372,7 +415,9 @@ class TestValidateAvailabilityOptions:
         config = {"options": [{"value": [s1.id, s2.id], "label": "All Day"}]}
         validate_availability_options(db, td_tournament.id, config)  # no raise
 
-    def test_shift_id_not_on_tournament_rejected(self, db, td_user, td_tournament, other_user, other_tournament):
+    def test_shift_id_not_on_tournament_rejected(
+        self, db, td_user, td_tournament, other_user, other_tournament
+    ):
         shift = _make_shift(db, other_tournament)
         db.commit()
         config = {"options": [{"value": [shift.id], "label": shift.label}]}
@@ -383,20 +428,20 @@ class TestValidateAvailabilityOptions:
         """Availability write-through owns a whole track: a stray shift from a
         different track would be added by this question and removed by that
         track's own question, or the reverse, depending on submission order."""
-        shift = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Sunday"}]}
         with pytest.raises(FormFieldValidationError, match="outside this question's track"):
             validate_availability_options(db, td_tournament.id, config, shift.track_id + 999)
 
     def test_shift_on_the_field_track_passes(self, db, td_user, td_tournament):
-        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Morning"}]}
         validate_availability_options(db, td_tournament.id, config, shift.track_id)  # no raise
 
     def test_date_check_skipped_when_no_field_date_given(self, db, td_user, td_tournament):
-        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Whenever"}]}
         validate_availability_options(db, td_tournament.id, config)  # no raise
@@ -416,6 +461,7 @@ class TestValidateAvailabilityOptions:
 # validate_event_preference_options
 # ---------------------------------------------------------------------------
 
+
 class TestValidateEventPreferenceOptions:
     def test_chapter_owned_form_skips_check(self, db):
         config = {"options": [{"value": ["not_a_real_event_id"], "label": "Whenever"}]}
@@ -425,16 +471,22 @@ class TestValidateEventPreferenceOptions:
         event = _make_event(db, td_tournament)
         db.commit()
         config = {"options": [{"value": [event.id], "label": event.name}]}
-        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
+        validate_event_preference_options(
+            db, td_tournament.id, "multi_select_checkbox", config
+        )  # no raise
 
     def test_grouped_event_ids_all_validated(self, db, td_user, td_tournament):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")
         db.commit()
         config = {"options": [{"value": [e1.id, e2.id], "label": "Life Science"}]}
-        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
+        validate_event_preference_options(
+            db, td_tournament.id, "multi_select_checkbox", config
+        )  # no raise
 
-    def test_event_id_not_on_tournament_rejected(self, db, td_user, td_tournament, other_tournament):
+    def test_event_id_not_on_tournament_rejected(
+        self, db, td_user, td_tournament, other_tournament
+    ):
         event = _make_event(db, other_tournament)
         db.commit()
         config = {"options": [{"value": [event.id], "label": event.name}]}
@@ -454,10 +506,12 @@ class TestValidateEventPreferenceOptions:
     def test_event_in_two_options_rejected(self, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)
         db.commit()
-        config = {"options": [
-            {"value": [event.id], "label": "Option A"},
-            {"value": [event.id], "label": "Option B"},
-        ]}
+        config = {
+            "options": [
+                {"value": [event.id], "label": "Option A"},
+                {"value": [event.id], "label": "Option B"},
+            ]
+        }
         with pytest.raises(FormFieldValidationError, match="more than one option"):
             validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
 
@@ -471,19 +525,25 @@ class TestValidateEventPreferenceOptions:
     def test_ranked_choice_allow_duplicates_false_passes(self, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)
         db.commit()
-        config = {"allow_duplicates": False, "options": [{"value": [event.id], "label": event.name}]}
+        config = {
+            "allow_duplicates": False,
+            "options": [{"value": [event.id], "label": event.name}],
+        }
         validate_event_preference_options(db, td_tournament.id, "ranked_choice", config)  # no raise
 
     def test_non_ranked_choice_ignores_allow_duplicates(self, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)
         db.commit()
         config = {"allow_duplicates": True, "options": [{"value": [event.id], "label": event.name}]}
-        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
+        validate_event_preference_options(
+            db, td_tournament.id, "multi_select_checkbox", config
+        )  # no raise
 
 
 # ---------------------------------------------------------------------------
 # validate_track_status_options
 # ---------------------------------------------------------------------------
+
 
 class TestOptionValueReaders:
     """option_track_assignments / option_shift_ids are the shared readers for
@@ -518,7 +578,9 @@ class TestOptionValueReaders:
         assert option_shift_ids({"value": [3, 2, 5]}) == [3, 2, 5]
 
     def test_shift_ids_from_an_opted_in_availability_option(self):
-        option = {"value": {"shift_ids": [3, 2], "track_statuses": [{"id": 7, "status": "confirmed"}]}}
+        option = {
+            "value": {"shift_ids": [3, 2], "track_statuses": [{"id": 7, "status": "confirmed"}]}
+        }
         assert option_shift_ids(option) == [3, 2]
 
     def test_missing_value_yields_nothing(self):
@@ -541,10 +603,13 @@ class TestValidateTrackStatusOptions:
     def _config(self, track_id, **overrides):
         config = {
             "required": True,
-            "options": [{
-                "option_id": "yes", "label": "Yes",
-                "value": [{"id": track_id, "status": "interested"}],
-            }],
+            "options": [
+                {
+                    "option_id": "yes",
+                    "label": "Yes",
+                    "value": [{"id": track_id, "status": "interested"}],
+                }
+            ],
         }
         config.update(overrides)
         return config
@@ -552,12 +617,15 @@ class TestValidateTrackStatusOptions:
     def _availability_config(self, track_id, **overrides):
         config = {
             "required": True,
-            "options": [{
-                "option_id": "yes", "label": "Yes",
-                # One status, no id: an availability field names its track
-                # in its own key, so the option can't contradict it.
-                "value": {"shift_ids": [1], "track_status": "interested"},
-            }],
+            "options": [
+                {
+                    "option_id": "yes",
+                    "label": "Yes",
+                    # One status, no id: an availability field names its track
+                    # in its own key, so the option can't contradict it.
+                    "value": {"shift_ids": [1], "track_status": "interested"},
+                }
+            ],
         }
         config.update(overrides)
         return config
@@ -565,13 +633,18 @@ class TestValidateTrackStatusOptions:
     def test_track_status_accepts_tournament_track(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
         config = self._config(track.id)
-        validate_track_status_options(db, td_tournament.id, "track_status_interest", "single_select_radio", config)
+        validate_track_status_options(
+            db, td_tournament.id, "track_status_interest", "single_select_radio", config
+        )
 
     def test_track_status_requires_required_question(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
         with pytest.raises(FormFieldValidationError, match="must be required"):
             validate_track_status_options(
-                db, td_tournament.id, "track_status_interest", "single_select_radio",
+                db,
+                td_tournament.id,
+                "track_status_interest",
+                "single_select_radio",
                 self._config(track.id, required=False),
             )
 
@@ -581,10 +654,13 @@ class TestValidateTrackStatusOptions:
                 "single_select_radio",
                 {
                     "required": True,
-                    "options": [{
-                        "option_id": "opt_1", "label": "A",
-                        "value": [{"id": 1, "status": "maybe"}],
-                    }],
+                    "options": [
+                        {
+                            "option_id": "opt_1",
+                            "label": "A",
+                            "value": [{"id": 1, "status": "maybe"}],
+                        }
+                    ],
                 },
             )
 
@@ -592,7 +668,11 @@ class TestValidateTrackStatusOptions:
         foreign = self._track(db, other_tournament)
         with pytest.raises(FormFieldValidationError, match="do not belong"):
             validate_track_status_options(
-                db, td_tournament.id, "track_status_interest", "single_select_radio", self._config(foreign.id)
+                db,
+                td_tournament.id,
+                "track_status_interest",
+                "single_select_radio",
+                self._config(foreign.id),
             )
 
     def test_availability_requires_opt_in_for_track_outcomes(self, db, td_user, td_tournament):
@@ -621,17 +701,31 @@ class TestValidateTrackStatusOptions:
 
     def test_checkbox_rejects_conflicting_track_statuses(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
-        config = self._config(track.id, options=[
-            {"option_id": "one", "label": "One", "value": [{"id": track.id, "status": "interested"}]},
-            {"option_id": "two", "label": "Two", "value": [{"id": track.id, "status": "declined"}]},
-        ])
+        config = self._config(
+            track.id,
+            options=[
+                {
+                    "option_id": "one",
+                    "label": "One",
+                    "value": [{"id": track.id, "status": "interested"}],
+                },
+                {
+                    "option_id": "two",
+                    "label": "Two",
+                    "value": [{"id": track.id, "status": "declined"}],
+                },
+            ],
+        )
         with pytest.raises(FormFieldValidationError, match="conflicting statuses"):
-            validate_track_status_options(db, td_tournament.id, "track_status_interest", "multi_select_checkbox", config)
+            validate_track_status_options(
+                db, td_tournament.id, "track_status_interest", "multi_select_checkbox", config
+            )
 
 
 # ---------------------------------------------------------------------------
 # validate_form_for_publish — aggregate pass
 # ---------------------------------------------------------------------------
+
 
 class TestValidateFormForPublish:
     def test_empty_form_rejected(self, db, td_user, td_tournament):
@@ -657,7 +751,9 @@ class TestValidateFormForPublish:
             question_type="single_select_radio",
             config={
                 "required": False,
-                "options": [{"option_id": "opt_1", "value": "yes", "label": "Yes", "next_field_id": 9999}],
+                "options": [
+                    {"option_id": "opt_1", "value": "yes", "label": "Yes", "next_field_id": 9999}
+                ],
             },
         )
         db.commit()

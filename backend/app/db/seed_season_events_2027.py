@@ -8,8 +8,8 @@ Run directly:
     python -m app.db.seed_season_events_2027
 """
 
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 from app.db.seed_canon_events import seed_events_and_categories
 
@@ -81,7 +81,9 @@ def seed_season_events_2027(db: Session) -> None:
             event_id = event_id_by_name.get(name)
             if event_id is None:
                 raise ValueError(f"Event {name!r} not found in canon events table")
-            rows.append({"event_id": event_id, "year": YEAR, "division": division, "is_active": True})
+            rows.append(
+                {"event_id": event_id, "year": YEAR, "division": division, "is_active": True}
+            )
 
     stmt = insert(SeasonEvent).values(rows)
     stmt = stmt.on_conflict_do_update(
@@ -91,7 +93,9 @@ def seed_season_events_2027(db: Session) -> None:
     db.execute(stmt)
     db.commit()
 
-    print(f"Seeded {len(rows)} season_events rows for {YEAR} (Division B: {len(DIVISION_B_EVENTS)}, Division C: {len(DIVISION_C_EVENTS)}).")
+    print(
+        f"Seeded {len(rows)} season_events rows for {YEAR} (Division B: {len(DIVISION_B_EVENTS)}, Division C: {len(DIVISION_C_EVENTS)})."
+    )
 
 
 if __name__ == "__main__":

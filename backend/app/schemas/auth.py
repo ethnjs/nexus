@@ -1,11 +1,12 @@
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
 
 # The cap applies only where a password is set, never to login or
 # current-password fields: passwords set before the cap existed may be longer.
@@ -19,7 +20,7 @@ PASSWORD_ERROR_MSG: dict[str, str] = {
     "lower": "Password must include at least one lowercase letter.\n",
     "number": "Password must include at least one number.\n",
     "symbol": "Password must include at least one special symbol.\n",
-    "valid": "Password contains an invalid character.\n"
+    "valid": "Password contains an invalid character.\n",
 }
 
 
@@ -34,7 +35,14 @@ def validate_password_strength(password: str) -> str:
     character can never pass by satisfying a class.
     """
     # must be all true to pass
-    checks: dict[str, bool] = {"length": False, "upper": False, "lower": False, "number": False, "symbol": False, "valid": True}
+    checks: dict[str, bool] = {
+        "length": False,
+        "upper": False,
+        "lower": False,
+        "number": False,
+        "symbol": False,
+        "valid": True,
+    }
     if PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
         checks["length"] = True
 
@@ -82,8 +90,10 @@ class MessageResponse(BaseModel):
 # Account settings — email change, password change, password reset
 # ---------------------------------------------------------------------------
 
+
 class EmailChangeRequest(BaseModel):
     """POST /auth/email/request-change — authenticated."""
+
     new_email: EmailStr
 
 
@@ -94,12 +104,14 @@ class EmailPendingChangeResponse(BaseModel):
 
     Both fields null together means no email change is currently pending.
     """
-    new_email: Optional[str] = None
-    can_resend_at: Optional[datetime] = None
+
+    new_email: str | None = None
+    can_resend_at: datetime | None = None
 
 
 class PasswordChangeRequest(BaseModel):
     """POST /auth/password/change — authenticated."""
+
     current_password: str
     new_password: str
 
@@ -117,11 +129,13 @@ class PasswordChangeRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     """POST /auth/password/reset/request — logged out, by email."""
+
     email: EmailStr
 
 
 class PasswordResetConfirm(BaseModel):
     """POST /auth/password/reset/confirm — logged out, token + new password."""
+
     token: str
     new_password: str
 
@@ -129,7 +143,8 @@ class PasswordResetConfirm(BaseModel):
     @classmethod
     def check_new_password(cls, password: str) -> str:
         return validate_password_strength(password)
-    
+
+
 class EmailChangeRevertConfirm(BaseModel):
     """
     POST /auth/email/revert — logged out, token + new password.
@@ -138,6 +153,7 @@ class EmailChangeRevertConfirm(BaseModel):
     completed email change and forces a new password, since reaching this
     route at all means assume account compromise.
     """
+
     token: str
     new_password: str
 
@@ -162,6 +178,7 @@ class AccountSetupConfirm(BaseModel):
 
     Does NOT set email_verified — that still requires the normal verification flow.
     """
+
     token: str
     password: str
 
@@ -175,20 +192,23 @@ class AccountSetupConfirm(BaseModel):
 # Self-service deactivate / delete
 # ---------------------------------------------------------------------------
 
+
 class AccountDeactivateRequest(BaseModel):
     """
     POST /users/me/deactivate — authenticated.
-    
+
     Reversible — sets status="deactivated" and revokes every session.
     """
+
     password: str
 
 
 class AccountDeleteRequest(BaseModel):
     """
     DELETE /users/me — authenticated.
-    
+
     Irreversible hard delete — cascades through TournamentMembership and
     everything else owned by the user.
     """
+
     password: str

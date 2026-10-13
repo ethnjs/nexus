@@ -1,24 +1,31 @@
-"""
-SQLAlchemy ORM models.
+"""SQLAlchemy ORM models."""
 
-NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
-with SQLAlchemy 2.0.36 + Python 3.13.
-"""
-
-from datetime import date, datetime, timedelta, timezone
-from nanoid import generate as generate_nanoid
-from sqlalchemy import (
-    Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint,
-    Column, event, Index, text,
-)
-from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, validates
-from typing import NamedTuple, Optional
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, Literal, NamedTuple
 from zoneinfo import ZoneInfo
 
-from app.db.session import Base
+from nanoid import generate as generate_nanoid
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+    text,
+)
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+
 from app.core.age import meets_age_requirement
+from app.db.session import Base
 
 
 def generate_public_id() -> str:
@@ -36,7 +43,7 @@ def generate_public_id() -> str:
 
 def utcnow():
     """Timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -47,20 +54,23 @@ def utcnow():
 class UserSession(Base):
     __tablename__ = "sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
-    token_hash = Column(String(64), nullable=False, unique=True, index=True)  # SHA-256 hex digest
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True
+    )  # SHA-256 hex digest
 
-    user_agent = Column(String(255), nullable=True)
-    ip_address = Column(String(45), nullable=True)  # long enough for IPv6
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+    ip_address: Mapped[str | None] = mapped_column(String(45))  # long enough for IPv6
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    last_active_at = Column(DateTime(timezone=True), default=utcnow)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    user = relationship("User")
+    user: Mapped["User"] = relationship("User")
+
 
 # ---------------------------------------------------------------------------
 # VerificationToken — backs signup verify, email change and revert, password
@@ -71,18 +81,23 @@ class UserSession(Base):
 class VerificationToken(Base):
     __tablename__ = "verification_tokens"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
-    token_hash = Column(String(255), nullable=False, index=True, unique=True)
-    purpose = Column(String(32), nullable=False)  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
-    new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
+    token_hash: Mapped[str] = mapped_column(String(255), index=True, unique=True)
+    purpose: Mapped[str] = mapped_column(
+        String(32)
+    )  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
+    new_email: Mapped[str | None] = mapped_column(
+        String(255)
+    )  # "email_change": new address. "email_change_revert": address to revert TO (old address).
 
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    user = relationship("User")
+    user: Mapped["User"] = relationship("User")
+
 
 # ---------------------------------------------------------------------------
 # University — canonical lookup table so free-text names ("OSU" vs "Ohio
@@ -91,16 +106,20 @@ class VerificationToken(Base):
 class University(Base):
     __tablename__ = "universities"
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), unique=True, nullable=False)
-    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
-    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    abbreviation: Mapped[str | None] = mapped_column(String(32))  # e.g. "USC", "UCLA", "UCI"
+    location: Mapped[str | None] = mapped_column(String(255))  # e.g. "Los Angeles, CA"
 
     # Relationships — a university hosts *tracks*, not tournaments: a
     # multi-site tournament has one track per venue (see TournamentTrack).
-    tracks = relationship("TournamentTrack", back_populates="university")
-    users = relationship("User", back_populates="university")
-    alumni_chapter = relationship("AlumniChapter", back_populates="university", uselist=False)
+    tracks: Mapped[list["TournamentTrack"]] = relationship(
+        "TournamentTrack", back_populates="university"
+    )
+    users: Mapped[list["User"]] = relationship("User", back_populates="university")
+    alumni_chapter: Mapped["AlumniChapter | None"] = relationship(
+        "AlumniChapter", back_populates="university", uselist=False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -109,10 +128,13 @@ class University(Base):
 class EventCategory(Base):
     __tablename__ = "event_categories"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
 
-    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
+    events: Mapped[list["Event"]] = relationship(
+        "Event", back_populates="category", cascade="all, delete-orphan"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Event
@@ -120,18 +142,18 @@ class EventCategory(Base):
 class Event(Base):
     __tablename__ = "events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
-    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    category_id: Mapped[int] = mapped_column(Integer, ForeignKey("event_categories.id"))
 
-    category = relationship("EventCategory", back_populates="events")
-    user_competition_experience = relationship(
+    category: Mapped["EventCategory"] = relationship("EventCategory", back_populates="events")
+    user_competition_experience: Mapped[list["UserCompetitionExperience"]] = relationship(
         "UserCompetitionExperience",
         back_populates="event",
         foreign_keys="UserCompetitionExperience.event_id",
         passive_deletes=True,
     )
-    user_volunteer_experience = relationship(
+    user_volunteer_experience: Mapped[list["UserVolunteerExperience"]] = relationship(
         "UserVolunteerExperience",
         back_populates="event",
         foreign_keys="UserVolunteerExperience.event_id",
@@ -147,18 +169,16 @@ class Event(Base):
 class SeasonEvent(Base):
     __tablename__ = "season_events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    year = Column(Integer, nullable=False)
-    division = Column(String(4), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    year: Mapped[int] = mapped_column(Integer)
+    division: Mapped[str] = mapped_column(String(4))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    event = relationship("Event")
+    event: Mapped["Event"] = relationship("Event")
 
-    __table_args__ = (
-        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
-    )
+    __table_args__ = (UniqueConstraint("event_id", "year", "division", name="uq_season_event"),)
 
 
 # ---------------------------------------------------------------------------
@@ -169,18 +189,20 @@ class SeasonEvent(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=True)
-    last_name = Column(String(100), nullable=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    phone = Column(String(32), nullable=True)
-    date_of_birth = Column(Date, nullable=True)
-    pronouns = Column(String(100), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(32))
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    pronouns: Mapped[str | None] = mapped_column(String(100))
 
     # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
-    email_verified = Column(Boolean, nullable=False, default=False)
-    role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
+    hashed_password: Mapped[str | None] = mapped_column(
+        String(255)
+    )  # null = cannot log in, must reset password and verify via email
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    role: Mapped[str] = mapped_column(String(32), default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
     # "active", so every non-active status denies access identically — the
     # deactivated/locked split records *who* did it: deactivated is the
@@ -188,59 +210,77 @@ class User(Base):
     # admin. Both are currently admin-only to clear, since there is no
     # logged-out reactivation path; the eventual intent is for deactivated to
     # become self-reversible, which is the only reason the split exists.
-    status = Column(String(32), nullable=False, default="active")
+    status: Mapped[str] = mapped_column(String(32), default="active")
 
     # if a student
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
-    major = Column(String(255), nullable=True)
-    student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
-    year_level = Column(Integer, nullable=True)
-    graduation_year = Column(Integer, nullable=True)
+    university_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("universities.id"))
+    major: Mapped[str | None] = mapped_column(String(255))
+    student_status: Mapped[str | None] = mapped_column(
+        String(255)
+    )  # "Undergraduate", "Graduate", "Non-Student"
+    year_level: Mapped[int | None] = mapped_column(Integer)
+    graduation_year: Mapped[int | None] = mapped_column(Integer)
 
     # if not a student
-    employer = Column(String(255), nullable=True)
+    employer: Mapped[str | None] = mapped_column(String(255))
 
-    has_competition_experience = Column(Boolean, nullable=True)
-    has_volunteer_experience = Column(Boolean, nullable=True)
+    has_competition_experience: Mapped[bool | None] = mapped_column(Boolean)
+    has_volunteer_experience: Mapped[bool | None] = mapped_column(Boolean)
     # has_stem_experience = Column(Boolean, nullable=True)        # debatable
 
-    shirt_size = Column(String(16), nullable=True)
-    dietary_restriction = Column(String(255), nullable=True)
+    shirt_size: Mapped[str | None] = mapped_column(String(16))
+    dietary_restriction: Mapped[str | None] = mapped_column(String(255))
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    memberships = relationship(
+    memberships: Mapped[list["TournamentMembership"]] = relationship(
         "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
     )
-    tournaments = relationship(
-        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id", passive_deletes=True,
+    tournaments: Mapped[list["Tournament"]] = relationship(
+        "Tournament",
+        back_populates="owner",
+        foreign_keys="Tournament.owner_id",
+        passive_deletes=True,
     )
-    competition_experience = relationship(
+    competition_experience: Mapped[list["UserCompetitionExperience"]] = relationship(
         "UserCompetitionExperience",
         back_populates="user",
         foreign_keys="UserCompetitionExperience.user_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
-    volunteer_experience = relationship(
+    volunteer_experience: Mapped[list["UserVolunteerExperience"]] = relationship(
         "UserVolunteerExperience",
         back_populates="user",
         foreign_keys="UserVolunteerExperience.user_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
-    university = relationship("University", back_populates="users")
+    university: Mapped["University | None"] = relationship("University", back_populates="users")
     # passive_deletes hands deletion to the DB's ON DELETE rules. Without it
     # the ORM nulls each child's user_id first, which fails on the NOT NULL
     # ones — that's what made users with form responses undeletable.
-    chapter_membership = relationship(
-        "ChapterMembership", back_populates="user", uselist=False,
-        cascade="all, delete-orphan", passive_deletes=True,
+    chapter_membership: Mapped["ChapterMembership | None"] = relationship(
+        "ChapterMembership",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
-    join_codes = relationship("JoinCode", back_populates="creator", passive_deletes=True)
-    created_forms = relationship("Form", back_populates="creator", passive_deletes=True)
-    form_responses = relationship(
-        "FormResponse", back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
+    join_codes: Mapped[list["JoinCode"]] = relationship(
+        "JoinCode", back_populates="creator", passive_deletes=True
     )
+    created_forms: Mapped[list["Form"]] = relationship(
+        "Form", back_populates="creator", passive_deletes=True
+    )
+    form_responses: Mapped[list["FormResponse"]] = relationship(
+        "FormResponse",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -248,14 +288,15 @@ class User(Base):
 class UserCompetitionExperience(Base):
     __tablename__ = "user_competition_experience"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
-    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=False)
-    school = Column(String(255), nullable=False)
-    notes = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="RESTRICT"))
+    school: Mapped[str] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
 
-    user = relationship("User", back_populates="competition_experience")
-    event = relationship("Event", back_populates="user_competition_experience")
+    user: Mapped["User"] = relationship("User", back_populates="competition_experience")
+    event: Mapped["Event"] = relationship("Event", back_populates="user_competition_experience")
+
 
 # ---------------------------------------------------------------------------
 # UserVolunteerExperience — manual entry only for now
@@ -263,19 +304,25 @@ class UserCompetitionExperience(Base):
 class UserVolunteerExperience(Base):
     __tablename__ = "user_volunteer_experience"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
     # manual add by the user
-    tournament_name = Column(String(255), nullable=False)
-    year = Column(Integer, nullable=False)
-    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
-    role = Column(String(63), nullable=False)
+    tournament_name: Mapped[str] = mapped_column(String(255))
+    year: Mapped[int] = mapped_column(Integer)
+    event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("events.id", ondelete="RESTRICT")
+    )
+    role: Mapped[str] = mapped_column(String(63))
 
-    notes = Column(JSON, nullable=True)  # {"event": custom name, "other": free notes}
+    notes: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON
+    )  # {"event": custom name, "other": free notes}
 
-    user = relationship("User", back_populates="volunteer_experience")
-    event = relationship("Event", back_populates="user_volunteer_experience")
+    user: Mapped["User"] = relationship("User", back_populates="volunteer_experience")
+    event: Mapped["Event | None"] = relationship(
+        "Event", back_populates="user_volunteer_experience"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,17 +331,25 @@ class UserVolunteerExperience(Base):
 class AlumniChapter(Base):
     __tablename__ = "alumni_chapters"
 
-    id = Column(Integer,  primary_key=True)
-    name = Column(String(255), nullable=False)
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    university_id: Mapped[int] = mapped_column(Integer, ForeignKey("universities.id"), unique=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
-    university = relationship("University", back_populates="alumni_chapter")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
-    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
+    university: Mapped["University"] = relationship("University", back_populates="alumni_chapter")
+    chapter_memberships: Mapped[list["ChapterMembership"]] = relationship(
+        "ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan"
+    )
+    join_codes: Mapped[list["JoinCode"]] = relationship(
+        "JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan"
+    )
+    tournament_chapters: Mapped[list["TournamentChapter"]] = relationship(
+        "TournamentChapter", back_populates="chapter"
+    )
+    forms: Mapped[list["Form"]] = relationship(
+        "Form", back_populates="chapter", cascade="all, delete-orphan"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -303,15 +358,21 @@ class AlumniChapter(Base):
 class ChapterMembership(Base):
     __tablename__ = "chapter_memberships"
 
-    id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
-    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
-    joined_at = Column(DateTime(timezone=True), default=utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )  # one chapter per user
+    role: Mapped[str] = mapped_column(String(32), default="member")  # "lead" | "officer" | "member"
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
-    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
-    user = relationship("User", back_populates="chapter_membership")
+    alumni_chapter: Mapped["AlumniChapter"] = relationship(
+        "AlumniChapter", back_populates="chapter_memberships"
+    )
+    user: Mapped["User"] = relationship("User", back_populates="chapter_membership")
 
 
 # ---------------------------------------------------------------------------
@@ -320,74 +381,104 @@ class ChapterMembership(Base):
 class Tournament(Base):
     __tablename__ = "tournaments"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)                 # excludes year, e.g. "Science Olympiad Invitational"
-    short_name = Column(String(64), nullable=True)              # includes abbreviation, e.g. "SoCal", "OC", "LA"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(
+        String(255)
+    )  # excludes year, e.g. "Science Olympiad Invitational"
+    short_name: Mapped[str | None] = mapped_column(
+        String(64)
+    )  # includes abbreviation, e.g. "SoCal", "OC", "LA"
 
     # When/where/what-division a tournament runs is *not* stored here — it
     # lives on its primary tracks (see TournamentTrack.is_primary) and is
     # derived back onto the tournament by the properties below. A regional
     # can run Day 1 at UCI in division C and Day 2 at Northwood in division B;
     # one location and one date range per tournament could never say that.
-    state = Column(String(32), nullable=False)
-    level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
+    state: Mapped[str] = mapped_column(String(32))
+    level: Mapped[str] = mapped_column(
+        String(32)
+    )  # "regionals" | "state" | "nationals" | "invitational"
 
     # IANA name (e.g. "America/Los_Angeles"). Set once at creation from the
     # creator's browser timezone — immutable after, no update path.
-    timezone = Column(String(64), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64))
 
     # Null once the owner's account is deleted — the tournament outlives them
     # as history, and an admin can transfer it to a new owner.
-    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     # TD-controlled — shows in the public directory. False = invite-only.
-    is_public = Column(Boolean, nullable=False, default=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Admin-only, independent of is_public — a tournament can be public but
     # not yet verified.
-    is_verified = Column(Boolean, nullable=False, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Read-only history — blocks writes, drops from public listing. Owner can
     # unarchive; admin-only once past end_date. Independent of is_public.
-    is_archived = Column(Boolean, nullable=False, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Set on a past-due unarchive so the daily job (tournament/scheduler.py)
     # won't re-archive it. Cleared on re-archive.
-    archive_override_at = Column(DateTime(timezone=True), nullable=True)
+    archive_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # TD opt-in to collecting each age threshold. Off by default — a member
     # never has to disclose either flag unless the TD turns this on, and even
     # then only after the member explicitly consents (see
     # TournamentMembership.age_disclosure). Independent of each other: a TD
     # can collect just one.
-    collect_is_over_18 = Column(Boolean, nullable=False, default=False)
-    collect_is_over_21 = Column(Boolean, nullable=False, default=False)
+    collect_is_over_18: Mapped[bool] = mapped_column(Boolean, default=False)
+    collect_is_over_21: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
-    sheet_configs = relationship(
+    owner: Mapped["User | None"] = relationship(
+        "User", back_populates="tournaments", foreign_keys=[owner_id]
+    )
+    sheet_configs: Mapped[list["SheetConfig"]] = relationship(
         "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
     )
-    events = relationship(
+    events: Mapped[list["TournamentEvent"]] = relationship(
         "TournamentEvent", back_populates="tournament", cascade="all, delete-orphan"
     )
-    memberships = relationship(
+    memberships: Mapped[list["TournamentMembership"]] = relationship(
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
-    tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
-    roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
-    audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
-    event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
-    tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
-    buildings = relationship(
+    tournament_chapters: Mapped[list["TournamentChapter"]] = relationship(
+        "TournamentChapter", back_populates="tournament"
+    )
+    roles: Mapped[list["TournamentRole"]] = relationship(
+        "TournamentRole", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    export_presets: Mapped[list["TournamentExportPreset"]] = relationship(
+        "TournamentExportPreset", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    join_codes: Mapped[list["JoinCode"]] = relationship(
+        "JoinCode", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    audit_log: Mapped[list["AuditLogEntry"]] = relationship(
+        "AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    event_shifts: Mapped[list["TournamentShift"]] = relationship(
+        "TournamentShift", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    tracks: Mapped[list["TournamentTrack"]] = relationship(
+        "TournamentTrack", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    buildings: Mapped[list["TournamentBuilding"]] = relationship(
         "TournamentBuilding", back_populates="tournament", cascade="all, delete-orphan"
     )
-    forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
-    tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
-
+    forms: Mapped[list["Form"]] = relationship(
+        "Form", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    tournament_forms: Mapped[list["TournamentForm"]] = relationship(
+        "TournamentForm", back_populates="tournament", cascade="all, delete-orphan"
+    )
 
     # -----------------------------------------------------------------------
     # Schedule derived from primary tracks.
@@ -488,6 +579,7 @@ class HeldRole(NamedTuple):
     assembled from track_assignments on read. `track_ids` is empty when the
     role is tournament-wide, which already means "every track".
     """
+
     role: "TournamentRole"
     is_tournament_wide: bool
     track_ids: list[int]
@@ -496,19 +588,17 @@ class HeldRole(NamedTuple):
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
-    )
-    source = Column(String(32), nullable=False)  # "join_code" | "public" | "manual"
+    source: Mapped[str] = mapped_column(String(32))  # "join_code" | "public" | "manual"
 
     # Join code redeemed, if source=="join_code". SET NULL on code delete so
     # history survives.
-    join_code_id = Column(
-        Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
+    join_code_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("join_codes.id", ondelete="SET NULL")
     )
 
     # Set once this member has answered every currently-onboarding-flagged,
@@ -518,7 +608,7 @@ class TournamentMembership(Base):
     # someone already done). Adding a *new* onboarding form is the one
     # requirement change allowed to null this back out — see the
     # onboarding-forms POST route, which clears it tournament-wide.
-    onboarded_at = Column(DateTime(timezone=True), nullable=True)
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # One status column, not a consented_at/declined_at pair — a pair can
     # represent "both set" (nonsensical) and something will eventually set
@@ -526,10 +616,10 @@ class TournamentMembership(Base):
     # both is_over_18 and is_over_21, there's no partial consent. String,
     # not an enum type, validated in the Pydantic schema — same idiom as
     # TournamentMembershipTrackStatus.status.
-    age_disclosure = Column(String(32), nullable=True)
-    age_disclosure_at = Column(DateTime(timezone=True), nullable=True)
+    age_disclosure: Mapped[str | None] = mapped_column(String(32))
+    age_disclosure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    notes = Column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text)
 
     # This member's own UI config for the tournament's member-facing surfaces,
     # keyed by surface — {"members_table": {"columns": [...], "filters": {...},
@@ -542,16 +632,19 @@ class TournamentMembership(Base):
     # Unknown surface keys and unknown namespaces are ignored on read, never
     # an error — a deleted track leaves a dangling "track:3" behind and that
     # must not 500 the members page.
-    display_config = Column(JSON, nullable=False, default=dict)
+    display_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     # Relationships
-    user = relationship("User", back_populates="memberships")
-    tournament = relationship("Tournament", back_populates="memberships")
-    track_assignments = relationship(
-        "TournamentTrackAssignment", back_populates="membership",
+    user: Mapped["User"] = relationship("User", back_populates="memberships")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="memberships")
+    track_assignments: Mapped[list["TournamentTrackAssignment"]] = relationship(
+        "TournamentTrackAssignment",
+        back_populates="membership",
         cascade="all, delete-orphan",
     )
 
@@ -568,7 +661,7 @@ class TournamentMembership(Base):
         (#83), so the callers that matter — get_user_permissions,
         get_highest_rank — must not care which day a role was granted on.
         """
-        seen: dict[int, "TournamentRole"] = {}
+        seen: dict[int, TournamentRole] = {}
         for assignment in self.track_assignments:
             if assignment.role_id not in seen:
                 seen[assignment.role_id] = assignment.role
@@ -612,25 +705,38 @@ class TournamentMembership(Base):
         whole tournament by definition, so a per-track column omitting it
         would be claiming the member lacks it that day.
         """
-        seen: dict[int, "TournamentRole"] = {}
+        seen: dict[int, TournamentRole] = {}
         for assignment in self.track_assignments:
             if assignment.is_tournament_wide or assignment.tournament_track_id == track_id:
                 seen.setdefault(assignment.role_id, assignment.role)
         return sorted(seen.values(), key=lambda role: (role.rank, role.label))
+
     # No `roles` relationship any more. A member's roles are not stored — they
     # are the distinct roles across their track assignments, which is what makes
     # being staffed and holding a role one fact rather than two (#83). Read them
     # through `held_roles` below, or query track_assignments for the rows.
-    join_code = relationship("JoinCode")
-    availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
-    lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
-    track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
-    event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
+    join_code: Mapped["JoinCode | None"] = relationship("JoinCode")
+    availability_shifts: Mapped[list["TournamentMembershipAvailability"]] = relationship(
+        "TournamentMembershipAvailability",
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
+    lunch_selections: Mapped[list["TournamentMembershipLunch"]] = relationship(
+        "TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan"
+    )
+    track_statuses: Mapped[list["TournamentMembershipTrackStatus"]] = relationship(
+        "TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan"
+    )
+    event_preferences: Mapped[list["TournamentMembershipEventPreference"]] = relationship(
+        "TournamentMembershipEventPreference",
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
     # Staffing rows only — a member panel asks "what are they on", not "what
     # roles do they hold", which is held_roles. Read-only: every write goes
     # through track_assignments, which owns the cascade; a second writable path
     # to one table lets each silently undo the other.
-    assignments = relationship(
+    assignments: Mapped[list["TournamentTrackAssignment"]] = relationship(
         "TournamentTrackAssignment",
         primaryjoin=(
             "and_(TournamentTrackAssignment.membership_id == TournamentMembership.id, "
@@ -652,14 +758,14 @@ class TournamentMembership(Base):
         return datetime.now(ZoneInfo(self.tournament.timezone)).date()
 
     @hybrid_property
-    def is_over_18(self) -> Optional[bool]:
+    def is_over_18(self) -> bool | None:
         if self.user.date_of_birth is None:
             return None
 
         return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 18)
 
     @hybrid_property
-    def is_over_21(self) -> Optional[bool]:
+    def is_over_21(self) -> bool | None:
         if self.user.date_of_birth is None:
             return None
 
@@ -669,9 +775,7 @@ class TournamentMembership(Base):
     # doubly so: first_day is a Python-side aggregate over tracks, not a
     # column SQL could compare against.
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),)
 
 
 # ---------------------------------------------------------------------------
@@ -681,34 +785,92 @@ class TournamentMembership(Base):
 class TournamentRole(Base):
     __tablename__ = "tournament_roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    label = Column(String(255), nullable=False)        # human-readable name
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
+    label: Mapped[str] = mapped_column(String(255))  # human-readable name
 
     # Strings from ALL_PERMISSIONS (core/permissions.py). JSON, not a junction
     # table — permissions are a small fixed enum, no relational benefit.
-    permissions = Column(JSON, nullable=False, default=list)
+    permissions: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     # Lower = higher authority; ties allowed. Bounds what MANAGE_ROLES can
     # touch. Owner isn't a role — sits above rank 1 structurally.
-    rank = Column(Integer, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    # What this role is in each external system the exports feed (#108).
+    # Strings, not enums — see TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
+    torus_role: Mapped[str | None] = mapped_column(String(32))
+    duosmium_role: Mapped[str | None] = mapped_column(String(32))
 
-    tournament = relationship("Tournament", back_populates="roles")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="roles")
     # Read-only: every row carrying this role lives in
     # tournament_track_assignments now, and deleting the role still clears
     # them through that table's own CASCADE.
-    memberships = relationship(
+    memberships: Mapped[list["TournamentTrackAssignment"]] = relationship(
         "TournamentTrackAssignment",
         primaryjoin="TournamentTrackAssignment.role_id == TournamentRole.id",
         foreign_keys="TournamentTrackAssignment.role_id",
         viewonly=True,
     )
 
+    __table_args__ = (UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),)
+
+
+# ---------------------------------------------------------------------------
+# TournamentExportPreset — a saved custom export (#110), shared by every
+# staff member of the tournament. The built-in presets (TORUS, Duosmium,
+# email list) live in frontend code, never here.
+#
+# Rows are built client-side from the roster, so this only stores the recipe:
+# the export's shape and who it covers (its own filters, never the page's).
+# Validated on write and read leniently: a deleted track or form field leaves
+# an inert column behind, never a 500.
+# ---------------------------------------------------------------------------
+class TournamentExportPreset(Base):
+    __tablename__ = "tournament_export_presets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournaments.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    # What one row is: "member" | "event" (an event and its members).
+    row_type: Mapped[str] = mapped_column(String(16))
+    # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
+    # Objects, not strings, so a column can carry its own options.
+    columns: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # Roster query-param filters and the board's event filters, same shapes
+    # as display_config stores them.
+    member_filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    event_filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
+    sorts: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    include_header: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Where the one-click export sends it: "copy" | "csv" | "txt".
+    output_type: Mapped[str] = mapped_column(String(8), default="copy", server_default="copy")
+    # Null once the creator's account is deleted; the preset stays.
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="export_presets")
+
     __table_args__ = (
-        UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_export_preset_name"),
     )
 
 
@@ -720,17 +882,23 @@ class TournamentRole(Base):
 class JoinCode(Base):
     __tablename__ = "join_codes"
 
-    id = Column(Integer, primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
+    chapter_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE")
+    )
     # Null once the creator's account is deleted; the code keeps working.
-    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    code = Column(String(8), unique=True, nullable=False)
-    label = Column(String(255), nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    use_count = Column(Integer, nullable=False, default=0)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    code: Mapped[str] = mapped_column(String(8), unique=True)
+    label: Mapped[str | None] = mapped_column(String(255))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (
         CheckConstraint(
@@ -739,9 +907,13 @@ class JoinCode(Base):
         ),
     )
 
-    tournament = relationship("Tournament", back_populates="join_codes")
-    alumni_chapter = relationship("AlumniChapter", back_populates="join_codes")
-    creator = relationship("User", back_populates="join_codes")
+    tournament: Mapped["Tournament | None"] = relationship(
+        "Tournament", back_populates="join_codes"
+    )
+    alumni_chapter: Mapped["AlumniChapter | None"] = relationship(
+        "AlumniChapter", back_populates="join_codes"
+    )
+    creator: Mapped["User | None"] = relationship("User", back_populates="join_codes")
 
 
 # ---------------------------------------------------------------------------
@@ -753,17 +925,23 @@ class JoinCode(Base):
 class AuditLogEntry(Base):
     __tablename__ = "audit_log_entries"
 
-    id = Column(Integer, primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
     # Null once the actor's account is deleted — the entry stays as history.
-    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    action = Column(String(64), nullable=False)
-    target_type = Column(String(64), nullable=True)   # e.g. "membership", "role", "join_code"
-    target_id = Column(Integer, nullable=True)
-    extra_data = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    actor_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str | None] = mapped_column(
+        String(64)
+    )  # e.g. "membership", "role", "join_code"
+    target_id: Mapped[int | None] = mapped_column(Integer)
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    tournament = relationship("Tournament", back_populates="audit_log")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="audit_log")
 
 
 # ---------------------------------------------------------------------------
@@ -772,20 +950,22 @@ class AuditLogEntry(Base):
 class TournamentEvent(Base):
     __tablename__ = "tournament_events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
 
     # A custom (event_id-less) event's name, or a catalog-linked one's
     # tournament-level override of the catalog name (null = use the catalog's).
-    name = Column(String(255), nullable=True)
-    division = Column(String(4), nullable=True)           # "A" | "B" | "C"
-    event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
+    name: Mapped[str | None] = mapped_column(String(255))
+    division: Mapped[str | None] = mapped_column(String(4))  # "A" | "B" | "C"
+    event_type: Mapped[str] = mapped_column(String(32), default="standard")  # "standard" | "trial"
 
     # Canonical event table link — SET NULL on delete so custom (event_id-less)
     # events are just the default, not a broken reference.
-    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+    event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("events.id", ondelete="SET NULL")
+    )
 
     # No building/room/floor and no volunteers_needed. Where an event happens
     # and how many people it wants are both per *track*: one event runs in
@@ -800,19 +980,23 @@ class TournamentEvent(Base):
     # answer to the same question — nullable through planning, and free to
     # disagree with the shifts people actually sign up for.
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="events")
-    event = relationship("Event")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="events")
+    event: Mapped["Event | None"] = relationship("Event")
     # Chronological, not attach order. The assignments board lays these out
     # left to right as a timeline and indexes its bars by position, so the
     # order they arrive in *is* the schedule as far as any reader is
     # concerned — attaching Impound (7-8am) after Morning put it last and
     # printed the day as 8am, 12pm, 4pm, 8am. `start` is a full datetime, so
     # this orders a multi-day event's shifts correctly too.
-    shifts = relationship(
-        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events",
+    shifts: Mapped[list["TournamentShift"]] = relationship(
+        "TournamentShift",
+        secondary="tournament_event_shifts",
+        back_populates="tournament_events",
         order_by="(TournamentShift.start, TournamentShift.id)",
     )
     # Which tracks this event runs on. Explicit rather than derived through
@@ -826,22 +1010,25 @@ class TournamentEvent(Base):
     # below; leaving this writable too would give SQLAlchemy two paths to the
     # same rows and let one silently undo the other. Still the shape almost
     # every reader wants — the track objects, in schedule order.
-    tracks = relationship(
-        "TournamentTrack", secondary="tournament_event_tracks", viewonly=True,
+    tracks: Mapped[list["TournamentTrack"]] = relationship(
+        "TournamentTrack",
+        secondary="tournament_event_tracks",
+        viewonly=True,
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
     # The link rows themselves, and the only writable side of the pairing.
     # Unordered on purpose: ordering by the track's date needs a join this
     # relationship can't express, and the readers that care sort on the way
     # out.
-    track_details = relationship(
-        "TournamentEventTrack", back_populates="tournament_event",
+    track_details: Mapped[list["TournamentEventTrack"]] = relationship(
+        "TournamentEventTrack",
+        back_populates="tournament_event",
         cascade="all, delete-orphan",
     )
     # Read-only, like every view onto track assignments. Deleting an event
     # still removes these: its link rows cascade, and the assignment's
     # composite FK cascades from those.
-    assignments = relationship(
+    assignments: Mapped[list["TournamentTrackAssignment"]] = relationship(
         "TournamentTrackAssignment",
         primaryjoin="TournamentTrackAssignment.tournament_event_id == TournamentEvent.id",
         foreign_keys="TournamentTrackAssignment.tournament_event_id",
@@ -859,7 +1046,9 @@ class TournamentEvent(Base):
     __table_args__ = (
         Index(
             "uq_tournament_event_catalog_division",
-            "tournament_id", "event_id", "division",
+            "tournament_id",
+            "event_id",
+            "division",
             unique=True,
             postgresql_where=(event_id.isnot(None)),
         ),
@@ -874,32 +1063,39 @@ class TournamentEvent(Base):
 class TournamentShift(Base):
     __tablename__ = "tournament_shifts"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
     # Which day of the tournament this shift belongs to. Required, and always
     # a *primary* track: a shift is a time range, and only a primary track has
     # dates for it to fall inside. A cosmetic track (Test Writing) has no
     # schedule and therefore no shifts — which is exactly why events reach it
     # through tournament_event_tracks rather than through shifts.
-    track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    track_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        index=True,
     )
-    label = Column(String(255), nullable=False)
-    start = Column(DateTime(timezone=True), nullable=False)
-    end = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    label: Mapped[str] = mapped_column(String(255))
+    start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="event_shifts")
-    track = relationship("TournamentTrack", back_populates="shifts")
-    tournament_events = relationship(
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="event_shifts")
+    track: Mapped["TournamentTrack"] = relationship("TournamentTrack", back_populates="shifts")
+    tournament_events: Mapped[list["TournamentEvent"]] = relationship(
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
-    membership_availabilities = relationship(
-        "TournamentMembershipAvailability", back_populates="tournament_shift", cascade="all, delete-orphan"
+    membership_availabilities: Mapped[list["TournamentMembershipAvailability"]] = relationship(
+        "TournamentMembershipAvailability",
+        back_populates="tournament_shift",
+        cascade="all, delete-orphan",
     )
-    assignments = relationship(
+    assignments: Mapped[list["TournamentTrackAssignment"]] = relationship(
         "TournamentTrackAssignment",
         primaryjoin="TournamentTrackAssignment.tournament_shift_id == TournamentShift.id",
         foreign_keys="TournamentTrackAssignment.tournament_shift_id",
@@ -956,34 +1152,36 @@ class TournamentShift(Base):
 class TournamentTrack(Base):
     __tablename__ = "tournament_tracks"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    name = Column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255))
 
     # See the class docstring. Nullable at the DB level because a cosmetic
     # track legitimately has none of the four, and because a primary track
     # uses their absence to say TBD; the primary-track invariant is enforced
     # in the schema layer and the tracks routes.
-    is_primary = Column(Boolean, nullable=False, default=False)
-    start_date = Column(Date, nullable=True)
-    end_date = Column(Date, nullable=True)
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
-    location = Column(String(255), nullable=True)
-    division = Column(JSON, nullable=True)                      # list of "A" | "B" | "C"
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    university_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("universities.id"))
+    location: Mapped[str | None] = mapped_column(String(255))
+    division: Mapped[list[str] | None] = mapped_column(JSON)  # list of "A" | "B" | "C"
 
     # Pending delete, not a TD-facing archive. Set only by DELETE /tracks/
     # when TD-authored references (shifts, form fields) still point here; the
     # track disappears from every member- and roster-facing response and is
     # hard-deleted automatically once the last such reference is repointed.
     # A TD can restore it from tournament settings until that happens.
-    is_archived = Column(Boolean, nullable=False, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether a member may move themselves to "confirmed" on this track from
     # their own member page. Off by default: on most tracks `confirmed` means
     # the TD staffed them, and only the TD knows when that's true. Opting
     # *out* never consults this — declining is not something confirmation
     # being closed should block. (`lock_responses` below does block it: that
     # one closes the track to changes of every kind.)
-    allow_confirm = Column(Boolean, nullable=False, default=False)
+    allow_confirm: Mapped[bool] = mapped_column(Boolean, default=False)
     # Freezes this track's member-editable answers — availability, lunch,
     # event preferences and status. Set once the TD has staffed the day out of
     # those answers, at which point a member quietly changing one pulls the
@@ -1000,29 +1198,37 @@ class TournamentTrack(Base):
     #
     # A track created through the API starts locked — the default lives on
     # TournamentTrackCreate, not here.
-    lock_responses = Column(Boolean, nullable=False, default=False)
+    lock_responses: Mapped[bool] = mapped_column(Boolean, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,
     # a competition day's is more often a general volunteer role. SET NULL
     # rather than a blocking FK: deleting a role a track defaults to should
     # not be blocked by that default, just clear it.
-    default_role_id = Column(Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    default_role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="tracks")
-    university = relationship("University", back_populates="tracks")
-    default_role = relationship("TournamentRole")
-    shifts = relationship("TournamentShift", back_populates="track", cascade="all, delete-orphan")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="tracks")
+    university: Mapped["University | None"] = relationship("University", back_populates="tracks")
+    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
+    shifts: Mapped[list["TournamentShift"]] = relationship(
+        "TournamentShift", back_populates="track", cascade="all, delete-orphan"
+    )
     # Read-only for the same reason TournamentEvent.tracks is — this is the
     # other half of the same secondary, and writes belong to the link rows.
-    events = relationship(
-        "TournamentEvent", secondary="tournament_event_tracks", viewonly=True,
+    events: Mapped[list["TournamentEvent"]] = relationship(
+        "TournamentEvent",
+        secondary="tournament_event_tracks",
+        viewonly=True,
     )
-    buildings = relationship(
+    buildings: Mapped[list["TournamentBuilding"]] = relationship(
         "TournamentBuilding", secondary="tournament_building_tracks", back_populates="tracks"
     )
-    member_statuses = relationship(
+    member_statuses: Mapped[list["TournamentMembershipTrackStatus"]] = relationship(
         "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
     )
 
@@ -1070,21 +1276,26 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
 class TournamentBuilding(Base):
     __tablename__ = "tournament_buildings"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournaments.id", ondelete="CASCADE"),
+        index=True,
     )
-    name = Column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255))
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="buildings")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="buildings")
     # Ordered by date so a building lists its tracks in schedule order, the
     # same way TournamentEvent.tracks does; cosmetic tracks sort last.
-    tracks = relationship(
-        "TournamentTrack", secondary="tournament_building_tracks", back_populates="buildings",
+    tracks: Mapped[list["TournamentTrack"]] = relationship(
+        "TournamentTrack",
+        secondary="tournament_building_tracks",
+        back_populates="buildings",
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
 
@@ -1105,10 +1316,10 @@ class TournamentBuilding(Base):
 class TournamentBuildingTrack(Base):
     __tablename__ = "tournament_building_tracks"
 
-    building_id = Column(
+    building_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tournament_buildings.id", ondelete="CASCADE"), primary_key=True
     )
-    track_id = Column(
+    track_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
     )
 
@@ -1119,8 +1330,12 @@ class TournamentBuildingTrack(Base):
 class TournamentEventShift(Base):
     __tablename__ = "tournament_event_shifts"
 
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
-    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True)
+    tournament_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True
+    )
+    tournament_shift_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1141,8 +1356,12 @@ class TournamentEventShift(Base):
 class TournamentEventTrack(Base):
     __tablename__ = "tournament_event_tracks"
 
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
-    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
+    tournament_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True
+    )
+    track_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
+    )
 
     # -----------------------------------------------------------------------
     # Where the event physically happens on this track.
@@ -1161,11 +1380,11 @@ class TournamentEventTrack(Base):
     # database — not each write path — is what stops a Day 1 event being put
     # in a building only Day 2 uses. Same device as the assignment's
     # shift/track pairing.
-    building_id = Column(Integer, nullable=True, index=True)
+    building_id: Mapped[int | None] = mapped_column(Integer, index=True)
     # An override: null means "derive it from the rooms" (see effective_floor).
     # Kept as a column for the building whose numbering doesn't follow the rule.
-    floor = Column(String(64), nullable=True)
-    rooms = Column(JSON, nullable=True)                        # list of str
+    floor: Mapped[str | None] = mapped_column(String(64))
+    rooms: Mapped[list[str] | None] = mapped_column(JSON)  # list of str
 
     @property
     def effective_floor(self) -> str | None:
@@ -1177,16 +1396,18 @@ class TournamentEventTrack(Base):
         first = next((room.strip() for room in (self.rooms or []) if room and room.strip()), None)
         return first[0] if first else None
 
-    tournament_event = relationship("TournamentEvent", back_populates="track_details")
+    tournament_event: Mapped["TournamentEvent"] = relationship(
+        "TournamentEvent", back_populates="track_details"
+    )
     # lazy="joined" like TournamentTrackAssignment.role: every
     # reader of a link row renders the track's name alongside it.
-    track = relationship("TournamentTrack", lazy="joined")
+    track: Mapped["TournamentTrack"] = relationship("TournamentTrack", lazy="joined")
     # Read-only, and explicitly joined: building_id's only foreign key is the
     # composite one below, which points at the building<->track bridge rather
     # than at tournament_buildings, so SQLAlchemy cannot infer this on its
     # own. Writers set building_id directly — they deal in ids from the
     # payload anyway.
-    building = relationship(
+    building: Mapped["TournamentBuilding | None"] = relationship(
         "TournamentBuilding",
         primaryjoin="TournamentEventTrack.building_id == TournamentBuilding.id",
         foreign_keys="TournamentEventTrack.building_id",
@@ -1195,9 +1416,11 @@ class TournamentEventTrack(Base):
 
     # How many of each role this event wants on this track. Ordered by role
     # so a needs list renders the same way twice running.
-    needs = relationship(
-        "TournamentEventStaffingNeed", back_populates="track_detail",
-        cascade="all, delete-orphan", order_by="TournamentEventStaffingNeed.role_id",
+    needs: Mapped[list["TournamentEventStaffingNeed"]] = relationship(
+        "TournamentEventStaffingNeed",
+        back_populates="track_detail",
+        cascade="all, delete-orphan",
+        order_by="TournamentEventStaffingNeed.role_id",
     )
 
     __table_args__ = (
@@ -1232,26 +1455,31 @@ class TournamentEventTrack(Base):
 class TournamentEventStaffingNeed(Base):
     __tablename__ = "tournament_event_staffing_needs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     # No inline ForeignKeys on these two: the composite constraint below is
     # their FK, and it points at the event<->track link rather than at either
     # table separately. A need therefore cannot name a track the event does
     # not run on, and deleting the link takes its needs with it.
-    tournament_event_id = Column(Integer, nullable=False, index=True)
-    track_id = Column(Integer, nullable=False, index=True)
+    tournament_event_id: Mapped[int] = mapped_column(Integer, index=True)
+    track_id: Mapped[int] = mapped_column(Integer, index=True)
 
-    role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    role_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        index=True,
     )
-    count = Column(Integer, nullable=False)
+    count: Mapped[int] = mapped_column(Integer)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    track_detail = relationship("TournamentEventTrack", back_populates="needs")
+    track_detail: Mapped["TournamentEventTrack"] = relationship(
+        "TournamentEventTrack", back_populates="needs"
+    )
     # lazy="joined": every reader of a need renders the role's label.
-    role = relationship("TournamentRole", lazy="joined")
+    role: Mapped["TournamentRole"] = relationship("TournamentRole", lazy="joined")
 
     __table_args__ = (
         ForeignKeyConstraint(
@@ -1261,7 +1489,9 @@ class TournamentEventStaffingNeed(Base):
             ondelete="CASCADE",
         ),
         UniqueConstraint(
-            "tournament_event_id", "track_id", "role_id",
+            "tournament_event_id",
+            "track_id",
+            "role_id",
             name="uq_staffing_need_event_track_role",
         ),
         CheckConstraint("count >= 1", name="ck_staffing_need_count_positive"),
@@ -1282,7 +1512,7 @@ class TournamentEventStaffingNeed(Base):
 class TournamentZone(Base):
     __tablename__ = "tournament_zones"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     # Denormalized from the track, and kept honest by the composite FK below.
     # Present because every zone lookup is tournament-scoped
     # (get_scoped_or_404 reads this attribute by name).
@@ -1291,29 +1521,33 @@ class TournamentZone(Base):
     # __table_args__ is the foreign key for both, and declaring an inline one
     # as well would give SQLAlchemy two paths to tournament_tracks and leave
     # the `track` relationship ambiguous.
-    tournament_id = Column(Integer, nullable=False, index=True)
-    track_id = Column(Integer, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
+    tournament_id: Mapped[int] = mapped_column(Integer, index=True)
+    track_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(255))
 
     # The role a drag onto this zone grants, distinct from the track's
     # default: a competition day defaults to a general volunteer role, while
     # a zone on that same day almost always wants Runner. SET NULL rather
     # than a blocking FK, matching TournamentTrack.default_role_id.
-    default_role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True,
+    default_role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
     )
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    track = relationship("TournamentTrack")
-    default_role = relationship("TournamentRole")
-    members = relationship(
-        "TournamentZoneMember", back_populates="zone", cascade="all, delete-orphan",
+    track: Mapped["TournamentTrack"] = relationship("TournamentTrack")
+    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
+    members: Mapped[list["TournamentZoneMember"]] = relationship(
+        "TournamentZoneMember",
+        back_populates="zone",
+        cascade="all, delete-orphan",
     )
     # Read-only: zone coverage lives in tournament_track_assignments now, and
     # deleting a zone still clears it through that table's composite FK.
-    assignments = relationship(
+    assignments: Mapped[list["TournamentTrackAssignment"]] = relationship(
         "TournamentTrackAssignment",
         primaryjoin="TournamentTrackAssignment.zone_id == TournamentZone.id",
         foreign_keys="TournamentTrackAssignment.zone_id",
@@ -1359,29 +1593,29 @@ class TournamentZone(Base):
 class TournamentZoneMember(Base):
     __tablename__ = "tournament_zone_members"
 
-    id = Column(Integer, primary_key=True, index=True)
-    zone_id = Column(Integer, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    zone_id: Mapped[int] = mapped_column(Integer, index=True)
     # Copied from the zone so the three partial unique indexes below can be
     # expressed at all — they are what makes "one zone per event per track" a
     # database guarantee rather than a route check two writers can race past.
-    track_id = Column(Integer, nullable=False, index=True)
+    track_id: Mapped[int] = mapped_column(Integer, index=True)
 
-    kind = Column(String(16), nullable=False)          # building | floor | event
+    kind: Mapped[str] = mapped_column(String(16))  # building | floor | event
 
-    building_id = Column(Integer, nullable=True, index=True)
-    floor = Column(String(64), nullable=True)
-    tournament_event_id = Column(Integer, nullable=True, index=True)
+    building_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    floor: Mapped[str | None] = mapped_column(String(64))
+    tournament_event_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    zone = relationship("TournamentZone", back_populates="members")
-    building = relationship(
+    zone: Mapped["TournamentZone"] = relationship("TournamentZone", back_populates="members")
+    building: Mapped["TournamentBuilding | None"] = relationship(
         "TournamentBuilding",
         primaryjoin="TournamentZoneMember.building_id == TournamentBuilding.id",
         foreign_keys="TournamentZoneMember.building_id",
         viewonly=True,
     )
-    tournament_event = relationship(
+    tournament_event: Mapped["TournamentEvent | None"] = relationship(
         "TournamentEvent",
         primaryjoin="TournamentZoneMember.tournament_event_id == TournamentEvent.id",
         foreign_keys="TournamentZoneMember.tournament_event_id",
@@ -1425,16 +1659,26 @@ class TournamentZoneMember(Base):
         # rule rests on. Partial, because each kind uses different columns and
         # a NULL in a plain unique index would let duplicates through.
         Index(
-            "uq_zone_member_building", "track_id", "building_id",
-            unique=True, postgresql_where=text("kind = 'building'"),
+            "uq_zone_member_building",
+            "track_id",
+            "building_id",
+            unique=True,
+            postgresql_where=text("kind = 'building'"),
         ),
         Index(
-            "uq_zone_member_floor", "track_id", "building_id", "floor",
-            unique=True, postgresql_where=text("kind = 'floor'"),
+            "uq_zone_member_floor",
+            "track_id",
+            "building_id",
+            "floor",
+            unique=True,
+            postgresql_where=text("kind = 'floor'"),
         ),
         Index(
-            "uq_zone_member_event", "track_id", "tournament_event_id",
-            unique=True, postgresql_where=text("kind = 'event'"),
+            "uq_zone_member_event",
+            "track_id",
+            "tournament_event_id",
+            unique=True,
+            postgresql_where=text("kind = 'event'"),
         ),
     )
 
@@ -1473,65 +1717,72 @@ class TournamentZoneMember(Base):
 class TournamentTrackAssignment(Base):
     __tablename__ = "tournament_track_assignments"
 
-    id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(
-        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    membership_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
+        index=True,
     )
-    role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    role_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        index=True,
     )
 
     # A role that isn't about a particular day. Legal only with no track,
     # event, shift or zone — see ck_track_assignment_scope.
-    is_tournament_wide = Column(Boolean, nullable=False, default=False)
+    is_tournament_wide: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Carries its own plain ForeignKey as well as appearing in the three
     # composite constraints below. Unlike the usual rule in this file, that is
     # not a duplicate: MATCH SIMPLE means a composite FK is not enforced at all
     # when any of its columns is null, so a plain grant row — track set, event
     # and zone null — would otherwise have nothing checking its track exists.
-    tournament_track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=True, index=True,
+    tournament_track_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        index=True,
     )
 
     # No inline ForeignKeys on these three. Each is paired with the track in
     # __table_args__, which is what stops a row naming a Day 2 event, shift or
     # zone while claiming to be about Day 1.
-    tournament_event_id = Column(Integer, nullable=True, index=True)
-    tournament_shift_id = Column(Integer, nullable=True, index=True)
-    zone_id = Column(Integer, nullable=True, index=True)
+    tournament_event_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    tournament_shift_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    zone_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    membership = relationship("TournamentMembership", back_populates="track_assignments")
+    membership: Mapped["TournamentMembership"] = relationship(
+        "TournamentMembership", back_populates="track_assignments"
+    )
     # lazy="joined": every reader of one of these renders the role's label.
-    role = relationship("TournamentRole", lazy="joined")
+    role: Mapped["TournamentRole"] = relationship("TournamentRole", lazy="joined")
 
     # All four spelled out: track_id takes part in several foreign keys, so
     # nothing here can be inferred.
-    track = relationship(
+    track: Mapped["TournamentTrack | None"] = relationship(
         "TournamentTrack",
         primaryjoin="TournamentTrackAssignment.tournament_track_id == TournamentTrack.id",
         foreign_keys="TournamentTrackAssignment.tournament_track_id",
         viewonly=True,
     )
-    tournament_event = relationship(
+    tournament_event: Mapped["TournamentEvent | None"] = relationship(
         "TournamentEvent",
         primaryjoin="TournamentTrackAssignment.tournament_event_id == TournamentEvent.id",
         foreign_keys="TournamentTrackAssignment.tournament_event_id",
         viewonly=True,
     )
-    tournament_shift = relationship(
+    tournament_shift: Mapped["TournamentShift | None"] = relationship(
         "TournamentShift",
         primaryjoin="TournamentTrackAssignment.tournament_shift_id == TournamentShift.id",
         foreign_keys="TournamentTrackAssignment.tournament_shift_id",
         viewonly=True,
     )
-    zone = relationship(
+    zone: Mapped["TournamentZone | None"] = relationship(
         "TournamentZone",
         primaryjoin="TournamentTrackAssignment.zone_id == TournamentZone.id",
         foreign_keys="TournamentTrackAssignment.zone_id",
@@ -1543,19 +1794,21 @@ class TournamentTrackAssignment(Base):
         ForeignKeyConstraint(
             ["tournament_event_id", "tournament_track_id"],
             ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
-            name="fk_track_assignment_event", ondelete="CASCADE",
+            name="fk_track_assignment_event",
+            ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
             ["tournament_shift_id", "tournament_track_id"],
             ["tournament_shifts.id", "tournament_shifts.track_id"],
-            name="fk_track_assignment_shift", ondelete="CASCADE",
+            name="fk_track_assignment_shift",
+            ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
             ["zone_id", "tournament_track_id"],
             ["tournament_zones.id", "tournament_zones.track_id"],
-            name="fk_track_assignment_zone", ondelete="CASCADE",
+            name="fk_track_assignment_zone",
+            ondelete="CASCADE",
         ),
-
         # A tournament-wide row is about no day in particular, so it carries
         # nothing that names one; every other row must name a track.
         CheckConstraint(
@@ -1575,15 +1828,20 @@ class TournamentTrackAssignment(Base):
             "tournament_shift_id IS NULL OR tournament_event_id IS NOT NULL",
             name="ck_track_assignment_shift_needs_event",
         ),
-
         # One row per shape. Partial, because each shape is keyed by different
         # columns and nulls in a plain unique index would let duplicates past.
         Index(
-            "uq_track_assignment_wide", "membership_id", "role_id",
-            unique=True, postgresql_where=text("is_tournament_wide"),
+            "uq_track_assignment_wide",
+            "membership_id",
+            "role_id",
+            unique=True,
+            postgresql_where=text("is_tournament_wide"),
         ),
         Index(
-            "uq_track_assignment_grant", "membership_id", "role_id", "tournament_track_id",
+            "uq_track_assignment_grant",
+            "membership_id",
+            "role_id",
+            "tournament_track_id",
             unique=True,
             postgresql_where=text(
                 "NOT is_tournament_wide AND tournament_event_id IS NULL AND zone_id IS NULL"
@@ -1594,8 +1852,11 @@ class TournamentTrackAssignment(Base):
         # Test Reviewing — and without the track those are one row, not two.
         # The shift key below needs no track: a shift already names one.
         Index(
-            "uq_track_assignment_event", "membership_id", "role_id",
-            "tournament_event_id", "tournament_track_id",
+            "uq_track_assignment_event",
+            "membership_id",
+            "role_id",
+            "tournament_event_id",
+            "tournament_track_id",
             unique=True,
             postgresql_where=text(
                 "tournament_event_id IS NOT NULL AND tournament_shift_id IS NULL"
@@ -1603,12 +1864,20 @@ class TournamentTrackAssignment(Base):
         ),
         Index(
             "uq_track_assignment_event_shift",
-            "membership_id", "role_id", "tournament_event_id", "tournament_shift_id",
-            unique=True, postgresql_where=text("tournament_shift_id IS NOT NULL"),
+            "membership_id",
+            "role_id",
+            "tournament_event_id",
+            "tournament_shift_id",
+            unique=True,
+            postgresql_where=text("tournament_shift_id IS NOT NULL"),
         ),
         Index(
-            "uq_track_assignment_zone", "membership_id", "role_id", "zone_id",
-            unique=True, postgresql_where=text("zone_id IS NOT NULL"),
+            "uq_track_assignment_zone",
+            "membership_id",
+            "role_id",
+            "zone_id",
+            unique=True,
+            postgresql_where=text("zone_id IS NOT NULL"),
         ),
     )
 
@@ -1619,12 +1888,21 @@ class TournamentTrackAssignment(Base):
 class TournamentChapter(Base):
     __tablename__ = "tournament_chapters"
 
-    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id"), primary_key=True
+    )
+    chapter_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("alumni_chapters.id"), primary_key=True
+    )
 
     # Relationships
-    tournament = relationship("Tournament", back_populates="tournament_chapters")
-    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
+    tournament: Mapped["Tournament"] = relationship(
+        "Tournament", back_populates="tournament_chapters"
+    )
+    chapter: Mapped["AlumniChapter"] = relationship(
+        "AlumniChapter", back_populates="tournament_chapters"
+    )
+
 
 # ---------------------------------------------------------------------------
 # SheetConfig
@@ -1632,22 +1910,24 @@ class TournamentChapter(Base):
 class SheetConfig(Base):
     __tablename__ = "sheet_configs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
-    label = Column(String(255), nullable=False)
-    sheet_type = Column(String(64), nullable=False)
-    sheet_url = Column(Text, nullable=False)
-    spreadsheet_id = Column(String(255), nullable=False)
-    sheet_name = Column(String(255), nullable=False)
-    column_mappings = Column(JSON, nullable=False, default=dict)
-    is_active = Column(Boolean, default=True)
-    last_synced_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    label: Mapped[str] = mapped_column(String(255))
+    sheet_type: Mapped[str] = mapped_column(String(64))
+    sheet_url: Mapped[str] = mapped_column(Text)
+    spreadsheet_id: Mapped[str] = mapped_column(String(255))
+    sheet_name: Mapped[str] = mapped_column(String(255))
+    column_mappings: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="sheet_configs")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="sheet_configs")
 
 
 # ---------------------------------------------------------------------------
@@ -1661,35 +1941,53 @@ class Form(Base):
     # index=True is redundant beside the primary key, but 7db31ae17e3c created
     # ix_forms_id and prod has it — declared here so the model matches the
     # migrations rather than silently drifting from them.
-    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
-    name = Column(String(255), nullable=False)
+    id: Mapped[str] = mapped_column(
+        String(12), primary_key=True, default=generate_public_id, index=True
+    )
+    owner_type: Mapped[Literal["tournament", "chapter"]] = mapped_column(String(16))
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
+    chapter_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255))
     # Respondent-facing title, shown on the actual form — distinct from
     # `name` (the TD-facing dashboard/list label). Independently editable;
     # callers default it to `name` at creation time if not given, but
     # nothing here enforces them staying in sync afterward.
-    title = Column(String(255), nullable=True)
-    description = Column(Text, nullable=True)
-    status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[Literal["draft", "published", "archived"]] = mapped_column(
+        String(16), default="draft"
+    )
 
     # Null once the creator's account is deleted.
-    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     # Lets a respondent revise any answer after submitting, not only the ones
     # a TD flagged. Off by default — see patch_form_response.
-    allow_response_edits = Column(Boolean, nullable=False, default=False)
+    allow_response_edits: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    tournament = relationship("Tournament", back_populates="forms")
-    chapter = relationship("AlumniChapter", back_populates="forms")
-    creator = relationship("User", back_populates="created_forms")
-    fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
-    responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
-    tournament_form = relationship("TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan")
+    tournament: Mapped["Tournament | None"] = relationship("Tournament", back_populates="forms")
+    chapter: Mapped["AlumniChapter | None"] = relationship("AlumniChapter", back_populates="forms")
+    creator: Mapped["User | None"] = relationship("User", back_populates="created_forms")
+    fields: Mapped[list["FormField"]] = relationship(
+        "FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order"
+    )
+    responses: Mapped[list["FormResponse"]] = relationship(
+        "FormResponse", back_populates="form", cascade="all, delete-orphan"
+    )
+    tournament_form: Mapped["TournamentForm | None"] = relationship(
+        "TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan"
+    )
 
     @property
     def tournament_is_archived(self) -> bool | None:
@@ -1743,19 +2041,23 @@ class Form(Base):
 class TournamentForm(Base):
     __tablename__ = "tournament_forms"
 
-    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    is_onboarding = Column(Boolean, nullable=False, default=False)
-    order = Column(Integer, nullable=True)
+    form_id: Mapped[str] = mapped_column(
+        String(12), ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True
+    )
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
+    )
+    is_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
+    order: Mapped[int | None] = mapped_column(Integer)
     # Optional member-visibility requirements for standard tournament forms.
     # Shape and referenced-id validation live with the manager API; evaluation
     # lives in core/tournament/form_prerequisites.py so every future caller
     # (member form list, rendering, and submission) shares one rule.
-    prerequisites = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    prerequisites: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    tournament = relationship("Tournament", back_populates="tournament_forms")
-    form = relationship("Form", back_populates="tournament_form")
+    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="tournament_forms")
+    form: Mapped["Form"] = relationship("Form", back_populates="tournament_form")
 
 
 # ---------------------------------------------------------------------------
@@ -1766,13 +2068,15 @@ class TournamentForm(Base):
 class FormField(Base):
     __tablename__ = "form_fields"
 
-    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
-    order = Column(Integer, nullable=False)
-    label = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
+    id: Mapped[str] = mapped_column(
+        String(12), primary_key=True, default=generate_public_id, index=True
+    )
+    form_id: Mapped[str] = mapped_column(String(12), ForeignKey("forms.id", ondelete="CASCADE"))
+    order: Mapped[int] = mapped_column(Integer)
+    label: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
 
-    question_type = Column(String(32), nullable=False)
+    question_type: Mapped[str] = mapped_column(String(32))
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
 
@@ -1780,22 +2084,24 @@ class FormField(Base):
     # time (see app/core/form.slugify) and stable afterward, even if the
     # label is later edited. Unique per tournament, not just per form (see
     # app/core/form.check_field_key_available_in_tournament).
-    field_key = Column(String(64), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(64))
 
-    config = Column(JSON, nullable=True)
+    config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
     #   "archived": false, "next_section_id": null, "allow_other": false}, ...]}
     # For "grid": {"rows": [{"id","label"}...], "columns": [{"id","label"}...],
     #   "column_selection": "single"|"multiple"}
     # For "page_break": unused, null
 
-    is_archived = Column(Boolean, nullable=False, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    form = relationship("Form", back_populates="fields")
-    answer = relationship("FormAnswer", back_populates="field")
+    form: Mapped["Form"] = relationship("Form", back_populates="fields")
+    answer: Mapped[list["FormAnswer"]] = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
         # Live fields only. An archived field doesn't reserve its key — see
@@ -1803,7 +2109,9 @@ class FormField(Base):
         # replacing it can share a name. A plain UniqueConstraint here would
         # block that at the DB even though the application allows it.
         Index(
-            "uq_form_field_key", "form_id", "field_key",
+            "uq_form_field_key",
+            "form_id",
+            "field_key",
             unique=True,
             postgresql_where=text("is_archived = false"),
         ),
@@ -1823,21 +2131,27 @@ class FormField(Base):
 class FormResponse(Base):
     __tablename__ = "form_responses"
 
-    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-
-    submitted_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-    form = relationship("Form", back_populates="responses")
-    user = relationship("User", back_populates="form_responses")
-    answers = relationship("FormAnswer", back_populates="response", cascade="all, delete-orphan")
-    pending_updates = relationship("FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),
+    id: Mapped[str] = mapped_column(
+        String(12), primary_key=True, default=generate_public_id, index=True
     )
+    form_id: Mapped[str] = mapped_column(String(12), ForeignKey("forms.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    form: Mapped["Form"] = relationship("Form", back_populates="responses")
+    user: Mapped["User"] = relationship("User", back_populates="form_responses")
+    answers: Mapped[list["FormAnswer"]] = relationship(
+        "FormAnswer", back_populates="response", cascade="all, delete-orphan"
+    )
+    pending_updates: Mapped[list["FormResponsePendingUpdate"]] = relationship(
+        "FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),)
 
 
 # ---------------------------------------------------------------------------
@@ -1847,25 +2161,27 @@ class FormResponse(Base):
 class FormAnswer(Base):
     __tablename__ = "form_answers"
 
-    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
-    field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
-    value = Column(JSON, nullable=False)
+    id: Mapped[str] = mapped_column(
+        String(12), primary_key=True, default=generate_public_id, index=True
+    )
+    response_id: Mapped[str] = mapped_column(
+        String(12), ForeignKey("form_responses.id", ondelete="CASCADE")
+    )
+    field_id: Mapped[str] = mapped_column(String(12), ForeignKey("form_fields.id"))
+    value: Mapped[Any] = mapped_column(JSON, nullable=False)
     # The semantics this answer was given under. `value`'s shape is a function
     # of (question_type, field_key) — a preset key stores entity ids where a
     # standard key stores text — so recording both here keeps a stored answer
     # readable after the field is edited, instead of reinterpreting history
     # through whatever the field looks like today. Nullable only for rows
     # predating this column; always written on new answers.
-    question_type = Column(String(32), nullable=True)
-    field_key = Column(String(64), nullable=True)
+    question_type: Mapped[str | None] = mapped_column(String(32))
+    field_key: Mapped[str | None] = mapped_column(String(64))
 
-    response = relationship("FormResponse", back_populates="answers")
-    field = relationship("FormField", back_populates="answer")
+    response: Mapped["FormResponse"] = relationship("FormResponse", back_populates="answers")
+    field: Mapped["FormField"] = relationship("FormField", back_populates="answer")
 
-    __table_args__ = (
-        UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
-    )
+    __table_args__ = (UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),)
 
 
 # ---------------------------------------------------------------------------
@@ -1882,19 +2198,25 @@ class FormAnswer(Base):
 # they union rather than override. A row is cleared when the respondent
 # patches that field, and is deleted outright if the field is archived or
 # invalidated — a flag on a question that can no longer be answered is
-# unclearable by construction. See backend/form-edit-lifecycle.md.
+# unclearable by construction. See backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
-    field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    response_id: Mapped[str] = mapped_column(
+        String(12), ForeignKey("form_responses.id", ondelete="CASCADE")
+    )
+    field_id: Mapped[str] = mapped_column(
+        String(12), ForeignKey("form_fields.id", ondelete="CASCADE")
+    )
     # See app/core/form/changes.py for the values and what raises each.
-    reasons = Column(JSON, nullable=False, default=list)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    response = relationship("FormResponse", back_populates="pending_updates")
+    response: Mapped["FormResponse"] = relationship(
+        "FormResponse", back_populates="pending_updates"
+    )
 
     __table_args__ = (
         UniqueConstraint("response_id", "field_id", name="uq_pending_update_per_response_field"),
@@ -1909,12 +2231,20 @@ class FormResponsePendingUpdate(Base):
 class TournamentMembershipAvailability(Base):
     __tablename__ = "tournament_membership_availability"
 
-    id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
-    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    membership_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE")
+    )
+    tournament_shift_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE")
+    )
 
-    membership = relationship("TournamentMembership", back_populates="availability_shifts")
-    tournament_shift = relationship("TournamentShift", back_populates="membership_availabilities")
+    membership: Mapped["TournamentMembership"] = relationship(
+        "TournamentMembership", back_populates="availability_shifts"
+    )
+    tournament_shift: Mapped["TournamentShift"] = relationship(
+        "TournamentShift", back_populates="membership_availabilities"
+    )
 
     __table_args__ = (
         UniqueConstraint("membership_id", "tournament_shift_id", name="uq_membership_availability"),
@@ -1929,24 +2259,29 @@ class TournamentMembershipAvailability(Base):
 class TournamentMembershipLunch(Base):
     __tablename__ = "tournament_membership_lunch"
 
-    id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    membership_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE")
+    )
     # Scoped by track, not by date. A track can span more than one day, so a
     # date was never the unit a lunch question is actually asked about — and
     # a two-site tournament feeds its sites separately even when they run on
     # the same day.
-    track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    track_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        index=True,
     )
-    category = Column(String(64), nullable=False)
+    category: Mapped[str] = mapped_column(String(64))
     # Text, not String: a lunch_{track}_{category} field can be short_text/
     # long_text, whose whole answer lands here as value/label.
-    value = Column(Text, nullable=False)
-    label = Column(Text, nullable=False)
+    value: Mapped[str] = mapped_column(Text)
+    label: Mapped[str] = mapped_column(Text)
 
-    membership = relationship("TournamentMembership", back_populates="lunch_selections")
-    track = relationship("TournamentTrack", lazy="joined")
+    membership: Mapped["TournamentMembership"] = relationship(
+        "TournamentMembership", back_populates="lunch_selections"
+    )
+    track: Mapped["TournamentTrack"] = relationship("TournamentTrack", lazy="joined")
 
     @property
     def track_name(self) -> str:
@@ -1956,7 +2291,9 @@ class TournamentMembershipLunch(Base):
         return self.track.name
 
     __table_args__ = (
-        UniqueConstraint("membership_id", "track_id", "category", "value", name="uq_membership_lunch_selection"),
+        UniqueConstraint(
+            "membership_id", "track_id", "category", "value", name="uq_membership_lunch_selection"
+        ),
     )
 
 
@@ -1968,7 +2305,7 @@ class TournamentMembershipLunch(Base):
 # One row per (membership, track): a track's status is a single current fact,
 # not a history. Several questions across several forms feed the same row, so
 # no field owns it and none can withdraw its contribution — write-through only
-# ever upserts here, never deletes (see backend/form-edit-lifecycle.md).
+# ever upserts here, never deletes (see backend/docs/form-edit-lifecycle.md).
 #
 # Writes are guarded by a transition rule rather than by submission ordering:
 # a track never falls back to `interested` once it's moved past it, so a stale
@@ -1978,32 +2315,46 @@ class TournamentMembershipLunch(Base):
 class TournamentMembershipTrackStatus(Base):
     __tablename__ = "tournament_membership_track_statuses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    membership_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE")
+    )
     # CASCADE, unlike a form field's reference to a track: a TD who hard-deletes
     # a track is removing it for good, and delete_track already refuses while
     # any form field still references it.
-    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), nullable=False)
+    track_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE")
+    )
 
     # "interested" | "confirmed" | "declined"
-    status = Column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32))
 
     # Where this status came from, recorded for debugging and TD-facing
     # provenance only — the transition rule, not this, is what keeps writes
     # ordered. Both SET NULL: invalidating the question that set a status must
     # not take the status with it. NULL also means "not set by a form", which
     # is what a future member self-edit path will write.
-    source_response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="SET NULL"), nullable=True)
-    source_field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="SET NULL"), nullable=True)
+    source_response_id: Mapped[str | None] = mapped_column(
+        String(12), ForeignKey("form_responses.id", ondelete="SET NULL")
+    )
+    source_field_id: Mapped[str | None] = mapped_column(
+        String(12), ForeignKey("form_fields.id", ondelete="SET NULL")
+    )
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
-    membership = relationship("TournamentMembership", back_populates="track_statuses")
+    membership: Mapped["TournamentMembership"] = relationship(
+        "TournamentMembership", back_populates="track_statuses"
+    )
     # lazy="joined": every read of a status row wants the track's name to
     # render it, so the hop is worth folding into the same query rather than
     # N+1-ing per row through the shared get_scoped_or_404 path.
-    track = relationship("TournamentTrack", back_populates="member_statuses", lazy="joined")
+    track: Mapped["TournamentTrack"] = relationship(
+        "TournamentTrack", back_populates="member_statuses", lazy="joined"
+    )
 
     __table_args__ = (
         UniqueConstraint("membership_id", "track_id", name="uq_membership_track_status"),
@@ -2023,27 +2374,34 @@ class TournamentMembershipTrackStatus(Base):
 class TournamentMembershipEventPreference(Base):
     __tablename__ = "tournament_membership_event_preferences"
 
-    id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    membership_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE")
+    )
+    tournament_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE")
+    )
     # The track is the whole scope — exactly one event_preference question per
     # track, so there is no suffix and no `key` column. A member ranking events
     # for Day 1 and for Test Writing has two independent sets.
-    track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    track_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        index=True,
     )
 
     # ranked_choice: the submitted rank; single_select: 1; checkbox: null.
-    rank = Column(Integer, nullable=True)
+    rank: Mapped[int | None] = mapped_column(Integer)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    membership = relationship("TournamentMembership", back_populates="event_preferences")
+    membership: Mapped["TournamentMembership"] = relationship(
+        "TournamentMembership", back_populates="event_preferences"
+    )
     # lazy="joined": every read of a preference row wants the event's name/
     # division to render it, same reasoning as TrackStatus.track.
-    tournament_event = relationship("TournamentEvent", lazy="joined")
-    track = relationship("TournamentTrack", lazy="joined")
+    tournament_event: Mapped["TournamentEvent"] = relationship("TournamentEvent", lazy="joined")
+    track: Mapped["TournamentTrack"] = relationship("TournamentTrack", lazy="joined")
 
     @property
     def track_name(self) -> str:
@@ -2051,6 +2409,9 @@ class TournamentMembershipEventPreference(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "membership_id", "track_id", "tournament_event_id", name="uq_membership_event_preference",
+            "membership_id",
+            "track_id",
+            "tournament_event_id",
+            name="uq_membership_event_preference",
         ),
     )

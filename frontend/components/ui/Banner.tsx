@@ -4,7 +4,9 @@ import { ReactNode } from 'react'
 import { IconXCircle, IconWarning, IconCheckCircle, IconInfo, IconX } from '@/components/ui/Icons'
 import styles from './Banner.module.css'
 
-type BannerVariant = 'success' | 'error' | 'warning' | 'info'
+// error = something failed (x icon); danger = a red warning about something
+// to fix (triangle icon).
+type BannerVariant = 'success' | 'error' | 'danger' | 'warning' | 'info'
 
 export interface BannerProps {
   variant: BannerVariant
@@ -30,6 +32,13 @@ const variantTokens: Record<BannerVariant, {
     border:         'var(--color-danger)',
     iconColor:      'var(--color-danger)',
     icon:           <IconXCircle size={20} />,
+    dismissHoverBg: 'rgba(229,62,62,0.12)',
+  },
+  danger: {
+    bg:             'var(--color-danger-subtle)',
+    border:         'var(--color-danger)',
+    iconColor:      'var(--color-danger)',
+    icon:           <IconWarning size={20} />,
     dismissHoverBg: 'rgba(229,62,62,0.12)',
   },
   warning: {

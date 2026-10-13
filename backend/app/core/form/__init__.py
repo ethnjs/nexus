@@ -1,4 +1,8 @@
+import re
+import secrets
+
 from sqlalchemy.orm import Session, joinedload
+
 from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -17,9 +21,6 @@ from app.models.models import (
     TournamentTrack,
 )
 
-import re
-import secrets
-
 
 def slugify(text: str, max_len: int = 64) -> str:
     """Convert a TD-typed label into a snake_case field_key candidate."""
@@ -32,7 +33,12 @@ def slugify(text: str, max_len: int = 64) -> str:
 # field is deliberately excluded even though it's currently
 # multi_select_checkbox — its answer still submits a raw TournamentShift id,
 # not an option_id, until the shift-grouping work lands.
-OPTION_BEARING_TYPES = {"single_select_radio", "single_select_dropdown", "multi_select_checkbox", "ranked_choice"}
+OPTION_BEARING_TYPES = {
+    "single_select_radio",
+    "single_select_dropdown",
+    "multi_select_checkbox",
+    "ranked_choice",
+}
 
 
 def _snapshot_option(options_by_id: dict, option_id) -> dict:
@@ -59,15 +65,27 @@ def snapshot_answer_value(field: FormField, value):
     Falls back to returning `value` unchanged for anything that doesn't
     match the expected shape for `field.question_type` — answer value is
     unvalidated user input, not something to raise on here."""
-    if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key) or field.question_type not in OPTION_BEARING_TYPES or value is None:
+    if (
+        AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)
+        or field.question_type not in OPTION_BEARING_TYPES
+        or value is None
+    ):
         return value
 
     options_by_id = {o["option_id"]: o for o in (field.config or {}).get("options", [])}
 
     if field.question_type == "multi_select_checkbox":
-        return [_snapshot_option(options_by_id, v) for v in value] if isinstance(value, list) else value
+        return (
+            [_snapshot_option(options_by_id, v) for v in value]
+            if isinstance(value, list)
+            else value
+        )
     if field.question_type == "ranked_choice":
-        return {k: _snapshot_option(options_by_id, v) for k, v in value.items()} if isinstance(value, dict) else value
+        return (
+            {k: _snapshot_option(options_by_id, v) for k, v in value.items()}
+            if isinstance(value, dict)
+            else value
+        )
     return _snapshot_option(options_by_id, value) if isinstance(value, str) else value
 
 
@@ -147,7 +165,9 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
     # availability_{track}/lunch_{track}/event_preference_{track} field points
     # at the track through its key, not through any option value.
     from app.core.form.validation import (
-        availability_field_track_id, event_preference_field_track_id, lunch_field_track_id,
+        availability_field_track_id,
+        event_preference_field_track_id,
+        lunch_field_track_id,
     )
 
     for field in fields:
@@ -161,7 +181,8 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
         if any(
             assignment.get("id") == track_id
             for assignment in track_status_assignments(
-                field.config or {}, availability_field_track_id(field.field_key),
+                field.config or {},
+                availability_field_track_id(field.field_key),
             )
         ):
             return True
@@ -238,7 +259,11 @@ def _upsert_pending_update(db: Session, response_id: str, field_id: str, reasons
         .first()
     )
     if existing is None:
-        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field_id, reasons=sorted(reasons)))
+        db.add(
+            FormResponsePendingUpdate(
+                response_id=response_id, field_id=field_id, reasons=sorted(reasons)
+            )
+        )
     else:
         existing.reasons = sorted(set(existing.reasons or []) | reasons)
 
@@ -247,7 +272,8 @@ def _responses_leaving_field_blank(db: Session, field: FormField) -> set[str]:
     """Responses to this field's form that didn't actually answer it — no
     answer row at all, or one holding an empty value."""
     response_ids = {
-        rid for (rid,) in db.query(FormResponse.id).filter(FormResponse.form_id == field.form_id).all()
+        rid
+        for (rid,) in db.query(FormResponse.id).filter(FormResponse.form_id == field.form_id).all()
     }
     for answer in db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all():
         if answer.value not in (None, "", [], {}):
@@ -274,7 +300,9 @@ def flag_pending_updates(
 
     broad = reasons - {changes.OPTION_INVALIDATED, changes.NOW_REQUIRED}
     if broad:
-        for (response_id,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field.id).all():
+        for (response_id,) in (
+            db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field.id).all()
+        ):
             _add(response_id, broad)
 
     if changes.OPTION_INVALIDATED in reasons and removed_option_ids:
@@ -308,14 +336,22 @@ def _resolve_track_statuses(db: Session, assignments: list[dict]) -> list[dict]:
     request. Preserve the configured mapping order rather than database order.
     """
     track_ids = [assignment.get("id") for assignment in assignments if isinstance(assignment, dict)]
-    names_by_id = {
-        track_id: name
-        for track_id, name in db.query(TournamentTrack.id, TournamentTrack.name)
-        .filter(TournamentTrack.id.in_(track_ids))
-        .all()
-    } if track_ids else {}
+    names_by_id = (
+        {
+            track_id: name
+            for track_id, name in db.query(TournamentTrack.id, TournamentTrack.name)
+            .filter(TournamentTrack.id.in_(track_ids))
+            .all()
+        }
+        if track_ids
+        else {}
+    )
     return [
-        {"id": assignment["id"], "name": names_by_id[assignment["id"]], "status": assignment["status"]}
+        {
+            "id": assignment["id"],
+            "name": names_by_id[assignment["id"]],
+            "status": assignment["status"],
+        }
         for assignment in assignments
         if isinstance(assignment, dict) and assignment.get("id") in names_by_id
     ]
@@ -335,7 +371,9 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
     has_track_statuses = isinstance(raw_value, dict)
     shift_ids = (raw_value.get("shift_ids") or []) if has_track_statuses else raw_value
     rows = (
-        db.query(TournamentShift.id, TournamentShift.label, TournamentShift.start, TournamentShift.end)
+        db.query(
+            TournamentShift.id, TournamentShift.label, TournamentShift.start, TournamentShift.end
+        )
         .filter(TournamentShift.id.in_(shift_ids))
         .order_by(TournamentShift.start)
         .all()
@@ -344,10 +382,14 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
         {"id": shift_id, "label": label, "start": start, "end": end}
         for shift_id, label, start, end in rows
     ]
-    resolved_value = {
-        "shifts": resolved_shifts,
-        "track_statuses": _resolve_track_statuses(db, raw_value.get("track_statuses") or []),
-    } if has_track_statuses else resolved_shifts
+    resolved_value = (
+        {
+            "shifts": resolved_shifts,
+            "track_statuses": _resolve_track_statuses(db, raw_value.get("track_statuses") or []),
+        }
+        if has_track_statuses
+        else resolved_shifts
+    )
     return {
         "option_id": option["option_id"],
         "label": option["label"],
@@ -389,10 +431,7 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
     return {
         "option_id": option["option_id"],
         "label": option["label"],
-        "value": [
-            {"id": e.id, "name": e.display_name, "division": e.division}
-            for e in events
-        ],
+        "value": [{"id": e.id, "name": e.display_name, "division": e.division} for e in events],
         # See _resolve_availability_option's identical fields — same bug,
         # same fix. Only single_select_dropdown (of event_preference's three
         # allowed types) ever has these set.
@@ -411,7 +450,7 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     tournament" conveniences (pulling in events/shifts/etc.) are a
     TD-editor-side action that populates this array once, same as any
     manually-authored option list, not a live server-side lookup. See
-    form-question-types-reference.md's "Options-storage rule". availability
+    backend/docs/form-question-types-reference.md's "Options-storage rule". availability
     and event_preference are the exceptions to "just return config as-is":
     when their `value` groups real entity ids (TournamentShifts,
     TournamentEvents), rendering resolves it into the actual entities

@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import json
 import re
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -27,9 +29,9 @@ SCOPES = [
 #   "Yes, I am available"                            → "Yes"
 # ---------------------------------------------------------------------------
 _ALIAS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\s+-\s+.+$"),       ""),  # " - anything after a dash"
+    (re.compile(r"\s+-\s+.+$"), ""),  # " - anything after a dash"
     (re.compile(r"\s+\([^)]+\)\s*$"), ""),  # " (parenthetical at the end)"
-    (re.compile(r",\s+.+$"),          ""),  # ", anything after a comma"
+    (re.compile(r",\s+.+$"), ""),  # ", anything after a comma"
 ]
 
 
@@ -61,12 +63,12 @@ def _make_question(
     grid_columns: list[str] | None = None,
 ) -> dict:
     return {
-        "question_id":  question_id,
-        "title":        title,
-        "google_type":  google_type,   # raw Forms API type string
-        "nexus_type":   nexus_type,    # mapped NEXUS type (for sheets_service)
-        "options":      options,
-        "grid_rows":    grid_rows,
+        "question_id": question_id,
+        "title": title,
+        "google_type": google_type,  # raw Forms API type string
+        "nexus_type": nexus_type,  # mapped NEXUS type (for sheets_service)
+        "options": options,
+        "grid_rows": grid_rows,
         "grid_columns": grid_columns,
     }
 
@@ -133,9 +135,9 @@ class FormsService:
                 raise PermissionError(
                     "Service account does not have access to this form. "
                     "Share the form with the service account email."
-                )
+                ) from e
             if e.resp.status == 404:
-                raise ValueError("Form not found. Check the URL.")
+                raise ValueError("Form not found. Check the URL.") from e
             raise
 
         questions: list[dict] = []
@@ -163,9 +165,7 @@ class FormsService:
             # Check for paragraph text — textQuestion with paragraph: true
             text_q = question.get("textQuestion")
             if text_q and text_q.get("paragraph"):
-                questions.append(
-                    _make_question(question_id, title, "PARAGRAPH_TEXT", "string")
-                )
+                questions.append(_make_question(question_id, title, "PARAGRAPH_TEXT", "string"))
                 continue
 
             parsed = self._parse_question(question_id, title, question)
@@ -211,17 +211,14 @@ class FormsService:
         google_type = choice.get("type", "MULTIPLE_CHOICE")
         nexus_type = FORMS_TYPE_MAP.get(google_type, "string")
 
-        raw_options = [opt.get("value", "") for opt in choice.get("options", [])
-                       if not opt.get("isOther")]
+        raw_options = [
+            opt.get("value", "") for opt in choice.get("options", []) if not opt.get("isOther")
+        ]
         options = [
-            FormQuestionOption(raw=raw, alias=_suggest_alias(raw))
-            for raw in raw_options
-            if raw
+            FormQuestionOption(raw=raw, alias=_suggest_alias(raw)) for raw in raw_options if raw
         ]
 
-        return _make_question(
-            question_id, title, google_type, nexus_type, options=options
-        )
+        return _make_question(question_id, title, google_type, nexus_type, options=options)
 
     def _parse_question_group(
         self,
@@ -256,16 +253,16 @@ class FormsService:
 
         # Extract column labels from grid columns
         columns_data = grid.get("columns", {})
-        columns = [
-            c.get("value", "")
-            for c in columns_data.get("options", [])
-            if c.get("value")
-        ]
+        columns = [c.get("value", "") for c in columns_data.get("options", []) if c.get("value")]
 
         if not rows:
             return None
 
         return _make_question(
-            first_question_id, title, "GRID", "matrix_row",
-            grid_rows=rows, grid_columns=columns,
+            first_question_id,
+            title,
+            "GRID",
+            "matrix_row",
+            grid_rows=rows,
+            grid_columns=columns,
         )

@@ -2,13 +2,13 @@
 .vscode/
 .idea/
 
-# Claude
+# Claude (personal files; CLAUDE.md and .claude/rules/ are shared)
+CLAUDE.local.md
 CLAUDE_OUTPUT_BEHAVIOR.md
 .claude/settings.local.json
 
 # Misc
 password.txt
-CLAUDE.md
 TASK.md
 
 # Private notes — docs/ syncs to the public docs site, so never commit these

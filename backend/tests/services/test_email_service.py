@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import time
+from itertools import pairwise
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -76,10 +77,13 @@ def _client_error(code: str) -> ClientError:
 # Sending
 # ---------------------------------------------------------------------------
 
+
 async def test_send_builds_ses_request(use_settings, ses_factory):
     settings = use_settings()
 
-    await email_service._send("volunteer@example.com", "Subject line", "plain body", "<p>html body</p>")
+    await email_service._send(
+        "volunteer@example.com", "Subject line", "plain body", "<p>html body</p>"
+    )
 
     ses_factory.assert_called_once_with("test-access-key", "test-secret-key", "us-west-2", 4)
     ses_factory.return_value.send_email.assert_called_once_with(
@@ -89,7 +93,10 @@ async def test_send_builds_ses_request(use_settings, ses_factory):
             "Simple": {
                 "Subject": {"Data": "Subject line", "Charset": "UTF-8"},
                 "Body": {
-                    "Text": {"Data": f"plain body\n\nQuestions? Email {email_service._SUPPORT_EMAIL}\n{email_service._ORG_LINE}", "Charset": "UTF-8"},
+                    "Text": {
+                        "Data": f"plain body\n\nQuestions? Email {email_service._SUPPORT_EMAIL}\n{email_service._ORG_LINE}",
+                        "Charset": "UTF-8",
+                    },
                     "Html": {"Data": "<p>html body</p>", "Charset": "UTF-8"},
                 },
             },
@@ -126,7 +133,9 @@ async def test_staff_invites_report_only_rejected_address(use_settings, ses_fact
     ses_factory.return_value.send_email.side_effect = send_email
 
     failed = await email_service.send_staff_invite_emails(
-        ["good@example.com", "bad@example.com"], "Test Invitational", "https://nexus.example/join?code=X"
+        ["good@example.com", "bad@example.com"],
+        "Test Invitational",
+        "https://nexus.example/join?code=X",
     )
 
     assert failed == ["bad@example.com"]
@@ -135,6 +144,7 @@ async def test_staff_invites_report_only_rejected_address(use_settings, ses_fact
 # ---------------------------------------------------------------------------
 # Retries — real botocore client, HTTP layer answered locally
 # ---------------------------------------------------------------------------
+
 
 class _Body:
     def __init__(self, payload: dict):
@@ -171,7 +181,9 @@ def ses_http(use_settings, monkeypatch):
 
     def answer(request, **kwargs):
         state.attempts += 1
-        status, payload, error_type = state.responses.pop(0) if len(state.responses) > 1 else state.responses[0]
+        status, payload, error_type = (
+            state.responses.pop(0) if len(state.responses) > 1 else state.responses[0]
+        )
         headers = {"Content-Type": "application/json"}
         if error_type:
             headers["x-amzn-ErrorType"] = error_type
@@ -182,7 +194,11 @@ def ses_http(use_settings, monkeypatch):
 
 
 async def test_throttle_is_retried_until_success(ses_http):
-    ses_http.responses[:] = [_error(429, "TooManyRequestsException"), _error(429, "TooManyRequestsException"), _ok()]
+    ses_http.responses[:] = [
+        _error(429, "TooManyRequestsException"),
+        _error(429, "TooManyRequestsException"),
+        _ok(),
+    ]
 
     await email_service._send("volunteer@example.com", "s", "t", "h")
 
@@ -233,15 +249,20 @@ async def test_staff_invite_throttled_then_accepted_is_not_reported_failed(ses_h
 # Rate limiting / concurrency
 # ---------------------------------------------------------------------------
 
+
 async def test_concurrent_sends_are_spaced_by_rate_limit(use_settings, ses_factory):
     use_settings(ses_max_send_rate=10)
     sent_at = []
-    ses_factory.return_value.send_email.side_effect = lambda **kwargs: sent_at.append(time.perf_counter())
+    ses_factory.return_value.send_email.side_effect = lambda **kwargs: sent_at.append(
+        time.perf_counter()
+    )
 
-    await asyncio.gather(*(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5)))
+    await asyncio.gather(
+        *(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5))
+    )
 
     sent_at.sort()
-    gaps = [later - earlier for earlier, later in zip(sent_at, sent_at[1:])]
+    gaps = [later - earlier for earlier, later in pairwise(sent_at)]
     assert len(gaps) == 4
     # 0.1s interval, less timer resolution/thread-dispatch jitter
     assert all(gap >= 0.07 for gap in gaps), gaps
@@ -262,7 +283,9 @@ async def test_concurrent_sends_do_not_block_event_loop(use_settings, ses_factor
 
     beat = asyncio.create_task(heartbeat())
     started = time.perf_counter()
-    await asyncio.gather(*(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5)))
+    await asyncio.gather(
+        *(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5))
+    )
     elapsed = time.perf_counter() - started
     stop.set()
     await beat
@@ -275,11 +298,17 @@ async def test_concurrent_sends_do_not_block_event_loop(use_settings, ses_factor
 # Unconfigured SES
 # ---------------------------------------------------------------------------
 
+
 async def test_unconfigured_in_development_logs_body_and_skips(use_settings, ses_factory, caplog):
     use_settings(aws_access_key_id="", aws_secret_access_key="")
 
     with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
-        await email_service._send("v@example.com", "Verify your email on NEXUS", "Verify: https://nexus.example/verify?token=abc", "<p></p>")
+        await email_service._send(
+            "v@example.com",
+            "Verify your email on NEXUS",
+            "Verify: https://nexus.example/verify?token=abc",
+            "<p></p>",
+        )
 
     ses_factory.assert_not_called()
     assert "Verify your email on NEXUS" in caplog.text
@@ -290,7 +319,12 @@ async def test_unconfigured_in_preview_skips_without_body(use_settings, ses_fact
     use_settings(app_env="preview", aws_access_key_id="", aws_secret_access_key="")
 
     with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
-        await email_service._send("v@example.com", "Verify your email on NEXUS", "Verify: https://nexus.example/verify?token=abc", "<p></p>")
+        await email_service._send(
+            "v@example.com",
+            "Verify your email on NEXUS",
+            "Verify: https://nexus.example/verify?token=abc",
+            "<p></p>",
+        )
 
     ses_factory.assert_not_called()
     assert "Verify your email on NEXUS" in caplog.text

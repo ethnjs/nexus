@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from app.core.chapters import find_chapter, require_chapter_lead_or_admin
 from app.db.session import get_db
 from app.models.models import AlumniChapter, User
 from app.schemas.chapter import ChapterResponse, ChapterUpdate
-from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["chapters"])
 

@@ -1,0 +1,59 @@
+---
+title: v1.5.0-beta
+description: Export your roster to TORUS, Duosmium, or a custom preset you can save and reuse
+date: 2026-10-12T12:00:00-07:00
+---
+
+You can now get your data out of NEXUS and into the tools you hand them off to. A new **Export** button on the members and assignments pages builds TORUS and Duosmium uploads, email lists, and your own saved presets.
+
+## What's new
+
+### The Export button
+
+**Export** sits in the toolbar on the **Members** and **Assignments** pages.
+
+- **Click Export** to open the export screen, where you can preview and adjust an export before you use it.
+- **Open the arrow beside it** to run an export in one click, straight from the menu.
+- Built-in exports include everyone, and saved exports use the filters saved with them.
+- Copy the result to paste somewhere, or download it as a CSV or TXT file.
+
+### TORUS and Duosmium exports
+
+NEXUS can build the lists TORUS and Duosmium ask for, ready to paste in.
+
+- **TORUS:** pick a track and a TORUS role. Test writers and reviewers are listed once per event they're assigned to. Tournament directors and test coordinators are listed by email.
+- **Duosmium:** pick a track and a division. Tournament directors, scoremasters and event supervisors are listed together, with each supervisor's events.
+
+To use these, tell NEXUS what each of your roles is in TORUS and Duosmium. Open `Settings → Roles`, pick a role, and choose its `TORUS role` and `Duosmium role`. If you pick a TORUS or Duosmium role that none of your roles are mapped to, the export screen shows a red banner with a link to role settings.
+
+### Email list
+
+**Email list** gives you every member's email on one line, separated by commas, ready to paste into the "To" field of an email.
+
+### Custom exports
+
+Build your own export when the built-in ones don't fit, and save it for the whole staff to reuse.
+
+- **Per member or per event:** choose whether each row is a person, or an event with everyone assigned to it.
+- **Columns:** pick from contact details, roles, tracks, availability, lunch, event preferences, assignments and form responses. Shifts can be written as names or as times.
+- **Sort** by any of the columns you added, and turn the header row on or off.
+- **Export type:** choose whether one click copies it or downloads a CSV or TXT file.
+- **Filters:** narrow who's included with member and event filters. They're saved with the export, so it covers the same people every time you run it.
+- Saved exports appear under **Saved** in the Export menu for everyone on staff who can manage members.
+
+The export screen has its own member and event filters, and starts with none set. Changing them there doesn't change the page behind it.
+
+## Improvements
+
+- **Pop-ups open and close with a smooth grow animation.**
+- **Clearer password rules.** New passwords must be 8 to 128 characters, and the checklist points out spaces and non-English characters as you type.
+
+## Fixes
+
+- An invalid or expired password reset link now shows an error right away instead of loading for several seconds.
+
+## Worth knowing
+
+- **Exporting needs the Manage members permission.** On the assignments page, staff who can only manage events will see the Export button locked.
+- **Existing roles start out unmapped.** TORUS and Duosmium exports are empty until you set those roles in **Settings → Roles**. Loading the default roles maps them for you.
+- **Older email links no longer work.** Password reset, account setup and email change links sent before this update have expired. Request a new one.

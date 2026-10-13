@@ -1,5 +1,5 @@
 """FormField config/options validation — see
-backend/form-question-types-reference.md for the shapes enforced here.
+backend/docs/form-question-types-reference.md for the shapes enforced here.
 
 Structural shape (required keys, types, per-option uniqueness, ranks <=
 options, branching mutual-exclusivity/type-restriction) lives in the
@@ -10,11 +10,10 @@ resolving to a real field, availability options resolving to a real
 TournamentShift) and reserved field_key pairing."""
 
 import re
+from functools import partial
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
-
-from datetime import datetime
 
 from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
@@ -47,7 +46,11 @@ AVAILABILITY_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 # questions on one track would write into one pool and their ranks would
 # collide with no way to say whose rank-1 is whose.
 EVENT_PREFERENCE_FIELD_KEY_PATTERN = re.compile(r"^event_preference_(\d+)$")
-EVENT_PREFERENCE_QUESTION_TYPES = {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"}
+EVENT_PREFERENCE_QUESTION_TYPES = {
+    "ranked_choice",
+    "multi_select_checkbox",
+    "single_select_dropdown",
+}
 
 # lunch_{track_id}_{category}, e.g. "lunch_7_protein" — the track is baked
 # into the key, so per-tournament field_key uniqueness already covers
@@ -87,7 +90,7 @@ TOURNAMENT_PRESET_FIELD_KEY_PATTERNS = (
 
 class FormFieldValidationError(ValueError):
     """Raised when a FormField's question_type/config/options don't match
-    the shape form-question-types-reference.md requires."""
+    the shape backend/docs/form-question-types-reference.md requires."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -105,7 +108,7 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     try:
         parsed = schema_cls.model_validate(config or {})
     except ValidationError as e:
-        raise FormFieldValidationError(str(e))
+        raise FormFieldValidationError(str(e)) from e
 
     normalized = parsed.model_dump()
     # These fields were added for track statuses after forms already existed.
@@ -145,7 +148,9 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
 def validate_tournament_preset(field_key: str, tournament_id: int | None) -> None:
     """Reserved presets are currently available only to tournament forms."""
     if any(pattern.match(field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
-        _require(tournament_id is not None, f"field_key '{field_key}' requires a tournament-owned form")
+        _require(
+            tournament_id is not None, f"field_key '{field_key}' requires a tournament-owned form"
+        )
 
 
 def track_status_enabled(field_key: str, config: dict) -> bool:
@@ -232,20 +237,30 @@ def validate_track_status_options(
         _require(config.get("required") is True, "track status fields must be required")
 
     track_ids = {assignment["id"] for assignment in assignments}
-    valid_ids = {
-        track_id
-        for (track_id,) in db.query(TournamentTrack.id)
-        .filter(TournamentTrack.tournament_id == tournament_id, TournamentTrack.id.in_(track_ids))
-        .all()
-    } if track_ids else set()
+    valid_ids = (
+        {
+            track_id
+            for (track_id,) in db.query(TournamentTrack.id)
+            .filter(
+                TournamentTrack.tournament_id == tournament_id, TournamentTrack.id.in_(track_ids)
+            )
+            .all()
+        }
+        if track_ids
+        else set()
+    )
     missing_ids = track_ids - valid_ids
-    _require(not missing_ids, f"track id(s) do not belong to this tournament: {sorted(missing_ids)}")
+    _require(
+        not missing_ids, f"track id(s) do not belong to this tournament: {sorted(missing_ids)}"
+    )
 
     if question_type == "multi_select_checkbox":
         statuses_by_track: dict[int, set[str]] = {}
         for assignment in assignments:
             statuses_by_track.setdefault(assignment["id"], set()).add(assignment["status"])
-        conflicting = sorted(track_id for track_id, statuses in statuses_by_track.items() if len(statuses) > 1)
+        conflicting = sorted(
+            track_id for track_id, statuses in statuses_by_track.items() if len(statuses) > 1
+        )
         _require(
             not conflicting,
             f"checkbox options assign conflicting statuses for track id(s): {conflicting}",
@@ -291,7 +306,11 @@ def validate_branching_options(
         valid_ids = {
             fid
             for (fid,) in db.query(FormField.id)
-            .filter(FormField.form_id == form_id, FormField.id.in_(string_ids), FormField.is_archived == False)
+            .filter(
+                FormField.form_id == form_id,
+                FormField.id.in_(string_ids),
+                FormField.is_archived == False,
+            )
             .all()
         }
     missing = next_field_ids - valid_ids
@@ -327,14 +346,24 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             continue
 
         for check in (
-            lambda: validate_reserved_field_key(field.field_key, field.question_type),
-            lambda: validate_tournament_preset(field.field_key, form.tournament_id),
-            lambda: validate_preset_track(db, form.tournament_id, field.field_key),
-            lambda: validate_track_status_options(
-                db, form.tournament_id, field.field_key, field.question_type, normalized_config
+            partial(validate_reserved_field_key, field.field_key, field.question_type),
+            partial(validate_tournament_preset, field.field_key, form.tournament_id),
+            partial(validate_preset_track, db, form.tournament_id, field.field_key),
+            partial(
+                validate_track_status_options,
+                db,
+                form.tournament_id,
+                field.field_key,
+                field.question_type,
+                normalized_config,
             ),
-            lambda: validate_branching_options(
-                db, form.id, field.question_type, normalized_config, field_id=field.id
+            partial(
+                validate_branching_options,
+                db,
+                form.id,
+                field.question_type,
+                normalized_config,
+                field_id=field.id,
             ),
         ):
             try:
@@ -345,7 +374,9 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
             try:
                 validate_availability_options(
-                    db, form.tournament_id, normalized_config,
+                    db,
+                    form.tournament_id,
+                    normalized_config,
                     availability_field_track_id(field.field_key),
                 )
             except FormFieldValidationError as e:
@@ -354,7 +385,10 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
         if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
             try:
                 validate_event_preference_options(
-                    db, form.tournament_id, field.question_type, normalized_config,
+                    db,
+                    form.tournament_id,
+                    field.question_type,
+                    normalized_config,
                     event_preference_field_track_id(field.field_key),
                 )
             except FormFieldValidationError as e:
@@ -423,7 +457,10 @@ def validate_preset_track(db: Session, tournament_id: int | None, field_key: str
         )
         .first()
     )
-    _require(exists is not None, f"field_key '{field_key}' names track {track_id}, which does not exist here")
+    _require(
+        exists is not None,
+        f"field_key '{field_key}' names track {track_id}, which does not exist here",
+    )
 
 
 def validate_availability_options(
@@ -443,7 +480,7 @@ def validate_availability_options(
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
-    is valid but never write-throughs — see form-question-types-reference.md)."""
+    is valid but never write-throughs — see backend/docs/form-question-types-reference.md)."""
     if tournament_id is None:
         return
 
@@ -492,7 +529,10 @@ def validate_availability_options(
 
 
 def validate_event_preference_options(
-    db: Session, tournament_id: int | None, question_type: str, config: dict,
+    db: Session,
+    tournament_id: int | None,
+    question_type: str,
+    config: dict,
     field_track_id: int | None = None,
 ) -> None:
     """A field with field_key matching EVENT_PREFERENCE_FIELD_KEY_PATTERN must

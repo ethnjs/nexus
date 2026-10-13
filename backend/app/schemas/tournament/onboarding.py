@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 from app.schemas.form import FormListRead
@@ -27,6 +29,7 @@ class OnboardingFormReorder(BaseModel):
     client-side (drag-and-drop preview); the backend just validates the set
     matches the current onboarding forms and applies them atomically.
     """
+
     forms: list[OnboardingFormReorderItem]
 
 

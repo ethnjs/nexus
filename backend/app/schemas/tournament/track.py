@@ -68,9 +68,7 @@ def require_primary_fields(track) -> None:
         # All-or-nothing. Both absent is TBD; one absent is a half-filled row,
         # and letting it through would give every date renderer a third case.
         if bool(track.start_date) != bool(track.end_date):
-            raise ValueError(
-                "a primary track needs both start_date and end_date, or neither"
-            )
+            raise ValueError("a primary track needs both start_date and end_date, or neither")
         # At most one, where it used to be exactly one — neither is TBD.
         if track.university_id and track.location:
             raise ValueError(
@@ -78,18 +76,18 @@ def require_primary_fields(track) -> None:
             )
     else:
         present = [
-            name for name, value in (
+            name
+            for name, value in (
                 ("start_date", track.start_date),
                 ("end_date", track.end_date),
                 ("university_id", track.university_id),
                 ("location", track.location),
                 ("division", track.division),
-            ) if value
+            )
+            if value
         ]
         if present:
-            raise ValueError(
-                f"only a primary track can have: {', '.join(present)}"
-            )
+            raise ValueError(f"only a primary track can have: {', '.join(present)}")
 
     if track.start_date and track.end_date and track.end_date < track.start_date:
         raise ValueError("end_date must be on or after start_date")
@@ -157,6 +155,7 @@ class TournamentTrackRef(BaseModel):
     `is_primary` rides along because it is what tells a competition day from a
     workstream, and every renderer of one of these branches on that.
     """
+
     id: int
     name: str
     is_primary: bool
@@ -197,6 +196,7 @@ class MembershipTrackStatusRead(BaseModel):
     `is_archived` comes along because an archived track's statuses stay
     readable: the catalog entry is retired, but the fact that someone
     confirmed for it is still history worth showing."""
+
     track_id: int
     name: str
     is_archived: bool
@@ -217,7 +217,7 @@ class MembershipTrackStatusRead(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_row(cls, row) -> "MembershipTrackStatusRead":
+    def from_row(cls, row) -> MembershipTrackStatusRead:
         """Flattens the track relationship — `name`/`is_archived`/
         `allow_confirm`/`lock_responses` live on TournamentTrack, not on the
         status row itself, so from_attributes alone can't build this."""

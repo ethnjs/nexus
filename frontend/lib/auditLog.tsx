@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { externalRoleLabel, externalSystemFor } from "@/lib/exports/externalSystems";
 import { AuditLogEntry } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 
@@ -229,7 +230,7 @@ function findMovers(before: RoleSnapshot[], after: RoleSnapshot[]): Set<number> 
 }
 
 // One renderer per action, working off the extra_data shapes confirmed
-// against every log_action() call site (see audit-log-conventions.md).
+// against every log_action() call site (see backend/docs/audit-log-conventions.md).
 // extra_data is untyped JSON from the backend — cast per-field rather than
 // validating strictly, same pragmatic trust already given elsewhere in
 // this codebase to backend-shaped response data.
@@ -295,6 +296,11 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
         }
         if (c.field === "rank") return "Rank changed";
         if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;
+        const system = externalSystemFor(c.field);
+        if (system) {
+          const field = system.field;
+          return `${system.label} role: ${externalRoleLabel(field, c.old as string | null)} → ${externalRoleLabel(field, c.new as string | null)}`;
+        }
         return `${c.field}: ${c.old} → ${c.new}`;
       }),
     };

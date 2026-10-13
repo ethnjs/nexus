@@ -1,12 +1,10 @@
 from __future__ import annotations
-from typing import Optional
 
 import re
 
 
-def normalize_phone(value: Optional[str]) -> Optional[str]:
-    """
-    """
+def normalize_phone(value: str | None) -> str | None:
+    """ """
     if value is None:
         return None
 
@@ -22,4 +20,3 @@ def normalize_phone(value: Optional[str]) -> Optional[str]:
         return digits
 
     raise ValueError("Invalid US phone number format")
-

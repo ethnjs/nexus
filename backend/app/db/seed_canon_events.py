@@ -9,8 +9,8 @@ Run directly:
     python -m app.db.seed_events
 """
 
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 CATEGORIES = [
     "Life, Personal & Social Science",
@@ -210,7 +210,7 @@ def seed_events_and_categories(db: Session) -> None:
     Upsert categories + events by unique `name`. Safe to call on every
     startup in every environment — existing rows are left untouched.
     """
-    from app.models.models import EventCategory, Event
+    from app.models.models import Event, EventCategory
 
     # 1. Categories
     stmt = insert(EventCategory).values([{"name": name} for name in CATEGORIES])
