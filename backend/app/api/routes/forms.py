@@ -625,7 +625,7 @@ def update_form(
     # An onboarding step going in or out of "published" changes what
     # onboarded means — skipped steps don't count.
     if status_changed and form.tournament_form is not None and form.tournament_form.is_onboarding:
-        recompute_onboarding(db, form.tournament_id)
+        recompute_onboarding(db, form.tournament_form.tournament_id)
 
     db.commit()
     db.refresh(form)
@@ -731,6 +731,7 @@ def bulk_update_fields(
 
     def _check_field_key_available(field_key: str) -> None:
         if form.owner_type == "tournament":
+            assert form.tournament_id is not None
             taken = field_key_taken_in_tournament(db, form.tournament_id, field_key)
         else:
             taken = (
@@ -1334,7 +1335,7 @@ def _write_through_reserved_fields(
             db,
             membership.id,
             availability_shift_ids,
-            shift_ids_on_tracks(db, form.tournament_id, availability_track_ids),
+            shift_ids_on_tracks(db, membership.tournament_id, availability_track_ids),
         )
 
     sync_track_statuses(db, membership.id, intended_track_statuses, response.id)
@@ -1591,6 +1592,7 @@ def delete_form_response(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
 
     if form.owner_type == "tournament":
+        assert form.tournament_id is not None
         membership = get_membership_by_user(db, form.tournament_id, response.user_id)
         respondent = response.user
         # Stored by value, like ownership_transferred: the log has to read
@@ -1617,7 +1619,7 @@ def delete_form_response(
 
     # An onboarding step losing its response un-onboards that member.
     if form.tournament_form is not None and form.tournament_form.is_onboarding:
-        recompute_onboarding(db, form.tournament_id)
+        recompute_onboarding(db, form.tournament_form.tournament_id)
 
     db.commit()
 
