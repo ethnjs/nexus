@@ -932,7 +932,8 @@ class AuditLogEntry(Base):
     tournament_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
-    # Null once the actor's account is deleted — the entry stays as history.
+    # Null once the actor's account is deleted — the entry stays as history —
+    # and for an auto-archive of a tournament whose owner was deleted.
     actor_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL")
     )

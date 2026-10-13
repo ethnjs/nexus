@@ -10,7 +10,7 @@ from app.models.models import Form, Tournament
 def archive_tournament(
     db: Session,
     tournament: Tournament,
-    actor_id: int,
+    actor_id: int | None,
     extra_data: dict | None = None,
 ) -> None:
     """Every side effect of archiving, shared by the manual route and the
