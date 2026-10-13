@@ -101,7 +101,7 @@ def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapte
 @router.post("/join/", response_model=JoinRedeemResponse, status_code=status.HTTP_201_CREATED)
 def redeem_join_code(
     code: str = Query(...),
-    body: JoinRedeemRequest = JoinRedeemRequest(),
+    body: JoinRedeemRequest = JoinRedeemRequest(),  # noqa: B008
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -175,7 +175,7 @@ def _redeem_tournament_code(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament"
-        )
+        ) from None
 
     return JoinRedeemResponse(
         type="tournament", target_id=membership.tournament_id, membership_id=membership.id
@@ -209,7 +209,7 @@ def _redeem_chapter_code(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter"
-        )
+        ) from None
 
     return JoinRedeemResponse(
         type="chapter", target_id=membership.chapter_id, membership_id=membership.id

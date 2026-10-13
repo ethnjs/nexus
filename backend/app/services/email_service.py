@@ -167,12 +167,12 @@ async def send_signup_verification_email(db: Session, to: str, user_id: int) -> 
     try:
         token = create_verification_token(db, user_id, "signup_verify")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_verification_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send verification email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send verification email") from e
 
 
 # ---------------------------------------------------------------------------
@@ -201,12 +201,12 @@ async def send_email_change_request_email(db: Session, user_id: int, new_email: 
     try:
         token = create_verification_token(db, user_id, "email_change", new_email=new_email)
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_email_change_email(new_email, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send email change confirmation")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send email change confirmation") from e
 
 
 async def send_email_change_requested_notice(
@@ -228,7 +228,7 @@ async def send_email_change_requested_notice(
             db, user_id, "email_change_revert", new_email=old_email
         )
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     url = _cta_url("/revert-email-change", revert_token)
     html = _render_email_html(
@@ -273,12 +273,12 @@ async def send_password_reset_request_email(db: Session, user_id: int, to: str) 
     try:
         token = create_verification_token(db, user_id, "password_reset")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_password_reset_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send password reset email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send password reset email") from e
 
 
 async def send_password_changed_notice(to: str) -> None:
@@ -330,12 +330,12 @@ async def send_account_setup_invite_email(db: Session, user_id: int, to: str) ->
     try:
         token = create_verification_token(db, user_id, "account_setup")
     except RateLimitedError as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from e
 
     try:
         await send_account_setup_email(to, token)
-    except Exception:
-        raise HTTPException(500, "Failed to send account setup email")
+    except Exception as e:
+        raise HTTPException(500, "Failed to send account setup email") from e
 
 
 # ---------------------------------------------------------------------------
@@ -377,4 +377,8 @@ async def send_staff_invite_emails(
         *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
         return_exceptions=True,
     )
-    return [email for email, result in zip(to_emails, results) if isinstance(result, Exception)]
+    return [
+        email
+        for email, result in zip(to_emails, results, strict=True)
+        if isinstance(result, Exception)
+    ]

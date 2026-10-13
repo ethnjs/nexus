@@ -607,7 +607,9 @@ def update_form(
         try:
             validate_form_for_publish(db, form)
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
 
     if payload.name is not None:
         form.name = payload.name
@@ -770,7 +772,9 @@ def bulk_update_fields(
                 db, form.tournament_id, field_key, question_type, normalized
             )
         except FormFieldValidationError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
         return normalized
 
     # (field, reasons, removed_option_ids) — resolved into rows after the
@@ -787,7 +791,6 @@ def bulk_update_fields(
             # Nothing is flagged: the question and its answers are exactly as
             # they were left, so there's nothing for a responder to review.
             unarchiving = field.is_archived
-            type_changed = entry.question_type != field.question_type
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it

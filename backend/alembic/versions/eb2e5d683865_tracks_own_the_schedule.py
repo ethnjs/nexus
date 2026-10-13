@@ -170,7 +170,7 @@ def upgrade() -> None:
     import json
     import re
 
-    for field_id, form_id, label, old_key, config in fields:
+    for field_id, form_id, label, _old_key, config in fields:
         # field_key is varchar(64); a question label is a whole sentence, so
         # the slug has to be clipped before the dedup suffix is appended.
         base = re.sub(r"[^a-z0-9]+", "_", (label or "question").lower()).strip("_") or "question"

@@ -169,7 +169,7 @@ def create_shift(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A shift named '{payload.label}' already exists on '{track.name}'",
-        )
+        ) from None
     return shift
 
 
@@ -223,7 +223,7 @@ def update_shift(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A shift named '{shift.label}' already exists on '{track.name}'",
-        )
+        ) from None
     return shift
 
 

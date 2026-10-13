@@ -226,7 +226,7 @@ def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dic
         by_date.setdefault(slot["date"], []).append(slot)
 
     merged = []
-    for date, slots in sorted(by_date.items()):
+    for _date, slots in sorted(by_date.items()):
         slots.sort(key=lambda s: s["start"])
         current = dict(slots[0])
         for slot in slots[1:]:

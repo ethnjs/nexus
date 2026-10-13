@@ -51,7 +51,7 @@ def create_season_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A season event for this event/year/division already exists",
-        )
+        ) from None
     db.refresh(season_event)
     return season_event
 
@@ -80,7 +80,7 @@ def update_season_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A season event for this event/year/division already exists",
-        )
+        ) from None
     db.refresh(season_event)
     return season_event
 

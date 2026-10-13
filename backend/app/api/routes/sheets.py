@@ -68,9 +68,9 @@ def validate_sheet(
     try:
         return svc.validate_sheet_url(payload.sheet_url)
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +89,9 @@ def get_sheet_headers(
         try:
             form_questions = forms_svc.get_form_questions(payload.form_url)
         except PermissionError as e:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     try:
         return svc.get_headers(
@@ -101,9 +101,9 @@ def get_sheet_headers(
             form_questions=form_questions,
         )
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +255,6 @@ def sync_sheet_config(
     try:
         return sync_sheet(config, db, svc)  # fixed arg order: config, db, sheets_svc
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

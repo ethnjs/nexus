@@ -159,7 +159,7 @@ def _resolve_join_code_creators(
     if not creator_ids:
         return
     creators = resolve_person_refs(db, tournament_id, creator_ids)
-    for m, resp in zip(memberships, responses):
+    for m, resp in zip(memberships, responses, strict=True):
         if m.join_code is not None:
             resp.join_code.creator = creators[m.join_code.created_by]
 
@@ -272,9 +272,8 @@ def list_memberships(
             config,
             surface,
             gate_age_flags(membership, resp.model_dump(mode="json", exclude=exclude)),
-            tournament,
         )
-        for membership, resp in zip(memberships, responses)
+        for membership, resp in zip(memberships, responses, strict=True)
     ]
     return JSONResponse(data)
 
@@ -419,7 +418,7 @@ def get_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    tournament = get_tournament(tournament_id, db)
+    get_tournament(tournament_id, db)
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
 
     config = viewer_display_config(db, tournament_id, current_user.id)
@@ -441,7 +440,7 @@ def get_membership(
     if wants(requested, ONBOARDING):
         resp.onboarding = onboarding_reads(db, tournament_id, [m])[0]
     data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
-    data = apply_display_config(config, surface, data, tournament)
+    data = apply_display_config(config, surface, data)
     return JSONResponse(data)
 
 

@@ -50,4 +50,13 @@ known-third-party = ["alembic"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency markers are meant to be called in defaults.
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Path",
+    "app.core.tournament.permissions.require_membership",
+    "app.core.tournament.permissions.require_permission",
+    "app.core.tournament.permissions.require_any_permission",
+    "app.core.tournament.permissions.require_catalog_read",
+]

@@ -42,7 +42,9 @@ def _check_sorts(sorts: list[ExportPresetSort], columns: list[ExportPresetColumn
     try:
         validate_sorts_against_columns(sorts, columns)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
 
 
 def _commit(db: Session, preset: TournamentExportPreset) -> None:
@@ -52,7 +54,7 @@ def _commit(db: Session, preset: TournamentExportPreset) -> None:
         db.refresh(preset)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN) from None
 
 
 # ---------------------------------------------------------------------------

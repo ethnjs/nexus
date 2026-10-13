@@ -1837,11 +1837,8 @@ def test_get_membership_surface_hides_custom_response(client, td_user, td_tourna
     assert response.json()["custom_responses"] == []
 
 
-def test_get_membership_surface_hides_availability_day(client, td_user, td_tournament, db):
-    """Availability items key by tournament-local day, so this is the one
-    hidden namespace that needs the tournament's timezone to resolve — the
-    path that had no coverage when apply_display_config lost that argument."""
-    from app.core.tournament import tournament_local_date
+def test_get_membership_surface_hides_availability_track(client, td_user, td_tournament, db):
+    """Hiding a track's availability drops its rows from the detail read."""
     from app.models.models import TournamentMembershipAvailability
 
     u = _make_user(db)
@@ -1849,7 +1846,6 @@ def test_get_membership_surface_hides_availability_day(client, td_user, td_tourn
     shift = _make_shift(db, td_tournament.id, "Morning", day=1)
     db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
     db.commit()
-    day = tournament_local_date(td_tournament, shift.start).isoformat()
     _set_display_config(
         db,
         td_tournament,
@@ -2583,7 +2579,7 @@ def test_picking_a_group_again_re_opts_in(client, td_user, td_tournament, db):
 
 def test_my_options_groups_questions_by_track(client, td_user, td_tournament, db):
     track_id = primary_track_id(db, td_tournament.id)
-    writing = _make_track(db, td_tournament.id, "Test Writing")
+    _make_track(db, td_tournament.id, "Test Writing")
     _lunch_field(
         db,
         td_user,

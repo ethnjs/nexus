@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Formats staged backend Python files and sorts their imports.
+# Lints and formats staged backend Python files, applying Ruff's safe fixes.
 # Files with unstaged changes are only checked, so the hook never stages work you left out.
 set -euo pipefail
 
@@ -24,21 +24,26 @@ done
 
 cd "$root/backend"
 if [[ ${#fix[@]} -gt 0 ]]; then
-    uv run --quiet ruff check --select I --fix --quiet "${fix[@]}"
+    lint=0
+    uv run --quiet ruff check --fix --quiet "${fix[@]}" || lint=1
     uv run --quiet ruff format --quiet "${fix[@]}"
     git add -- "${fix[@]}"
+    if [[ $lint -ne 0 ]]; then
+        echo "pre-commit: fix the lint errors above, then commit again." >&2
+        exit 1
+    fi
 fi
 bad=()
 for f in "${check[@]}"; do
     # Check the staged version, which is what gets committed.
     if ! git show ":backend/$f" | uv run --quiet ruff format --check --quiet --stdin-filename "$f" - \
-        || ! git show ":backend/$f" | uv run --quiet ruff check --select I --quiet --stdin-filename "$f" - >/dev/null; then
+        || ! git show ":backend/$f" | uv run --quiet ruff check --quiet --stdin-filename "$f" -; then
         bad+=("$f")
     fi
 done
 if [[ ${#bad[@]} -gt 0 ]]; then
     echo "pre-commit: these files have unstaged changes, so they weren't fixed:" >&2
     printf '  backend/%s\n' "${bad[@]}" >&2
-    echo "Run 'uv run ruff format' and 'uv run ruff check --select I --fix' in backend/, then stage." >&2
+    echo "Run 'uv run ruff check --fix' and 'uv run ruff format' in backend/, then stage." >&2
     exit 1
 fi

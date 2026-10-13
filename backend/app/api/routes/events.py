@@ -94,7 +94,7 @@ def delete_event(event_id: int, db: Session = Depends(get_db), _: User = Depends
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete event: it has associated competition or volunteer experience entries",
-        )
+        ) from None
 
 
 # ---------------------------------------------------------------------------
@@ -163,4 +163,4 @@ def delete_event_category(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete category: one or more of its events has associated experience entries",
-        )
+        ) from None

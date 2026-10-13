@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -111,7 +111,7 @@ def create_tournament(
         db.flush()
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     # Membership for the creator, no roles yet — owner_id alone already grants
     # full permissions.
@@ -168,7 +168,7 @@ def update_tournament(
         db.commit()
     except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     db.refresh(tournament)
     return _serialize(tournament)

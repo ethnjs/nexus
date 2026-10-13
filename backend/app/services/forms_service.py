@@ -135,9 +135,9 @@ class FormsService:
                 raise PermissionError(
                     "Service account does not have access to this form. "
                     "Share the form with the service account email."
-                )
+                ) from e
             if e.resp.status == 404:
-                raise ValueError("Form not found. Check the URL.")
+                raise ValueError("Form not found. Check the URL.") from e
             raise
 
         questions: list[dict] = []

@@ -241,7 +241,7 @@ def create_zone(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A zone with this name already exists on this track",
-            )
+            ) from error
         _claimed_conflict(db)
 
     db.refresh(zone)
@@ -287,7 +287,7 @@ def update_zone(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A zone with this name already exists on this track",
-            )
+            ) from error
         _claimed_conflict(db)
 
     db.refresh(zone)
@@ -407,7 +407,7 @@ def create_zone_assignment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="That member already covers this zone in that role",
-        )
+        ) from None
 
     db.refresh(assignment)
     return ZoneAssignmentRead.from_row(assignment)

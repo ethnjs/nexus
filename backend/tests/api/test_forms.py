@@ -4299,7 +4299,7 @@ class TestSubmissionReachabilityEnforcement:
         self, client, db, td_user, td_tournament
     ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        required_field = _make_field(
+        _make_field(
             db,
             form,
             order=1,
@@ -4317,7 +4317,7 @@ class TestSubmissionReachabilityEnforcement:
         self, client, db, td_user, td_tournament
     ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        skipped = _make_field(
+        _make_field(
             db,
             form,
             order=2,
