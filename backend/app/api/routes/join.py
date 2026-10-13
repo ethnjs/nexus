@@ -101,7 +101,7 @@ def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapte
 @router.post("/join/", response_model=JoinRedeemResponse, status_code=status.HTTP_201_CREATED)
 def redeem_join_code(
     code: str = Query(...),
-    body: JoinRedeemRequest = JoinRedeemRequest(),
+    body: JoinRedeemRequest = JoinRedeemRequest(),  # noqa: B008
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
