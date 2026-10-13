@@ -88,9 +88,9 @@ class SheetsService:
                 raise PermissionError(
                     "Service account does not have access to this spreadsheet. "
                     "Share the sheet with the service account email."
-                )
+                ) from e
             if e.resp.status == 404:
-                raise ValueError("Spreadsheet not found. Check the URL.")
+                raise ValueError("Spreadsheet not found. Check the URL.") from e
             raise
 
         title = metadata.get("properties", {}).get("title", "Untitled")
@@ -141,7 +141,7 @@ class SheetsService:
             )
         except HttpError as e:
             if e.resp.status == 403:
-                raise PermissionError("Service account cannot read this sheet.")
+                raise PermissionError("Service account cannot read this sheet.") from e
             raise
         rows = result.get("values", [])
         return rows[0] if rows else []
@@ -173,7 +173,7 @@ class SheetsService:
             )
         except HttpError as e:
             if e.resp.status == 403:
-                raise PermissionError("Service account cannot read this sheet.")
+                raise PermissionError("Service account cannot read this sheet.") from e
             raise
 
         rows = result.get("values", [])

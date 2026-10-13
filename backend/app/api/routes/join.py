@@ -175,7 +175,7 @@ def _redeem_tournament_code(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament"
-        )
+        ) from None
 
     return JoinRedeemResponse(
         type="tournament", target_id=membership.tournament_id, membership_id=membership.id
@@ -209,7 +209,7 @@ def _redeem_chapter_code(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter"
-        )
+        ) from None
 
     return JoinRedeemResponse(
         type="chapter", target_id=membership.chapter_id, membership_id=membership.id

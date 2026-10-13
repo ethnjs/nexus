@@ -174,7 +174,7 @@ def create_building(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A building with this name already exists",
-        )
+        ) from None
     return TournamentBuildingRead.from_row(building)
 
 
@@ -235,7 +235,7 @@ def update_building(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A building with this name already exists",
-        )
+        ) from None
     return TournamentBuildingRead.from_row(building)
 
 

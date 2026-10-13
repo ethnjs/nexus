@@ -75,11 +75,11 @@ def _flush_or_conflict(db: Session) -> None:
                     "That event, shift and track don't belong together — the "
                     "event must run on the track, and a shift must be on it too"
                 ),
-            )
+            ) from error
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This member is already assigned to that event in that role and shift",
-        )
+        ) from error
 
 
 # ---------------------------------------------------------------------------

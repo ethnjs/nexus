@@ -107,7 +107,7 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     try:
         parsed = schema_cls.model_validate(config or {})
     except ValidationError as e:
-        raise FormFieldValidationError(str(e))
+        raise FormFieldValidationError(str(e)) from e
 
     normalized = parsed.model_dump()
     # These fields were added for track statuses after forms already existed.

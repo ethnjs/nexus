@@ -426,7 +426,7 @@ def create_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This catalog event already exists in this tournament for this division",
-        )
+        ) from None
     db.refresh(event)
     return event
 
@@ -473,7 +473,7 @@ def update_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This catalog event already exists in this tournament for this division",
-        )
+        ) from None
     db.refresh(event)
     return event
 
