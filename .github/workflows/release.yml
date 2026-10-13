@@ -17,14 +17,14 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # Otherwise checkout leaves the Actions bot's credentials in git
           # config, and they win over RELEASE_TOKEN on the push below.
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: lts/*
 
