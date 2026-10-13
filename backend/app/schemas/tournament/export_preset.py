@@ -5,14 +5,22 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.tournament.display_config import (
-    KNOWN_EVENT_FILTER_KEYS, KNOWN_FILTER_KEYS, KNOWN_SORT_DIRECTIONS,
+    KNOWN_EVENT_FILTER_KEYS,
+    KNOWN_FILTER_KEYS,
+    KNOWN_SORT_DIRECTIONS,
 )
-from app.core.tournament.export_presets import COLUMN_MODES, OUTPUT_TYPES, ROW_TYPES, is_known_export_column
+from app.core.tournament.export_presets import (
+    COLUMN_MODES,
+    OUTPUT_TYPES,
+    ROW_TYPES,
+    is_known_export_column,
+)
 
 
 class ExportPresetColumn(BaseModel):
     """One column, in export order. An object rather than a bare key so a
     column can carry its own options."""
+
     model_config = ConfigDict(extra="forbid")
 
     key: str
@@ -82,7 +90,9 @@ def _validate_filters(value: dict[str, list[str]], known: frozenset[str]) -> dic
     return value
 
 
-def validate_sorts_against_columns(sorts: list[ExportPresetSort], columns: list[ExportPresetColumn]) -> None:
+def validate_sorts_against_columns(
+    sorts: list[ExportPresetSort], columns: list[ExportPresetColumn]
+) -> None:
     """A preset sorts by its own columns only. Called by the routes once a
     PATCH has been merged, since either half can arrive alone."""
     keys = {column.key for column in columns}
@@ -136,6 +146,7 @@ class ExportPresetCreate(BaseModel):
 
 class ExportPresetUpdate(BaseModel):
     """Partial update. Lists and dicts are whole-value: sending one replaces it."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=255)
@@ -164,23 +175,30 @@ class ExportPresetUpdate(BaseModel):
 
     @field_validator("columns")
     @classmethod
-    def _check_columns(cls, value: list[ExportPresetColumn] | None) -> list[ExportPresetColumn] | None:
+    def _check_columns(
+        cls, value: list[ExportPresetColumn] | None
+    ) -> list[ExportPresetColumn] | None:
         return None if value is None else _validate_columns(value)
 
     @field_validator("member_filters")
     @classmethod
-    def _check_member_filters(cls, value: dict[str, list[str]] | None) -> dict[str, list[str]] | None:
+    def _check_member_filters(
+        cls, value: dict[str, list[str]] | None
+    ) -> dict[str, list[str]] | None:
         return None if value is None else _validate_filters(value, KNOWN_FILTER_KEYS)
 
     @field_validator("event_filters")
     @classmethod
-    def _check_event_filters(cls, value: dict[str, list[str]] | None) -> dict[str, list[str]] | None:
+    def _check_event_filters(
+        cls, value: dict[str, list[str]] | None
+    ) -> dict[str, list[str]] | None:
         return None if value is None else _validate_filters(value, KNOWN_EVENT_FILTER_KEYS)
 
 
 class ExportPresetRead(BaseModel):
     """Read leniently: no validators, so a stored preset whose columns or
     filters have since gone stale still loads."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int

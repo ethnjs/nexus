@@ -230,7 +230,7 @@ function findMovers(before: RoleSnapshot[], after: RoleSnapshot[]): Set<number> 
 }
 
 // One renderer per action, working off the extra_data shapes confirmed
-// against every log_action() call site (see audit-log-conventions.md).
+// against every log_action() call site (see backend/docs/audit-log-conventions.md).
 // extra_data is untyped JSON from the backend — cast per-field rather than
 // validating strictly, same pragmatic trust already given elsewhere in
 // this codebase to backend-shaped response data.

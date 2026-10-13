@@ -1,51 +1,50 @@
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
+    RATE_LIMIT_WINDOW,
+    clear_auth_cookie,
+    consume_verification_token,
     create_session,
     get_active_session,
     get_client_ip,
     get_current_session,
-    revoke_session,
-    revoke_all_sessions,
-    revoke_all_other_sessions,
-    hash_password,
-    verify_password,
-    verify_and_update_password,
     get_current_user,
-    set_auth_cookie,
-    clear_auth_cookie,
-    consume_verification_token,
     get_pending_email_change,
-    RATE_LIMIT_WINDOW,
+    hash_password,
+    revoke_all_other_sessions,
+    revoke_all_sessions,
+    revoke_session,
+    set_auth_cookie,
+    verify_and_update_password,
+    verify_password,
 )
-from app.core.users import check_if_email_exists, find_user_by_id, create_user
+from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
-from app.schemas.user import AdminUserSlimResponse
 from app.schemas.auth import (
-    LoginRequest,
-    RegisterRequest,
-    MessageResponse,
-    EmailChangeRequest,
-    EmailPendingChangeResponse,
-    EmailChangeRevertConfirm,
-    PasswordChangeRequest,
-    PasswordResetRequest,
-    PasswordResetConfirm,
     AccountSetupConfirm,
+    EmailChangeRequest,
+    EmailChangeRevertConfirm,
+    EmailPendingChangeResponse,
+    LoginRequest,
+    MessageResponse,
+    PasswordChangeRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RegisterRequest,
 )
+from app.schemas.user import AdminUserSlimResponse
 from app.services.email_service import (
-    send_signup_verification_email,
     send_email_change_request_email,
     send_email_change_requested_notice,
-    send_password_reset_request_email,
     send_password_changed_notice,
+    send_password_reset_request_email,
+    send_signup_verification_email,
 )
-from datetime import datetime, timezone
 
 router = APIRouter(tags=["auth"])
 
@@ -60,16 +59,21 @@ router = APIRouter(tags=["auth"])
 # Login / Logout
 # ---------------------------------------------------------------------------
 
+
 @router.post("/auth/login/", response_model=AdminUserSlimResponse)
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
     Sets an httpOnly session cookie on success.
     """
-    user = db.query(User).filter(
-        User.email == body.email.lower(),
-        User.status == "active",
-    ).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.email == body.email.lower(),
+            User.status == "active",
+        )
+        .first()
+    )
 
     # Deliberate: same error whether email or password is wrong — prevents enumeration
     if not user or not user.hashed_password:
@@ -89,7 +93,8 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         user.hashed_password = upgraded_hash
 
     raw_token = create_session(
-        db, user.id,
+        db,
+        user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
     )
@@ -97,11 +102,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     return user
 
 
-
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(
     response: Response,
-    access_token: Optional[str] = Cookie(default=None),
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     """
@@ -117,13 +121,17 @@ def logout(
     return {"detail": "Logged out"}
 
 
-
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+
+@router.post(
+    "/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED
+)
+def register(
+    body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)
+):
     """
     Public route to create a new user account.
     All registered users get role="user".
@@ -133,7 +141,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     user = create_user(db, body.email, password=body.password)
 
     raw_token = create_session(
-        db, user.id,
+        db,
+        user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
     )
@@ -146,7 +155,11 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 # Signup email verification
 # ---------------------------------------------------------------------------
 
-@router.get("/auth/verify-email/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+
+@router.get(
+    "/auth/verify-email/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
     },
@@ -162,7 +175,11 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     db.commit()
     return {"detail": "User email successfully verified"}
 
-@router.post("/auth/send-email-verification/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+
+@router.post(
+    "/auth/send-email-verification/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "Email already verified"},
         429: {"description": "Verification email requested too recently"},
@@ -186,7 +203,12 @@ async def send_email_verification(
 # Email change
 # ---------------------------------------------------------------------------
 
-@router.get("/auth/email/pending-change/", status_code=status.HTTP_200_OK, response_model=EmailPendingChangeResponse)
+
+@router.get(
+    "/auth/email/pending-change/",
+    status_code=status.HTTP_200_OK,
+    response_model=EmailPendingChangeResponse,
+)
 def get_pending_email_change_route(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -202,7 +224,10 @@ def get_pending_email_change_route(
     )
 
 
-@router.post("/auth/email/request-change/", status_code=status.HTTP_200_OK, response_model=EmailPendingChangeResponse,
+@router.post(
+    "/auth/email/request-change/",
+    status_code=status.HTTP_200_OK,
+    response_model=EmailPendingChangeResponse,
     responses={
         409: {"description": "Email already registered to another account"},
         429: {"description": "Email change requested too recently"},
@@ -237,7 +262,10 @@ async def request_email_change(
     )
 
 
-@router.get("/auth/email/confirm-change/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.get(
+    "/auth/email/confirm-change/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
     },
@@ -260,7 +288,10 @@ def confirm_email_change(token: str, db: Session = Depends(get_db)):
     return {"detail": "Email successfully updated"}
 
 
-@router.post("/auth/email/revert/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.post(
+    "/auth/email/revert/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
     },
@@ -288,15 +319,19 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
     user = find_user_by_id(db, token_row.user_id)
     original_email = token_row.new_email  # reused column — see VerificationToken.new_email comment
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Case 1: still-pending email_change token — cancel it.
-    pending = db.query(VerificationToken).filter(
-        VerificationToken.user_id == user.id,
-        VerificationToken.purpose == "email_change",
-        VerificationToken.used_at.is_(None),
-        VerificationToken.expires_at > now,
-    ).first()
+    pending = (
+        db.query(VerificationToken)
+        .filter(
+            VerificationToken.user_id == user.id,
+            VerificationToken.purpose == "email_change",
+            VerificationToken.used_at.is_(None),
+            VerificationToken.expires_at > now,
+        )
+        .first()
+    )
     if pending:
         pending.used_at = now
 
@@ -316,7 +351,11 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
 # Password change (authenticated) / reset (logged out)
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/password/change/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+
+@router.post(
+    "/auth/password/change/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         401: {"description": "Current password is incorrect"},
     },
@@ -329,7 +368,9 @@ async def change_password(
 ):
     """Authenticated password change — requires current_password to match before setting new_password."""
     if not user.hashed_password or not await run_in_threadpool(
-        verify_password, body.current_password, user.hashed_password,
+        verify_password,
+        body.current_password,
+        user.hashed_password,
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
@@ -342,7 +383,9 @@ async def change_password(
     return {"detail": "Password successfully changed"}
 
 
-@router.post("/auth/password/reset/request/", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+@router.post(
+    "/auth/password/reset/request/", status_code=status.HTTP_200_OK, response_model=MessageResponse
+)
 async def request_password_reset(body: PasswordResetRequest, db: Session = Depends(get_db)):
     """
     Always returns the same generic response regardless of whether the
@@ -350,10 +393,14 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
     admin-invited accounts (no password yet) are deliberately excluded:
     they should use account-setup, not password reset.
     """
-    user = db.query(User).filter(
-        User.email == body.email.lower(),
-        User.status == "active",
-    ).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.email == body.email.lower(),
+            User.status == "active",
+        )
+        .first()
+    )
 
     if user and user.hashed_password:
         try:
@@ -367,7 +414,10 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
     return {"detail": "If an account exists for this email, a reset link has been sent."}
 
 
-@router.post("/auth/password/reset/confirm/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.post(
+    "/auth/password/reset/confirm/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
     },
@@ -398,7 +448,11 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
 # token otherwise expires with no recovery path.
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/account-setup/confirm/", response_model=AdminUserSlimResponse, status_code=status.HTTP_200_OK,
+
+@router.post(
+    "/auth/account-setup/confirm/",
+    response_model=AdminUserSlimResponse,
+    status_code=status.HTTP_200_OK,
     responses={
         400: {"description": "Invalid or expired token"},
     },
@@ -426,7 +480,8 @@ def confirm_account_setup(
     db.refresh(user)
 
     raw_token = create_session(
-        db, user.id,
+        db,
+        user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
     )

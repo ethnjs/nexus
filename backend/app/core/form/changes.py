@@ -2,7 +2,7 @@
 
 The TD sends a target field list; this works out, per field, whether anyone
 must be asked to look at their answer again and why. See
-backend/form-edit-lifecycle.md for the rules these implement.
+backend/docs/form-edit-lifecycle.md for the rules these implement.
 
 Two tiers:
   * MANDATORY_REASONS always apply — the change invalidates or outdates an
@@ -10,6 +10,7 @@ Two tiers:
   * OPTIONAL_REASONS are judgment calls the TD makes per field at save time.
     Each carries a default for when the caller doesn't say.
 """
+
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
@@ -39,9 +40,15 @@ NOW_REQUIRED = "now_required"
 KEY_CHANGED = "key_changed"
 TEXT_CHANGED = "text_changed"
 
-MANDATORY_REASONS = frozenset({
-    QUESTION_TYPE_CHANGED, OPTION_ADDED, OPTION_INVALIDATED, OPTION_REGROUPED, NOW_REQUIRED,
-})
+MANDATORY_REASONS = frozenset(
+    {
+        QUESTION_TYPE_CHANGED,
+        OPTION_ADDED,
+        OPTION_INVALIDATED,
+        OPTION_REGROUPED,
+        NOW_REQUIRED,
+    }
+)
 
 # Default for each judgment call when the caller doesn't send one. key_changed
 # defaults on because the consequence of skipping it is invisible: those
@@ -82,8 +89,7 @@ def _option_ids(config: dict | None, *, live_only: bool = True) -> set[str]:
 
 def _labels_by_option_id(config: dict | None) -> dict[str, str]:
     return {
-        option["option_id"]: option.get("label")
-        for option in (config or {}).get("options") or []
+        option["option_id"]: option.get("label") for option in (config or {}).get("options") or []
     }
 
 
@@ -129,7 +135,7 @@ def classify_field_change(
     # describing a consequence of it, not a separate thing to review.
     if not shape_changed:
         # Four verbs, distinguished by whether an option is present at all and
-        # whether it's archived — see form-edit-lifecycle.md:
+        # whether it's archived — see backend/docs/form-edit-lifecycle.md:
         #   add         absent   -> live       flag everyone
         #   unarchive   archived -> live       flag everyone (same as add)
         #   archive     live     -> archived   flag nobody; answers stay valid

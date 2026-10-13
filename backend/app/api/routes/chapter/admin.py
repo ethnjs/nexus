@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, with_parent
 
 from app.core.auth import require_admin
-from app.core.chapters import assign_chapter_lead, create_alumni_chapter, check_if_chapter_exists, find_chapter
+from app.core.chapters import (
+    assign_chapter_lead,
+    check_if_chapter_exists,
+    create_alumni_chapter,
+    find_chapter,
+)
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterMembership, User
 from app.schemas.chapter import ChapterCreate, ChapterResponse
@@ -43,7 +48,11 @@ def create_chapter(
 # ---------------------------------------------------------------------------
 # POST /admin/chapters/{chapter_id}/leads/ — assign a user as this chapter's lead. Admin only.
 # ---------------------------------------------------------------------------
-@router.post("/{chapter_id}/leads/", response_model=ChapterMemberResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{chapter_id}/leads/",
+    response_model=ChapterMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def assign_lead(
     body: AssignLeadRequest,
     chapter: AlumniChapter = Depends(find_chapter),
@@ -70,11 +79,22 @@ def remove_lead(
     _: User = Depends(require_admin),
 ):
     """Demote a chapter's lead back to a regular member. Admin only."""
-    member = db.query(ChapterMembership).filter(with_parent(chapter, AlumniChapter.chapter_memberships), ChapterMembership.user_id == user_id).first()
+    member = (
+        db.query(ChapterMembership)
+        .filter(
+            with_parent(chapter, AlumniChapter.chapter_memberships),
+            ChapterMembership.user_id == user_id,
+        )
+        .first()
+    )
     if not member:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not in this chapter")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User is not in this chapter"
+        )
     if member.role != "lead":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a lead in this chapter")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User is not a lead in this chapter"
+        )
     member.role = "member"
     db.commit()
     db.refresh(member)

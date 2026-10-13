@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, with_parent
@@ -39,7 +39,11 @@ def get_chapter_join_codes(
 # ---------------------------------------------------------------------------
 # POST /chapters/{chapter_id}/join-codes/ — generate a new join code for a chapter. Chapter lead only.
 # ---------------------------------------------------------------------------
-@router.post("/chapters/{chapter_id}/join-codes/", response_model=JoinCodeResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/chapters/{chapter_id}/join-codes/",
+    response_model=JoinCodeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def generate_chapter_join_code(
     payload: JoinCodeCreate,
     chapter: AlumniChapter = Depends(find_chapter),
@@ -53,7 +57,7 @@ def generate_chapter_join_code(
     """
     expires_at = None
     if payload.expires_in_hours is not None:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
 
     join_code = JoinCode(
         chapter_id=chapter.id,
@@ -97,7 +101,9 @@ def update_chapter_join_code(
 # Deactivates the join code (one-way) — does not remove the row, so
 # use_count/history stay visible via GET.
 # ---------------------------------------------------------------------------
-@router.delete("/chapters/{chapter_id}/join-codes/{code_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/chapters/{chapter_id}/join-codes/{code_id}/", status_code=status.HTTP_204_NO_CONTENT
+)
 def deactivate_chapter_join_code(
     code_id: int,
     chapter: AlumniChapter = Depends(find_chapter),

@@ -5,13 +5,23 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
-    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, PAGE_HEADER, build_catalog, is_known_surface,
-    is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
-    is_known_sort_field, section_field_ids,
+    CUSTOM_SECTION_PREFIX,
+    KNOWN_SORT_DIRECTIONS,
+    PAGE_HEADER,
+    build_catalog,
+    is_known_column,
+    is_known_hidden_item,
+    is_known_section,
+    is_known_sort_field,
+    is_known_surface,
+    known_filter_keys,
+    section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_any_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_any_permission,
 )
 from app.db.session import get_db
 from app.models.models import User
@@ -124,7 +134,7 @@ def update_display_config(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown column '{column}'",
                 )
-        for key in (config.filters or {}):
+        for key in config.filters or {}:
             if key not in known_filter_keys(surface):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -175,7 +185,9 @@ def update_display_config(
                     detail=f"Section '{section.id}' is built-in and cannot be assigned fields",
                 )
 
-    membership.display_config = {surface: config.model_dump() for surface, config in payload.items()}
+    membership.display_config = {
+        surface: config.model_dump() for surface, config in payload.items()
+    }
     db.commit()
     db.refresh(membership)
     return membership.display_config

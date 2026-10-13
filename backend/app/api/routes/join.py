@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +11,11 @@ from app.core.join_codes import is_join_code_expired
 from app.db.session import get_db
 from app.models.models import ChapterMembership, JoinCode, Tournament, TournamentMembership, User
 from app.schemas.join_code import (
-    JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemRequest, JoinRedeemResponse,
+    JoinPreviewChapter,
+    JoinPreviewResponse,
+    JoinPreviewTournament,
+    JoinRedeemRequest,
+    JoinRedeemResponse,
 )
 from app.schemas.tournament.track import TournamentTrackRead
 from app.schemas.university import UniversityResponse
@@ -40,7 +44,9 @@ def preview_join_code(
     """
     join_code = db.query(JoinCode).filter(JoinCode.code == code).first()
     if not join_code or not join_code.is_active or is_join_code_expired(join_code):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code"
+        )
 
     if join_code.tournament_id is not None:
         return _preview_tournament_code(join_code, db)
@@ -50,14 +56,18 @@ def preview_join_code(
 def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTournament:
     tournament = db.query(Tournament).filter(Tournament.id == join_code.tournament_id).first()
     if tournament is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code"
+        )
 
     return JoinPreviewTournament(
         target_id=tournament.id,
         name=tournament.name,
         short_name=tournament.short_name,
         dates=tournament.dates,
-        university=UniversityResponse.model_validate(tournament.university) if tournament.university else None,
+        university=UniversityResponse.model_validate(tournament.university)
+        if tournament.university
+        else None,
         location=tournament.location,
         state=tournament.state,
         level=tournament.level,
@@ -103,7 +113,9 @@ def redeem_join_code(
     """
     join_code = db.query(JoinCode).filter(JoinCode.code == code).first()
     if not join_code or not join_code.is_active or is_join_code_expired(join_code):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code"
+        )
 
     if join_code.tournament_id is not None:
         return _redeem_tournament_code(join_code, current_user, db, body.age_disclosure_consent)
@@ -111,7 +123,10 @@ def redeem_join_code(
 
 
 def _redeem_tournament_code(
-    join_code: JoinCode, current_user: User, db: Session, age_disclosure_consent: bool,
+    join_code: JoinCode,
+    current_user: User,
+    db: Session,
+    age_disclosure_consent: bool,
 ) -> JoinRedeemResponse:
     """Creates a bare TournamentMembership with no roles — staff assign roles
     afterward, and per-track participation comes from form write-through."""
@@ -124,10 +139,14 @@ def _redeem_tournament_code(
         .first()
     )
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament"
+        )
 
     tournament = db.query(Tournament).filter(Tournament.id == join_code.tournament_id).first()
-    collects_age_flag = tournament is not None and (tournament.collect_is_over_18 or tournament.collect_is_over_21)
+    collects_age_flag = tournament is not None and (
+        tournament.collect_is_over_18 or tournament.collect_is_over_21
+    )
     if collects_age_flag and not age_disclosure_consent:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -145,7 +164,7 @@ def _redeem_tournament_code(
     )
     if collects_age_flag:
         membership.age_disclosure = "consented"
-        membership.age_disclosure_at = datetime.now(timezone.utc)
+        membership.age_disclosure_at = datetime.now(UTC)
     join_code.use_count += 1
 
     try:
@@ -154,20 +173,26 @@ def _redeem_tournament_code(
         db.refresh(membership)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament"
+        )
 
-    return JoinRedeemResponse(type="tournament", target_id=membership.tournament_id, membership_id=membership.id)
+    return JoinRedeemResponse(
+        type="tournament", target_id=membership.tournament_id, membership_id=membership.id
+    )
 
 
-def _redeem_chapter_code(join_code: JoinCode, current_user: User, db: Session) -> JoinRedeemResponse:
+def _redeem_chapter_code(
+    join_code: JoinCode, current_user: User, db: Session
+) -> JoinRedeemResponse:
     """One chapter per user — unlike tournaments, membership is role='member' immediately."""
     existing_membership = (
-        db.query(ChapterMembership)
-        .filter(ChapterMembership.user_id == current_user.id)
-        .first()
+        db.query(ChapterMembership).filter(ChapterMembership.user_id == current_user.id).first()
     )
     if existing_membership:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter"
+        )
 
     membership = ChapterMembership(
         user_id=current_user.id,
@@ -182,6 +207,10 @@ def _redeem_chapter_code(join_code: JoinCode, current_user: User, db: Session) -
         db.refresh(membership)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter"
+        )
 
-    return JoinRedeemResponse(type="chapter", target_id=membership.chapter_id, membership_id=membership.id)
+    return JoinRedeemResponse(
+        type="chapter", target_id=membership.chapter_id, membership_id=membership.id
+    )

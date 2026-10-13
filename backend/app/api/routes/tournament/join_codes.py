@@ -1,22 +1,38 @@
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code
-from app.core.tournament.audit import (
-    JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
+from app.core.tournament import (
+    get_scoped_or_404,
+    get_tournament,
+    require_not_archived,
+    tournament_display_name,
 )
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_display_name
+from app.core.tournament.audit import (
+    JOIN_CODE_CREATED,
+    JOIN_CODE_DEACTIVATED,
+    JOIN_CODE_UPDATED,
+    STAFF_INVITE_SENT,
+    log_action,
+)
 from app.core.tournament.memberships import has_any_membership, resolve_person_refs
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
-from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.models import JoinCode, User
-from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
+from app.schemas.join_code import (
+    JoinCodeCreate,
+    JoinCodeResponse,
+    JoinCodeUpdate,
+    StaffInviteCreate,
+    StaffInviteResponse,
+)
 from app.schemas.person import PersonRefResponse
 from app.services.email_service import send_staff_invite_emails
 
@@ -51,7 +67,7 @@ def list_join_codes(
         .filter(
             JoinCode.tournament_id == tournament_id,
             JoinCode.is_active == True,
-            or_(JoinCode.expires_at.is_(None), JoinCode.expires_at > datetime.now(timezone.utc)),
+            or_(JoinCode.expires_at.is_(None), JoinCode.expires_at > datetime.now(UTC)),
         )
         .order_by(JoinCode.created_at.desc())
         .all()
@@ -79,7 +95,7 @@ def create_join_code(
 
     expires_at = None
     if payload.expires_in_hours is not None:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
 
     join_code = JoinCode(
         tournament_id=tournament_id,
@@ -93,8 +109,12 @@ def create_join_code(
     db.flush()  # get join_code.id before logging
 
     log_action(
-        db, tournament_id, current_user.id, JOIN_CODE_CREATED,
-        target_type="join_code", target_id=join_code.id,
+        db,
+        tournament_id,
+        current_user.id,
+        JOIN_CODE_CREATED,
+        target_type="join_code",
+        target_id=join_code.id,
         extra_data={
             "code": join_code.code,
             "label": join_code.label,
@@ -142,8 +162,12 @@ def update_join_code(
 
     if extra_data:
         log_action(
-            db, tournament_id, current_user.id, JOIN_CODE_UPDATED,
-            target_type="join_code", target_id=join_code.id,
+            db,
+            tournament_id,
+            current_user.id,
+            JOIN_CODE_UPDATED,
+            target_type="join_code",
+            target_id=join_code.id,
             extra_data=extra_data,
         )
 
@@ -172,8 +196,12 @@ def deactivate_tournament_join_code(
     deactivate_join_code(join_code)
 
     log_action(
-        db, tournament_id, current_user.id, JOIN_CODE_DEACTIVATED,
-        target_type="join_code", target_id=join_code.id,
+        db,
+        tournament_id,
+        current_user.id,
+        JOIN_CODE_DEACTIVATED,
+        target_type="join_code",
+        target_id=join_code.id,
         extra_data={"code": join_code.code},
     )
 
@@ -194,7 +222,11 @@ def deactivate_tournament_join_code(
 # succeeded, so the log entry isn't conditioned on full success. failed is
 # included in extra_data only when non-empty.
 # ---------------------------------------------------------------------------
-@router.post("/{tournament_id}/staff-invites/", response_model=StaffInviteResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{tournament_id}/staff-invites/",
+    response_model=StaffInviteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def send_staff_invites(
     tournament_id: int,
     payload: StaffInviteCreate,
@@ -217,7 +249,9 @@ async def send_staff_invites(
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code={join_code.code}"
-    failed = await send_staff_invite_emails(payload.emails, tournament_display_name(tournament), join_url)
+    failed = await send_staff_invite_emails(
+        payload.emails, tournament_display_name(tournament), join_url
+    )
     sent = [e for e in payload.emails if e not in failed]
 
     extra_data = {"emails": payload.emails, "join_code": join_code.code}
@@ -225,11 +259,17 @@ async def send_staff_invites(
         extra_data["failed"] = failed
 
     log_action(
-        db, tournament_id, current_user.id, STAFF_INVITE_SENT,
-        target_type="join_code", target_id=join_code.id,
+        db,
+        tournament_id,
+        current_user.id,
+        STAFF_INVITE_SENT,
+        target_type="join_code",
+        target_id=join_code.id,
         extra_data=extra_data,
     )
 
     db.commit()
     creators = resolve_person_refs(db, tournament_id, {join_code.created_by})
-    return StaffInviteResponse(join_code=_to_response(join_code, creators), sent=sent, failed=failed)
+    return StaffInviteResponse(
+        join_code=_to_response(join_code, creators), sent=sent, failed=failed
+    )

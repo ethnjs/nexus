@@ -28,13 +28,13 @@ thrown away — pydantic validates straight off the ORM object, so a
 relationship left on its default lazy strategy would issue a query per row
 for data that is about to be excluded from the dump anyway.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Query, status
 from sqlalchemy.orm import joinedload, noload, selectinload
-
 
 # ---------------------------------------------------------------------------
 # Always-present keys — see rule 3 above.
@@ -44,21 +44,35 @@ from sqlalchemy.orm import joinedload, noload, selectinload
 # column whose data is already on the joined User row, so grouping it would
 # force the table to pull the whole profile for one scalar.
 # ---------------------------------------------------------------------------
-ALWAYS_KEYS = frozenset({
-    # Which membership this is, on both responses. Null on /members/me only
-    # when the caller has no membership row at all.
-    "id", "created_at", "updated_at", "user",
-    "tournament_id",
-    # MembershipMeResponse — who the caller is here and what they may do.
-    "is_owner", "permissions", "needs_age_consent",
-    # Set by apply_display_config, not by fields — see the note on
-    # MembershipFullResponse.hidden_sections.
-    "hidden_sections",
-})
+ALWAYS_KEYS = frozenset(
+    {
+        # Which membership this is, on both responses. Null on /members/me only
+        # when the caller has no membership row at all.
+        "id",
+        "created_at",
+        "updated_at",
+        "user",
+        "tournament_id",
+        # MembershipMeResponse — who the caller is here and what they may do.
+        "is_owner",
+        "permissions",
+        "needs_age_consent",
+        # Set by apply_display_config, not by fields — see the note on
+        # MembershipFullResponse.hidden_sections.
+        "hidden_sections",
+    }
+)
 
-ALWAYS_USER_KEYS = frozenset({
-    "id", "first_name", "last_name", "pronouns", "created_at", "updated_at",
-})
+ALWAYS_USER_KEYS = frozenset(
+    {
+        "id",
+        "first_name",
+        "last_name",
+        "pronouns",
+        "created_at",
+        "updated_at",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -79,6 +93,7 @@ class FieldGroup:
     question_type. custom and onboarding are the built groups with no
     relationship at all — both are queried from form responses.
     """
+
     name: str
     keys: frozenset[str] = frozenset()
     user_keys: frozenset[str] = frozenset()
@@ -110,12 +125,22 @@ GROUPS: dict[str, FieldGroup] = {
     # asking for contact must not pay for this.
     PROFILE: FieldGroup(
         name=PROFILE,
-        user_keys=frozenset({
-            "student_status", "university", "major", "year_level",
-            "graduation_year", "employer", "has_competition_experience",
-            "has_volunteer_experience", "competition_experience",
-            "volunteer_experience", "shirt_size", "dietary_restriction",
-        }),
+        user_keys=frozenset(
+            {
+                "student_status",
+                "university",
+                "major",
+                "year_level",
+                "graduation_year",
+                "employer",
+                "has_competition_experience",
+                "has_volunteer_experience",
+                "competition_experience",
+                "volunteer_experience",
+                "shirt_size",
+                "dietary_restriction",
+            }
+        ),
         user_relationships=("competition_experience", "volunteer_experience", "university"),
     ),
     # Serialized as `roles`, loaded through `track_assignments`: a member's
@@ -276,8 +301,11 @@ def loader_options(requested: frozenset[str] | None) -> list:
     varies with `fields`.
     """
     from app.models.models import (
-        TournamentEvent, TournamentMembership, TournamentTrackAssignment,
-        TournamentMembershipAvailability, TournamentTrackAssignment, User,
+        TournamentEvent,
+        TournamentMembership,
+        TournamentMembershipAvailability,
+        TournamentTrackAssignment,
+        User,
     )
 
     # Relationships needing further hops to be usable: the role behind a
@@ -289,8 +317,12 @@ def loader_options(requested: frozenset[str] | None) -> list:
         "track_assignments": (),
         "availability_shifts": (joinedload(TournamentMembershipAvailability.tournament_shift),),
         "assignments": (
-            joinedload(TournamentTrackAssignment.tournament_event).joinedload(TournamentEvent.event),
-            joinedload(TournamentTrackAssignment.tournament_event).selectinload(TournamentEvent.shifts),
+            joinedload(TournamentTrackAssignment.tournament_event).joinedload(
+                TournamentEvent.event
+            ),
+            joinedload(TournamentTrackAssignment.tournament_event).selectinload(
+                TournamentEvent.shifts
+            ),
             joinedload(TournamentTrackAssignment.tournament_shift),
             joinedload(TournamentTrackAssignment.membership).joinedload(TournamentMembership.user),
         ),

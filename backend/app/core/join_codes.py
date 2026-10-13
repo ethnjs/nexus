@@ -4,10 +4,12 @@ tournaments). Both share the JoinCode table — code generation, expiry
 checking, updating, and deactivation are identical regardless of which
 target (tournament_id/chapter_id) a given code points to.
 """
+
 from __future__ import annotations
+
 import secrets
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from fastapi import HTTPException, status
@@ -36,8 +38,8 @@ def is_join_code_expired(join_code: JoinCodeLike) -> bool:
         return False
     expires_at = join_code.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) > expires_at
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return datetime.now(UTC) > expires_at
 
 
 def get_unique_join_code(db: Session, max_retries: int = 10) -> str:
@@ -53,7 +55,9 @@ def get_unique_join_code(db: Session, max_retries: int = 10) -> str:
     )
 
 
-def apply_join_code_update(join_code: JoinCodeLike, label: str | None, add_hours: int | None) -> None:
+def apply_join_code_update(
+    join_code: JoinCodeLike, label: str | None, add_hours: int | None
+) -> None:
     """
     Apply a label change and/or extend expiry by `add_hours`. Extension is
     cumulative from the code's current expires_at (or from now, if the code
@@ -65,7 +69,7 @@ def apply_join_code_update(join_code: JoinCodeLike, label: str | None, add_hours
         join_code.label = label
 
     if add_hours is not None:
-        base = join_code.expires_at or datetime.now(timezone.utc)
+        base = join_code.expires_at or datetime.now(UTC)
         join_code.expires_at = base + timedelta(hours=add_hours)
 
 

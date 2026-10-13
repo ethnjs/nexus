@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -23,6 +24,7 @@ if settings.database_url:
 
     # Enable FK constraints on every SQLite connection
     if settings.database_url.startswith("sqlite"):
+
         @event.listens_for(engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
@@ -37,6 +39,7 @@ else:
 
 class Base(DeclarativeBase):
     """All SQLAlchemy models inherit from this."""
+
     pass
 
 

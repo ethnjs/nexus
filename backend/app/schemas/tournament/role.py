@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
-from pydantic import BaseModel, model_validator, field_validator
+
+from pydantic import BaseModel, field_validator, model_validator
+
 from app.core.tournament.permissions import ALL_PERMISSIONS
 from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 
@@ -15,10 +18,10 @@ def _validate_external_role(value: str | None, allowed: frozenset[str], system: 
 # Role definition schema — create/update schema for TournamentRole rows.
 # ---------------------------------------------------------------------------
 class RoleDefinition(BaseModel):
-    label: str                  # human-readable name shown in the UI
-    permissions: list[str] = [] # subset of ALL_PERMISSIONS from permissions.py
-    rank: int                   # lower = higher authority; see TournamentRole.rank
-    torus_role: str | None = None     # one of TORUS_ROLES
+    label: str  # human-readable name shown in the UI
+    permissions: list[str] = []  # subset of ALL_PERMISSIONS from permissions.py
+    rank: int  # lower = higher authority; see TournamentRole.rank
+    torus_role: str | None = None  # one of TORUS_ROLES
     duosmium_role: str | None = None  # one of DUOSMIUM_ROLES
 
     @field_validator("torus_role")
@@ -36,9 +39,7 @@ class RoleDefinition(BaseModel):
     def validate_permissions(cls, v: list[str]) -> list[str]:
         invalid = [p for p in v if p not in ALL_PERMISSIONS]
         if invalid:
-            raise ValueError(
-                f"Invalid permissions: {invalid}. Must be one of: {ALL_PERMISSIONS}"
-            )
+            raise ValueError(f"Invalid permissions: {invalid}. Must be one of: {ALL_PERMISSIONS}")
         return v
 
     @field_validator("rank")
@@ -52,6 +53,7 @@ class RoleDefinition(BaseModel):
 class RoleUpdate(BaseModel):
     """Partial update — all fields optional. Only the external-system roles
     take an explicit null (clear it); see NULLABLE_ROLE_FIELDS."""
+
     label: str | None = None
     permissions: list[str] | None = None
     rank: int | None = None
@@ -75,9 +77,7 @@ class RoleUpdate(BaseModel):
             return v
         invalid = [p for p in v if p not in ALL_PERMISSIONS]
         if invalid:
-            raise ValueError(
-                f"Invalid permissions: {invalid}. Must be one of: {ALL_PERMISSIONS}"
-            )
+            raise ValueError(f"Invalid permissions: {invalid}. Must be one of: {ALL_PERMISSIONS}")
         return v
 
     @field_validator("rank")
@@ -110,6 +110,7 @@ class MemberRoleRead(RoleRead):
     not a question — the same split as PersonRoleRead, for the same reason:
     widening one must not silently widen the other.
     """
+
     is_tournament_wide: bool = False
     # Empty when the role is tournament-wide — it applies to every track, so
     # enumerating them would read as a narrower claim than the truth.
@@ -124,10 +125,13 @@ class MemberRoleRead(RoleRead):
         if role is None:
             return v
         return {
-            "id": role.id, "tournament_id": role.tournament_id,
-            "label": role.label, "permissions": role.permissions,
+            "id": role.id,
+            "tournament_id": role.tournament_id,
+            "label": role.label,
+            "permissions": role.permissions,
             "rank": role.rank,
-            "torus_role": role.torus_role, "duosmium_role": role.duosmium_role,
+            "torus_role": role.torus_role,
+            "duosmium_role": role.duosmium_role,
             "created_at": role.created_at,
             "updated_at": role.updated_at,
             "is_tournament_wide": v.is_tournament_wide,
@@ -142,6 +146,7 @@ class RoleWithMemberCount(RoleRead):
     with_member_counts). Roles nested inside membership responses stay plain
     RoleRead, since that count isn't attached there.
     """
+
     member_count: int
 
 
@@ -163,6 +168,7 @@ class RoleBulkReorder(BaseModel):
     client-side (drag-and-drop preview); the backend just validates
     rank-bound authority and applies them atomically.
     """
+
     roles: list[RoleBulkReorderItem]
 
 
@@ -173,6 +179,7 @@ class RoleAssignmentUpdate(BaseModel):
     also keeps the audit log to a single entry per staff action instead of
     one row per role touched.
     """
+
     add: list[int] = []
     remove: list[int] = []
     # Which track these grants are for. Since #83 a role is held per track, so
@@ -187,7 +194,7 @@ class RoleAssignmentUpdate(BaseModel):
     is_tournament_wide: bool = False
 
     @model_validator(mode="after")
-    def _check_scope(self) -> "RoleAssignmentUpdate":
+    def _check_scope(self) -> RoleAssignmentUpdate:
         if self.is_tournament_wide and self.track_id is not None:
             raise ValueError("a tournament-wide grant must not name a track")
         if not self.is_tournament_wide and self.track_id is None:

@@ -1,25 +1,31 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.tournament.archive import archive_tournament as apply_archive
-from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIVED, log_action
+
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
-from app.core.tournament import get_tournament as fetch_tournament, require_not_archived, tournament_counts
+from app.core.tournament import get_tournament as fetch_tournament
+from app.core.tournament import require_not_archived, tournament_counts
+from app.core.tournament.archive import archive_tournament as apply_archive
+from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIVED, log_action
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership
-from app.core.tournament.tracks import sync_sole_track_name
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
     require_permission,
 )
+from app.core.tournament.tracks import sync_sole_track_name
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentTrack, User
 from app.schemas.tournament import (
-    TournamentCreate, TournamentRead, TournamentSummary, TournamentUpdate, TransferOwnershipRequest,
+    TournamentCreate,
+    TournamentRead,
+    TournamentSummary,
+    TournamentUpdate,
+    TransferOwnershipRequest,
 )
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
@@ -74,10 +80,7 @@ def list_my_tournaments(
         .all()
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
-    return [
-        TournamentSummary(**_serialize(t), **counts[t.id])
-        for t in tournaments
-    ]
+    return [TournamentSummary(**_serialize(t), **counts[t.id]) for t in tournaments]
 
 
 # ---------------------------------------------------------------------------
@@ -263,13 +266,17 @@ def unarchive_tournament(
             )
 
     tournament.is_archived = False
-    
+
     if has_ended:
-        tournament.archive_override_at = datetime.now(timezone.utc)
+        tournament.archive_override_at = datetime.now(UTC)
 
     log_action(
-        db, tournament_id, current_user.id, TOURNAMENT_UNARCHIVED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament_id,
+        current_user.id,
+        TOURNAMENT_UNARCHIVED,
+        target_type="tournament",
+        target_id=tournament.id,
     )
 
     db.commit()
@@ -330,8 +337,12 @@ def transfer_ownership(
         return name or user.email
 
     log_action(
-        db, tournament_id, current_user.id, OWNERSHIP_TRANSFERRED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament_id,
+        current_user.id,
+        OWNERSHIP_TRANSFERRED,
+        target_type="tournament",
+        target_id=tournament.id,
         extra_data={
             # The previous owner, not the actor — an admin can transfer too.
             "old": {"id": old_owner.id if old_owner else None, "name": _display_name(old_owner)},

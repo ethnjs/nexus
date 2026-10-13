@@ -8,7 +8,10 @@ from app.models.models import Form, Tournament
 
 
 def archive_tournament(
-    db: Session, tournament: Tournament, actor_id: int, extra_data: dict | None = None,
+    db: Session,
+    tournament: Tournament,
+    actor_id: int,
+    extra_data: dict | None = None,
 ) -> None:
     """Every side effect of archiving, shared by the manual route and the
     auto-archive job so the two can't drift. Does not commit.
@@ -24,7 +27,11 @@ def archive_tournament(
     ).update({"status": "archived"}, synchronize_session=False)
 
     log_action(
-        db, tournament.id, actor_id, TOURNAMENT_ARCHIVED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament.id,
+        actor_id,
+        TOURNAMENT_ARCHIVED,
+        target_type="tournament",
+        target_id=tournament.id,
         extra_data=extra_data,
     )

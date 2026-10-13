@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -40,52 +40,163 @@ from app.core.config import get_settings
 # skipped the question.
 PRONOUNS = ["he/him", "she/her", "they/them", "prefer not to say", ""]
 MAJORS = [
-    "Biology", "Chemistry", "Mechanical Engineering", "Computer Science", "Physics",
-    "Neuroscience", "Environmental Science", "Applied Mathematics", "Cognitive Science",
-    "Public Health", "Geology", "Biochemistry", "Aerospace Engineering", "Data Science",
-    "Civil Engineering", "Molecular Biology", "Statistics", "Astrophysics",
-    "Materials Science", "Human Biology", "Undeclared",
+    "Biology",
+    "Chemistry",
+    "Mechanical Engineering",
+    "Computer Science",
+    "Physics",
+    "Neuroscience",
+    "Environmental Science",
+    "Applied Mathematics",
+    "Cognitive Science",
+    "Public Health",
+    "Geology",
+    "Biochemistry",
+    "Aerospace Engineering",
+    "Data Science",
+    "Civil Engineering",
+    "Molecular Biology",
+    "Statistics",
+    "Astrophysics",
+    "Materials Science",
+    "Human Biology",
+    "Undeclared",
 ]
 EMPLOYERS = [
-    "Northrop Grumman", "Kaiser Permanente", "Irvine Unified School District",
-    "JPL", "Edwards Lifesciences", "Self-employed",
+    "Northrop Grumman",
+    "Kaiser Permanente",
+    "Irvine Unified School District",
+    "JPL",
+    "Edwards Lifesciences",
+    "Self-employed",
 ]
 # Weighted toward blank: most people have no dietary restriction.
 DIETS = [
-    "", "", "", "", "Vegetarian", "Vegan", "Gluten-free", "No pork",
-    "Peanut allergy", "Lactose intolerant", "Halal", "Shellfish allergy",
+    "",
+    "",
+    "",
+    "",
+    "Vegetarian",
+    "Vegan",
+    "Gluten-free",
+    "No pork",
+    "Peanut allergy",
+    "Lactose intolerant",
+    "Halal",
+    "Shellfish allergy",
 ]
 SHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
 AREA_CODES = [562, 714, 626, 949, 310, 909]
 SCHOOLS = [
-    "Northwood High School", "Troy High School", "Glen A. Wilson High School",
-    "Irvine High School", "University High School", "Mission San Jose High School",
-    "Canyon Crest Academy", "Arcadia High School",
+    "Northwood High School",
+    "Troy High School",
+    "Glen A. Wilson High School",
+    "Irvine High School",
+    "University High School",
+    "Mission San Jose High School",
+    "Canyon Crest Academy",
+    "Arcadia High School",
 ]
 PAST_TOURNAMENTS = [
-    "OC Regionals", "SoCal States", "Nationals", "LA Regionals",
-    "Temple City Invitational", "Golden Gate Invitational",
+    "OC Regionals",
+    "SoCal States",
+    "Nationals",
+    "LA Regionals",
+    "Temple City Invitational",
+    "Golden Gate Invitational",
 ]
 VOLUNTEER_ROLES = [
-    "Volunteer", "Event Supervisor", "Lead Event Supervisor", "Runner",
-    "Scoring", "Test Writer", "Tournament Staff",
+    "Volunteer",
+    "Event Supervisor",
+    "Lead Event Supervisor",
+    "Runner",
+    "Scoring",
+    "Test Writer",
+    "Tournament Staff",
 ]
 MEMBERSHIP_NOTES = [
-    None, None, None, "Returning volunteer", "Prefers morning shifts",
-    "Needs parking pass", "First-time volunteer",
+    None,
+    None,
+    None,
+    "Returning volunteer",
+    "Prefers morning shifts",
+    "Needs parking pass",
+    "First-time volunteer",
 ]
 COMPETITION_NOTES = [None, None, "Medaled at states", "Two seasons"]
 FIRST_NAMES = [
-    "Ava", "Liam", "Sofia", "Noah", "Priya", "Mateo", "Chloe", "Ethan", "Nina", "Owen",
-    "Maya", "Caleb", "Amara", "Diego", "Hana", "Jonah", "Leila", "Marcus", "Iris", "Theo",
-    "Rosa", "Kai", "Elena", "Simon", "Yara", "Andre", "Talia", "Felix", "Nadia", "Quinn",
-    "Jasmine", "Victor", "Imani", "Dmitri", "Grace", "Alma", "Rohan", "Sadie", "Emeka", "Lucia",
+    "Ava",
+    "Liam",
+    "Sofia",
+    "Noah",
+    "Priya",
+    "Mateo",
+    "Chloe",
+    "Ethan",
+    "Nina",
+    "Owen",
+    "Maya",
+    "Caleb",
+    "Amara",
+    "Diego",
+    "Hana",
+    "Jonah",
+    "Leila",
+    "Marcus",
+    "Iris",
+    "Theo",
+    "Rosa",
+    "Kai",
+    "Elena",
+    "Simon",
+    "Yara",
+    "Andre",
+    "Talia",
+    "Felix",
+    "Nadia",
+    "Quinn",
+    "Jasmine",
+    "Victor",
+    "Imani",
+    "Dmitri",
+    "Grace",
+    "Alma",
+    "Rohan",
+    "Sadie",
+    "Emeka",
+    "Lucia",
 ]
 LAST_NAMES = [
-    "Nguyen", "Patel", "Garcia", "Okafor", "Kim", "Rossi", "Haddad", "Silva", "Novak", "Tran",
-    "Mendoza", "Abebe", "Lindqvist", "Cruz", "Iqbal", "Moreau", "Yamada", "Brennan", "Kowalski",
-    "Delgado", "Sharma", "Osei", "Fontaine", "Vargas", "Petrov", "Reyes", "Castillo", "Duarte",
-    "Larsen", "Mwangi",
+    "Nguyen",
+    "Patel",
+    "Garcia",
+    "Okafor",
+    "Kim",
+    "Rossi",
+    "Haddad",
+    "Silva",
+    "Novak",
+    "Tran",
+    "Mendoza",
+    "Abebe",
+    "Lindqvist",
+    "Cruz",
+    "Iqbal",
+    "Moreau",
+    "Yamada",
+    "Brennan",
+    "Kowalski",
+    "Delgado",
+    "Sharma",
+    "Osei",
+    "Fontaine",
+    "Vargas",
+    "Petrov",
+    "Reyes",
+    "Castillo",
+    "Duarte",
+    "Larsen",
+    "Mwangi",
 ]
 STUDENT_STATUSES = ["Undergraduate", "Graduate", "Non-Student"]
 STUDENT_STATUS_WEIGHTS = [13, 5, 3]
@@ -101,6 +212,7 @@ class FakeUser:
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
+
 
 def seed_profile(rng: random.Random, user, university_ids: list[int], reference_year: int) -> None:
     """Overwrite one user's profile fields with an internally consistent set.
@@ -147,33 +259,44 @@ def seed_experience(rng: random.Random, db: Session, user, catalog_event_ids: li
     rows that contradict `has_*_experience` read as a sync bug."""
     from app.models.models import UserCompetitionExperience, UserVolunteerExperience
 
-    db.query(UserCompetitionExperience).filter(UserCompetitionExperience.user_id == user.id).delete()
+    db.query(UserCompetitionExperience).filter(
+        UserCompetitionExperience.user_id == user.id
+    ).delete()
     db.query(UserVolunteerExperience).filter(UserVolunteerExperience.user_id == user.id).delete()
 
     if user.has_competition_experience and catalog_event_ids:
         school = rng.choice(SCHOOLS)
-        for event_id in rng.sample(catalog_event_ids, min(rng.randint(1, 4), len(catalog_event_ids))):
-            db.add(UserCompetitionExperience(
-                user_id=user.id,
-                event_id=event_id,
-                school=school,
-                notes=rng.choice(COMPETITION_NOTES),
-            ))
+        for event_id in rng.sample(
+            catalog_event_ids, min(rng.randint(1, 4), len(catalog_event_ids))
+        ):
+            db.add(
+                UserCompetitionExperience(
+                    user_id=user.id,
+                    event_id=event_id,
+                    school=school,
+                    notes=rng.choice(COMPETITION_NOTES),
+                )
+            )
 
     if user.has_volunteer_experience:
         for _ in range(rng.randint(1, 3)):
-            db.add(UserVolunteerExperience(
-                user_id=user.id,
-                tournament_name=rng.choice(PAST_TOURNAMENTS),
-                year=rng.randint(2022, 2026),
-                event_id=rng.choice(catalog_event_ids) if catalog_event_ids and rng.random() < 0.6 else None,
-                role=rng.choice(VOLUNTEER_ROLES),
-            ))
+            db.add(
+                UserVolunteerExperience(
+                    user_id=user.id,
+                    tournament_name=rng.choice(PAST_TOURNAMENTS),
+                    year=rng.randint(2022, 2026),
+                    event_id=rng.choice(catalog_event_ids)
+                    if catalog_event_ids and rng.random() < 0.6
+                    else None,
+                    role=rng.choice(VOLUNTEER_ROLES),
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
 # Onboarding — answer generation and submission replay
 # ---------------------------------------------------------------------------
+
 
 def pick_answer(rng: random.Random, field):
     """A plausible answer for one field, in the raw (pre-snapshot) shape the
@@ -243,7 +366,9 @@ def submit_response(db: Session, form, membership, answers_by_field: dict, activ
     db.add(response)
     db.flush()
 
-    payload = [FormAnswerCreate(field_id=fid, value=value) for fid, value in answers_by_field.items()]
+    payload = [
+        FormAnswerCreate(field_id=fid, value=value) for fid, value in answers_by_field.items()
+    ]
     _store_answers(db, response, {f.id: f for f in active_fields}, payload)
     _write_through_reserved_fields(
         db, form, active_fields, answers_by_field, FakeUser(membership.user_id), response
@@ -251,7 +376,9 @@ def submit_response(db: Session, form, membership, answers_by_field: dict, activ
     return response
 
 
-def reset_onboarding(db: Session, form_ids: list[str], user_ids: list[int], membership_ids: list[int]) -> None:
+def reset_onboarding(
+    db: Session, form_ids: list[str], user_ids: list[int], membership_ids: list[int]
+) -> None:
     """Clear what a resubmission legally can't overwrite.
 
     Track status is upsert-only (`sync_track_statuses` never deletes, and
@@ -273,7 +400,9 @@ def reset_onboarding(db: Session, form_ids: list[str], user_ids: list[int], memb
         FormResponse.form_id.in_(form_ids),
         FormResponse.user_id.in_(user_ids),
     )
-    db.query(FormAnswer).filter(FormAnswer.response_id.in_(response_ids)).delete(synchronize_session=False)
+    db.query(FormAnswer).filter(FormAnswer.response_id.in_(response_ids)).delete(
+        synchronize_session=False
+    )
     db.query(FormResponse).filter(
         FormResponse.form_id.in_(form_ids),
         FormResponse.user_id.in_(user_ids),
@@ -285,7 +414,9 @@ def reset_onboarding(db: Session, form_ids: list[str], user_ids: list[int], memb
         TournamentMembershipEventPreference,
         TournamentMembershipLunch,
     ):
-        db.query(model).filter(model.membership_id.in_(membership_ids)).delete(synchronize_session=False)
+        db.query(model).filter(model.membership_id.in_(membership_ids)).delete(
+            synchronize_session=False
+        )
 
     db.query(TournamentMembership).filter(TournamentMembership.id.in_(membership_ids)).update(
         {TournamentMembership.onboarded_at: None}, synchronize_session=False
@@ -301,7 +432,10 @@ def reset_onboarding(db: Session, form_ids: list[str], user_ids: list[int], memb
 # Lookups
 # ---------------------------------------------------------------------------
 
-def ensure_accounts(db: Session, prefix: str, domain: str, count: int, password: str, seed: int) -> int:
+
+def ensure_accounts(
+    db: Session, prefix: str, domain: str, count: int, password: str, seed: int
+) -> int:
     """Bring the `{prefix}N@{domain}` population up to `count`, creating only
     the numbers that are missing.
 
@@ -318,9 +452,7 @@ def ensure_accounts(db: Session, prefix: str, domain: str, count: int, password:
     from app.models.models import User
 
     emails = [f"{prefix}{i}@{domain}".lower() for i in range(1, count + 1)]
-    existing = {
-        e for (e,) in db.query(User.email).filter(User.email.in_(emails))
-    }
+    existing = {e for (e,) in db.query(User.email).filter(User.email.in_(emails))}
     missing = [e for e in emails if e not in existing]
     if not missing:
         return 0
@@ -330,31 +462,30 @@ def ensure_accounts(db: Session, prefix: str, domain: str, count: int, password:
     hashed = hash_password(password)
     name_rng = random.Random(seed)
     for email in missing:
-        db.add(User(
-            email=email,
-            hashed_password=hashed,
-            first_name=name_rng.choice(FIRST_NAMES),
-            last_name=name_rng.choice(LAST_NAMES),
-            role="user",
-            status="active",
-            email_verified=True,
-        ))
+        db.add(
+            User(
+                email=email,
+                hashed_password=hashed,
+                first_name=name_rng.choice(FIRST_NAMES),
+                last_name=name_rng.choice(LAST_NAMES),
+                role="user",
+                status="active",
+                email_verified=True,
+            )
+        )
     db.flush()
     return len(missing)
 
 
-def resolve_members(db: Session, tournament_id: int, email_prefix: str, enroll: bool, limit: int | None):
+def resolve_members(
+    db: Session, tournament_id: int, email_prefix: str, enroll: bool, limit: int | None
+):
     """Every account whose email starts with the prefix, paired with its
     membership in this tournament — creating the membership when missing, so a
     freshly seeded environment doesn't come back empty."""
     from app.models.models import TournamentMembership, User
 
-    users = (
-        db.query(User)
-        .filter(User.email.like(f"{email_prefix}%@%"))
-        .order_by(User.id)
-        .all()
-    )
+    users = db.query(User).filter(User.email.like(f"{email_prefix}%@%")).order_by(User.id).all()
     if limit is not None:
         users = users[:limit]
 
@@ -404,54 +535,107 @@ def onboarding_forms(db: Session, tournament_id: int) -> list:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.db.seed_members",
         description="Seed member profiles and onboarding responses for a tournament.",
     )
-    parser.add_argument("-t", "--tournament", type=int, required=True, metavar="ID",
-                        help="tournament id to seed")
-    parser.add_argument("--email-prefix", default="test", metavar="PREFIX",
-                        help="seed accounts whose email starts with this (default: test)")
-    parser.add_argument("--email-domain", default="nexus.dev", metavar="DOMAIN",
-                        help="domain for accounts this run creates (default: nexus.dev)")
-    parser.add_argument("--limit", type=int, metavar="N",
-                        help="only seed the first N matching accounts")
+    parser.add_argument(
+        "-t", "--tournament", type=int, required=True, metavar="ID", help="tournament id to seed"
+    )
+    parser.add_argument(
+        "--email-prefix",
+        default="test",
+        metavar="PREFIX",
+        help="seed accounts whose email starts with this (default: test)",
+    )
+    parser.add_argument(
+        "--email-domain",
+        default="nexus.dev",
+        metavar="DOMAIN",
+        help="domain for accounts this run creates (default: nexus.dev)",
+    )
+    parser.add_argument(
+        "--limit", type=int, metavar="N", help="only seed the first N matching accounts"
+    )
 
     accounts = parser.add_argument_group("account creation")
-    accounts.add_argument("-c", "--create", type=int, metavar="N",
-                          help="seed N members total, creating whichever of "
-                               "PREFIX1..PREFIXN don't exist yet")
-    accounts.add_argument("--password", default="test1234", metavar="PW",
-                          help="password for accounts this run creates (default: test1234)")
+    accounts.add_argument(
+        "-c",
+        "--create",
+        type=int,
+        metavar="N",
+        help="seed N members total, creating whichever of PREFIX1..PREFIXN don't exist yet",
+    )
+    accounts.add_argument(
+        "--password",
+        default="test1234",
+        metavar="PW",
+        help="password for accounts this run creates (default: test1234)",
+    )
     # Deliberately not --seed: next to --create N in a script called a seeder,
     # "--seed 50" reads as "seed 50 members" and silently does something else.
-    parser.add_argument("--rng-seed", type=int, default=0, metavar="N",
-                        help="RNG seed - same value gives the same fake people, "
-                             "not a count (default: 0)")
+    parser.add_argument(
+        "--rng-seed",
+        type=int,
+        default=0,
+        metavar="N",
+        help="RNG seed - same value gives the same fake people, not a count (default: 0)",
+    )
 
     toggles = parser.add_argument_group("what to seed")
-    toggles.add_argument("--onboarding", action=argparse.BooleanOptionalAction, default=True,
-                         help="replay onboarding form submissions (default: on)")
-    toggles.add_argument("--profiles", action=argparse.BooleanOptionalAction, default=True,
-                         help="overwrite user profile fields (default: on)")
-    toggles.add_argument("--experience", action=argparse.BooleanOptionalAction, default=True,
-                         help="add prior competition/volunteer history (default: on)")
-    toggles.add_argument("--enroll", action=argparse.BooleanOptionalAction, default=True,
-                         help="create a membership for matching accounts that lack one (default: on)")
-    toggles.add_argument("--age-consent", action=argparse.BooleanOptionalAction, default=True,
-                         help="consent to age disclosure when the tournament collects it (default: on)")
+    toggles.add_argument(
+        "--onboarding",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="replay onboarding form submissions (default: on)",
+    )
+    toggles.add_argument(
+        "--profiles",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="overwrite user profile fields (default: on)",
+    )
+    toggles.add_argument(
+        "--experience",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="add prior competition/volunteer history (default: on)",
+    )
+    toggles.add_argument(
+        "--enroll",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="create a membership for matching accounts that lack one (default: on)",
+    )
+    toggles.add_argument(
+        "--age-consent",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="consent to age disclosure when the tournament collects it (default: on)",
+    )
 
     shape = parser.add_argument_group("onboarding completion mix")
-    shape.add_argument("--stop-every", type=int, default=5, metavar="N",
-                       help="every Nth member stops after the first form; 0 for none (default: 5)")
-    shape.add_argument("--unstarted-every", type=int, default=11, metavar="N",
-                       help="every Nth member submits nothing; 0 for none (default: 11)")
+    shape.add_argument(
+        "--stop-every",
+        type=int,
+        default=5,
+        metavar="N",
+        help="every Nth member stops after the first form; 0 for none (default: 5)",
+    )
+    shape.add_argument(
+        "--unstarted-every",
+        type=int,
+        default=11,
+        metavar="N",
+        help="every Nth member submits nothing; 0 for none (default: 11)",
+    )
 
-    parser.add_argument("--dry-run", action="store_true",
-                        help="roll back instead of committing")
-    parser.add_argument("--force", action="store_true",
-                        help="allow running outside development/preview")
+    parser.add_argument("--dry-run", action="store_true", help="roll back instead of committing")
+    parser.add_argument(
+        "--force", action="store_true", help="allow running outside development/preview"
+    )
     return parser
 
 
@@ -481,14 +665,20 @@ def main(argv: list[str] | None = None) -> int:
                 db, args.email_prefix, args.email_domain, args.create, args.password, args.rng_seed
             )
 
-        pairs, created = resolve_members(db, tournament.id, args.email_prefix, args.enroll, args.limit)
+        pairs, created = resolve_members(
+            db, tournament.id, args.email_prefix, args.enroll, args.limit
+        )
         if not pairs:
-            print(f"no accounts matching {args.email_prefix}*@* with a membership in {tournament.name!r}")
+            print(
+                f"no accounts matching {args.email_prefix}*@* with a membership in {tournament.name!r}"
+            )
             return 1
 
         forms = onboarding_forms(db, tournament.id) if args.onboarding else []
         if args.onboarding and not forms:
-            print(f"note: {tournament.name!r} has no published onboarding forms - skipping onboarding")
+            print(
+                f"note: {tournament.name!r} has no published onboarding forms - skipping onboarding"
+            )
 
         print(f"tournament : {tournament.name} (id {tournament.id})")
         notes = []
@@ -496,15 +686,24 @@ def main(argv: list[str] | None = None) -> int:
             notes.append(f"{accounts_created} new accounts")
         if created:
             notes.append(f"{created} newly enrolled")
-        print(f"members    : {len(pairs)} matching {args.email_prefix}*@*"
-              + (f" ({', '.join(notes)})" if notes else ""))
+        print(
+            f"members    : {len(pairs)} matching {args.email_prefix}*@*"
+            + (f" ({', '.join(notes)})" if notes else "")
+        )
         print(f"forms      : {[f.name for f in forms] or 'none'}")
-        print(f"seeding    : " + ", ".join(
-            name for name, on in (
-                ("profiles", args.profiles),
-                ("experience", args.experience), ("onboarding", bool(forms)),
-            ) if on
-        ) or "nothing")
+        print(
+            "seeding    : "
+            + ", ".join(
+                name
+                for name, on in (
+                    ("profiles", args.profiles),
+                    ("experience", args.experience),
+                    ("onboarding", bool(forms)),
+                )
+                if on
+            )
+            or "nothing"
+        )
         if accounts_created:
             print(f"password   : {args.password}")
         print()
@@ -538,7 +737,7 @@ def main(argv: list[str] | None = None) -> int:
             # when the tournament collects an age flag.
             if args.age_consent and collects_age_flag:
                 membership.age_disclosure = "consented"
-                membership.age_disclosure_at = datetime.now(timezone.utc)
+                membership.age_disclosure_at = datetime.now(UTC)
 
             submitted = []
             if forms:
@@ -555,7 +754,9 @@ def main(argv: list[str] | None = None) -> int:
 
                 advance_onboarding_progress(db, membership)
 
-            print(f"  {user.email:<24} forms={len(submitted)} onboarded={membership.onboarded_at is not None}")
+            print(
+                f"  {user.email:<24} forms={len(submitted)} onboarded={membership.onboarded_at is not None}"
+            )
 
         if args.dry_run:
             db.rollback()

@@ -1,8 +1,7 @@
 """API coverage for tournament onboarding configuration and member progress."""
 
-from tests.conftest import grant_role, login
-
 from app.models.models import Form, FormField, FormResponse, TournamentForm, TournamentMembership
+from tests.conftest import grant_role, login
 
 
 def _make_form(db, user, tournament, *, name="Onboarding form", status="published"):
@@ -27,7 +26,9 @@ def _onboarding_form_ids(db, tournament_id):
         row.form_id
         for row in (
             db.query(TournamentForm)
-            .filter(TournamentForm.tournament_id == tournament_id, TournamentForm.is_onboarding == True)
+            .filter(
+                TournamentForm.tournament_id == tournament_id, TournamentForm.is_onboarding == True
+            )
             .order_by(TournamentForm.order)
             .all()
         )
@@ -56,7 +57,9 @@ def _membership(db, tournament_id, user_id):
     )
 
 
-def test_add_published_form_to_onboarding_appends_and_clears_completed_members(client, db, td_user, td_tournament, other_user):
+def test_add_published_form_to_onboarding_appends_and_clears_completed_members(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     member = grant_role(db, td_tournament, other_user, "Runner")
@@ -78,7 +81,9 @@ def test_add_published_form_to_onboarding_appends_and_clears_completed_members(c
     assert _membership(db, td_tournament.id, other_user.id).onboarded_at is None
 
 
-def test_add_keeps_members_who_already_answered_onboarded(client, db, td_user, td_tournament, other_user):
+def test_add_keeps_members_who_already_answered_onboarded(
+    client, db, td_user, td_tournament, other_user
+):
     """It was a standalone form first — an existing answer counts."""
     form = _make_form(db, td_user, td_tournament)
     member = grant_role(db, td_tournament, other_user, "Runner")
@@ -105,7 +110,9 @@ def test_add_draft_form_to_onboarding_is_rejected(client, db, td_user, td_tourna
     assert response.json()["detail"] == "Only published forms can be added to onboarding"
 
 
-def test_list_onboarding_forms_is_ordered_and_manage_forms_gated(client, db, td_user, td_tournament, other_user):
+def test_list_onboarding_forms_is_ordered_and_manage_forms_gated(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     first.tournament_form.is_onboarding = True
@@ -124,7 +131,9 @@ def test_list_onboarding_forms_is_ordered_and_manage_forms_gated(client, db, td_
     assert client.get(f"/tournaments/{td_tournament.id}/onboarding-forms/").status_code == 403
 
 
-def test_reorder_requires_each_form_once_and_a_contiguous_sequence(client, db, td_user, td_tournament):
+def test_reorder_requires_each_form_once_and_a_contiguous_sequence(
+    client, db, td_user, td_tournament
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     for order, form in enumerate((first, second), start=1):
@@ -139,11 +148,13 @@ def test_reorder_requires_each_form_once_and_a_contiguous_sequence(client, db, t
     )
     duplicate_id = client.patch(
         f"/tournaments/{td_tournament.id}/onboarding-forms/reorder/",
-        json={"forms": [
-            {"form_id": first.id, "order": 1},
-            {"form_id": first.id, "order": 2},
-            {"form_id": second.id, "order": 2},
-        ]},
+        json={
+            "forms": [
+                {"form_id": first.id, "order": 1},
+                {"form_id": first.id, "order": 2},
+                {"form_id": second.id, "order": 2},
+            ]
+        },
     )
     valid = client.patch(
         f"/tournaments/{td_tournament.id}/onboarding-forms/reorder/",
@@ -156,7 +167,9 @@ def test_reorder_requires_each_form_once_and_a_contiguous_sequence(client, db, t
     assert _onboarding_form_ids(db, td_tournament.id) == [second.id, first.id]
 
 
-def test_remove_from_onboarding_renumbers_without_unonboarding_members(client, db, td_user, td_tournament, other_user):
+def test_remove_from_onboarding_renumbers_without_unonboarding_members(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     third = _make_form(db, td_user, td_tournament, name="Third")
@@ -177,7 +190,9 @@ def test_remove_from_onboarding_renumbers_without_unonboarding_members(client, d
     assert _membership(db, td_tournament.id, other_user.id).onboarded_at == td_tournament.created_at
 
 
-def test_remove_from_onboarding_completes_stragglers_immediately(client, db, td_user, td_tournament, other_user):
+def test_remove_from_onboarding_completes_stragglers_immediately(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     _as_steps(first, second)
@@ -205,7 +220,9 @@ def test_onboarding_form_can_be_archived_but_not_deleted(client, db, td_user, td
     assert delete.status_code == 409
 
 
-def test_skipping_a_step_onboards_stragglers_immediately(client, db, td_user, td_tournament, other_user):
+def test_skipping_a_step_onboards_stragglers_immediately(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     _as_steps(first, second)
@@ -219,15 +236,26 @@ def test_skipping_a_step_onboards_stragglers_immediately(client, db, td_user, td
     assert _membership(db, td_tournament.id, other_user.id).onboarded_at is not None
 
 
-def test_republishing_a_step_rechecks_existing_responses(client, db, td_user, td_tournament, other_user, admin_user):
+def test_republishing_a_step_rechecks_existing_responses(
+    client, db, td_user, td_tournament, other_user, admin_user
+):
     """Un-onboards whoever hasn't answered it; keeps whoever already has."""
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second", status="draft")
-    db.add(FormField(
-        form_id=second.id, order=1, label="Color", question_type="single_select_dropdown",
-        field_key="color", is_archived=False,
-        config={"required": False, "options": [{"option_id": "opt_1", "value": "opt_1", "label": "Red"}]},
-    ))
+    db.add(
+        FormField(
+            form_id=second.id,
+            order=1,
+            label="Color",
+            question_type="single_select_dropdown",
+            field_key="color",
+            is_archived=False,
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_1", "value": "opt_1", "label": "Red"}],
+            },
+        )
+    )
     _as_steps(first, second)
     for user in (other_user, admin_user):
         grant_role(db, td_tournament, user, "Runner").onboarded_at = td_tournament.created_at
@@ -242,7 +270,9 @@ def test_republishing_a_step_rechecks_existing_responses(client, db, td_user, td
     assert _membership(db, td_tournament.id, admin_user.id).onboarded_at == td_tournament.created_at
 
 
-def test_progress_returns_next_form_then_snapshots_completion(client, db, td_user, td_tournament, other_user):
+def test_progress_returns_next_form_then_snapshots_completion(
+    client, db, td_user, td_tournament, other_user
+):
     first = _make_form(db, td_user, td_tournament, name="First")
     second = _make_form(db, td_user, td_tournament, name="Second")
     for order, form in enumerate((first, second), start=1):

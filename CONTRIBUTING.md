@@ -29,6 +29,15 @@ uv run uvicorn app.main:app --reload --port 8001
 
 Add packages with `uv add <pkg>` (or `uv add --dev <pkg>` for test-only tools), and commit `pyproject.toml` and `uv.lock` together. Never edit `uv.lock` by hand.
 
+Turn on the repo's git hooks and blame settings once per clone, from the repo root:
+
+```bash
+git config core.hooksPath .githooks
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+The pre-commit hook formats staged backend files with Ruff and sorts their imports. CI runs the same check. To run it by hand from `backend/`: `uv run ruff format` and `uv run ruff check --select I --fix`.
+
 Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
 
 API reference (Scalar): [http://localhost:8001/reference](http://localhost:8001/reference)

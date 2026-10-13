@@ -28,11 +28,17 @@ EMAIL_DOMAIN = "nexus.dev"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--password", default="test1234", help="password every scrubbed user gets")
-    parser.add_argument("--keep", action="append", default=[], metavar="EMAIL",
-                        help="leave these accounts untouched (repeatable or comma-separated) - e.g. your own admin login")
+    parser.add_argument(
+        "--keep",
+        action="append",
+        default=[],
+        metavar="EMAIL",
+        help="leave these accounts untouched (repeatable or comma-separated) - e.g. your own admin login",
+    )
     parser.add_argument("--dry-run", action="store_true", help="report counts, then roll back")
-    parser.add_argument("--force", action="store_true",
-                        help="run even if APP_ENV isn't development/preview")
+    parser.add_argument(
+        "--force", action="store_true", help="run even if APP_ENV isn't development/preview"
+    )
     return parser
 
 
@@ -50,8 +56,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # "--keep a,b --keep c" and "--keep a --keep b,c" both mean [a, b, c].
     keep = [
-        email.strip().lower()
-        for value in args.keep for email in value.split(",") if email.strip()
+        email.strip().lower() for value in args.keep for email in value.split(",") if email.strip()
     ]
     # Hashed once: Argon2 is deliberately slow, and one shared hash is fine
     # when every account has the same throwaway password anyway.
@@ -61,10 +66,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Looked up before the update, so a typo'd --keep shows up here rather
         # than as a kept account that was quietly scrubbed.
-        found = dict(
-            db.query(func.lower(User.email), User.id)
-            .filter(func.lower(User.email).in_(keep))
-        ) if keep else {}
+        found = (
+            dict(db.query(func.lower(User.email), User.id).filter(func.lower(User.email).in_(keep)))
+            if keep
+            else {}
+        )
         for email in keep:
             if email in found:
                 print(f"kept           : {email} (id {found[email]})")

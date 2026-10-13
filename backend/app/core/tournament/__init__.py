@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TypeVar
 from zoneinfo import ZoneInfo
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -47,7 +49,7 @@ def get_tournament(tournament_id: int, db: Session = Depends(get_db)) -> Tournam
 
 
 def tournament_display_name(tournament: Tournament) -> str:
-    """"{year} {short_name or name}" — e.g. "2026 SoCal States" or "2026 Southern California
+    """ "{year} {short_name or name}" — e.g. "2026 SoCal States" or "2026 Southern California
     State Tournament" when no short_name is set. Year comes from
     the tournament's first day (the name itself excludes it, see
     TournamentCreate.name), which is derived from the primary tracks — the year

@@ -1,12 +1,13 @@
 """Tests for /chapters/{chapter_id}/members/ endpoints (app/api/routes/chapter/memberships.py)."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
-from app.models.models import ChapterMembership
 
+from app.models.models import ChapterMembership
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/members/ — chapter officer/lead or admin
 # ---------------------------------------------------------------------------
+
 
 def test_get_members_non_member_forbidden(client, td_user, db):
     university = make_university(db)
@@ -65,7 +66,9 @@ def test_get_members_response_shape_is_flattened(client, db):
     lead = make_user(db, "shapelead@example.com", password="LeadPass123!")
     db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
     db.commit()
-    lead_membership = db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=lead.id).first()
+    lead_membership = (
+        db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=lead.id).first()
+    )
     login(client, "shapelead@example.com", "LeadPass123!")
 
     res = client.get(f"/chapters/{chapter.id}/members/")
@@ -82,6 +85,7 @@ def test_get_members_response_shape_is_flattened(client, db):
 # DELETE /chapters/{chapter_id}/members/{user_id}/ — chapter lead or admin
 # ---------------------------------------------------------------------------
 
+
 def test_delete_member_lead_can_remove(client, db):
     university = make_university(db)
     chapter = make_chapter(db, university.id)
@@ -94,7 +98,10 @@ def test_delete_member_lead_can_remove(client, db):
 
     res = client.delete(f"/chapters/{chapter.id}/members/{member.id}/")
     assert res.status_code == 204
-    assert db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first() is None
+    assert (
+        db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+        is None
+    )
 
 
 def test_delete_member_officer_forbidden(client, db):
@@ -125,6 +132,7 @@ def test_delete_member_not_found(client, db):
 # PATCH /chapters/{chapter_id}/members/{user_id}/ — chapter lead only
 # ---------------------------------------------------------------------------
 
+
 def test_update_member_role_lead_can_promote(client, db):
     university = make_university(db)
     chapter = make_chapter(db, university.id)
@@ -139,7 +147,9 @@ def test_update_member_role_lead_can_promote(client, db):
     assert res.status_code == 200
     assert res.json()["role"] == "officer"
 
-    refreshed = db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    refreshed = (
+        db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    )
     assert refreshed.role == "officer"
 
 
@@ -196,7 +206,12 @@ def test_update_member_role_officer_forbidden(client, db):
     db.commit()
     login(client, "roleupdateofficer@example.com", "OfficerPass123!")
 
-    assert client.patch(f"/chapters/{chapter.id}/members/{member.id}/", json={"role": "lead"}).status_code == 403
+    assert (
+        client.patch(
+            f"/chapters/{chapter.id}/members/{member.id}/", json={"role": "lead"}
+        ).status_code
+        == 403
+    )
 
 
 def test_update_member_role_non_lead_forbidden(client, td_user, db):
@@ -207,12 +222,18 @@ def test_update_member_role_non_lead_forbidden(client, td_user, db):
     db.commit()
     login(client, "td@test.com", "tdpass")
 
-    assert client.patch(f"/chapters/{chapter.id}/members/{member.id}/", json={"role": "lead"}).status_code == 403
+    assert (
+        client.patch(
+            f"/chapters/{chapter.id}/members/{member.id}/", json={"role": "lead"}
+        ).status_code
+        == 403
+    )
 
 
 # ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/members/{user_id}/profile/ — chapter lead only
 # ---------------------------------------------------------------------------
+
 
 def test_get_member_profile_lead_can_access(client, db):
     university = make_university(db)

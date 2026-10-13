@@ -146,7 +146,7 @@ export function toDraft(tracks: MyTrackOptions[]): MemberEditDraft {
   }]));
 }
 
-/** Which statuses this member may set on a track — see backend/track-status-rules.md. */
+/** Which statuses this member may set on a track — see backend/docs/track-status-rules.md. */
 export function allowedStatuses(allowConfirm: boolean): TrackStatus[] {
   // `interested` only without allow_confirm: with self-confirm on,
   // declined -> confirmed is available directly and the middle state would be

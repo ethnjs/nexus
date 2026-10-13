@@ -1,7 +1,6 @@
 [project]
 name = "nexus-backend"
 # Placeholder. The release version lives in VERSION, written by semantic-release.
-# This project is never built or installed as a package.
 version = "0.0.0"
 requires-python = ">=3.13"
 dependencies = [
@@ -27,4 +26,28 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
 ]
+
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["-v", "--tb=short"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+# `Column == True/False` builds SQL; `not Column` would not.
+ignore = ["E712"]
+
+[tool.ruff.lint.isort]
+# The local alembic/ directory would otherwise make it first-party.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are meant to be called in defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path"]

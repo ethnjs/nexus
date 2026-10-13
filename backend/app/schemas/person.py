@@ -5,6 +5,7 @@ Deliberately imports nothing from app.schemas.tournament.* or app.core.*: it
 is referenced from membership, join-code, audit and form schemas alike, and
 staying at the bottom of the import graph is what keeps that from cycling.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
@@ -18,6 +19,7 @@ class PersonRoleRead(BaseModel):
     "invited by" line. Keeping a separate type means widening RoleRead can't
     silently widen this.
     """
+
     # None for a chapter role, which is a plain string on the membership
     # rather than a row of its own.
     id: int | None = None
@@ -36,6 +38,7 @@ class PersonNameRef(BaseModel):
     because `roles: null` is not nothing: it specifically means "holds no
     membership here", which on an assignment would be false.
     """
+
     # The *user* id, not the membership's — audit-log filtering keys off it,
     # and a field named `id` next to `membership_id` invites picking wrong.
     # Null when the account was deleted; the name is null with it.
@@ -47,7 +50,7 @@ class PersonNameRef(BaseModel):
     last_name: str | None = None
 
     @classmethod
-    def from_membership(cls, membership) -> "PersonNameRef":
+    def from_membership(cls, membership) -> PersonNameRef:
         """Built from a TournamentMembership, whose name lives one hop away on
         the joined user."""
         return cls(
@@ -68,6 +71,7 @@ class PersonRefResponse(PersonNameRef):
     than a union because narrowing was the union's only purpose: `roles` now
     carries the "no membership here" signal the bare-user branch used to.
     """
+
     # Three distinct states, all meaningful:
     #   null     no membership here at all
     #   []       a member holding no roles

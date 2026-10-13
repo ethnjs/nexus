@@ -13,8 +13,9 @@ same way membership_role_id is already paired with membership_id here.
 Revision ID: d3b71a4c9e02
 Revises: c018f2ae8e71
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 
 revision = "d3b71a4c9e02"
 down_revision = "c018f2ae8e71"
@@ -26,7 +27,9 @@ def upgrade() -> None:
     # (id, track_id) is redundant on its own — id is the PK — and exists only
     # so the composite FK below has something to reference.
     op.create_unique_constraint(
-        "uq_tournament_shift_id_track", "tournament_shifts", ["id", "track_id"],
+        "uq_tournament_shift_id_track",
+        "tournament_shifts",
+        ["id", "track_id"],
     )
 
     op.add_column(
@@ -94,25 +97,36 @@ def upgrade() -> None:
     op.execute("DELETE FROM tournament_event_assignments WHERE tournament_track_id IS NULL")
 
     op.alter_column(
-        "tournament_event_assignments", "tournament_track_id", nullable=False,
+        "tournament_event_assignments",
+        "tournament_track_id",
+        nullable=False,
     )
     op.create_index(
         "ix_tournament_event_assignments_tournament_track_id",
-        "tournament_event_assignments", ["tournament_track_id"],
+        "tournament_event_assignments",
+        ["tournament_track_id"],
     )
     op.create_foreign_key(
-        "fk_assignment_track", "tournament_event_assignments", "tournament_tracks",
-        ["tournament_track_id"], ["id"], ondelete="CASCADE",
+        "fk_assignment_track",
+        "tournament_event_assignments",
+        "tournament_tracks",
+        ["tournament_track_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
 
     # --- the shift's FK becomes the composite one ---------------------------
     op.drop_constraint(
         "tournament_event_assignments_tournament_shift_id_fkey",
-        "tournament_event_assignments", type_="foreignkey",
+        "tournament_event_assignments",
+        type_="foreignkey",
     )
     op.create_foreign_key(
-        "fk_assignment_shift_track", "tournament_event_assignments", "tournament_shifts",
-        ["tournament_shift_id", "tournament_track_id"], ["id", "track_id"],
+        "fk_assignment_shift_track",
+        "tournament_event_assignments",
+        "tournament_shifts",
+        ["tournament_shift_id", "tournament_track_id"],
+        ["id", "track_id"],
         ondelete="CASCADE",
     )
 
@@ -139,12 +153,17 @@ def downgrade() -> None:
         postgresql_where=sa.text("tournament_shift_id IS NULL"),
     )
     op.drop_constraint(
-        "fk_assignment_shift_track", "tournament_event_assignments", type_="foreignkey",
+        "fk_assignment_shift_track",
+        "tournament_event_assignments",
+        type_="foreignkey",
     )
     op.create_foreign_key(
         "tournament_event_assignments_tournament_shift_id_fkey",
-        "tournament_event_assignments", "tournament_shifts",
-        ["tournament_shift_id"], ["id"], ondelete="CASCADE",
+        "tournament_event_assignments",
+        "tournament_shifts",
+        ["tournament_shift_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
     op.drop_constraint("fk_assignment_track", "tournament_event_assignments", type_="foreignkey")
     op.drop_index(

@@ -1,6 +1,7 @@
 """Tests for app/core/form/changes.py — what a field edit means for people
 who already answered it. Pure functions over a field and its proposed next
-state; no DB, no HTTP. See backend/form-edit-lifecycle.md for the rules."""
+state; no DB, no HTTP. See backend/docs/form-edit-lifecycle.md for the rules."""
+
 import pytest
 
 from app.core.form import changes
@@ -50,24 +51,30 @@ class TestNoChange:
 
 
 class TestQuestionType:
-    @pytest.mark.parametrize("old,new", [
-        ("short_text", "long_text"),
-        ("long_text", "short_text"),
-        ("single_select_radio", "single_select_dropdown"),
-        ("single_select_dropdown", "single_select_radio"),
-    ])
+    @pytest.mark.parametrize(
+        "old,new",
+        [
+            ("short_text", "long_text"),
+            ("long_text", "short_text"),
+            ("single_select_radio", "single_select_dropdown"),
+            ("single_select_dropdown", "single_select_radio"),
+        ],
+    )
     def test_within_shape_class_is_presentational(self, old, new):
         """Both store the same answer shape, so every stored answer stays
         valid — nobody needs to re-answer."""
         field = _field(question_type=old)
         assert changes.QUESTION_TYPE_CHANGED not in _classify(field, new_question_type=new)
 
-    @pytest.mark.parametrize("old,new", [
-        ("single_select_radio", "multi_select_checkbox"),
-        ("multi_select_checkbox", "ranked_choice"),
-        ("short_text", "single_select_radio"),
-        ("acknowledgment", "short_text"),
-    ])
+    @pytest.mark.parametrize(
+        "old,new",
+        [
+            ("single_select_radio", "multi_select_checkbox"),
+            ("multi_select_checkbox", "ranked_choice"),
+            ("short_text", "single_select_radio"),
+            ("acknowledgment", "short_text"),
+        ],
+    )
     def test_across_shape_classes_flags(self, old, new):
         field = _field(question_type=old)
         assert changes.QUESTION_TYPE_CHANGED in _classify(field, new_question_type=new)
@@ -76,10 +83,13 @@ class TestQuestionType:
 class TestOptions:
     def test_added_option_flags(self):
         field = _field()
-        config = {**field.config, "options": [
-            *field.config["options"],
-            {"option_id": "opt_green", "value": "green", "label": "Green"},
-        ]}
+        config = {
+            **field.config,
+            "options": [
+                *field.config["options"],
+                {"option_id": "opt_green", "value": "green", "label": "Green"},
+            ],
+        }
         assert changes.OPTION_ADDED in _classify(field, new_config=config)
 
     def test_removed_option_flags_as_invalidated(self):
@@ -92,10 +102,15 @@ class TestOptions:
     def test_archived_option_is_not_a_live_option(self):
         """An option archived by a previous save is already hidden from
         respondents, so its continued presence in storage isn't an addition."""
-        field = _field(config={"required": False, "options": [
-            {"option_id": "opt_red", "value": "red", "label": "Red"},
-            {"option_id": "opt_old", "value": "old", "label": "Old", "is_archived": True},
-        ]})
+        field = _field(
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_red", "value": "red", "label": "Red"},
+                    {"option_id": "opt_old", "value": "old", "label": "Old", "is_archived": True},
+                ],
+            }
+        )
         assert _classify(field) == set()
 
     def test_reordering_options_raises_nothing(self):
@@ -112,13 +127,17 @@ class TestOptions:
     def test_option_label_edit_is_text_changed(self):
         field = _field()
         options = [{**field.config["options"][0], "label": "Crimson"}, field.config["options"][1]]
-        assert _classify(field, new_config={**field.config, "options": options}) == {changes.TEXT_CHANGED}
+        assert _classify(field, new_config={**field.config, "options": options}) == {
+            changes.TEXT_CHANGED
+        }
 
 
 class TestRequired:
     def test_becoming_required_flags(self):
         field = _field()
-        assert changes.NOW_REQUIRED in _classify(field, new_config={**field.config, "required": True})
+        assert changes.NOW_REQUIRED in _classify(
+            field, new_config={**field.config, "required": True}
+        )
 
     def test_becoming_optional_does_not_flag(self):
         """A previously required answer is still a valid answer."""
@@ -185,18 +204,24 @@ class TestShapeChangeSubsumesOptionDiffs:
         added" would describe a consequence of the type change, not a
         separate thing for a respondent to review."""
         field = _field(question_type="short_text", config={"required": False, "max_length": 50})
-        config = {"required": False, "options": [
-            {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
-        ]}
+        config = {
+            "required": False,
+            "options": [
+                {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+            ],
+        }
         reasons = _classify(field, new_question_type="single_select_radio", new_config=config)
         assert reasons == {changes.QUESTION_TYPE_CHANGED}
 
     def test_option_diffs_still_report_within_a_shape_class(self):
         field = _field(question_type="single_select_radio")
-        config = {**field.config, "options": [
-            *field.config["options"],
-            {"option_id": "opt_green", "value": "green", "label": "Green"},
-        ]}
+        config = {
+            **field.config,
+            "options": [
+                *field.config["options"],
+                {"option_id": "opt_green", "value": "green", "label": "Green"},
+            ],
+        }
         reasons = _classify(field, new_question_type="single_select_dropdown", new_config=config)
         assert reasons == {changes.OPTION_ADDED}
 
@@ -209,25 +234,34 @@ class TestEntityRegrouping:
         return _field(
             field_key="availability_7",
             question_type="multi_select_checkbox",
-            config={"required": False, "options": [
-                {"option_id": option_id, "value": list(value), "label": option_id.title()}
-                for option_id, value in groups.items()
-            ]},
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": option_id, "value": list(value), "label": option_id.title()}
+                    for option_id, value in groups.items()
+                ],
+            },
         )
 
     def test_regrouping_shifts_flags(self):
         field = self._availability({"morning": [1, 2], "afternoon": [3]})
-        config = {**field.config, "options": [
-            {"option_id": "morning", "value": [2], "label": "Morning"},
-            {"option_id": "afternoon", "value": [3], "label": "Afternoon"},
-        ]}
+        config = {
+            **field.config,
+            "options": [
+                {"option_id": "morning", "value": [2], "label": "Morning"},
+                {"option_id": "afternoon", "value": [3], "label": "Afternoon"},
+            ],
+        }
         assert changes.OPTION_REGROUPED in _classify(field, new_config=config)
 
     def test_reordering_ids_within_an_option_is_not_a_change(self):
         field = self._availability({"morning": [1, 2]})
-        config = {**field.config, "options": [
-            {"option_id": "morning", "value": [2, 1], "label": "Morning"},
-        ]}
+        config = {
+            **field.config,
+            "options": [
+                {"option_id": "morning", "value": [2, 1], "label": "Morning"},
+            ],
+        }
         assert _classify(field, new_config=config) == set()
 
     def test_regrouping_is_mandatory(self):

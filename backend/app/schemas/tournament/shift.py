@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel, model_validator
 
 
@@ -13,7 +15,7 @@ class TournamentShiftCreate(BaseModel):
     end: datetime
 
     @model_validator(mode="after")
-    def validate_times(self) -> "TournamentShiftCreate":
+    def validate_times(self) -> TournamentShiftCreate:
         if self.end <= self.start:
             raise ValueError("end must be after start")
         return self
@@ -28,7 +30,7 @@ class TournamentShiftUpdate(BaseModel):
     end: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_times(self) -> "TournamentShiftUpdate":
+    def validate_times(self) -> TournamentShiftUpdate:
         if self.start is not None and self.end is not None and self.end <= self.start:
             raise ValueError("end must be after start")
         return self
@@ -43,6 +45,7 @@ class TournamentShiftBase(BaseModel):
     assignment, and reading it costs a join per shift to count events nobody
     asked about.
     """
+
     id: int
     tournament_id: int
     track_id: int

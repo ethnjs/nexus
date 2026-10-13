@@ -20,7 +20,7 @@ import { IconGripVertical, IconRestore, IconX, IconPlus } from '@/components/ui/
 // Same option shape the backend expects, plus a client-only stable id for
 // React/dnd-kit — option_id itself is blank ("") for a not-yet-saved option
 // (server-assigned on Save, never client-authored per
-// form-question-types-reference.md), so it can't double as the list key.
+// backend/docs/form-question-types-reference.md), so it can't double as the list key.
 export type EditableOption = FormFieldOption & { clientKey: string }
 
 export function newOption(): EditableOption {

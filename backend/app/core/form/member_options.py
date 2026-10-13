@@ -19,6 +19,7 @@ The fields come back in the same shape `get_form_for_rendering` produces, with
 `config["options"]` resolved to real entities. That is what lets the page reuse
 the form renderer instead of growing a second set of answer widgets.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -34,8 +35,13 @@ from app.core.form.validation import (
 )
 from app.core.form.write_through import parse_lunch_field_key
 from app.models.models import (
-    Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentShift, TournamentTrack,
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipEventPreference,
+    TournamentMembershipLunch,
+    TournamentShift,
+    TournamentTrack,
 )
 
 
@@ -59,7 +65,8 @@ def member_editable_reserved_fields(db: Session, tournament_id: int) -> list[For
         .all()
     )
     return [
-        field for field in fields
+        field
+        for field in fields
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)
         or LUNCH_FIELD_KEY_PATTERN.match(field.field_key)
         or EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key)
@@ -86,7 +93,9 @@ def _rendered(db: Session, field: FormField) -> dict:
 
 
 def member_track_options(
-    db: Session, tournament_id: int, membership: TournamentMembership,
+    db: Session,
+    tournament_id: int,
+    membership: TournamentMembership,
 ) -> list[dict]:
     """One entry per live track: what it asks, and what this member answered.
 
@@ -144,32 +153,37 @@ def member_track_options(
 
     entries: list[dict] = []
     for track in tracks:
-        entries.append({
-            "track_id": track.id,
-            "track_name": track.name,
-            "is_primary": track.is_primary,
-            "allow_confirm": track.allow_confirm,
-            # A locked track still appears, with everything it asks — the
-            # member can see what they answered, they just can't change it.
-            "lock_responses": track.lock_responses,
-            "status": status_by_track.get(track.id),
-            "availability": availability_by_track.get(track.id, []),
-            # The member's current shifts *on this track* — the whole-set a
-            # PUT to this track replaces, so the page never has to work out
-            # which of their shifts belong where.
-            "selected_shift_ids": sorted(
-                shift_id for shift_id in selected_shift_ids
-                if shift_tracks.get(shift_id) == track.id
-            ),
-            "lunch": lunch_by_track.get(track.id, []),
-            "lunch_selections": [
-                {"category": row.category, "value": row.value, "label": row.label}
-                for row in lunch_rows if row.track_id == track.id
-            ],
-            "event_preferences": prefs_by_track.get(track.id),
-            "event_preference_selections": [
-                {"tournament_event_id": row.tournament_event_id, "rank": row.rank}
-                for row in pref_rows if row.track_id == track.id
-            ],
-        })
+        entries.append(
+            {
+                "track_id": track.id,
+                "track_name": track.name,
+                "is_primary": track.is_primary,
+                "allow_confirm": track.allow_confirm,
+                # A locked track still appears, with everything it asks — the
+                # member can see what they answered, they just can't change it.
+                "lock_responses": track.lock_responses,
+                "status": status_by_track.get(track.id),
+                "availability": availability_by_track.get(track.id, []),
+                # The member's current shifts *on this track* — the whole-set a
+                # PUT to this track replaces, so the page never has to work out
+                # which of their shifts belong where.
+                "selected_shift_ids": sorted(
+                    shift_id
+                    for shift_id in selected_shift_ids
+                    if shift_tracks.get(shift_id) == track.id
+                ),
+                "lunch": lunch_by_track.get(track.id, []),
+                "lunch_selections": [
+                    {"category": row.category, "value": row.value, "label": row.label}
+                    for row in lunch_rows
+                    if row.track_id == track.id
+                ],
+                "event_preferences": prefs_by_track.get(track.id),
+                "event_preference_selections": [
+                    {"tournament_event_id": row.tournament_event_id, "rank": row.rank}
+                    for row in pref_rows
+                    if row.track_id == track.id
+                ],
+            }
+        )
     return entries

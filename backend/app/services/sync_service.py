@@ -8,16 +8,17 @@ Flow per row:
   4. Upsert Membership by (user_id, tournament_id)
   5. Return SyncResult summary
 """
+
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.models import Event, TournamentMembership, SheetConfig, Tournament, User
 from app.core.phone import normalize_phone
+from app.models.models import SheetConfig, Tournament, TournamentMembership, User
 from app.schemas.sheet_config import (
     PARSE_TIME_RANGE_ACTIONS,
     SyncError,
@@ -27,24 +28,35 @@ from app.schemas.sheet_config import (
 )
 from app.services.sheets_service import SheetsService
 
-
 # ---------------------------------------------------------------------------
 # User fields — fields that map to User table columns
 # ---------------------------------------------------------------------------
 # Identity fields — always written to User
-_USER_IDENTITY_FIELDS = frozenset({
-    "first_name", "last_name", "email", "phone",
-})
- 
+_USER_IDENTITY_FIELDS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+    }
+)
+
 # Profile fields — also written to User. These columns only exist on User,
 # not TournamentMembership, so (unlike the TODO on the old version of this
 # comment once hoped) there's nowhere else for them to go until a real
 # per-tournament profile-snapshot column set is added to TournamentMembership.
-_PROFILE_FIELDS = frozenset({
-    "shirt_size", "dietary_restriction",
-    "university", "major", "employer",
-    "student_status", "competition_exp", "volunteering_exp",
-})
+_PROFILE_FIELDS = frozenset(
+    {
+        "shirt_size",
+        "dietary_restriction",
+        "university",
+        "major",
+        "employer",
+        "student_status",
+        "competition_exp",
+        "volunteering_exp",
+    }
+)
 
 # Union — all fields that come from VOLUNTEER_KNOWN_FIELDS user-side hints
 _USER_FIELDS = _USER_IDENTITY_FIELDS | _PROFILE_FIELDS
@@ -52,6 +64,7 @@ _USER_FIELDS = _USER_IDENTITY_FIELDS | _PROFILE_FIELDS
 # ---------------------------------------------------------------------------
 # Name splitting
 # ---------------------------------------------------------------------------
+
 
 def _split_full_name(full_name: str) -> tuple[str, str]:
     """
@@ -78,6 +91,7 @@ def _split_full_name(full_name: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Time parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_time(raw: str) -> str:
     raw = raw.strip().upper()
@@ -111,6 +125,7 @@ def _parse_time_range(row_key: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Date parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     day_str = day_str.strip()
@@ -158,6 +173,7 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
 # Availability parsing
 # ---------------------------------------------------------------------------
 
+
 def _parse_availability(
     cell_value: str,
     row_key: str,
@@ -198,7 +214,7 @@ def _extract_row_key_and_day_text(value: str) -> tuple[str, str]:
     start = m.group("start")
     end = m.group("end")
     row_key = f"{start} - {end}"
-    day_text = (value[:m.start()] + value[m.end():]).strip(" ,;-")
+    day_text = (value[: m.start()] + value[m.end() :]).strip(" ,;-")
     return row_key, day_text
 
 
@@ -228,6 +244,7 @@ def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dic
 # ---------------------------------------------------------------------------
 # Rule application
 # ---------------------------------------------------------------------------
+
 
 def _rule_matches(
     value: str,
@@ -308,9 +325,7 @@ def _apply_rules(
                 current = re.sub(match, rule_value, current, flags=flags)
             elif match:
                 if not case_sensitive:
-                    current = re.sub(
-                        re.escape(match), rule_value, current, flags=re.IGNORECASE
-                    )
+                    current = re.sub(re.escape(match), rule_value, current, flags=re.IGNORECASE)
                 else:
                     current = current.replace(match, rule_value)
 
@@ -326,6 +341,7 @@ def _apply_rules(
 # ---------------------------------------------------------------------------
 # Field processing helpers
 # ---------------------------------------------------------------------------
+
 
 def _split_multi_select_options(
     value: str,
@@ -351,9 +367,9 @@ def _split_multi_select_options(
             opt_stripped = opt.strip()
             if remaining.startswith(opt_stripped):
                 result.append(opt_stripped)
-                remaining = remaining[len(opt_stripped):].lstrip()
+                remaining = remaining[len(opt_stripped) :].lstrip()
                 if remaining.startswith(sep):
-                    remaining = remaining[len(sep):].lstrip()
+                    remaining = remaining[len(sep) :].lstrip()
                 matched = True
                 break
         if not matched:
@@ -362,7 +378,7 @@ def _split_multi_select_options(
                 result.append(remaining.strip())
                 break
             result.append(remaining[:idx].strip())
-            remaining = remaining[idx + len(sep):].lstrip()
+            remaining = remaining[idx + len(sep) :].lstrip()
 
     return [v for v in result if v]
 
@@ -370,6 +386,7 @@ def _split_multi_select_options(
 # ---------------------------------------------------------------------------
 # Field processing
 # ---------------------------------------------------------------------------
+
 
 def _process_cell(
     value: str,
@@ -450,14 +467,13 @@ def _process_cell(
 # Main sync function
 # ---------------------------------------------------------------------------
 
+
 def sync_sheet(
     config: SheetConfig,
     db: Session,
     sheets_svc: SheetsService,
 ) -> SyncResult:
-    tournament = db.query(Tournament).filter(
-        Tournament.id == config.tournament_id
-    ).first()
+    tournament = db.query(Tournament).filter(Tournament.id == config.tournament_id).first()
     if not tournament:
         raise ValueError(f"Tournament {config.tournament_id} not found")
 
@@ -473,10 +489,7 @@ def sync_sheet(
         legacy_rows = sheets_svc.get_rows(config.spreadsheet_id, config.sheet_name)
         if legacy_rows and isinstance(legacy_rows[0], dict):
             headers = [str(m.get("header", "")) for m in mappings]
-            rows = [
-                [str(r.get(h, "")) for h in headers]
-                for r in legacy_rows
-            ]
+            rows = [[str(r.get(h, "")) for h in headers] for r in legacy_rows]
         else:
             headers = []
             rows = []
@@ -550,7 +563,10 @@ def sync_sheet(
                     else:
                         extra_data[row_key] = processed if processed is not None else ""
 
-                elif field_type == "matrix_row" and field not in ("availability", "event_preference"):
+                elif field_type == "matrix_row" and field not in (
+                    "availability",
+                    "event_preference",
+                ):
                     # Generic matrix aggregation: build a dict keyed by row_key.
                     # Blank cells store "" so all keys are always present.
                     row_key = (mapping.get("row_key") or "").strip()
@@ -583,9 +599,7 @@ def sync_sheet(
 
             email = user_fields.get("email")
             if not email:
-                errors.append(SyncError(
-                    row=row_index, email=None, detail="Missing email address"
-                ))
+                errors.append(SyncError(row=row_index, email=None, detail="Missing email address"))
                 skipped += 1
                 continue
 
@@ -596,21 +610,27 @@ def sync_sheet(
                 db.flush()
             else:
                 if not user_fields.get("first_name") or not user_fields.get("last_name"):
-                    errors.append(SyncError(
-                        row=row_index,
-                        email=email,
-                        detail="Missing first_name or last_name",
-                    ))
+                    errors.append(
+                        SyncError(
+                            row=row_index,
+                            email=email,
+                            detail="Missing first_name or last_name",
+                        )
+                    )
                     skipped += 1
                     continue
                 user = User(**user_fields)
                 db.add(user)
                 db.flush()
 
-            membership = db.query(TournamentMembership).filter(
-                TournamentMembership.user_id == user.id,
-                TournamentMembership.tournament_id == tournament.id,
-            ).first()
+            membership = (
+                db.query(TournamentMembership)
+                .filter(
+                    TournamentMembership.user_id == user.id,
+                    TournamentMembership.tournament_id == tournament.id,
+                )
+                .first()
+            )
 
             merged_availability = _merge_availability([], availability_slots)
 
@@ -636,16 +656,18 @@ def sync_sheet(
 
         except Exception as e:
             db.rollback()
-            errors.append(SyncError(
-                row=row_index,
-                email=email,
-                detail=str(e),
-            ))
+            errors.append(
+                SyncError(
+                    row=row_index,
+                    email=email,
+                    detail=str(e),
+                )
+            )
             skipped += 1
             continue
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         config.last_synced_at = now
         db.commit()
     except Exception as e:
@@ -664,6 +686,7 @@ def sync_sheet(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _slug(text: str) -> str:
     """Slugify a header string for use as a fallback row_key."""

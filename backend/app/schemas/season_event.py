@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
-    
+
 
 class SeasonEventCreate(BaseModel):
     event_id: int
@@ -22,6 +24,7 @@ class SeasonEventCreate(BaseModel):
 
 class SeasonEventUpdate(BaseModel):
     """Partial update — primarily used to toggle is_active."""
+
     year: int | None = None
     division: str | None = None
     is_active: bool | None = None

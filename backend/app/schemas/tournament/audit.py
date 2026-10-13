@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel
 
-from app.schemas.tournament.role import RoleRead
 from app.schemas.person import PersonRefResponse
+from app.schemas.tournament.role import RoleRead
 
 
 class AuditLogEntryRead(BaseModel):

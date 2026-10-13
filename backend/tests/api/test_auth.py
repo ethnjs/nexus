@@ -1,17 +1,18 @@
 """Tests for /auth routes."""
+
 import asyncio
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy import event
-from tests.conftest import login
+
 import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
-from app.core.auth import hash_password, create_verification_token, consume_verification_token
+from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import User, VerificationToken
+from tests.conftest import login
 
 
 @pytest.fixture
@@ -65,6 +66,7 @@ def invited_user(db):
 # POST /auth/login/
 # ---------------------------------------------------------------------------
 
+
 class TestLogin:
     def test_login_success_sets_cookie(self, client, td_user):
         res = login(client, "td@test.com", "tdpass")
@@ -99,6 +101,7 @@ class TestLogin:
         # Hashes written by the old passlib setup are bcrypt; login should
         # accept them and swap in Argon2.
         import bcrypt
+
         td_user.hashed_password = bcrypt.hashpw(b"tdpass", bcrypt.gensalt()).decode()
         db.commit()
 
@@ -112,8 +115,11 @@ class TestLogin:
         # A password set under passlib must still work, and a wrong long one
         # must be a 401, not a 500.
         import bcrypt
+
         long_password = "Aa1!" * 25  # 100 bytes
-        td_user.hashed_password = bcrypt.hashpw(long_password.encode()[:72], bcrypt.gensalt()).decode()
+        td_user.hashed_password = bcrypt.hashpw(
+            long_password.encode()[:72], bcrypt.gensalt()
+        ).decode()
         db.commit()
 
         assert login(client, "td@test.com", "x" * 100).status_code == 401
@@ -125,6 +131,7 @@ class TestLogin:
 # ---------------------------------------------------------------------------
 # POST /auth/logout/
 # ---------------------------------------------------------------------------
+
 
 class TestLogout:
     def test_logout_clears_cookie(self, client, td_user):
@@ -145,6 +152,7 @@ class TestLogout:
 # ---------------------------------------------------------------------------
 # GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
+
 
 class TestMe:
     def test_me_returns_current_user(self, client, td_user):
@@ -188,14 +196,17 @@ class TestPasswordRules:
         assert res.status_code == 422
         assert "8 to 128 characters" in res.text
 
-    @pytest.mark.parametrize("password", [
-        "Écure@123",   # only uppercase letter is non-ASCII
-        "SECURE@12é",  # only lowercase letter is non-ASCII
-        "Secure@abc١",  # only digit is non-ASCII (Arabic-Indic one)
-        "Secure123€",  # only symbol is non-ASCII
-        "Secure @123",  # space
-        "Secure@123\t",  # control character
-    ])
+    @pytest.mark.parametrize(
+        "password",
+        [
+            "Écure@123",  # only uppercase letter is non-ASCII
+            "SECURE@12é",  # only lowercase letter is non-ASCII
+            "Secure@abc١",  # only digit is non-ASCII (Arabic-Indic one)
+            "Secure123€",  # only symbol is non-ASCII
+            "Secure @123",  # space
+            "Secure@123\t",  # control character
+        ],
+    )
     def test_non_printable_ascii_rejected(self, client, password):
         # The old validator let the first character satisfying each class skip
         # the validity check, so the first four of these were accepted.
@@ -205,7 +216,14 @@ class TestPasswordRules:
 
     def test_all_failures_reported_together(self, client):
         res = self._register(client, "é")
-        for fragment in ("8 to 128", "uppercase", "lowercase", "number", "special symbol", "invalid character"):
+        for fragment in (
+            "8 to 128",
+            "uppercase",
+            "lowercase",
+            "number",
+            "special symbol",
+            "invalid character",
+        ):
             assert fragment in res.text
 
     def test_login_is_not_length_capped(self, client, td_user):
@@ -219,19 +237,25 @@ class TestPasswordRules:
         db.commit()
 
         login(client, "td@test.com", long_password)
-        res = client.post("/auth/password/change/", json={
-            "current_password": long_password,
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": long_password,
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 200
 
 
 class TestRegister:
     def test_register_success(self, client):
-        res = client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/register/",
+            json={
+                "email": "new@test.com",
+                "password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["email"] == "new@test.com"
@@ -241,87 +265,154 @@ class TestRegister:
 
     def test_register_sets_cookie(self, client):
         # Registration should log the user in immediately
-        res = client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/register/",
+            json={
+                "email": "new@test.com",
+                "password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 201
         assert "access_token" in res.cookies
 
     def test_register_auto_login(self, client):
         # Cookie from registration should allow immediate access to /me/
-        client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": VALID_PASSWORD,
-        })
+        client.post(
+            "/auth/register/",
+            json={
+                "email": "new@test.com",
+                "password": VALID_PASSWORD,
+            },
+        )
         res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "new@test.com"
 
     def test_register_email_stored_lowercase(self, client):
-        res = client.post("/auth/register/", json={
-            "email": "NEW@TEST.COM",
-            "password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/register/",
+            json={
+                "email": "NEW@TEST.COM",
+                "password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 201
         assert res.json()["email"] == "new@test.com"
 
     def test_register_duplicate_email_rejected(self, client, td_user):
-        assert client.post("/auth/register/", json={
-            "email": "td@test.com",
-            "password": VALID_PASSWORD,
-        }).status_code == 409
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "td@test.com",
+                    "password": VALID_PASSWORD,
+                },
+            ).status_code
+            == 409
+        )
 
     def test_register_duplicate_email_case_insensitive_rejected(self, client, td_user):
-        assert client.post("/auth/register/", json={
-            "email": "TD@TEST.COM",
-            "password": VALID_PASSWORD,
-        }).status_code == 409
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "TD@TEST.COM",
+                    "password": VALID_PASSWORD,
+                },
+            ).status_code
+            == 409
+        )
 
     def test_register_can_login_with_new_credentials(self, client):
         # Confirms the password was hashed and stored correctly
-        client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": VALID_PASSWORD,
-        })
+        client.post(
+            "/auth/register/",
+            json={
+                "email": "new@test.com",
+                "password": VALID_PASSWORD,
+            },
+        )
         client.post("/auth/logout/")
         assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
     def test_register_password_too_short(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Ab@1",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "Ab@1",
+                },
+            ).status_code
+            == 422
+        )
 
     def test_register_password_missing_uppercase(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "secure@123",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "secure@123",
+                },
+            ).status_code
+            == 422
+        )
 
     def test_register_password_missing_lowercase(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "SECURE@123",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "SECURE@123",
+                },
+            ).status_code
+            == 422
+        )
 
     def test_register_password_missing_number(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure@abc",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "Secure@abc",
+                },
+            ).status_code
+            == 422
+        )
 
     def test_register_password_missing_symbol(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure1234",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "Secure1234",
+                },
+            ).status_code
+            == 422
+        )
 
     def test_register_password_invalid_char(self, client):
         # Control characters (ASCII < 32) should be rejected
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure@1\x01",
-        }).status_code == 422
+        assert (
+            client.post(
+                "/auth/register/",
+                json={
+                    "email": "new@test.com",
+                    "password": "Secure@1\x01",
+                },
+            ).status_code
+            == 422
+        )
 
 
 # ---------------------------------------------------------------------------
 # GET /auth/verify-email/
 # ---------------------------------------------------------------------------
+
 
 class TestVerifyEmail:
     def test_valid_token_verifies_email(self, client, td_user, db):
@@ -345,6 +436,7 @@ class TestVerifyEmail:
 # POST /auth/send-email-verification/
 # ---------------------------------------------------------------------------
 
+
 class TestSendEmailVerification:
     def test_unverified_user_can_request(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -363,6 +455,7 @@ class TestSendEmailVerification:
 # ---------------------------------------------------------------------------
 # POST /auth/email/request-change/
 # ---------------------------------------------------------------------------
+
 
 class TestRequestEmailChange:
     def test_request_change_success(self, client, td_user, mock_send_email):
@@ -396,12 +489,16 @@ class TestRequestEmailChange:
         assert res.status_code == 429
 
     def test_unauthenticated_forbidden(self, client):
-        assert client.post("/auth/email/request-change/", json={"new_email": "x@test.com"}).status_code == 401
+        assert (
+            client.post("/auth/email/request-change/", json={"new_email": "x@test.com"}).status_code
+            == 401
+        )
 
 
 # ---------------------------------------------------------------------------
 # GET /auth/email/pending-change/
 # ---------------------------------------------------------------------------
+
 
 class TestPendingEmailChange:
     def test_nothing_pending_returns_nulls(self, client, td_user):
@@ -421,7 +518,9 @@ class TestPendingEmailChange:
         assert body["can_resend_at"] is not None
 
     def test_consumed_token_not_reported_as_pending(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change", new_email="tdnew@test.com"
+        )
         client.get(f"/auth/email/confirm-change/?token={token}")
 
         login(client, "tdnew@test.com", "tdpass")
@@ -436,9 +535,12 @@ class TestPendingEmailChange:
 # GET /auth/email/confirm-change/
 # ---------------------------------------------------------------------------
 
+
 class TestConfirmEmailChange:
     def test_valid_token_confirms_change(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change", new_email="tdnew@test.com"
+        )
         res = client.get(f"/auth/email/confirm-change/?token={token}")
         assert res.status_code == 200
         db.refresh(td_user)
@@ -449,7 +551,9 @@ class TestConfirmEmailChange:
         assert client.get("/auth/email/confirm-change/?token=garbage").status_code == 400
 
     def test_token_already_used_rejected(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change", new_email="tdnew@test.com"
+        )
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 200
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
 
@@ -463,14 +567,19 @@ class TestConfirmEmailChange:
 # POST /auth/email/revert/
 # ---------------------------------------------------------------------------
 
+
 class TestRevertEmailChange:
     def test_reverts_applied_change_and_resets_password(self, client, td_user, db):
         # Change already confirmed: user.email holds the new address
         td_user.email = "attacker@test.com"
         db.commit()
-        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change_revert", new_email="td@test.com"
+        )
 
-        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        res = client.post(
+            "/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
         assert res.status_code == 200
         db.refresh(td_user)
         assert td_user.email == "td@test.com"
@@ -478,10 +587,16 @@ class TestRevertEmailChange:
         assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
 
     def test_cancels_pending_change(self, client, td_user, db):
-        change_token = create_verification_token(db, td_user.id, "email_change", new_email="attacker@test.com")
-        revert_token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        change_token = create_verification_token(
+            db, td_user.id, "email_change", new_email="attacker@test.com"
+        )
+        revert_token = create_verification_token(
+            db, td_user.id, "email_change_revert", new_email="td@test.com"
+        )
 
-        res = client.post("/auth/email/revert/", json={"token": revert_token, "new_password": VALID_PASSWORD})
+        res = client.post(
+            "/auth/email/revert/", json={"token": revert_token, "new_password": VALID_PASSWORD}
+        )
         assert res.status_code == 200
         assert client.get(f"/auth/email/confirm-change/?token={change_token}").status_code == 400
         db.refresh(td_user)
@@ -489,31 +604,51 @@ class TestRevertEmailChange:
 
     def test_revokes_existing_sessions(self, client, td_user, db):
         login(client, "td@test.com", "tdpass")
-        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change_revert", new_email="td@test.com"
+        )
         client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
         assert client.get("/users/me/").status_code == 401
 
     def test_invalid_token_rejected(self, client):
-        res = client.post("/auth/email/revert/", json={"token": "garbage", "new_password": VALID_PASSWORD})
+        res = client.post(
+            "/auth/email/revert/", json={"token": "garbage", "new_password": VALID_PASSWORD}
+        )
         assert res.status_code == 400
 
     def test_token_already_used_rejected(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
-        assert client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}).status_code == 200
-        assert client.post("/auth/email/revert/", json={"token": token, "new_password": "Another@123"}).status_code == 400
+        token = create_verification_token(
+            db, td_user.id, "email_change_revert", new_email="td@test.com"
+        )
+        assert (
+            client.post(
+                "/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/auth/email/revert/", json={"token": token, "new_password": "Another@123"}
+            ).status_code
+            == 400
+        )
 
 
 # ---------------------------------------------------------------------------
 # POST /auth/password/change/
 # ---------------------------------------------------------------------------
 
+
 class TestChangePassword:
     def test_change_password_success(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/password/change/", json={
-            "current_password": "tdpass",
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "tdpass",
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 200
         client.post("/auth/logout/")
         assert login(client, "td@test.com", "tdpass").status_code == 401
@@ -521,39 +656,52 @@ class TestChangePassword:
 
     def test_wrong_current_password_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/password/change/", json={
-            "current_password": "wrongpass",
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "wrongpass",
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 401
 
     def test_new_password_same_as_current_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/password/change/", json={
-            "current_password": "tdpass",
-            "new_password": "tdpass",
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "tdpass",
+                "new_password": "tdpass",
+            },
+        )
         assert res.status_code == 422
 
     def test_weak_new_password_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/password/change/", json={
-            "current_password": "tdpass",
-            "new_password": "weak",
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "tdpass",
+                "new_password": "weak",
+            },
+        )
         assert res.status_code == 422
 
     def test_unauthenticated_forbidden(self, client):
-        res = client.post("/auth/password/change/", json={
-            "current_password": "x",
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "x",
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 401
 
 
 # ---------------------------------------------------------------------------
 # POST /auth/password/reset/request/
 # ---------------------------------------------------------------------------
+
 
 class TestRequestPasswordReset:
     def test_active_user_with_password_sends_email(self, client, td_user, mock_send_email):
@@ -573,7 +721,9 @@ class TestRequestPasswordReset:
         assert res.status_code == 200
         assert not mock_send_email.called
 
-    def test_no_password_user_excluded_no_email_sent(self, client, volunteer_no_password, mock_send_email):
+    def test_no_password_user_excluded_no_email_sent(
+        self, client, volunteer_no_password, mock_send_email
+    ):
         res = client.post("/auth/password/reset/request/", json={"email": "vol@test.com"})
         assert res.status_code == 200
         assert not mock_send_email.called
@@ -593,33 +743,46 @@ class TestRequestPasswordReset:
 # POST /auth/password/reset/confirm/
 # ---------------------------------------------------------------------------
 
+
 class TestConfirmPasswordReset:
     def test_valid_token_resets_password(self, client, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
-        res = client.post("/auth/password/reset/confirm/", json={
-            "token": token,
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/reset/confirm/",
+            json={
+                "token": token,
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 200
         assert login(client, "td@test.com", "tdpass").status_code == 401
         assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
 
     def test_invalid_token_rejected(self, client):
-        res = client.post("/auth/password/reset/confirm/", json={
-            "token": "garbage",
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/reset/confirm/",
+            json={
+                "token": "garbage",
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 400
 
     def test_token_already_used_rejected(self, client, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
-        client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD})
-        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": "Another@123"})
+        client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
+        res = client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": "Another@123"}
+        )
         assert res.status_code == 400
 
     def test_weak_new_password_rejected(self, client, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
-        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": "weak"})
+        res = client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": "weak"}
+        )
         assert res.status_code == 422
 
 
@@ -627,13 +790,17 @@ class TestConfirmPasswordReset:
 # POST /auth/account-setup/confirm/
 # ---------------------------------------------------------------------------
 
+
 class TestConfirmAccountSetup:
     def test_valid_token_completes_setup(self, client, invited_user, db):
         token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post("/auth/account-setup/confirm/", json={
-            "token": token,
-            "password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/account-setup/confirm/",
+            json={
+                "token": token,
+                "password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 200
         assert "access_token" in res.cookies
         db.refresh(invited_user)
@@ -642,23 +809,30 @@ class TestConfirmAccountSetup:
 
     def test_confirm_logs_user_in(self, client, invited_user, db):
         token = create_verification_token(db, invited_user.id, "account_setup")
-        client.post("/auth/account-setup/confirm/", json={
-            "token": token,
-            "password": VALID_PASSWORD,
-        })
+        client.post(
+            "/auth/account-setup/confirm/",
+            json={
+                "token": token,
+                "password": VALID_PASSWORD,
+            },
+        )
         assert client.get("/users/me/").status_code == 200
 
     def test_invalid_token_rejected(self, client):
-        res = client.post("/auth/account-setup/confirm/", json={
-            "token": "garbage",
-            "password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/account-setup/confirm/",
+            json={
+                "token": "garbage",
+                "password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 400
 
 
 # ---------------------------------------------------------------------------
 # consume_verification_token
 # ---------------------------------------------------------------------------
+
 
 class TestConsumeVerificationToken:
     def test_stores_sha256_digest(self, td_user, db):
@@ -696,7 +870,9 @@ class TestConsumeVerificationToken:
         assert "RETURNING" in statements[0].upper()
 
     def test_returns_row_and_marks_used(self, td_user, db):
-        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        token = create_verification_token(
+            db, td_user.id, "email_change", new_email="tdnew@test.com"
+        )
         row = consume_verification_token(db, token, "email_change")
         assert row is not None
         assert row.user_id == td_user.id
@@ -717,24 +893,29 @@ class TestConsumeVerificationToken:
     def test_expired_token_rejected(self, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
         row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
-        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
         assert consume_verification_token(db, token, "password_reset") is None
 
-    @pytest.mark.parametrize("legacy_hash", [
-        pytest.param(lambda raw: hash_password(raw), id="argon2"),
-        pytest.param(lambda raw: BcryptHasher().hash(raw), id="bcrypt"),
-    ])
+    @pytest.mark.parametrize(
+        "legacy_hash",
+        [
+            pytest.param(lambda raw: hash_password(raw), id="argon2"),
+            pytest.param(lambda raw: BcryptHasher().hash(raw), id="bcrypt"),
+        ],
+    )
     def test_legacy_password_hashed_token_rejected(self, td_user, db, legacy_hash):
         # Tokens issued before the switch to SHA-256 are deliberately not
         # migrated or verified with a fallback: users request a new link.
         raw = "legacy-token-issued-before-sha256"
-        db.add(VerificationToken(
-            user_id=td_user.id,
-            token_hash=legacy_hash(raw),
-            purpose="password_reset",
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
-        ))
+        db.add(
+            VerificationToken(
+                user_id=td_user.id,
+                token_hash=legacy_hash(raw),
+                purpose="password_reset",
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
         db.commit()
         assert consume_verification_token(db, raw, "password_reset") is None
 
@@ -742,6 +923,7 @@ class TestConsumeVerificationToken:
 # ---------------------------------------------------------------------------
 # Password hashing stays off the event loop
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def loop_spy(monkeypatch):
@@ -776,28 +958,39 @@ def _ran_off_loop(calls, name):
 class TestOffEventLoop:
     def test_change_password(self, client, td_user, loop_spy):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/password/change/", json={
-            "current_password": "tdpass",
-            "new_password": VALID_PASSWORD,
-        })
+        res = client.post(
+            "/auth/password/change/",
+            json={
+                "current_password": "tdpass",
+                "new_password": VALID_PASSWORD,
+            },
+        )
         assert res.status_code == 200
         assert _ran_off_loop(loop_spy, "verify_password")
         assert _ran_off_loop(loop_spy, "hash_password")
 
     def test_confirm_password_reset(self, client, td_user, db, loop_spy):
         token = create_verification_token(db, td_user.id, "password_reset")
-        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD})
+        res = client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
         assert res.status_code == 200
         assert _ran_off_loop(loop_spy, "hash_password")
 
     def test_revert_email_change(self, client, td_user, db, loop_spy):
-        token = create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
-        res = client.post("/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD})
+        token = create_verification_token(
+            db, td_user.id, "email_change_revert", new_email="td@test.com"
+        )
+        res = client.post(
+            "/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
         assert res.status_code == 200
         assert _ran_off_loop(loop_spy, "hash_password")
 
     def test_confirm_account_setup(self, client, invited_user, db, loop_spy):
         token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post("/auth/account-setup/confirm/", json={"token": token, "password": VALID_PASSWORD})
+        res = client.post(
+            "/auth/account-setup/confirm/", json={"token": token, "password": VALID_PASSWORD}
+        )
         assert res.status_code == 200
         assert _ran_off_loop(loop_spy, "hash_password")

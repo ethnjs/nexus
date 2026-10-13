@@ -6,7 +6,9 @@ Every item is an existence check: has this tournament got at least one of the
 thing. Nothing here tracks "did the TD look at the page", so an item can go
 back to not_started if its rows are all deleted, which is the honest answer.
 """
+
 from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import STAFF_INVITE_SENT
@@ -75,8 +77,11 @@ def get_checklist(db: Session, tournament: Tournament) -> dict:
     ]
 
     items = [
-        {"item_key": i["item_key"], "label": i["label"],
-         "status": "complete" if i["complete"] else "not_started"}
+        {
+            "item_key": i["item_key"],
+            "label": i["label"],
+            "status": "complete" if i["complete"] else "not_started",
+        }
         for i in items
     ]
     completed = sum(1 for i in items if i["status"] == "complete")

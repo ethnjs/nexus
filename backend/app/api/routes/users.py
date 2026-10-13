@@ -1,22 +1,43 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
-    get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
-    get_current_session, revoke_all_other_sessions,
+    clear_auth_cookie,
+    get_current_session,
+    get_current_user,
+    require_admin,
+    revoke_all_other_sessions,
+    revoke_all_sessions,
+    verify_password,
+)
+from app.core.profile_status import (
+    compute_missing_profile_fields,
+    is_onboarding_complete,
+    is_profile_complete,
 )
 from app.core.users import find_user_by_id, require_not_last_admin
-from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
-from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
-from app.schemas.user import (
-    UserMeFullResponse, AdminUserSlimResponse,
-    AdminUserFullResponse, UserMeSlimResponse, UserUpdate, AdminUserUpdate
+from app.models.models import (
+    Event,
+    User,
+    UserCompetitionExperience,
+    UserSession,
+    UserVolunteerExperience,
 )
-from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
+from app.schemas.auth import AccountDeactivateRequest, AccountDeleteRequest, MessageResponse
 from app.schemas.session import SessionResponse
+from app.schemas.user import (
+    AdminUserFullResponse,
+    AdminUserSlimResponse,
+    AdminUserUpdate,
+    UserMeFullResponse,
+    UserMeSlimResponse,
+    UserUpdate,
+)
 from app.services.email_service import send_password_reset_request_email
 
 router = APIRouter(tags=["users"])
@@ -74,7 +95,7 @@ def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin can only update a user's role and status.
@@ -116,6 +137,7 @@ def admin_update_user(
     db.refresh(user)
     return user
 
+
 # ---------------------------------------------------------------------------
 # DELETE /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
@@ -154,7 +176,9 @@ def admin_delete_user(
 # ---------------------------------------------------------------------------
 # POST /admin/users/{user_id}/password-reset/ — admin only
 # ---------------------------------------------------------------------------
-@router.post("/admin/users/{user_id}/password-reset/", status_code=status.HTTP_200_OK,
+@router.post(
+    "/admin/users/{user_id}/password-reset/",
+    status_code=status.HTTP_200_OK,
     response_model=MessageResponse,
     responses={
         400: {"description": "User has no password to reset"},
@@ -210,8 +234,12 @@ def get_me(
         user = (
             db.query(User)
             .options(
-                selectinload(User.competition_experience).selectinload(UserCompetitionExperience.event).selectinload(Event.category),
-                selectinload(User.volunteer_experience).selectinload(UserVolunteerExperience.event).selectinload(Event.category),
+                selectinload(User.competition_experience)
+                .selectinload(UserCompetitionExperience.event)
+                .selectinload(Event.category),
+                selectinload(User.volunteer_experience)
+                .selectinload(UserVolunteerExperience.event)
+                .selectinload(Event.category),
             )
             .filter(User.id == current_user.id)
             .first()
@@ -231,9 +259,7 @@ def get_me(
 # ---------------------------------------------------------------------------
 @router.patch("/users/me/", response_model=UserMeFullResponse)
 def update_user_me(
-    body: UserUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    body: UserUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     """
     Update the current user's own profile.
@@ -254,7 +280,10 @@ def update_user_me(
 # ---------------------------------------------------------------------------
 # POST /users/me/deactivate/ — authenticated self-service deactivation
 # ---------------------------------------------------------------------------
-@router.post("/users/me/deactivate/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.post(
+    "/users/me/deactivate/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={401: {"description": "Current password is incorrect"}},
 )
 def deactivate_me(
@@ -284,7 +313,10 @@ def deactivate_me(
 # ---------------------------------------------------------------------------
 # DELETE /users/me/ — authenticated self-service hard delete
 # ---------------------------------------------------------------------------
-@router.delete("/users/me/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.delete(
+    "/users/me/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={401: {"description": "Current password is incorrect"}},
 )
 def delete_me(
@@ -320,7 +352,7 @@ def list_my_sessions(
     current_session: UserSession = Depends(get_current_session),
 ):
     """Lists active (not revoked, not expired) sessions, most recently active first."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sessions = (
         db.query(UserSession)
         .filter(
@@ -348,7 +380,11 @@ def list_my_sessions(
 # ---------------------------------------------------------------------------
 # POST /users/me/sessions/logout-others/ — "log out everywhere" except here
 # ---------------------------------------------------------------------------
-@router.post("/users/me/sessions/logout-others/", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+@router.post(
+    "/users/me/sessions/logout-others/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+)
 def logout_other_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),

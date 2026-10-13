@@ -10,41 +10,50 @@ Write-through target for event_preference_* answers. One row per
 field is required to have allow_duplicates=false, so rank is stored per row
 but isn't part of the uniqueness.
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '8e43330211be'
-down_revision: Union[str, None] = 'a3f81c60e274'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "8e43330211be"
+down_revision: str | None = "a3f81c60e274"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     op.create_table(
-        'tournament_membership_event_preferences',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('membership_id', sa.Integer(), nullable=False),
-        sa.Column('tournament_event_id', sa.Integer(), nullable=False),
-        sa.Column('key', sa.String(length=64), nullable=False),
-        sa.Column('rank', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['tournament_event_id'], ['tournament_events.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('membership_id', 'key', 'tournament_event_id', name='uq_membership_event_preference'),
+        "tournament_membership_event_preferences",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("membership_id", sa.Integer(), nullable=False),
+        sa.Column("tournament_event_id", sa.Integer(), nullable=False),
+        sa.Column("key", sa.String(length=64), nullable=False),
+        sa.Column("rank", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["membership_id"], ["tournament_memberships.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tournament_event_id"], ["tournament_events.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "membership_id", "key", "tournament_event_id", name="uq_membership_event_preference"
+        ),
     )
     op.create_index(
-        op.f('ix_tournament_membership_event_preferences_id'),
-        'tournament_membership_event_preferences', ['id'], unique=False,
+        op.f("ix_tournament_membership_event_preferences_id"),
+        "tournament_membership_event_preferences",
+        ["id"],
+        unique=False,
     )
 
 
 def downgrade() -> None:
     op.drop_index(
-        op.f('ix_tournament_membership_event_preferences_id'),
-        table_name='tournament_membership_event_preferences',
+        op.f("ix_tournament_membership_event_preferences_id"),
+        table_name="tournament_membership_event_preferences",
     )
-    op.drop_table('tournament_membership_event_preferences')
+    op.drop_table("tournament_membership_event_preferences")

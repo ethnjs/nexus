@@ -6,12 +6,17 @@ that emit them — these tests are about the read side (gating, keyset paging,
 filtering, actor/role hydration), so building the log explicitly keeps each
 case's fixture data visible instead of implied by a chain of other endpoints.
 """
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 from app.core.tournament.audit import (
-    JOIN_CODE_CREATED, ROLE_CREATED, ROLE_DELETED, ROLE_UPDATED, log_action,
+    JOIN_CODE_CREATED,
+    ROLE_CREATED,
+    ROLE_DELETED,
+    ROLE_UPDATED,
+    log_action,
 )
-from app.models.models import AuditLogEntry, TournamentRole
+from app.models.models import TournamentRole
 from tests.conftest import grant_role, login
 
 
@@ -34,6 +39,7 @@ def _role_id(db, tournament_id, label):
 # ---------------------------------------------------------------------------
 # GET /audit-log/ — permission gating (manage_tournament)
 # ---------------------------------------------------------------------------
+
 
 def test_list_audit_log_td_can_access(client, td_user, td_tournament, db):
     _log(db, td_tournament.id, td_user.id)
@@ -69,6 +75,7 @@ def test_list_audit_log_unauthenticated(client, td_tournament):
 # Ordering + tournament scoping
 # ---------------------------------------------------------------------------
 
+
 def test_list_audit_log_newest_first(client, td_user, td_tournament, db):
     first = _log(db, td_tournament.id, td_user.id, action=ROLE_CREATED)
     second = _log(db, td_tournament.id, td_user.id, action=ROLE_UPDATED)
@@ -100,6 +107,7 @@ def test_list_audit_log_empty(client, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 # Keyset pagination
 # ---------------------------------------------------------------------------
+
 
 def test_list_audit_log_limit_and_next_before_id(client, td_user, td_tournament, db):
     entries = [_log(db, td_tournament.id, td_user.id) for _ in range(5)]
@@ -160,6 +168,7 @@ def test_list_audit_log_limit_out_of_bounds_rejected(client, td_user, td_tournam
 # Filters
 # ---------------------------------------------------------------------------
 
+
 def test_list_audit_log_filter_by_action(client, td_user, td_tournament, db):
     _log(db, td_tournament.id, td_user.id, action=ROLE_CREATED)
     target = _log(db, td_tournament.id, td_user.id, action=JOIN_CODE_CREATED)
@@ -176,9 +185,9 @@ def test_list_audit_log_filter_by_target_type(client, td_user, td_tournament, db
     target = _log(db, td_tournament.id, td_user.id, target_type="join_code", target_id=1)
 
     login(client, "td@test.com", "tdpass")
-    items = client.get(
-        f"/tournaments/{td_tournament.id}/audit-log/?target_type=join_code"
-    ).json()["items"]
+    items = client.get(f"/tournaments/{td_tournament.id}/audit-log/?target_type=join_code").json()[
+        "items"
+    ]
     assert [i["id"] for i in items] == [target.id]
 
 
@@ -187,9 +196,7 @@ def test_list_audit_log_filter_by_target_id(client, td_user, td_tournament, db):
     target = _log(db, td_tournament.id, td_user.id, target_type="join_code", target_id=22)
 
     login(client, "td@test.com", "tdpass")
-    items = client.get(
-        f"/tournaments/{td_tournament.id}/audit-log/?target_id=22"
-    ).json()["items"]
+    items = client.get(f"/tournaments/{td_tournament.id}/audit-log/?target_id=22").json()["items"]
     assert [i["id"] for i in items] == [target.id]
 
 
@@ -225,9 +232,9 @@ def test_list_audit_log_filter_since_and_until(client, td_user, td_tournament, d
     recent = _log(db, td_tournament.id, td_user.id)
 
     # Backdate the first entry so the two straddle the cutoff.
-    old.created_at = datetime.now(timezone.utc) - timedelta(days=10)
+    old.created_at = datetime.now(UTC) - timedelta(days=10)
     db.commit()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
     # params= rather than an f-string — the tz offset's "+" would otherwise
     # decode as a space and 422 the request.
@@ -244,6 +251,7 @@ def test_list_audit_log_filter_since_and_until(client, td_user, td_tournament, d
 # ---------------------------------------------------------------------------
 # Actor + role hydration
 # ---------------------------------------------------------------------------
+
 
 def test_list_audit_log_actor_resolves_to_membership(client, td_user, td_tournament, db):
     _log(db, td_tournament.id, td_user.id)
@@ -271,7 +279,9 @@ def test_list_audit_log_actor_role_carries_no_permissions(client, td_user, td_to
     _log(db, td_tournament.id, td_user.id)
     login(client, "td@test.com", "tdpass")
 
-    role = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"]["roles"][0]
+    role = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"][
+        "roles"
+    ][0]
     assert set(role) == {"id", "label"}
 
 
@@ -291,7 +301,9 @@ def test_list_audit_log_actor_falls_back_to_user_without_membership(
 
 def test_list_audit_log_hydrates_role_target(client, td_user, td_tournament, db):
     role_id = _role_id(db, td_tournament.id, "Volunteer")
-    _log(db, td_tournament.id, td_user.id, action=ROLE_UPDATED, target_type="role", target_id=role_id)
+    _log(
+        db, td_tournament.id, td_user.id, action=ROLE_UPDATED, target_type="role", target_id=role_id
+    )
 
     login(client, "td@test.com", "tdpass")
     entry = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]
@@ -303,7 +315,9 @@ def test_list_audit_log_role_is_none_for_deleted_role(client, td_user, td_tourna
     """role_deleted entries outlive the role they point at — the entry still
     renders, with role left null rather than 500ing on the missing row."""
     role_id = _role_id(db, td_tournament.id, "Volunteer")
-    _log(db, td_tournament.id, td_user.id, action=ROLE_DELETED, target_type="role", target_id=role_id)
+    _log(
+        db, td_tournament.id, td_user.id, action=ROLE_DELETED, target_type="role", target_id=role_id
+    )
     db.query(TournamentRole).filter(TournamentRole.id == role_id).delete()
     db.commit()
 
@@ -317,8 +331,12 @@ def test_list_audit_log_role_is_none_for_non_role_target(client, td_user, td_tou
     the same numeric id must not pick up a role."""
     role_id = _role_id(db, td_tournament.id, "Volunteer")
     _log(
-        db, td_tournament.id, td_user.id,
-        action=JOIN_CODE_CREATED, target_type="join_code", target_id=role_id,
+        db,
+        td_tournament.id,
+        td_user.id,
+        action=JOIN_CODE_CREATED,
+        target_type="join_code",
+        target_id=role_id,
     )
 
     login(client, "td@test.com", "tdpass")
@@ -337,6 +355,7 @@ def test_list_audit_log_returns_extra_data(client, td_user, td_tournament, db):
 # ---------------------------------------------------------------------------
 # GET /audit-log/actors/
 # ---------------------------------------------------------------------------
+
 
 def test_list_audit_log_actors_counts_per_actor(client, td_user, td_tournament, other_user, db):
     grant_role(db, td_tournament, other_user, "Volunteer")
@@ -381,13 +400,9 @@ def test_list_audit_log_actors_empty(client, td_user, td_tournament):
 def test_list_audit_log_actors_volunteer_member_forbidden(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/audit-log/actors/"
-    ).status_code == 403
+    assert client.get(f"/tournaments/{other_tournament.id}/audit-log/actors/").status_code == 403
 
 
 def test_list_audit_log_actors_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/audit-log/actors/"
-    ).status_code == 404
+    assert client.get(f"/tournaments/{other_tournament.id}/audit-log/actors/").status_code == 404

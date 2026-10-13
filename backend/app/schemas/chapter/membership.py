@@ -1,16 +1,20 @@
 from __future__ import annotations
-from typing import Literal
+
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from app.schemas.user import UserSlimResponse, UserFullResponse
+from app.schemas.user import UserFullResponse, UserSlimResponse
 
 
 class AssignLeadRequest(BaseModel):
     user_id: int
 
+
 class ChapterMemberUpdate(BaseModel):
     role: Literal["lead", "officer", "member"]
+
 
 class ChapterMemberResponse(UserSlimResponse):
     membership_id: int
@@ -31,6 +35,7 @@ class ChapterMemberResponse(UserSlimResponse):
             "role": data.role,
             "joined_at": data.joined_at,
         }
+
 
 class ChapterMemberProfileResponse(UserFullResponse):
     membership_id: int

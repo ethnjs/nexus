@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -43,7 +44,9 @@ def advance_member_onboarding(
 
     membership = get_membership_by_user(db, tournament_id, current_user.id)
     if membership is None or is_declined(membership):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found"
+        )
 
     progress = advance_onboarding_progress(db, membership)
     db.commit()
@@ -98,13 +101,17 @@ def add_onboarding_form(
 
     tf = (
         db.query(TournamentForm)
-        .filter(TournamentForm.form_id == payload.form_id, TournamentForm.tournament_id == tournament_id)
+        .filter(
+            TournamentForm.form_id == payload.form_id, TournamentForm.tournament_id == tournament_id
+        )
         .first()
     )
     if tf is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
     if tf.is_onboarding:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding"
+        )
     # An onboarding step must be immediately answerable. In particular,
     # accepting a draft here would invalidate existing completions before the
     # new requirement could actually be satisfied.
@@ -204,7 +211,9 @@ def remove_onboarding_form(
         .first()
     )
     if tf is None or not tf.is_onboarding:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form is not part of onboarding")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Form is not part of onboarding"
+        )
 
     tf.is_onboarding = False
     tf.order = None

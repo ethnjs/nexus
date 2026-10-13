@@ -1,14 +1,15 @@
 """Tests for chapter join-code management endpoints
 (app/api/routes/chapter/join_codes.py). Redemption via POST /join/ is
 covered in tests/api/test_join.py, alongside the tournament case."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_join_code, make_university, make_user
-from app.models.models import ChapterMembership, JoinCode
 
+from app.models.models import ChapterMembership, JoinCode
+from tests.api.chapter._helpers import make_chapter, make_join_code, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # Chapter join code endpoints — chapter lead only
 # ---------------------------------------------------------------------------
+
 
 def test_get_join_codes_lead_can_access(client, db):
     university = make_university(db)
@@ -85,7 +86,9 @@ def test_update_join_code_can_change_label_without_deactivating(client, db):
     join_code = make_join_code(db, chapter.id, lead.id, code="LABELUP1")
     login(client, "joinlabellead@example.com", "LeadPass123!")
 
-    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"label": "Updated Label"})
+    res = client.patch(
+        f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"label": "Updated Label"}
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["label"] == "Updated Label"
@@ -149,7 +152,9 @@ def test_reactivate_join_code_ignored_by_patch(client, db):
     join_code = make_join_code(db, chapter.id, lead.id, code="REACT001", is_active=False)
     login(client, "joinlead4@example.com", "LeadPass123!")
 
-    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": True})
+    res = client.patch(
+        f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": True}
+    )
     assert res.status_code == 200
 
     refreshed = db.query(JoinCode).filter_by(id=join_code.id).first()

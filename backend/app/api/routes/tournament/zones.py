@@ -7,22 +7,39 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import authorize_role_grant
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_permission,
 )
 from app.core.tournament.zones import (
-    KIND_BUILDING, KIND_EVENT, KIND_FLOOR, events_by_zone, unplaced_event_ids,
+    KIND_BUILDING,
+    KIND_EVENT,
+    KIND_FLOOR,
+    events_by_zone,
+    unplaced_event_ids,
     unzoned_event_ids,
 )
 from app.db.session import get_db
 from app.models.models import (
-    TournamentBuildingTrack, TournamentEventTrack, TournamentMembership, TournamentRole,
-    TournamentTrack, TournamentTrackAssignment, TournamentZone, TournamentZoneMember, User,
+    TournamentBuildingTrack,
+    TournamentEventTrack,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    TournamentZone,
+    TournamentZoneMember,
+    User,
 )
 from app.schemas.tournament.zone import (
-    ZoneAssignmentCreate, ZoneAssignmentRead, ZoneCoverageRead, ZoneCreate, ZoneMember,
-    ZoneRead, ZoneUpdate,
+    ZoneAssignmentCreate,
+    ZoneAssignmentRead,
+    ZoneCoverageRead,
+    ZoneCreate,
+    ZoneMember,
+    ZoneRead,
+    ZoneUpdate,
 )
-
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/zones", tags=["tournaments"])
 
@@ -31,7 +48,8 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/zones", tags=["tournamen
 # member list and a zone, and nesting would make one of the two a body field
 # for no reason.
 assignments_router = APIRouter(
-    prefix="/tournaments/{tournament_id}/zone-assignments", tags=["tournaments"],
+    prefix="/tournaments/{tournament_id}/zone-assignments",
+    tags=["tournaments"],
 )
 
 
@@ -41,9 +59,7 @@ def _zone_query(db: Session):
     return db.query(TournamentZone).options(
         joinedload(TournamentZone.default_role),
         selectinload(TournamentZone.members).joinedload(TournamentZoneMember.building),
-        selectinload(TournamentZone.members).joinedload(
-            TournamentZoneMember.tournament_event
-        ),
+        selectinload(TournamentZone.members).joinedload(TournamentZoneMember.tournament_event),
     )
 
 
@@ -82,12 +98,14 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
         seen.add(key)
 
     building_ids = {
-        m.building_id for m in members
+        m.building_id
+        for m in members
         if m.kind in (KIND_BUILDING, KIND_FLOOR) and m.building_id is not None
     }
     if building_ids:
         tagged = {
-            row_id for (row_id,) in db.query(TournamentBuildingTrack.building_id).filter(
+            row_id
+            for (row_id,) in db.query(TournamentBuildingTrack.building_id).filter(
                 TournamentBuildingTrack.track_id == track_id,
                 TournamentBuildingTrack.building_id.in_(building_ids),
             )
@@ -103,14 +121,14 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
             )
 
     event_ids = {
-        m.tournament_event_id for m in members
+        m.tournament_event_id
+        for m in members
         if m.kind == KIND_EVENT and m.tournament_event_id is not None
     }
     if event_ids:
         on_track = {
-            row_id for (row_id,) in db.query(
-                TournamentEventTrack.tournament_event_id
-            ).filter(
+            row_id
+            for (row_id,) in db.query(TournamentEventTrack.tournament_event_id).filter(
                 TournamentEventTrack.track_id == track_id,
                 TournamentEventTrack.tournament_event_id.in_(event_ids),
             )
@@ -132,13 +150,15 @@ def _set_members(zone: TournamentZone, members: list[ZoneMember]) -> None:
     """
     zone.members.clear()
     for member in members:
-        zone.members.append(TournamentZoneMember(
-            track_id=zone.track_id,
-            kind=member.kind,
-            building_id=member.building_id,
-            floor=member.floor,
-            tournament_event_id=member.tournament_event_id,
-        ))
+        zone.members.append(
+            TournamentZoneMember(
+                track_id=zone.track_id,
+                kind=member.kind,
+                building_id=member.building_id,
+                floor=member.floor,
+                tournament_event_id=member.tournament_event_id,
+            )
+        )
 
 
 def _claimed_conflict(db: Session) -> None:
@@ -146,8 +166,7 @@ def _claimed_conflict(db: Session) -> None:
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail=(
-            "Another zone on this track already claims one of those buildings, "
-            "floors or events"
+            "Another zone on this track already claims one of those buildings, floors or events"
         ),
     )
 
@@ -170,9 +189,14 @@ def list_zones(
     get_tournament(tournament_id, db)
     _get_track(db, tournament_id, track_id)
 
-    zones = _zone_query(db).filter(
-        TournamentZone.track_id == track_id,
-    ).order_by(TournamentZone.name).all()
+    zones = (
+        _zone_query(db)
+        .filter(
+            TournamentZone.track_id == track_id,
+        )
+        .order_by(TournamentZone.name)
+        .all()
+    )
 
     # One resolution pass feeds every zone's contents — see events_by_zone.
     grouped = events_by_zone(db, track_id)
@@ -312,9 +336,7 @@ def list_zone_assignments(
         .join(TournamentZone, TournamentZone.id == TournamentTrackAssignment.zone_id)
         .options(
             joinedload(TournamentTrackAssignment.zone),
-            joinedload(TournamentTrackAssignment.membership).joinedload(
-                TournamentMembership.user
-            ),
+            joinedload(TournamentTrackAssignment.membership).joinedload(TournamentMembership.user),
         )
         .filter(TournamentZone.tournament_id == tournament_id)
     )
@@ -335,7 +357,9 @@ def list_zone_assignments(
 # board renders, never refusals — the same line event assignments hold.
 # ---------------------------------------------------------------------------
 @assignments_router.post(
-    "/", response_model=ZoneAssignmentRead, status_code=status.HTTP_201_CREATED,
+    "/",
+    response_model=ZoneAssignmentRead,
+    status_code=status.HTTP_201_CREATED,
 )
 def create_zone_assignment(
     tournament_id: int,
@@ -348,7 +372,11 @@ def create_zone_assignment(
 
     zone = get_scoped_or_404(db, TournamentZone, payload.zone_id, tournament_id, "Zone")
     membership = get_scoped_or_404(
-        db, TournamentMembership, payload.membership_id, tournament_id, "Membership",
+        db,
+        TournamentMembership,
+        payload.membership_id,
+        tournament_id,
+        "Membership",
     )
 
     role_id = payload.role_id or zone.default_role_id
@@ -356,8 +384,7 @@ def create_zone_assignment(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                "This zone has no default role; give the zone one or name a "
-                "role on the assignment"
+                "This zone has no default role; give the zone one or name a role on the assignment"
             ),
         )
     role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
@@ -410,7 +437,8 @@ def delete_zone_assignment(
     )
     if assignment is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Zone assignment not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Zone assignment not found",
         )
 
     db.delete(assignment)

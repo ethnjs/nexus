@@ -14,16 +14,17 @@ Changes:
       "volunteer" → "user"
       "admin"     → "admin"  (unchanged)
 """
-from typing import Sequence, Union
-from alembic import op
+
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import text
 
-
 revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "f4e526de3a94"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "f4e526de3a94"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -47,9 +48,7 @@ def upgrade() -> None:
     # users — collapse "td" and "volunteer" → "user"
     # ------------------------------------------------------------------
     conn = op.get_bind()
-    conn.execute(
-        text("UPDATE users SET role = 'user' WHERE role IN ('td', 'volunteer')")
-    )
+    conn.execute(text("UPDATE users SET role = 'user' WHERE role IN ('td', 'volunteer')"))
 
 
 def downgrade() -> None:
@@ -73,6 +72,4 @@ def downgrade() -> None:
     # users — cannot recover original roles, fall back to "volunteer"
     # ------------------------------------------------------------------
     conn = op.get_bind()
-    conn.execute(
-        text("UPDATE users SET role = 'volunteer' WHERE role = 'user'")
-    )
+    conn.execute(text("UPDATE users SET role = 'volunteer' WHERE role = 'user'"))

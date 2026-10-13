@@ -7,13 +7,15 @@ Alembic env.py — configured for Nexus.
 """
 
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+
 from alembic import context
+from sqlalchemy import engine_from_config, pool
+
+import app.models.models  # noqa: F401 — ensures all models are registered on Base
 
 # Load app settings + models
 from app.core.config import get_settings
 from app.db.session import Base
-import app.models.models  # noqa: F401 — ensures all models are registered on Base
 
 settings = get_settings()
 

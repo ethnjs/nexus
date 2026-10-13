@@ -3,6 +3,7 @@ branching graph used to enforce `required` only on fields a respondent
 could actually reach. Fields here are built directly (not through the DB)
 since compute_reachable_field_ids/missing_required_field_keys are pure
 functions over a field list + an answers dict."""
+
 from app.core.form.branching import (
     compute_reachable_field_ids,
     duplicate_ranked_choice_field_keys,
@@ -41,7 +42,12 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {
+                            "option_id": "opt_yes",
+                            "value": "yes",
+                            "label": "Yes",
+                            "next_field_id": 3,
+                        },
                         {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
@@ -60,7 +66,12 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {
+                            "option_id": "opt_yes",
+                            "value": "yes",
+                            "label": "Yes",
+                            "next_field_id": 3,
+                        },
                         {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
@@ -78,7 +89,9 @@ class TestComputeReachableFieldIds:
                 question_type="single_select_radio",
                 config={
                     "required": False,
-                    "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3}],
+                    "options": [
+                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3}
+                    ],
                 },
             ),
             _field(2, 2),
@@ -95,7 +108,12 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"option_id": "opt_no", "value": "no", "label": "No", "action": "submit_form"},
+                        {
+                            "option_id": "opt_no",
+                            "value": "no",
+                            "label": "No",
+                            "action": "submit_form",
+                        },
                     ],
                 },
             ),
@@ -112,7 +130,9 @@ class TestComputeReachableFieldIds:
                 question_type="single_select_radio",
                 config={
                     "required": False,
-                    "options": [{"option_id": "opt_a", "value": "a", "label": "A", "next_field_id": 2}],
+                    "options": [
+                        {"option_id": "opt_a", "value": "a", "label": "A", "next_field_id": 2}
+                    ],
                 },
             ),
             _field(
@@ -121,7 +141,9 @@ class TestComputeReachableFieldIds:
                 question_type="single_select_radio",
                 config={
                     "required": False,
-                    "options": [{"option_id": "opt_b", "value": "b", "label": "B", "next_field_id": 1}],
+                    "options": [
+                        {"option_id": "opt_b", "value": "b", "label": "B", "next_field_id": 1}
+                    ],
                 },
             ),
         ]
@@ -138,7 +160,12 @@ class TestMissingRequiredFieldKeys:
                 config={
                     "required": True,
                     "options": [
-                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {
+                            "option_id": "opt_yes",
+                            "value": "yes",
+                            "label": "Yes",
+                            "next_field_id": 3,
+                        },
                         {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
@@ -160,7 +187,14 @@ class TestMissingRequiredFieldKeys:
                 question_type="single_select_radio",
                 config={
                     "required": True,
-                    "options": [{"option_id": "opt_no", "value": "no", "label": "No", "action": "submit_form"}],
+                    "options": [
+                        {
+                            "option_id": "opt_no",
+                            "value": "no",
+                            "label": "No",
+                            "action": "submit_form",
+                        }
+                    ],
                 },
             ),
             _field(2, 2, config={"required": True}),
@@ -182,14 +216,23 @@ class TestMissingRequiredFieldKeys:
 class TestDuplicateRankedChoiceFieldKeys:
     def _ranked_field(self, id, allow_duplicates=False, field_key=None):
         return _field(
-            id, 1, question_type="ranked_choice",
-            config={"required": False, "ranks": 3, "allow_duplicates": allow_duplicates, "options": []},
+            id,
+            1,
+            question_type="ranked_choice",
+            config={
+                "required": False,
+                "ranks": 3,
+                "allow_duplicates": allow_duplicates,
+                "options": [],
+            },
             field_key=field_key,
         )
 
     def test_repeated_option_across_ranks_rejected_by_default(self):
         fields = [self._ranked_field(1)]
-        assert duplicate_ranked_choice_field_keys(fields, {1: {"1": "opt_a", "2": "opt_b", "3": "opt_a"}}) == ["field_1"]
+        assert duplicate_ranked_choice_field_keys(
+            fields, {1: {"1": "opt_a", "2": "opt_b", "3": "opt_a"}}
+        ) == ["field_1"]
 
     def test_repeated_option_allowed_when_config_permits(self):
         fields = [self._ranked_field(1, allow_duplicates=True)]
@@ -208,6 +251,9 @@ class TestDuplicateRankedChoiceFieldKeys:
         assert duplicate_ranked_choice_field_keys(fields, {}) == []
 
     def test_multiple_offending_fields_all_reported(self):
-        fields = [self._ranked_field(1, field_key="field_1"), self._ranked_field(2, field_key="field_2")]
+        fields = [
+            self._ranked_field(1, field_key="field_1"),
+            self._ranked_field(2, field_key="field_2"),
+        ]
         answers = {1: {"1": "opt_a", "2": "opt_a"}, 2: {"1": "opt_b", "2": "opt_b"}}
         assert duplicate_ranked_choice_field_keys(fields, answers) == ["field_1", "field_2"]

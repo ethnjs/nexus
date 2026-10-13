@@ -1,8 +1,7 @@
 """Tests for /tournaments/{tournament_id}/events endpoints (TournamentEvent model)."""
+
 from datetime import date, timedelta
 
-import pytest
-from fastapi.testclient import TestClient
 from tests.conftest import grant_role, login, primary_track_id
 
 # td_tournament spans [today, today + 1 day] — event/shift times must fall
@@ -38,6 +37,7 @@ def _make_shift(client, tournament_id, **overrides):
 # Create
 # ---------------------------------------------------------------------------
 
+
 def test_create_event_minimal(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_event(client, td_tournament.id)
@@ -52,8 +52,12 @@ def test_create_event_minimal(client, td_user, td_tournament):
 
 def test_create_event_full(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    response = _make_event(client, td_tournament.id,
-        name="Hovercraft", division="B", event_type="trial",
+    response = _make_event(
+        client,
+        td_tournament.id,
+        name="Hovercraft",
+        division="B",
+        event_type="trial",
     )
     assert response.status_code == 201
     data = response.json()
@@ -124,48 +128,31 @@ def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
     its place rather than print the day as 8am, 12pm, 4pm, 8am."""
     login(client, "td@test.com", "tdpass")
     morning = _make_shift(
-        client, td_tournament.id, label="Morning",
-        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z",
+        client,
+        td_tournament.id,
+        label="Morning",
+        start=EVENT_DATE + "T08:00:00Z",
+        end=EVENT_DATE + "T12:00:00Z",
     ).json()["id"]
     afternoon = _make_shift(
-        client, td_tournament.id, label="Afternoon",
-        start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z",
+        client,
+        td_tournament.id,
+        label="Afternoon",
+        start=EVENT_DATE + "T12:00:00Z",
+        end=EVENT_DATE + "T16:00:00Z",
     ).json()["id"]
     impound = _make_shift(
-        client, td_tournament.id, label="Impound",
-        start=EVENT_DATE + "T07:00:00Z", end=EVENT_DATE + "T08:00:00Z",
+        client,
+        td_tournament.id,
+        label="Impound",
+        start=EVENT_DATE + "T07:00:00Z",
+        end=EVENT_DATE + "T08:00:00Z",
     ).json()["id"]
 
     body = _make_event(
-        client, td_tournament.id, shift_ids=[morning, afternoon, impound],
-    ).json()
-    assert [s["label"] for s in body["shifts"]] == ["Impound", "Morning", "Afternoon"]
-
-    row = client.get(f"/tournaments/{td_tournament.id}/events/{body['id']}/").json()
-    assert [s["label"] for s in row["shifts"]] == ["Impound", "Morning", "Afternoon"]
-
-
-def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
-    """Attach order is not schedule order. The assignments board lays an
-    event's shifts out left to right as a timeline, so a shift added late but
-    starting early (Impound, 7-8am, attached after Morning) has to sort into
-    its place rather than print the day as 8am, 12pm, 4pm, 8am."""
-    login(client, "td@test.com", "tdpass")
-    morning = _make_shift(
-        client, td_tournament.id, label="Morning",
-        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z",
-    ).json()["id"]
-    afternoon = _make_shift(
-        client, td_tournament.id, label="Afternoon",
-        start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z",
-    ).json()["id"]
-    impound = _make_shift(
-        client, td_tournament.id, label="Impound",
-        start=EVENT_DATE + "T07:00:00Z", end=EVENT_DATE + "T08:00:00Z",
-    ).json()["id"]
-
-    body = _make_event(
-        client, td_tournament.id, shift_ids=[morning, afternoon, impound],
+        client,
+        td_tournament.id,
+        shift_ids=[morning, afternoon, impound],
     ).json()
     assert [s["label"] for s in body["shifts"]] == ["Impound", "Morning", "Afternoon"]
 
@@ -176,19 +163,27 @@ def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
 def test_create_event_rejects_the_old_time_fields(client, td_user, td_tournament):
     """A caller still sending times gets a 422 rather than a silent drop."""
     login(client, "td@test.com", "tdpass")
-    assert _make_event(
-        client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z",
-    ).status_code == 422
+    assert (
+        _make_event(
+            client,
+            td_tournament.id,
+            start_time=EVENT_DATE + "T08:00:00Z",
+        ).status_code
+        == 422
+    )
 
 
 def test_create_event_with_tracks(client, td_user, td_tournament):
     """The Test Writing case: an event on a track that has no shifts at all."""
     login(client, "td@test.com", "tdpass")
     track = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()
     body = _make_event(
-        client, td_tournament.id, track_details=[{"track_id": track["id"]}],
+        client,
+        td_tournament.id,
+        track_details=[{"track_id": track["id"]}],
     ).json()
     assert [t["id"] for t in body["tracks"]] == [track["id"]]
     # The whole track object rides along, not just its id.
@@ -197,18 +192,26 @@ def test_create_event_with_tracks(client, td_user, td_tournament):
 
 def test_create_event_with_unknown_track_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    assert _make_event(
-        client, td_tournament.id, track_details=[{"track_id": 9999}],
-    ).status_code == 422
+    assert (
+        _make_event(
+            client,
+            td_tournament.id,
+            track_details=[{"track_id": 9999}],
+        ).status_code
+        == 422
+    )
 
 
 def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    response = client.post(f"/tournaments/{td_tournament.id}/events/", json={
-        "tournament_id": 9999,
-        "name": "Boomilever",
-        "division": "C",
-    })
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/events/",
+        json={
+            "tournament_id": 9999,
+            "name": "Boomilever",
+            "division": "C",
+        },
+    )
     assert response.status_code == 400
 
 
@@ -218,9 +221,7 @@ def test_create_event_non_member_forbidden(client, td_user, other_tournament):
     assert _make_event(client, other_tournament.id).status_code == 404
 
 
-def test_create_event_volunteer_member_forbidden(
-    client, td_user, other_tournament, db
-):
+def test_create_event_volunteer_member_forbidden(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert _make_event(client, other_tournament.id).status_code == 403
@@ -233,6 +234,7 @@ def test_create_event_unauthenticated(client, td_tournament):
 # ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
+
 
 def test_list_events(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -254,9 +256,7 @@ def test_list_events_ordered_by_division_name(client, td_user, td_tournament):
     assert names[2] == "Hovercraft"
 
 
-def test_list_events_requires_manage_events(
-    client, td_user, other_tournament, db
-):
+def test_list_events_requires_manage_events(client, td_user, other_tournament, db):
     """There's no separate read-only view_events tier — listing requires
     manage_events or manage_members (exports read it). A no-permission role
     is forbidden."""
@@ -274,9 +274,15 @@ def test_manage_members_alone_can_list_but_not_write_events(client, td_user, oth
     """Exports filter by event, and the export gate is manage_members — so
     that alone opens the staff read. Writes still need manage_events."""
     from app.models.models import TournamentRole
-    db.add(TournamentRole(
-        tournament_id=other_tournament.id, label="Roster Only", permissions=["manage_members"], rank=25,
-    ))
+
+    db.add(
+        TournamentRole(
+            tournament_id=other_tournament.id,
+            label="Roster Only",
+            permissions=["manage_members"],
+            rank=25,
+        )
+    )
     db.commit()
     grant_role(db, other_tournament, td_user, "Roster Only")
     login(client, "td@test.com", "tdpass")
@@ -289,6 +295,7 @@ def test_manage_members_alone_can_list_but_not_write_events(client, td_user, oth
 # ?public=true — the member-facing read
 # ---------------------------------------------------------------------------
 
+
 class TestFieldSelection:
     """The three rules the `fields` registry exists to keep: absent means
     everything, an unrequested group is absent rather than null, and identity
@@ -297,7 +304,10 @@ class TestFieldSelection:
     def _one_event(self, client, tournament_id):
         shift_id = _make_shift(client, tournament_id).json()["id"]
         _make_event(
-            client, tournament_id, name="Boomilever", division="C",
+            client,
+            tournament_id,
+            name="Boomilever",
+            division="C",
             shift_ids=[shift_id],
         )
 
@@ -385,14 +395,15 @@ def test_list_events_public_omits_location_and_staffing(client, td_user, td_tour
 
 
 def test_list_events_public_carries_shifts_without_event_count(
-    client, td_user, td_tournament,
+    client,
+    td_user,
+    td_tournament,
 ):
     """TournamentShiftBase, not TournamentShiftRead — event_count exists for
     the shift catalog's delete warning and would cost a join per shift here."""
     login(client, "td@test.com", "tdpass")
     shift_id = _make_shift(client, td_tournament.id).json()["id"]
-    _make_event(client, td_tournament.id, name="Boomilever", division="C",
-                shift_ids=[shift_id])
+    _make_event(client, td_tournament.id, name="Boomilever", division="C", shift_ids=[shift_id])
 
     rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
     shift = rows[0]["shifts"][0]
@@ -403,7 +414,10 @@ def test_list_events_public_carries_shifts_without_event_count(
 
 
 def test_list_events_public_uses_display_name_for_catalog_events(
-    client, td_user, td_tournament, db,
+    client,
+    td_user,
+    td_tournament,
+    db,
 ):
     """A catalog-linked event leaves its own name column null and carries the
     name on the joined canonical event — the member read has to resolve it."""
@@ -415,9 +429,14 @@ def test_list_events_public_uses_display_name_for_catalog_events(
     canonical = Event(name="Air Trajectory", category_id=category.id)
     db.add(canonical)
     db.flush()
-    db.add(TournamentEvent(
-        tournament_id=td_tournament.id, name=None, division="C", event_id=canonical.id,
-    ))
+    db.add(
+        TournamentEvent(
+            tournament_id=td_tournament.id,
+            name=None,
+            division="C",
+            event_id=canonical.id,
+        )
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -440,6 +459,7 @@ def test_list_events_public_false_still_gates_the_permission(client, td_user, ot
 # Get single
 # ---------------------------------------------------------------------------
 
+
 def test_get_event(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_event(client, td_tournament.id).json()
@@ -454,9 +474,9 @@ def test_get_event_wrong_tournament_404(
     grant_role(db, other_tournament, td_user, "Test Coordinator")
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/events/{event['id']}/"
-    ).status_code == 404
+    assert (
+        client.get(f"/tournaments/{other_tournament.id}/events/{event['id']}/").status_code == 404
+    )
 
 
 def test_get_event_not_found(client, td_user, td_tournament):
@@ -467,6 +487,7 @@ def test_get_event_not_found(client, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 # PATCH
 # ---------------------------------------------------------------------------
+
 
 def test_update_event(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -504,13 +525,17 @@ def test_update_event_replaces_the_whole_track_set(client, td_user, td_tournamen
     event's tracks *are*."""
     login(client, "td@test.com", "tdpass")
     first = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()
     second = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Review"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Review"},
     ).json()
     created = _make_event(
-        client, td_tournament.id, track_details=[{"track_id": first["id"]}],
+        client,
+        td_tournament.id,
+        track_details=[{"track_id": first["id"]}],
     ).json()
 
     body = client.patch(
@@ -520,32 +545,32 @@ def test_update_event_replaces_the_whole_track_set(client, td_user, td_tournamen
     assert [t["id"] for t in body["tracks"]] == [second["id"]]
 
 
-def test_update_event_volunteer_cannot_patch(
-    client, td_user, other_user, other_tournament, db
-):
+def test_update_event_volunteer_cannot_patch(client, td_user, other_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
     event = _make_event(client, other_tournament.id).json()
     login(client, "td@test.com", "tdpass")
-    assert client.patch(
-        f"/tournaments/{other_tournament.id}/events/{event['id']}/",
-        json={"name": "Nope"},
-    ).status_code == 403
+    assert (
+        client.patch(
+            f"/tournaments/{other_tournament.id}/events/{event['id']}/",
+            json={"name": "Nope"},
+        ).status_code
+        == 403
+    )
 
 
 # ---------------------------------------------------------------------------
 # DELETE
 # ---------------------------------------------------------------------------
 
+
 def test_delete_event(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_event(client, td_tournament.id).json()
-    assert client.delete(
-        f"/tournaments/{td_tournament.id}/events/{created['id']}/"
-    ).status_code == 204
-    assert client.get(
-        f"/tournaments/{td_tournament.id}/events/{created['id']}/"
-    ).status_code == 404
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/events/{created['id']}/").status_code == 204
+    )
+    assert client.get(f"/tournaments/{td_tournament.id}/events/{created['id']}/").status_code == 404
 
 
 def test_delete_event_not_found(client, td_user, td_tournament):
@@ -559,8 +584,10 @@ def test_delete_event_not_found(client, td_user, td_tournament):
 # MembershipEventPreferenceRead.
 # ---------------------------------------------------------------------------
 
+
 def _td_membership(db, td_user, td_tournament):
     from app.models.models import TournamentMembership
+
     return (
         db.query(TournamentMembership)
         .filter(
@@ -573,9 +600,15 @@ def _td_membership(db, td_user, td_tournament):
 
 def _add_preference(db, membership_id, track_id, event_id, rank):
     from app.models.models import TournamentMembershipEventPreference
-    db.add(TournamentMembershipEventPreference(
-        membership_id=membership_id, track_id=track_id, tournament_event_id=event_id, rank=rank,
-    ))
+
+    db.add(
+        TournamentMembershipEventPreference(
+            membership_id=membership_id,
+            track_id=track_id,
+            tournament_event_id=event_id,
+            rank=rank,
+        )
+    )
     db.commit()
 
 
@@ -591,32 +624,46 @@ def _pref_track(db, tournament, name):
     return track.id
 
 
-
-def _add_event_preference_field(db, tournament_id, created_by, track_id, options, field_archived=False):
+def _add_event_preference_field(
+    db, tournament_id, created_by, track_id, options, field_archived=False
+):
     """A published tournament form carrying one event_preference_{track} field.
     `options` is [(option_id, label, [event ids], is_archived)] — the grouping
     build_event_preferences reverses when reading answers back."""
     from app.models.models import Form, FormField
 
     form = Form(
-        name=f"form-{track_id}", title=f"Form {track_id}", owner_type="tournament",
-        tournament_id=tournament_id, status="published", created_by=created_by,
+        name=f"form-{track_id}",
+        title=f"Form {track_id}",
+        owner_type="tournament",
+        tournament_id=tournament_id,
+        status="published",
+        created_by=created_by,
     )
     db.add(form)
     db.flush()
-    db.add(FormField(
-        form_id=form.id, order=0, label=f"Events {track_id}",
-        question_type="ranked_choice", field_key=f"event_preference_{track_id}",
-        is_archived=field_archived,
-        config={"options": [
-            {"option_id": oid, "label": label, "value": ids, "is_archived": archived}
-            for oid, label, ids, archived in options
-        ]},
-    ))
+    db.add(
+        FormField(
+            form_id=form.id,
+            order=0,
+            label=f"Events {track_id}",
+            question_type="ranked_choice",
+            field_key=f"event_preference_{track_id}",
+            is_archived=field_archived,
+            config={
+                "options": [
+                    {"option_id": oid, "label": label, "value": ids, "is_archived": archived}
+                    for oid, label, ids, archived in options
+                ]
+            },
+        )
+    )
     db.commit()
 
 
-def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_user, td_tournament):
+def test_event_preferences_group_by_the_option_the_member_picked(
+    client, db, td_user, td_tournament
+):
     morning_track = _pref_track(db, td_tournament, "Morning")
     """One option grouping several events reads back as one entry, not one per
     event — the whole point of the option-grouped shape."""
@@ -625,7 +672,10 @@ def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_
     e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     _add_event_preference_field(
-        db, td_tournament.id, td_user.id, morning_track,
+        db,
+        td_tournament.id,
+        td_user.id,
+        morning_track,
         [("opt_1", "Life & Space Science", [e1["id"], e2["id"]], False)],
     )
     _add_preference(db, membership.id, morning_track, e1["id"], 1)
@@ -648,7 +698,11 @@ def test_event_preferences_flag_answers_to_an_archived_option(client, db, td_use
     event = _make_event(client, td_tournament.id, name="Anatomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     _add_event_preference_field(
-        db, td_tournament.id, td_user.id, morning_track, [("opt_1", "Retired Group", [event["id"]], True)],
+        db,
+        td_tournament.id,
+        td_user.id,
+        morning_track,
+        [("opt_1", "Retired Group", [event["id"]], True)],
     )
     _add_preference(db, membership.id, morning_track, event["id"], 1)
 
@@ -673,20 +727,29 @@ def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, t
     assert res.status_code == 200
     # No form field defines these options, so each event is its own group,
     # labelled by the event and flagged archived (see build_event_preferences).
-    assert res.json()["event_preferences"] == [{
-        "track_id": morning_track,
-        "track_name": "Morning",
-        "options": [
-            {
-                "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
-                "events": [{"id": e1["id"], "name": "Anatomy", "division": "C", "rank": 1}],
-            },
-            {
-                "option_id": None, "label": "Astronomy", "rank": 2, "is_archived": True,
-                "events": [{"id": e2["id"], "name": "Astronomy", "division": "C", "rank": 2}],
-            },
-        ],
-    }]
+    assert res.json()["event_preferences"] == [
+        {
+            "track_id": morning_track,
+            "track_name": "Morning",
+            "options": [
+                {
+                    "option_id": None,
+                    "label": "Anatomy",
+                    "rank": 1,
+                    "is_archived": True,
+                    "events": [{"id": e1["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+                },
+                {
+                    "option_id": None,
+                    "label": "Astronomy",
+                    "rank": 2,
+                    "is_archived": True,
+                    "events": [{"id": e2["id"], "name": "Astronomy", "division": "C", "rank": 2}],
+                },
+            ],
+        }
+    ]
+
 
 def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_user, td_tournament):
     afternoon_track = _pref_track(db, td_tournament, "Afternoon")
@@ -704,6 +767,7 @@ def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_us
     ids = [o["events"][0]["id"] for o in res.json()["event_preferences"][0]["options"]]
     assert ids == sorted([e1["id"], e2["id"]])
 
+
 def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_tournament):
     morning_track = _pref_track(db, td_tournament, "Morning")
     afternoon_track = _pref_track(db, td_tournament, "Afternoon")
@@ -717,6 +781,7 @@ def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_
     assert res.status_code == 200
     assert [g["track_name"] for g in res.json()["event_preferences"]] == ["Afternoon", "Morning"]
 
+
 def test_member_detail_carries_event_preferences(client, db, td_user, td_tournament):
     morning_track = _pref_track(db, td_tournament, "Morning")
     login(client, "td@test.com", "tdpass")
@@ -726,14 +791,22 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
-    assert res.json()["event_preferences"] == [{
-        "track_id": morning_track,
-        "track_name": "Morning",
-        "options": [{
-            "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
-            "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
-        }],
-    }]
+    assert res.json()["event_preferences"] == [
+        {
+            "track_id": morning_track,
+            "track_name": "Morning",
+            "options": [
+                {
+                    "option_id": None,
+                    "label": "Anatomy",
+                    "rank": 1,
+                    "is_archived": True,
+                    "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+                }
+            ],
+        }
+    ]
+
 
 def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td_tournament):
     morning_track = _pref_track(db, td_tournament, "Morning")
@@ -773,15 +846,19 @@ def test_roster_returns_event_preferences_when_asked_for(client, db, td_user, td
     assert [group["track_name"] for group in row["event_preferences"]] == ["Morning"]
 
 
-
 # ---------------------------------------------------------------------------
 # Per-track location (track_details)
 # ---------------------------------------------------------------------------
 
+
 def _building(client, tournament_id, track_ids, name="Rowland Hall"):
-    return client.post(f"/tournaments/{tournament_id}/buildings/", json={
-        "name": name, "track_ids": track_ids,
-    }).json()
+    return client.post(
+        f"/tournaments/{tournament_id}/buildings/",
+        json={
+            "name": name,
+            "track_ids": track_ids,
+        },
+    ).json()
 
 
 def _details(body):
@@ -796,15 +873,20 @@ def test_one_event_holds_a_different_room_on_each_track(client, db, td_user, td_
     login(client, "td@test.com", "tdpass")
     day1 = primary_track_id(db, td_tournament.id)
     day2 = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Day 2"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Day 2"},
     ).json()["id"]
     rowland = _building(client, td_tournament.id, [day1])
     steinhaus = _building(client, td_tournament.id, [day2], name="Steinhaus")
 
-    body = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": day1, "building_id": rowland["id"], "floor": "2", "rooms": ["210", "212"]},
-        {"track_id": day2, "building_id": steinhaus["id"], "floor": "1", "rooms": ["105"]},
-    ]).json()
+    body = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": day1, "building_id": rowland["id"], "floor": "2", "rooms": ["210", "212"]},
+            {"track_id": day2, "building_id": steinhaus["id"], "floor": "1", "rooms": ["105"]},
+        ],
+    ).json()
 
     by_track = _details(body)
     assert by_track[day1]["building_name"] == "Rowland Hall"
@@ -817,27 +899,39 @@ def test_rooms_are_trimmed_deduped_and_keep_their_order(client, db, td_user, td_
     """Order is the TD's — "210, 212, 214" is how they think of the space."""
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    body = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "rooms": [" 214 ", "210", "212", "210", "  "]},
-    ]).json()
+    body = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "rooms": [" 214 ", "210", "212", "210", "  "]},
+        ],
+    ).json()
     assert _details(body)[track_id]["rooms"] == ["214", "210", "212"]
 
 
 def test_a_building_not_on_that_track_is_rejected_with_a_useful_message(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     """The composite FK would catch this too, but as a 500 with nothing
     actionable in it."""
     login(client, "td@test.com", "tdpass")
     day1 = primary_track_id(db, td_tournament.id)
     other = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()["id"]
     building = _building(client, td_tournament.id, [other])
 
-    response = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": day1, "building_id": building["id"]},
-    ])
+    response = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": day1, "building_id": building["id"]},
+        ],
+    )
     assert response.status_code == 422
     assert "not available on track" in response.json()["detail"]
 
@@ -845,10 +939,14 @@ def test_a_building_not_on_that_track_is_rejected_with_a_useful_message(
 def test_naming_the_same_track_twice_is_rejected(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    response = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "rooms": ["210"]},
-        {"track_id": track_id, "rooms": ["212"]},
-    ])
+    response = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "rooms": ["210"]},
+            {"track_id": track_id, "rooms": ["212"]},
+        ],
+    )
     assert response.status_code == 422
     assert "same track twice" in response.json()["detail"]
 
@@ -858,9 +956,13 @@ def test_patching_other_fields_leaves_locations_alone(client, db, td_user, td_to
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     building = _building(client, td_tournament.id, [track_id])
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
@@ -871,26 +973,36 @@ def test_patching_other_fields_leaves_locations_alone(client, db, td_user, td_to
 
 
 def test_adding_a_track_keeps_the_location_on_the_one_that_stays(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     """A track the payload does name is rewritten; one it doesn't is left
     alone. Here both are named, and only the new one is bare."""
     login(client, "td@test.com", "tdpass")
     day1 = primary_track_id(db, td_tournament.id)
     writing = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()["id"]
     building = _building(client, td_tournament.id, [day1])
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": day1, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": day1, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
-        json={"track_details": [
-            {"track_id": day1, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
-            {"track_id": writing},
-        ]},
+        json={
+            "track_details": [
+                {"track_id": day1, "building_id": building["id"], "floor": "2", "rooms": ["210"]},
+                {"track_id": writing},
+            ]
+        },
     ).json()
 
     by_track = _details(body)
@@ -919,9 +1031,13 @@ def test_dropping_a_track_drops_its_location(client, db, td_user, td_tournament)
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     building = _building(client, td_tournament.id, [track_id])
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "building_id": building["id"], "rooms": ["210"]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "building_id": building["id"], "rooms": ["210"]},
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
@@ -932,26 +1048,35 @@ def test_dropping_a_track_drops_its_location(client, db, td_user, td_tournament)
 
 
 def test_track_details_sort_by_schedule_with_cosmetic_tracks_last(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     """Same order `tracks` uses — a dateless track has no place in a schedule
     and sorts to the end."""
     login(client, "td@test.com", "tdpass")
     day1 = primary_track_id(db, td_tournament.id)
     writing = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()["id"]
 
-    body = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": writing},
-        {"track_id": day1},
-    ]).json()
+    body = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": writing},
+            {"track_id": day1},
+        ],
+    ).json()
     assert [d["track_id"] for d in body["track_details"]] == [day1, writing]
 
 
 # ---------------------------------------------------------------------------
 # Per-role staffing needs
 # ---------------------------------------------------------------------------
+
 
 def _role(client, tournament_id, label):
     """A role by label from the tournament's own catalog — every tournament is
@@ -966,26 +1091,41 @@ def test_needs_differ_per_track(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     day1 = primary_track_id(db, td_tournament.id)
     day2 = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Day 2"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Day 2"},
     ).json()["id"]
     volunteer = _role(client, td_tournament.id, "Volunteer")
     lead = _role(client, td_tournament.id, "Lead Event Supervisor")
 
-    body = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": day1, "needs": [
-            {"role_id": volunteer, "count": 6}, {"role_id": lead, "count": 2},
-        ]},
-        {"track_id": day2, "needs": [
-            {"role_id": volunteer, "count": 8}, {"role_id": lead, "count": 2},
-        ]},
-    ]).json()
+    body = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {
+                "track_id": day1,
+                "needs": [
+                    {"role_id": volunteer, "count": 6},
+                    {"role_id": lead, "count": 2},
+                ],
+            },
+            {
+                "track_id": day2,
+                "needs": [
+                    {"role_id": volunteer, "count": 8},
+                    {"role_id": lead, "count": 2},
+                ],
+            },
+        ],
+    ).json()
 
     by_track = _details(body)
     assert {n["role_id"]: n["count"] for n in by_track[day1]["needs"]} == {
-        volunteer: 6, lead: 2,
+        volunteer: 6,
+        lead: 2,
     }
     assert {n["role_id"]: n["count"] for n in by_track[day2]["needs"]} == {
-        volunteer: 8, lead: 2,
+        volunteer: 8,
+        lead: 2,
     }
 
 
@@ -995,9 +1135,13 @@ def test_a_need_carries_its_role_label(client, db, td_user, td_tournament):
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
 
-    body = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 3}]},
-    ]).json()
+    body = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 3}]},
+        ],
+    ).json()
     assert _details(body)[track_id]["needs"][0]["role_label"] == "Volunteer"
 
 
@@ -1005,28 +1149,50 @@ def test_a_count_below_one_is_rejected(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    assert _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 0}]},
-    ]).status_code == 422
+    assert (
+        _make_event(
+            client,
+            td_tournament.id,
+            track_details=[
+                {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 0}]},
+            ],
+        ).status_code
+        == 422
+    )
 
 
 def test_naming_the_same_role_twice_on_one_track_is_rejected(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    response = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [
-            {"role_id": volunteer, "count": 1}, {"role_id": volunteer, "count": 2},
-        ]},
-    ])
+    response = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {
+                "track_id": track_id,
+                "needs": [
+                    {"role_id": volunteer, "count": 1},
+                    {"role_id": volunteer, "count": 2},
+                ],
+            },
+        ],
+    )
     assert response.status_code == 422
     assert "same role twice" in str(response.json()["detail"])
 
 
 def test_a_role_from_another_tournament_is_rejected(
-    client, db, td_user, td_tournament, other_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
+    other_tournament,
 ):
     """The role FK isn't tournament-scoped, so this check is the only thing
     stopping it."""
@@ -1034,13 +1200,22 @@ def test_a_role_from_another_tournament_is_rejected(
 
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    foreign_role = db.query(TournamentRole).filter(
-        TournamentRole.tournament_id == other_tournament.id,
-    ).first().id
+    foreign_role = (
+        db.query(TournamentRole)
+        .filter(
+            TournamentRole.tournament_id == other_tournament.id,
+        )
+        .first()
+        .id
+    )
 
-    response = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": foreign_role, "count": 2}]},
-    ])
+    response = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": foreign_role, "count": 2}]},
+        ],
+    )
     assert response.status_code == 422
     assert "Unknown role" in response.json()["detail"]
 
@@ -1050,20 +1225,37 @@ def test_editing_a_count_keeps_the_other_needs(client, db, td_user, td_tournamen
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
     lead = _role(client, td_tournament.id, "Lead Event Supervisor")
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [
-            {"role_id": volunteer, "count": 6}, {"role_id": lead, "count": 2},
-        ]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {
+                "track_id": track_id,
+                "needs": [
+                    {"role_id": volunteer, "count": 6},
+                    {"role_id": lead, "count": 2},
+                ],
+            },
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
-        json={"track_details": [{"track_id": track_id, "needs": [
-            {"role_id": volunteer, "count": 9}, {"role_id": lead, "count": 2},
-        ]}]},
+        json={
+            "track_details": [
+                {
+                    "track_id": track_id,
+                    "needs": [
+                        {"role_id": volunteer, "count": 9},
+                        {"role_id": lead, "count": 2},
+                    ],
+                }
+            ]
+        },
     ).json()
     assert {n["role_id"]: n["count"] for n in _details(body)[track_id]["needs"]} == {
-        volunteer: 9, lead: 2,
+        volunteer: 9,
+        lead: 2,
     }
 
 
@@ -1073,9 +1265,13 @@ def test_an_entry_without_needs_clears_them(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
@@ -1090,9 +1286,13 @@ def test_leaving_a_track_out_of_a_patch_keeps_its_needs(client, db, td_user, td_
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+        ],
+    ).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
@@ -1108,27 +1308,40 @@ def test_dropping_a_track_drops_its_needs(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+        ],
+    ).json()
 
     client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
         json={"track_details": []},
     )
     db.expire_all()
-    assert db.query(TournamentEventStaffingNeed).filter(
-        TournamentEventStaffingNeed.tournament_event_id == created["id"],
-    ).count() == 0
+    assert (
+        db.query(TournamentEventStaffingNeed)
+        .filter(
+            TournamentEventStaffingNeed.tournament_event_id == created["id"],
+        )
+        .count()
+        == 0
+    )
 
 
 def test_needs_ride_in_the_location_field_group(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     volunteer = _role(client, td_tournament.id, "Volunteer")
-    created = _make_event(client, td_tournament.id, track_details=[
-        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
-    ]).json()
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[
+            {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+        ],
+    ).json()
 
     row = client.get(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/?fields=location"
@@ -1144,7 +1357,8 @@ def test_a_track_a_shift_needs_cannot_be_dropped(client, db, td_user, td_tournam
     login(client, "td@test.com", "tdpass")
     shift = _make_shift(client, td_tournament.id).json()
     writing = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
     ).json()["id"]
     created = _make_event(client, td_tournament.id, shift_ids=[shift["id"]]).json()
 

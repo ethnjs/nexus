@@ -1,10 +1,11 @@
 """Tests for tournament join-code management endpoints
 (app/api/routes/tournament/join_codes.py). Redemption via POST /join/ is
 covered in tests/api/test_join.py, alongside the chapter case."""
-from datetime import datetime, timedelta, timezone
 
-from tests.conftest import grant_role, login
+from datetime import UTC, datetime, timedelta
+
 from app.models.models import JoinCode
+from tests.conftest import grant_role, login
 
 
 def make_join_code(db, tournament_id, created_by, **kwargs):
@@ -30,6 +31,7 @@ def make_join_code(db, tournament_id, created_by, **kwargs):
 # GET /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
 
+
 def test_list_join_codes_td_can_access(client, td_user, td_tournament, db):
     make_join_code(db, td_tournament.id, td_user.id)
     login(client, "td@test.com", "tdpass")
@@ -52,9 +54,13 @@ def test_list_join_codes_non_member_gets_404(client, td_user, other_tournament):
 def test_list_join_codes_hides_expired(client, td_user, td_tournament, db):
     """An expired code can't be redeemed, so the list doesn't offer it —
     this feeds both the invites page and the staff invite picker."""
-    now = datetime.now(timezone.utc)
-    live = make_join_code(db, td_tournament.id, td_user.id, code="LIVE1234", expires_at=now + timedelta(hours=1))
-    make_join_code(db, td_tournament.id, td_user.id, code="GONE1234", expires_at=now - timedelta(hours=1))
+    now = datetime.now(UTC)
+    live = make_join_code(
+        db, td_tournament.id, td_user.id, code="LIVE1234", expires_at=now + timedelta(hours=1)
+    )
+    make_join_code(
+        db, td_tournament.id, td_user.id, code="GONE1234", expires_at=now - timedelta(hours=1)
+    )
     forever = make_join_code(db, td_tournament.id, td_user.id, code="FORE1234")
     login(client, "td@test.com", "tdpass")
 
@@ -66,6 +72,7 @@ def test_list_join_codes_hides_expired(client, td_user, td_tournament, db):
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
+
 
 def test_create_join_code_creates_record(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
@@ -95,19 +102,23 @@ def test_create_join_code_never_expires_when_omitted(client, td_user, td_tournam
 def test_create_join_code_volunteer_forbidden(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.post(f"/tournaments/{other_tournament.id}/join-codes/", json={}).status_code == 403
+    assert (
+        client.post(f"/tournaments/{other_tournament.id}/join-codes/", json={}).status_code == 403
+    )
 
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # ---------------------------------------------------------------------------
 
+
 def test_update_join_code_label_only(client, td_user, td_tournament, db):
     join_code = make_join_code(db, td_tournament.id, td_user.id, code="LABELUP1")
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/", json={"label": "Updated Label"}
+        f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/",
+        json={"label": "Updated Label"},
     )
     assert response.status_code == 200
     assert response.json()["label"] == "Updated Label"
@@ -126,7 +137,7 @@ def test_update_join_code_add_hours_from_no_expiry(client, td_user, td_tournamen
 
 
 def test_update_join_code_add_hours_is_cumulative(client, td_user, td_tournament, db):
-    base = datetime.now(timezone.utc) + timedelta(hours=1)
+    base = datetime.now(UTC) + timedelta(hours=1)
     join_code = make_join_code(db, td_tournament.id, td_user.id, code="ADDHRS02", expires_at=base)
     login(client, "td@test.com", "tdpass")
 
@@ -140,20 +151,27 @@ def test_update_join_code_add_hours_is_cumulative(client, td_user, td_tournament
 
 def test_update_join_code_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.patch(
-        f"/tournaments/{td_tournament.id}/join-codes/9999/", json={"label": "Ghost"}
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/tournaments/{td_tournament.id}/join-codes/9999/", json={"label": "Ghost"}
+        ).status_code
+        == 404
+    )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # ---------------------------------------------------------------------------
 
+
 def test_deactivate_join_code_marks_inactive(client, td_user, td_tournament, db):
     join_code = make_join_code(db, td_tournament.id, td_user.id, code="DEACT001")
     login(client, "td@test.com", "tdpass")
 
-    assert client.delete(f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/").status_code == 204
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/").status_code
+        == 204
+    )
 
     db.refresh(join_code)
     assert join_code.is_active is False
@@ -163,7 +181,10 @@ def test_deactivate_join_code_twice_rejected(client, td_user, td_tournament, db)
     join_code = make_join_code(db, td_tournament.id, td_user.id, code="DEACT002", is_active=False)
     login(client, "td@test.com", "tdpass")
 
-    assert client.delete(f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/").status_code == 400
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/join-codes/{join_code.id}/").status_code
+        == 400
+    )
 
 
 def test_deactivate_join_code_not_found(client, td_user, td_tournament):
@@ -177,7 +198,10 @@ def test_deactivate_join_code_not_found(client, td_user, td_tournament):
 # here already has it — request it directly to assert on/configure it.
 # ---------------------------------------------------------------------------
 
-def test_staff_invite_sends_to_all_and_logs_audit(client, td_user, td_tournament, db, mock_send_email):
+
+def test_staff_invite_sends_to_all_and_logs_audit(
+    client, td_user, td_tournament, db, mock_send_email
+):
     from app.core.tournament.audit import STAFF_INVITE_SENT
     from app.models.models import AuditLogEntry
 
@@ -197,7 +221,10 @@ def test_staff_invite_sends_to_all_and_logs_audit(client, td_user, td_tournament
 
     entry = (
         db.query(AuditLogEntry)
-        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == STAFF_INVITE_SENT)
+        .filter(
+            AuditLogEntry.tournament_id == td_tournament.id,
+            AuditLogEntry.action == STAFF_INVITE_SENT,
+        )
         .first()
     )
     assert entry is not None
@@ -232,7 +259,10 @@ def test_staff_invite_partial_failure_reported(client, td_user, td_tournament, d
 
     entry = (
         db.query(AuditLogEntry)
-        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == STAFF_INVITE_SENT)
+        .filter(
+            AuditLogEntry.tournament_id == td_tournament.id,
+            AuditLogEntry.action == STAFF_INVITE_SENT,
+        )
         .first()
     )
     assert entry.extra_data["failed"] == ["bad@example.com"]
@@ -247,7 +277,9 @@ def test_staff_invite_join_code_not_found(client, td_user, td_tournament):
     assert response.status_code == 404
 
 
-def test_staff_invite_join_code_wrong_tournament(client, td_user, td_tournament, other_tournament, other_user, db):
+def test_staff_invite_join_code_wrong_tournament(
+    client, td_user, td_tournament, other_tournament, other_user, db
+):
     join_code = make_join_code(db, other_tournament.id, other_user.id, code="WRONGTN1")
     login(client, "td@test.com", "tdpass")
     response = client.post(
@@ -268,7 +300,9 @@ def test_staff_invite_volunteer_forbidden(client, td_user, other_tournament, db)
     assert response.status_code == 403
 
 
-def test_staff_invite_non_owner_with_manage_invites_forbidden(client, td_user, other_tournament, db):
+def test_staff_invite_non_owner_with_manage_invites_forbidden(
+    client, td_user, other_tournament, db
+):
     """Owner-only: holding manage_invites via a role isn't enough — only
     other_tournament's owner (other_user) can send staff invites."""
     join_code = make_join_code(db, other_tournament.id, td_user.id, code="FORBID02")
@@ -281,7 +315,9 @@ def test_staff_invite_non_owner_with_manage_invites_forbidden(client, td_user, o
     assert response.status_code == 403
 
 
-def test_staff_invite_admin_without_ownership_forbidden(client, admin_user, td_user, td_tournament, db):
+def test_staff_invite_admin_without_ownership_forbidden(
+    client, admin_user, td_user, td_tournament, db
+):
     """No admin bypass here, unlike require_permission() — ownership is
     checked directly, so even a site admin needs to actually own the
     tournament."""
