@@ -14,7 +14,7 @@ All models are in `app/models/models.py`, in SQLAlchemy 2 typed style:
 ```python
 name: Mapped[str] = mapped_column(String(255))
 notes: Mapped[str | None] = mapped_column(Text)
-created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 owner: Mapped["User | None"] = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
 tracks: Mapped[list["TournamentTrack"]] = relationship(
     "TournamentTrack", back_populates="tournament", cascade="all, delete-orphan"
@@ -23,7 +23,7 @@ tracks: Mapped[list["TournamentTrack"]] = relationship(
 
 - Always pass the SQL type to `mapped_column`, even when the annotation implies it, for consistency.
 - `| None` in the annotation makes a column nullable. Pass `nullable=` only when it must differ from the annotation, such as a `Mapped[Any]` JSON column.
-- Datetimes are `DateTime(timezone=True)` with `default=utcnow`.
+- Datetimes are `DateTime(timezone=True)`. A timestamp the ORM sets (`default=utcnow`) is `Mapped[datetime]`, not nullable; `| None` is for one that's null until something happens, like `revoked_at`.
 - Type JSON columns precisely (`dict[str, Any]`, `list[str]`); a bare `dict` has no default mapping.
 - Relationship annotations must match the real cardinality. A wrong `list[...]` vs. scalar annotation silently changes `uselist`. A many-to-one is `"X | None"` unless all its foreign key columns are NOT NULL.
 - Read a model's comments before adding a field; many record invariants.

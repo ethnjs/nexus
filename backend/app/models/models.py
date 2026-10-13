@@ -64,8 +64,8 @@ class UserSession(Base):
     user_agent: Mapped[str | None] = mapped_column(String(255))
     ip_address: Mapped[str | None] = mapped_column(String(45))  # long enough for IPv6
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -94,7 +94,7 @@ class VerificationToken(Base):
 
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship("User")
 
@@ -174,7 +174,7 @@ class SeasonEvent(Base):
     year: Mapped[int] = mapped_column(Integer)
     division: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     event: Mapped["Event"] = relationship("Event")
 
@@ -334,7 +334,7 @@ class AlumniChapter(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     university_id: Mapped[int] = mapped_column(Integer, ForeignKey("universities.id"), unique=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     university: Mapped["University"] = relationship("University", back_populates="alumni_chapter")
@@ -366,7 +366,7 @@ class ChapterMembership(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True
     )  # one chapter per user
     role: Mapped[str] = mapped_column(String(32), default="member")  # "lead" | "officer" | "member"
-    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     alumni_chapter: Mapped["AlumniChapter"] = relationship(
@@ -804,8 +804,8 @@ class TournamentRole(Base):
     torus_role: Mapped[str | None] = mapped_column(String(32))
     duosmium_role: Mapped[str | None] = mapped_column(String(32))
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -900,7 +900,7 @@ class JoinCode(Base):
     label: Mapped[str | None] = mapped_column(String(255))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     use_count: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (
@@ -943,7 +943,7 @@ class AuditLogEntry(Base):
     )  # e.g. "membership", "role", "join_code"
     target_id: Mapped[int | None] = mapped_column(Integer)
     extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="audit_log")
 
@@ -1084,8 +1084,8 @@ class TournamentShift(Base):
     label: Mapped[str] = mapped_column(String(255))
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -1211,8 +1211,8 @@ class TournamentTrack(Base):
     default_role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
     )
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -1975,8 +1975,8 @@ class Form(Base):
     # a TD flagged. Off by default — see patch_form_response.
     allow_response_edits: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -2058,7 +2058,7 @@ class TournamentForm(Base):
     # lives in core/tournament/form_prerequisites.py so every future caller
     # (member form list, rendering, and submission) shares one rule.
     prerequisites: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="tournament_forms")
     form: Mapped["Form"] = relationship("Form", back_populates="tournament_form")
@@ -2099,8 +2099,8 @@ class FormField(Base):
 
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -2141,8 +2141,8 @@ class FormResponse(Base):
     form_id: Mapped[str] = mapped_column(String(12), ForeignKey("forms.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
-    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
@@ -2216,7 +2216,7 @@ class FormResponsePendingUpdate(Base):
     )
     # See app/core/form/changes.py for the values and what raises each.
     reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     response: Mapped["FormResponse"] = relationship(
         "FormResponse", back_populates="pending_updates"
@@ -2345,8 +2345,8 @@ class TournamentMembershipTrackStatus(Base):
         String(12), ForeignKey("form_fields.id", ondelete="SET NULL")
     )
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
