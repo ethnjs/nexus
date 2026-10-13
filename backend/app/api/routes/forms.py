@@ -805,7 +805,7 @@ def bulk_update_fields(
             # stay attached without any lineage bookkeeping; FormAnswer records
             # the question_type/field_key each answer was given under, so past
             # answers remain readable under the old semantics rather than being
-            # reinterpreted through the new type. See form-edit-lifecycle.md.
+            # reinterpreted through the new type. See backend/docs/form-edit-lifecycle.md.
             if is_history_preserving and not unarchiving:
                 reasons = changes.classify_field_change(
                     field,
@@ -1011,7 +1011,7 @@ def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answ
 # response goes through PATCH below, which only accepts the questions a TD
 # flagged — an unrestricted rewrite of an old response re-fires write-through
 # for fields the respondent never touched, overwriting state a newer form may
-# have set (see form-edit-lifecycle.md). View access, not manage — this is
+# have set (see backend/docs/form-edit-lifecycle.md). View access, not manage — this is
 # what the person filling the form out calls.
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
@@ -1080,7 +1080,7 @@ def submit_form_response(
 # PATCH /forms/{form_id}/responses/me/ — edit a submitted response. By default
 # limited to the questions carrying a pending update: replaying answers that
 # didn't change can overwrite state a newer form already set (see the track
-# status ordering note in form-edit-lifecycle.md). A form with
+# status ordering note in backend/docs/form-edit-lifecycle.md). A form with
 # allow_response_edits opens every live question instead — the TD has opted
 # into members revising freely, so the client must send only what changed.
 # The gate is enforced here, not in the UI.
@@ -1218,7 +1218,7 @@ def _write_through_reserved_fields(
 ) -> None:
     """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`/
     `event_preference_{suffix}` answers into their structural tables —
-    tournament-owned forms only (see form-question-types-reference.md). Runs
+    tournament-owned forms only (see backend/docs/form-question-types-reference.md). Runs
     over every active field, not just answered ones, so a reserved field left
     blank clears any previously-synced rows rather than leaving them stale.
 
@@ -1354,7 +1354,7 @@ def _write_through_reserved_fields(
 # Write-through rows are handled per target: lunch and event preference each
 # have a single owning field and can be cleared, while availability and track
 # statuses are shared with other questions and are left alone — see
-# form-edit-lifecycle.md.
+# backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def invalidate_form_field(

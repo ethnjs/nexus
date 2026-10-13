@@ -1306,7 +1306,7 @@ export const membersApi = {
     api.put<MembershipEventPreference[]>(
       `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`, { selections },
     ),
-  // See backend/track-status-rules.md: `declined` always; `confirmed` only
+  // See backend/docs/track-status-rules.md: `declined` always; `confirmed` only
   // with the track's allow_confirm; `interested` only without it.
   updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
     api.put<MembershipTrackStatus>(
@@ -1755,7 +1755,7 @@ export const sheetsApi = {
 }
 
 // -------------------------------------------------------------------------
-// Forms — see backend/form-question-types-reference.md for the full
+// Forms — see backend/docs/form-question-types-reference.md for the full
 // question_type/config/reserved-field_key shape reference this mirrors.
 // -------------------------------------------------------------------------
 export type FormQuestionType =
@@ -2105,7 +2105,7 @@ export const formsApi = {
   // 409s if the form has any responses — check response_count client-side first.
   delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
   // Full ordered target field list — see FormFieldInput and
-  // backend/form-edit-lifecycle.md.
+  // backend/docs/form-edit-lifecycle.md.
   //
   // The submitted config is authoritative, options included. An existing
   // option must be echoed back by its option_id — send it with

@@ -240,7 +240,7 @@ def build_event_preferences(
     picked rather than the flat per-event rows the DB stores.
 
     Selecting one option writes one row per event it groups (see
-    form-question-types-reference.md), so a "Test Review" option covering 21
+    backend/docs/form-question-types-reference.md), so a "Test Review" option covering 21
     events reads back as 21 rows — unusable in a panel. This reverses that
     expansion by mapping each stored event id back to the option whose `value`
     list contains it, and returns one entry per option with its events nested.

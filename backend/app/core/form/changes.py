@@ -2,7 +2,7 @@
 
 The TD sends a target field list; this works out, per field, whether anyone
 must be asked to look at their answer again and why. See
-backend/form-edit-lifecycle.md for the rules these implement.
+backend/docs/form-edit-lifecycle.md for the rules these implement.
 
 Two tiers:
   * MANDATORY_REASONS always apply — the change invalidates or outdates an
@@ -135,7 +135,7 @@ def classify_field_change(
     # describing a consequence of it, not a separate thing to review.
     if not shape_changed:
         # Four verbs, distinguished by whether an option is present at all and
-        # whether it's archived — see form-edit-lifecycle.md:
+        # whether it's archived — see backend/docs/form-edit-lifecycle.md:
         #   add         absent   -> live       flag everyone
         #   unarchive   archived -> live       flag everyone (same as add)
         #   archive     live     -> archived   flag nobody; answers stay valid

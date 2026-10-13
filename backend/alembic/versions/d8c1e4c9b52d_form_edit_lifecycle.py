@@ -1,6 +1,6 @@
 """form edit lifecycle
 
-Schema for backend/form-edit-lifecycle.md — fields are edited in place rather
+Schema for backend/docs/form-edit-lifecycle.md — fields are edited in place rather
 than archived and replaced, so identity moves off field_key onto field_id.
 
   * FormAnswer records the question_type/field_key it was answered under.

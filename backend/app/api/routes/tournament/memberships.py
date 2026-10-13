@@ -504,7 +504,7 @@ def _set_track_status(
 ) -> None:
     """The self-service status write, shared by the status route and the
     availability route (whose "Not available" clears shifts and declines in
-    one call). The transition rules live in backend/track-status-rules.md."""
+    one call). The transition rules live in backend/docs/track-status-rules.md."""
     if incoming == "confirmed" and not track.allow_confirm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

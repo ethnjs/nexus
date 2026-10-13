@@ -1,5 +1,5 @@
 """Server-side branching replay for form submissions — mirrors the
-client-side jump-graph walk (see form-question-types-reference.md) so
+client-side jump-graph walk (see backend/docs/form-question-types-reference.md) so
 `required` is enforced only on fields the respondent could actually reach,
 independent of whatever the client computed."""
 
@@ -16,7 +16,7 @@ def compute_reachable_field_ids(fields: list[FormField], answers: dict[str, Any]
     `next_field_id`/`action` for the field's submitted answer, falling
     through to the next field by `order` otherwise. Returns the set of
     field ids visited. A revisited field (A->B->A) ends the walk rather
-    than looping forever — see form-question-types-reference.md, cycles
+    than looping forever — see backend/docs/form-question-types-reference.md, cycles
     aren't guarded against upstream, so this just has to not hang."""
     if not fields:
         return set()

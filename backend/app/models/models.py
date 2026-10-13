@@ -2095,7 +2095,7 @@ class FormAnswer(Base):
 # they union rather than override. A row is cleared when the respondent
 # patches that field, and is deleted outright if the field is archived or
 # invalidated — a flag on a question that can no longer be answered is
-# unclearable by construction. See backend/form-edit-lifecycle.md.
+# unclearable by construction. See backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
@@ -2193,7 +2193,7 @@ class TournamentMembershipLunch(Base):
 # One row per (membership, track): a track's status is a single current fact,
 # not a history. Several questions across several forms feed the same row, so
 # no field owns it and none can withdraw its contribution — write-through only
-# ever upserts here, never deletes (see backend/form-edit-lifecycle.md).
+# ever upserts here, never deletes (see backend/docs/form-edit-lifecycle.md).
 #
 # Writes are guarded by a transition rule rather than by submission ordering:
 # a track never falls back to `interested` once it's moved past it, so a stale

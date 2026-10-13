@@ -40,7 +40,7 @@ def upgrade() -> None:
             ["membership_id"], ["tournament_memberships.id"], ondelete="CASCADE"
         ),
         # SET NULL, not CASCADE: invalidating the question that set a status
-        # must not delete the status. See backend/form-edit-lifecycle.md.
+        # must not delete the status. See backend/docs/form-edit-lifecycle.md.
         sa.ForeignKeyConstraint(["source_field_id"], ["form_fields.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["source_response_id"], ["form_responses.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["track_id"], ["tournament_tracks.id"], ondelete="CASCADE"),

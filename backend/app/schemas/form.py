@@ -9,7 +9,7 @@ from app.schemas.person import PersonNameRef, PersonRefResponse
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
-# form-question-types-reference.md. These cover structural shape only
+# backend/docs/form-question-types-reference.md. These cover structural shape only
 # (required keys, types, per-option uniqueness, ranks <= options); DB-backed
 # checks (next_field_id resolving to a real field, availability options
 # resolving to a real TournamentShift, reserved field_key pairing) stay in
@@ -441,7 +441,7 @@ class FormResponseCreate(BaseModel):
 class FormPendingUpdateRead(BaseModel):
     """A question this response is being asked to look at again. `field_id` is
     the only field PATCH .../responses/me/ will accept — see
-    backend/form-edit-lifecycle.md."""
+    backend/docs/form-edit-lifecycle.md."""
 
     field_id: str
     reasons: list[str] = []

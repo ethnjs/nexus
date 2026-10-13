@@ -1,5 +1,5 @@
 """FormField config/options validation — see
-backend/form-question-types-reference.md for the shapes enforced here.
+backend/docs/form-question-types-reference.md for the shapes enforced here.
 
 Structural shape (required keys, types, per-option uniqueness, ranks <=
 options, branching mutual-exclusivity/type-restriction) lives in the
@@ -89,7 +89,7 @@ TOURNAMENT_PRESET_FIELD_KEY_PATTERNS = (
 
 class FormFieldValidationError(ValueError):
     """Raised when a FormField's question_type/config/options don't match
-    the shape form-question-types-reference.md requires."""
+    the shape backend/docs/form-question-types-reference.md requires."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -469,7 +469,7 @@ def validate_availability_options(
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
-    is valid but never write-throughs — see form-question-types-reference.md)."""
+    is valid but never write-throughs — see backend/docs/form-question-types-reference.md)."""
     if tournament_id is None:
         return
 

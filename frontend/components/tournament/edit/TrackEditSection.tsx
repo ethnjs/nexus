@@ -47,7 +47,7 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
 
       {/* Driven by the route's own rule rather than by a track_status
           question's options — those can span several tracks, and this control
-          answers for exactly one. See backend/track-status-rules.md. */}
+          answers for exactly one. See backend/docs/track-status-rules.md. */}
       <Field
         label="Track status"
         helper={track.allow_confirm

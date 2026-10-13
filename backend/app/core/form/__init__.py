@@ -450,7 +450,7 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     tournament" conveniences (pulling in events/shifts/etc.) are a
     TD-editor-side action that populates this array once, same as any
     manually-authored option list, not a live server-side lookup. See
-    form-question-types-reference.md's "Options-storage rule". availability
+    backend/docs/form-question-types-reference.md's "Options-storage rule". availability
     and event_preference are the exceptions to "just return config as-is":
     when their `value` groups real entity ids (TournamentShifts,
     TournamentEvents), rendering resolves it into the actual entities

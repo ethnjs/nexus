@@ -1,7 +1,7 @@
 """Diff-sync for the structural tables that a form response's reserved-key
 answers (`availability_{track}`, `lunch_{track}_{category}`,
 `event_preference_{track}`, `track_status_{suffix}`) write through to on
-tournament-owned forms — see form-question-types-reference.md. Each function
+tournament-owned forms — see backend/docs/form-question-types-reference.md. Each function
 diffs the submitted values against what's already stored and applies only the
 delta (insert new, delete removed) rather than replace-all, so an untouched
 row (e.g. a different track's lunch category) is never disturbed.

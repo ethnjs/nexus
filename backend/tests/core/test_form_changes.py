@@ -1,6 +1,6 @@
 """Tests for app/core/form/changes.py — what a field edit means for people
 who already answered it. Pure functions over a field and its proposed next
-state; no DB, no HTTP. See backend/form-edit-lifecycle.md for the rules."""
+state; no DB, no HTTP. See backend/docs/form-edit-lifecycle.md for the rules."""
 
 import pytest
 
