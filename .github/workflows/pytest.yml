@@ -42,10 +42,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Check formatting
+      - name: Lint and check formatting
         run: |
+          uv run ruff check .
           uv run ruff format --check .
-          uv run ruff check --select I .
 
       - name: Run pytest
         env:

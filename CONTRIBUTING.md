@@ -36,7 +36,7 @@ git config core.hooksPath .githooks
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
-The pre-commit hook formats staged backend files with Ruff and sorts their imports. CI runs the same check. To run it by hand from `backend/`: `uv run ruff format` and `uv run ruff check --select I --fix`.
+The pre-commit hook lints and formats staged backend files with Ruff, applying its safe fixes. CI runs the same checks. To run them by hand from `backend/`: `uv run ruff check --fix` and `uv run ruff format`.
 
 Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
 
