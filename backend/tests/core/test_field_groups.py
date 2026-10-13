@@ -130,6 +130,7 @@ def test_no_narrowing_excludes_nothing():
 
 def test_excludes_every_unrequested_group():
     exclude = dump_exclude(frozenset({"roles"}))
+    assert exclude is not None
     assert exclude["notes"] is True
     assert exclude["track_statuses"] is True
     assert exclude["lunch"] is True
@@ -140,6 +141,7 @@ def test_user_keys_are_pruned_inside_the_user_object():
     """The user object itself always serializes — contact and profile prune
     keys within it rather than removing it."""
     exclude = dump_exclude(frozenset({"contact"}))
+    assert exclude is not None
     assert "user" not in {k for k, v in exclude.items() if v is True}
     assert "email" not in exclude["user"]
     assert "phone" not in exclude["user"]
