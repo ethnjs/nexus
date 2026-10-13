@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models."""
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 from zoneinfo import ZoneInfo
 
 from nanoid import generate as generate_nanoid
@@ -1944,7 +1944,7 @@ class Form(Base):
     id: Mapped[str] = mapped_column(
         String(12), primary_key=True, default=generate_public_id, index=True
     )
-    owner_type: Mapped[str] = mapped_column(String(16))  # "tournament" | "chapter"
+    owner_type: Mapped[Literal["tournament", "chapter"]] = mapped_column(String(16))
     tournament_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
@@ -1958,9 +1958,9 @@ class Form(Base):
     # nothing here enforces them staying in sync afterward.
     title: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(
+    status: Mapped[Literal["draft", "published", "archived"]] = mapped_column(
         String(16), default="draft"
-    )  # "draft" | "published" | "archived"
+    )
 
     # Null once the creator's account is deleted.
     created_by: Mapped[int | None] = mapped_column(
