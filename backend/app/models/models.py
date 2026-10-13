@@ -820,6 +820,9 @@ class TournamentRole(Base):
         viewonly=True,
     )
 
+    # Not a column: with_member_counts() fills it in for RoleRead.
+    member_count = 0
+
     __table_args__ = (UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),)
 
 
