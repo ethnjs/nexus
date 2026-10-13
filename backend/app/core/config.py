@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_region: str = "us-west-2"
-    email_from_address: str = "NEXUS <verify@nexus.socalscioly.org>"
+    email_from_address: str = "NEXUS <noreply@nexus.socalscioly.org>"
     ses_max_send_rate: PositiveFloat = 1.0
     ses_max_attempts: PositiveInt = 4
 
