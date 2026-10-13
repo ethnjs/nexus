@@ -8,14 +8,20 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.tournament.field_groups import (
-    ALL_GROUPS, ALWAYS_KEYS, ALWAYS_USER_KEYS, GROUPS,
-    dump_exclude, loader_options, parse_fields, wants,
+    ALL_GROUPS,
+    ALWAYS_KEYS,
+    ALWAYS_USER_KEYS,
+    GROUPS,
+    dump_exclude,
+    loader_options,
+    parse_fields,
+    wants,
 )
 from app.schemas.tournament.membership import (
-    MembershipFullResponse, MembershipMeResponse,
+    MembershipFullResponse,
+    MembershipMeResponse,
 )
 from app.schemas.user import UserFullResponse
-
 
 # ---------------------------------------------------------------------------
 # The invariant that keeps this honest: every field on either response model
@@ -190,6 +196,7 @@ def test_loader_options_compile_against_a_real_query(db: Session):
     raise InvalidRequestError only at compile time, not when the option is
     built."""
     from sqlalchemy.orm import joinedload
+
     from app.models.models import TournamentMembership
 
     for requested in (None, frozenset(), frozenset({"profile"}), frozenset({"contact", "roles"}), ALL_GROUPS):

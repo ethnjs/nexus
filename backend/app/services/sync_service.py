@@ -11,13 +11,13 @@ Flow per row:
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.models import Event, TournamentMembership, SheetConfig, Tournament, User
 from app.core.phone import normalize_phone
+from app.models.models import SheetConfig, Tournament, TournamentMembership, User
 from app.schemas.sheet_config import (
     PARSE_TIME_RANGE_ACTIONS,
     SyncError,
@@ -26,7 +26,6 @@ from app.schemas.sheet_config import (
     normalize_column_mappings_input,
 )
 from app.services.sheets_service import SheetsService
-
 
 # ---------------------------------------------------------------------------
 # User fields — fields that map to User table columns
@@ -645,7 +644,7 @@ def sync_sheet(
             continue
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         config.last_synced_at = now
         db.commit()
     except Exception as e:

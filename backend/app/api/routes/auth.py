@@ -1,51 +1,50 @@
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
+    RATE_LIMIT_WINDOW,
+    clear_auth_cookie,
+    consume_verification_token,
     create_session,
     get_active_session,
     get_client_ip,
     get_current_session,
-    revoke_session,
-    revoke_all_sessions,
-    revoke_all_other_sessions,
-    hash_password,
-    verify_password,
-    verify_and_update_password,
     get_current_user,
-    set_auth_cookie,
-    clear_auth_cookie,
-    consume_verification_token,
     get_pending_email_change,
-    RATE_LIMIT_WINDOW,
+    hash_password,
+    revoke_all_other_sessions,
+    revoke_all_sessions,
+    revoke_session,
+    set_auth_cookie,
+    verify_and_update_password,
+    verify_password,
 )
-from app.core.users import check_if_email_exists, find_user_by_id, create_user
+from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
-from app.schemas.user import AdminUserSlimResponse
 from app.schemas.auth import (
-    LoginRequest,
-    RegisterRequest,
-    MessageResponse,
-    EmailChangeRequest,
-    EmailPendingChangeResponse,
-    EmailChangeRevertConfirm,
-    PasswordChangeRequest,
-    PasswordResetRequest,
-    PasswordResetConfirm,
     AccountSetupConfirm,
+    EmailChangeRequest,
+    EmailChangeRevertConfirm,
+    EmailPendingChangeResponse,
+    LoginRequest,
+    MessageResponse,
+    PasswordChangeRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RegisterRequest,
 )
+from app.schemas.user import AdminUserSlimResponse
 from app.services.email_service import (
-    send_signup_verification_email,
     send_email_change_request_email,
     send_email_change_requested_notice,
-    send_password_reset_request_email,
     send_password_changed_notice,
+    send_password_reset_request_email,
+    send_signup_verification_email,
 )
-from datetime import datetime, timezone
 
 router = APIRouter(tags=["auth"])
 
@@ -101,7 +100,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(
     response: Response,
-    access_token: Optional[str] = Cookie(default=None),
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     """
@@ -288,7 +287,7 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
     user = find_user_by_id(db, token_row.user_id)
     original_email = token_row.new_email  # reused column — see VerificationToken.new_email comment
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Case 1: still-pending email_change token — cancel it.
     pending = db.query(VerificationToken).filter(

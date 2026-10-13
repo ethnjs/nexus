@@ -17,8 +17,15 @@ from sqlalchemy.orm import Session
 from app.core.tournament import get_scoped_or_404
 from app.core.tournament.roles import validate_role_action
 from app.models.models import (
-    Tournament, TournamentEvent, TournamentEventShift, TournamentMembership,
-    TournamentRole, TournamentShift, TournamentTrack, TournamentTrackAssignment, User,
+    Tournament,
+    TournamentEvent,
+    TournamentEventShift,
+    TournamentMembership,
+    TournamentRole,
+    TournamentShift,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
 )
 
 

@@ -33,7 +33,10 @@ from sqlalchemy.orm import Session
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament.audit import TRACK_PURGED, log_action
 from app.models.models import (
-    TournamentEventTrack, TournamentMembershipTrackStatus, TournamentShift, TournamentTrack,
+    TournamentEventTrack,
+    TournamentMembershipTrackStatus,
+    TournamentShift,
+    TournamentTrack,
 )
 
 

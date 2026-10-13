@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
@@ -54,7 +56,7 @@ class EventStaffingNeedRead(EventStaffingNeed):
     role_label: str
 
     @classmethod
-    def from_row(cls, need) -> "EventStaffingNeedRead":
+    def from_row(cls, need) -> EventStaffingNeedRead:
         return cls(role_id=need.role_id, count=need.count, role_label=need.role.label)
 
 
@@ -115,7 +117,7 @@ class EventTrackDetailRead(EventTrackDetail):
     needs: list[EventStaffingNeedRead] = []
 
     @classmethod
-    def from_row(cls, detail) -> "EventTrackDetailRead":
+    def from_row(cls, detail) -> EventTrackDetailRead:
         return cls(
             track_id=detail.track_id,
             building_id=detail.building_id,
@@ -162,7 +164,7 @@ class EventBase(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_name_or_event_id(self) -> "EventBase":
+    def validate_name_or_event_id(self) -> EventBase:
         if self.name is None and self.event_id is None:
             raise ValueError("at least one of name or event_id must be set")
         return self
@@ -278,7 +280,7 @@ class EventMemberRead(BaseModel):
     shifts: list[TournamentShiftBase] = []
 
     @classmethod
-    def from_row(cls, event) -> "EventMemberRead":
+    def from_row(cls, event) -> EventMemberRead:
         # display_name, not name: a catalog-linked event carries its name on
         # the joined canonical Event, leaving its own column null.
         return cls(

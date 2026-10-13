@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin
 from app.db.session import get_db
 from app.models.models import Event, EventCategory, User
-from app.core.auth import require_admin
 from app.schemas.event import (
-    EventResponse, EventCreate, EventUpdate,
-    EventCategoryResponse, EventCategoryCreate, EventCategoryUpdate,
+    EventCategoryCreate,
+    EventCategoryResponse,
+    EventCategoryUpdate,
+    EventCreate,
+    EventResponse,
+    EventUpdate,
 )
 
 router = APIRouter(tags=["events"])

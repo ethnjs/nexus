@@ -1,57 +1,93 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, noload, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
+
 from app.core.auth import get_current_user
+from app.core.form.member_options import member_editable_reserved_fields, member_track_options
+from app.core.form.validation import (
+    LUNCH_FREE_TEXT_QUESTION_TYPES,
+    event_preference_field_track_id,
+)
+from app.core.form.write_through import (
+    event_preference_items_from_answer,
+    lunch_values_from_answer,
+    shift_ids_on_tracks,
+    sync_availability,
+    sync_event_preferences,
+    sync_lunch,
+)
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
-    apply_display_config, viewer_display_config,
-)
-from app.core.tournament.member_filters import (
-    apply_member_filters, apply_member_search, build_filter_options, filter_age_flags,
+    apply_display_config,
+    viewer_display_config,
 )
 from app.core.tournament.field_groups import (
-    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ONBOARDING, ROLES, TRACKS,
-    dump_exclude, field_selection, loader_options, resolve_fields, wants,
+    AVAILABILITY,
+    CUSTOM,
+    EVENT_PREFS,
+    LUNCH,
+    MEMBERSHIP,
+    ONBOARDING,
+    ROLES,
+    TRACKS,
+    dump_exclude,
+    field_selection,
+    loader_options,
+    resolve_fields,
+    wants,
 )
-from app.core.tournament.memberships import (
-    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
-    delete_tournament_form_responses, enrich_built_groups, gate_age_flags,
-    get_custom_form_answers, get_membership_by_user, onboarding_reads, resolve_person_refs,
+from app.core.tournament.member_filters import (
+    apply_member_filters,
+    apply_member_search,
+    build_filter_options,
+    filter_age_flags,
 )
 from app.core.tournament.member_summary import build_member_summary
+from app.core.tournament.memberships import (
+    ACTIVE_MEMBERSHIP_CLAUSE,
+    build_event_preferences,
+    build_lunch,
+    build_track_statuses,
+    delete_tournament_form_responses,
+    enrich_built_groups,
+    gate_age_flags,
+    get_custom_form_answers,
+    get_membership_by_user,
+    onboarding_reads,
+    resolve_person_refs,
+)
 from app.core.tournament.permissions import (
-    MANAGE_MEMBERS, get_user_permissions, require_permission,
+    MANAGE_MEMBERS,
+    get_user_permissions,
+    require_permission,
 )
 from app.core.tournament.roles import validate_member_target
 from app.core.tournament.tracks import require_track_answered, require_track_unlocked
 from app.db.session import get_db
-from app.core.form.member_options import member_editable_reserved_fields, member_track_options
-from app.core.form.validation import (
-    LUNCH_FREE_TEXT_QUESTION_TYPES, event_preference_field_track_id, lunch_field_track_id,
-)
-from app.core.form.write_through import (
-    event_preference_items_from_answer, lunch_values_from_answer, shift_ids_on_tracks,
-    sync_availability, sync_event_preferences, sync_lunch,
-)
 from app.models.models import (
     Tournament,
     TournamentMembership,
     TournamentMembershipTrackStatus,
-    TournamentRole,
-    TournamentShift,
     TournamentTrack,
     User,
 )
-from app.schemas.tournament.membership import (
-    AgeDisclosureRequest, MembershipAvailabilityRead, MembershipAvailabilityUpdate,
-    MembershipCoordinatorUpdate, MembershipEventPreferenceUpdate, MembershipFullResponse,
-    MembershipLunchRead,
-    MembershipLunchUpdate, MembershipMeResponse, MembershipTrackStatusUpdate,
-)
 from app.schemas.tournament.member_summary import MemberSummaryResponse
+from app.schemas.tournament.membership import (
+    AgeDisclosureRequest,
+    MembershipAvailabilityRead,
+    MembershipAvailabilityUpdate,
+    MembershipCoordinatorUpdate,
+    MembershipEventPreferenceUpdate,
+    MembershipFullResponse,
+    MembershipLunchRead,
+    MembershipLunchUpdate,
+    MembershipMeResponse,
+    MembershipTrackStatusUpdate,
+)
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
@@ -321,7 +357,7 @@ def set_my_age_disclosure(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
     membership.age_disclosure = "consented" if payload.consent else "declined"
-    membership.age_disclosure_at = datetime.now(timezone.utc)
+    membership.age_disclosure_at = datetime.now(UTC)
     db.commit()
     db.refresh(membership)
 

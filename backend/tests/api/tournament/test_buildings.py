@@ -1,7 +1,6 @@
 """Tests for /tournaments/{tournament_id}/buildings/ (TournamentBuilding)."""
-from tests.conftest import grant_role, login, primary_track_id
-
 from app.models.models import TournamentEventTrack, TournamentTrack
+from tests.conftest import grant_role, login, primary_track_id
 
 
 def _make_building(client, tournament_id, **overrides):

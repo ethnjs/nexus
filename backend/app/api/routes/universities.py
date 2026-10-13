@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
-from app.core.universities import check_if_university_exists, create_university_record, find_university
+from app.core.universities import (
+    check_if_university_exists,
+    create_university_record,
+    find_university,
+)
 from app.db.session import get_db
 from app.models.models import AlumniChapter, TournamentTrack, University, User
 from app.schemas.university import UniversityCreate, UniversityResponse, UniversityUpdate

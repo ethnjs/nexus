@@ -22,16 +22,16 @@ visibility rules and the tournament_tracks catalog used by later track fields.
 Backfills a tournament_forms row for every existing forms row that already
 has a tournament_id, so the 1:1 invariant holds for pre-existing data too.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '8d55ec2b6640'
-down_revision: Union[str, None] = '7db31ae17e3c'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '7db31ae17e3c'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

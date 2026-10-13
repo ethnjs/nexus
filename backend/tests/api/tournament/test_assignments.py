@@ -5,21 +5,24 @@ later step. What they cover is the part of the design that lives in the schema
 rather than in code: the two partial unique indexes, and the composite FK that
 keeps an assignment's membership_id and membership_role_id from disagreeing.
 """
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from types import SimpleNamespace
-
-from tests.conftest import grant_role, login, primary_track_id
-
 from app.models.models import (
-    TournamentEvent, TournamentEventShift, TournamentEventTrack,
-    TournamentMembership, TournamentRole, TournamentShift, TournamentTrackAssignment,
+    TournamentEvent,
+    TournamentEventShift,
+    TournamentEventTrack,
+    TournamentMembership,
+    TournamentRole,
+    TournamentShift,
     TournamentTrack,
+    TournamentTrackAssignment,
 )
 from app.schemas.tournament.assignment import AssignmentRead
+from tests.conftest import grant_role, login, primary_track_id
 
 
 def _make_event(db, tournament, name="Boomilever", track_id=None):
@@ -40,7 +43,7 @@ def _make_event(db, tournament, name="Boomilever", track_id=None):
 def _make_shift(db, tournament, label="Shift 1", hour=8):
     """A shift on the tournament's primary track. Shifts only ever hang off a
     primary track — a cosmetic one has no dates for a time range to sit in."""
-    start = datetime.combine(date.today(), time(hour), tzinfo=timezone.utc)
+    start = datetime.combine(date.today(), time(hour), tzinfo=UTC)
     shift = TournamentShift(
         tournament_id=tournament.id,
         track_id=primary_track_id(db, tournament.id),

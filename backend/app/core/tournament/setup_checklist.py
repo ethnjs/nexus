@@ -7,6 +7,7 @@ thing. Nothing here tracks "did the TD look at the page", so an item can go
 back to not_started if its rows are all deleted, which is the honest answer.
 """
 from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import STAFF_INVITE_SENT

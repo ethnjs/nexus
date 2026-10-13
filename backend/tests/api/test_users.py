@@ -1,10 +1,14 @@
 """Tests for /admin/users and /users/me endpoints."""
-from tests.conftest import grant_role, login
 from app.core.auth import hash_password
 from app.models.models import (
-    User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience, University,
+    Event,
+    EventCategory,
+    University,
+    User,
+    UserCompetitionExperience,
+    UserVolunteerExperience,
 )
-
+from tests.conftest import grant_role, login
 
 VALID_PHONE = "9495551234"
 
@@ -280,8 +284,8 @@ class TestAdminDeleteUser:
         assert db.query(Form).filter(Form.id == form.id).first() is not None
 
     def test_owned_tournament_survives_ownerless(self, client, admin_user, td_user, td_tournament, db):
-        from app.models.models import AuditLogEntry, Form, Tournament
         from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
+        from app.models.models import AuditLogEntry, Form, Tournament
         form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup",
                     created_by=td_user.id)
         db.add(form)

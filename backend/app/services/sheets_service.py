@@ -10,9 +10,11 @@ Pure functions handle header → field/type mapping with this priority:
 Exception: availability bracket pattern always → matrix_row regardless of form data.
 """
 from __future__ import annotations
+
 import json
 import re
 from typing import Any
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -29,8 +31,8 @@ from app.schemas.sheet_config import (
 )
 from app.services.volunteer_hints import (
     AVAILABILITY_BRACKET_PATTERN,
-    FieldHint,
     MATRIX_ROW_KEY_KEYWORDS,
+    FieldHint,
     match_volunteer_hint,
 )
 

@@ -22,9 +22,15 @@ from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentTrackAssignment,
-    TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipEventPreference,
+    TournamentMembershipLunch,
+    TournamentMembershipTrackStatus,
+    TournamentRole,
+    TournamentTrackAssignment,
+    User,
+    UserCompetitionExperience,
     UserVolunteerExperience,
 )
 
@@ -350,14 +356,21 @@ def build_filter_options(db, tournament) -> dict:
     every canonical event when three are mentioned makes the picker useless.
     """
     from sqlalchemy import func
+
     from app.core.form.validation import (
-        EVENT_PREFERENCE_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
+        EVENT_PREFERENCE_FIELD_KEY_PATTERN,
+        LUNCH_FIELD_KEY_PATTERN,
+        LUNCH_FREE_TEXT_QUESTION_TYPES,
     )
-    from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import unslug
     from app.core.tournament.tracks import track_event_ids
     from app.models.models import (
-        Event, Form, FormField, TournamentEvent, TournamentShift, TournamentTrack,
+        Event,
+        Form,
+        FormField,
+        TournamentEvent,
+        TournamentShift,
+        TournamentTrack,
     )
 
     def scoped(model):

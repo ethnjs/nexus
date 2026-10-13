@@ -40,16 +40,16 @@ incrementally as the rewrite progresses:
     creation from the creator's browser timezone, immutable after —
     no update path. Existing rows backfilled to "America/Los_Angeles".
 """
-from typing import Sequence, Union
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import text
 
-
 revision: str = "d3e4f5a6b7c8"
-down_revision: Union[str, None] = "c7b3f4a9d2e1"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "c7b3f4a9d2e1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

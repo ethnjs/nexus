@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -94,8 +94,8 @@ class EmailPendingChangeResponse(BaseModel):
 
     Both fields null together means no email change is currently pending.
     """
-    new_email: Optional[str] = None
-    can_resend_at: Optional[datetime] = None
+    new_email: str | None = None
+    can_resend_at: datetime | None = None
 
 
 class PasswordChangeRequest(BaseModel):

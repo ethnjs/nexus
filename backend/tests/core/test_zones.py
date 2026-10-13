@@ -7,15 +7,21 @@ zones with nothing edited on either zone.
 """
 import pytest
 
-from tests.conftest import primary_track_id
-
 from app.core.tournament.zones import (
-    events_by_zone, resolve_track_zones, unzoned_event_ids, zone_for_event,
+    events_by_zone,
+    resolve_track_zones,
+    unzoned_event_ids,
+    zone_for_event,
 )
 from app.models.models import (
-    TournamentBuilding, TournamentBuildingTrack, TournamentEvent, TournamentEventTrack,
-    TournamentZone, TournamentZoneMember,
+    TournamentBuilding,
+    TournamentBuildingTrack,
+    TournamentEvent,
+    TournamentEventTrack,
+    TournamentZone,
+    TournamentZoneMember,
 )
+from tests.conftest import primary_track_id
 
 
 @pytest.fixture

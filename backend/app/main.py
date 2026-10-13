@@ -1,37 +1,44 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
+from app.api.routes import (
+    auth,
+    events,
+    forms,
+    join,
+    season_event,
+    sheets,
+    universities,
+    user_experience,
+    users,
+)
+from app.api.routes import chapter as chapter_core
+from app.api.routes import tournament as tournament_core
+from app.api.routes.chapter import admin as chapter_admin
+from app.api.routes.chapter import join_codes as chapter_join_codes
+from app.api.routes.chapter import memberships as chapter_memberships
+from app.api.routes.tournament import admin as tournament_admin
+from app.api.routes.tournament import assignments as tournament_assignments
+from app.api.routes.tournament import audit as tournament_audit
+from app.api.routes.tournament import buildings as tournament_buildings
+from app.api.routes.tournament import display_config as tournament_display_config
+from app.api.routes.tournament import events as tournament_events
+from app.api.routes.tournament import export_presets as tournament_export_presets
+from app.api.routes.tournament import join_codes as tournament_join_codes
+from app.api.routes.tournament import memberships as tournament_memberships
+from app.api.routes.tournament import onboarding as tournament_onboarding
+from app.api.routes.tournament import roles as tournament_roles
+from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
+from app.api.routes.tournament import shifts as tournament_shifts
+from app.api.routes.tournament import tracks as tournament_tracks
+from app.api.routes.tournament import zones as tournament_zones
 from app.core.config import get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
-from app.api.routes import (
-    auth, events, join, season_event,
-    sheets, users, user_experience, universities, forms,
-)
-from app.api.routes import tournament as tournament_core
-from app.api.routes.tournament import events as tournament_events
-from app.api.routes.tournament import shifts as tournament_shifts
-from app.api.routes.tournament import memberships as tournament_memberships
-from app.api.routes.tournament import roles as tournament_roles
-from app.api.routes.tournament import join_codes as tournament_join_codes
-from app.api.routes.tournament import admin as tournament_admin
-from app.api.routes.tournament import audit as tournament_audit
-from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
-from app.api.routes.tournament import onboarding as tournament_onboarding
-from app.api.routes.tournament import tracks as tournament_tracks
-from app.api.routes.tournament import buildings as tournament_buildings
-from app.api.routes.tournament import zones as tournament_zones
-from app.api.routes.tournament import display_config as tournament_display_config
-from app.api.routes.tournament import export_presets as tournament_export_presets
-from app.api.routes.tournament import assignments as tournament_assignments
-from app.api.routes import chapter as chapter_core
-from app.api.routes.chapter import admin as chapter_admin
-from app.api.routes.chapter import memberships as chapter_memberships
-from app.api.routes.chapter import join_codes as chapter_join_codes
 
 settings = get_settings()
 DEV_DOCS = settings.app_env in ("development", "preview")
@@ -51,9 +58,9 @@ async def lifespan(app: FastAPI):
     import os
     scheduler = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
-        from app.db.session import SessionLocal
         from app.db.seed_canon_events import seed_events_and_categories
         from app.db.seed_universities import seed_universities
+        from app.db.session import SessionLocal
 
         with SessionLocal() as db:
             seed_events_and_categories(db)  # always — dev + prod
@@ -65,6 +72,7 @@ async def lifespan(app: FastAPI):
                 seed_dev_data(db)
 
         from apscheduler.schedulers.background import BackgroundScheduler
+
         from app.core.tournament.scheduler import archive_ended_tournaments
 
         def _run_archive_job():

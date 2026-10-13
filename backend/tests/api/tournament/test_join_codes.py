@@ -1,10 +1,10 @@
 """Tests for tournament join-code management endpoints
 (app/api/routes/tournament/join_codes.py). Redemption via POST /join/ is
 covered in tests/api/test_join.py, alongside the chapter case."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from tests.conftest import grant_role, login
 from app.models.models import JoinCode
+from tests.conftest import grant_role, login
 
 
 def make_join_code(db, tournament_id, created_by, **kwargs):
@@ -52,7 +52,7 @@ def test_list_join_codes_non_member_gets_404(client, td_user, other_tournament):
 def test_list_join_codes_hides_expired(client, td_user, td_tournament, db):
     """An expired code can't be redeemed, so the list doesn't offer it —
     this feeds both the invites page and the staff invite picker."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     live = make_join_code(db, td_tournament.id, td_user.id, code="LIVE1234", expires_at=now + timedelta(hours=1))
     make_join_code(db, td_tournament.id, td_user.id, code="GONE1234", expires_at=now - timedelta(hours=1))
     forever = make_join_code(db, td_tournament.id, td_user.id, code="FORE1234")
@@ -126,7 +126,7 @@ def test_update_join_code_add_hours_from_no_expiry(client, td_user, td_tournamen
 
 
 def test_update_join_code_add_hours_is_cumulative(client, td_user, td_tournament, db):
-    base = datetime.now(timezone.utc) + timedelta(hours=1)
+    base = datetime.now(UTC) + timedelta(hours=1)
     join_code = make_join_code(db, td_tournament.id, td_user.id, code="ADDHRS02", expires_at=base)
     login(client, "td@test.com", "tdpass")
 

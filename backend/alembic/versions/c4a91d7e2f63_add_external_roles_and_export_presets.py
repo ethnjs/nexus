@@ -9,16 +9,15 @@ Exports (#108, #110):
   TORUS and Duosmium. Nullable with no default, so every role starts unmapped.
 - tournament_export_presets: saved custom exports, shared per tournament.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = 'c4a91d7e2f63'
-down_revision: Union[str, None] = '8a438a1a14a3'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '8a438a1a14a3'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

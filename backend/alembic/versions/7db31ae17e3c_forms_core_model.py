@@ -28,16 +28,16 @@ scheme (see generate_public_id in app/models/models.py). Edited in place
 here rather than a new migration, same local-dev-only squashing reasoning as
 above; there's no production data to preserve a conversion path for.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '7db31ae17e3c'
-down_revision: Union[str, None] = 'd3e4f5a6b7c8'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'd3e4f5a6b7c8'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

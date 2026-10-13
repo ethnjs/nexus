@@ -1,12 +1,14 @@
 from __future__ import annotations
-from datetime import date, datetime
-from typing import Any, Optional
+
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.person import PersonRefResponse
 from app.schemas.tournament.assignment import AssignmentRead
 from app.schemas.tournament.role import MemberRoleRead
 from app.schemas.tournament.track import MembershipTrackStatusRead
-from app.schemas.person import PersonRefResponse
 from app.schemas.user import UserFullResponse
 
 
@@ -87,7 +89,7 @@ class AgeDisclosureRequest(BaseModel):
 
 class MembershipCoordinatorUpdate(BaseModel):
     """manage_members override — day-of logistics only, not onboarding data."""
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class MembershipJoinCodeInfo(BaseModel):
@@ -173,7 +175,7 @@ class MembershipAvailabilityRead(BaseModel):
     day: str
 
     @classmethod
-    def from_row(cls, row, tournament=None) -> "MembershipAvailabilityRead":
+    def from_row(cls, row, tournament=None) -> MembershipAvailabilityRead:
         """`tournament` is optional only so single-row callers can skip it —
         the fallback is a relationship hop, which costs an extra query per
         row for anyone resolving a whole roster. Pass it when you have it."""
@@ -277,8 +279,8 @@ class MembershipBaseResponse(BaseModel):
 
     # Omitted entirely, not nulled, unless the tournament collects the flag
     # and the member consented — see gate_age_flags.
-    is_over_18: Optional[bool] = None
-    is_over_21: Optional[bool] = None
+    is_over_18: bool | None = None
+    is_over_21: bool | None = None
 
     # The ORM relationships are named availability_shifts/lunch_selections —
     # validation_alias points from_attributes at the actual attribute names.
@@ -343,8 +345,8 @@ class MembershipFullResponse(MembershipBaseResponse):
     join_code: MembershipJoinCodeInfo | None = None
     # null/"consented"/"declined" — lets a TD who opts into seeing declined
     # members (?include_declined=true) tell them apart from active ones.
-    age_disclosure: Optional[str] = None
-    notes: Optional[str] = None
+    age_disclosure: str | None = None
+    notes: str | None = None
     # What this member is staffing. On the manager view rather than the shared
     # base on purpose: members do not see their own assignments yet, and the
     # base is what /members/me returns.

@@ -1,13 +1,18 @@
 """Tests for GET/PUT /tournaments/{tournament_id}/display-config/
 (app/api/routes/tournament/display_config.py)."""
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
+
 from app.models.models import (
-    Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentRole,
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipEventPreference,
+    TournamentMembershipLunch,
+    TournamentMembershipTrackStatus,
+    TournamentRole,
     TournamentTrack,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
-
 
 # ---------------------------------------------------------------------------
 # GET — manage_members, lenient on read
@@ -554,16 +559,16 @@ def test_get_display_config_catalog_includes_availability_days(client, td_user, 
 
     db.add_all([
         TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
-            start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
-            end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
+            start=datetime(2026, 3, 1, 15, 0, tzinfo=UTC),
+            end=datetime(2026, 3, 1, 19, 0, tzinfo=UTC),
         ),
         TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon",
-            start=datetime(2026, 3, 1, 20, 0, tzinfo=timezone.utc),
-            end=datetime(2026, 3, 1, 23, 0, tzinfo=timezone.utc),
+            start=datetime(2026, 3, 1, 20, 0, tzinfo=UTC),
+            end=datetime(2026, 3, 1, 23, 0, tzinfo=UTC),
         ),
         TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Day two",
-            start=datetime(2026, 3, 2, 15, 0, tzinfo=timezone.utc),
-            end=datetime(2026, 3, 2, 19, 0, tzinfo=timezone.utc),
+            start=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
+            end=datetime(2026, 3, 2, 19, 0, tzinfo=UTC),
         ),
     ])
     db.commit()

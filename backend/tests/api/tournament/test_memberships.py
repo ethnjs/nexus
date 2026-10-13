@@ -1,12 +1,16 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
-from datetime import date, datetime, timedelta, timezone
-import pytest
-from fastapi.testclient import TestClient
+from datetime import UTC, date, datetime, timedelta
+
 from app.core.tournament.display_config import MEMBERS_PANEL
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
-    Form, FormAnswer, FormField, FormResponse,
-    TournamentMembership, TournamentTrackAssignment, TournamentRole,
+    Form,
+    FormAnswer,
+    FormField,
+    FormResponse,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
@@ -285,7 +289,7 @@ def test_list_memberships_roster_shape(client, td_user, td_tournament, db):
 def test_list_memberships_includes_track_statuses(client, td_user, td_tournament, db):
     """3.5 — the roster table's Tracks column reads off the same list
     response, not a per-row detail fetch."""
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
@@ -313,7 +317,7 @@ def test_list_memberships_applies_the_requested_surface_config(client, td_user, 
     makes the tracks group requested at all, and `hidden` then empties it. A
     present-but-empty list is filtering; an absent key would mean the group
     was never asked for."""
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
@@ -334,7 +338,7 @@ def test_list_memberships_applies_the_requested_surface_config(client, td_user, 
 def test_list_memberships_without_a_surface_is_unfiltered(client, td_user, td_tournament, db):
     """No surface means no opinion — the caller gets the plain roster rather
     than some surface's filtering applied by default."""
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
@@ -401,8 +405,8 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
     shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
-        start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
-        end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
+        start=datetime(2026, 3, 1, 15, 0, tzinfo=UTC),
+        end=datetime(2026, 3, 1, 19, 0, tzinfo=UTC),
     )
     db.add(shift)
     db.flush()
@@ -587,7 +591,11 @@ class TestRosterFilters:
         assert self._roster(client, td_tournament.id, f"?track={writing.id}:declined") == set()
 
     def test_filters_of_different_kinds_and_together(self, client, db, td_user, td_tournament):
-        from app.models.models import TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack
+        from app.models.models import (
+            TournamentMembershipLunch,
+            TournamentMembershipTrackStatus,
+            TournamentTrack,
+        )
 
         track = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
         db.add(track)
@@ -677,7 +685,9 @@ class TestRosterFilters:
         """"Chess C", not "Chess (C)" — the division identifies which of the
         two same-named events a row is, so it reads as part of the name."""
         from app.models.models import (
-            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+            TournamentEvent,
+            TournamentEventTrack,
+            TournamentMembershipEventPreference,
         )
 
         track_id = primary_track_id(db, td_tournament.id)
@@ -714,7 +724,9 @@ class TestRosterFilters:
         """A track's group offers that track's events, like the question
         itself — plus anything already ranked there."""
         from app.models.models import (
-            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+            TournamentEvent,
+            TournamentEventTrack,
+            TournamentMembershipEventPreference,
         )
 
         track_id = primary_track_id(db, td_tournament.id)
@@ -743,9 +755,13 @@ class TestRosterFilters:
     ):
         """A pending-delete track is on its way out — no availability or
         event-preference group for it, even while rows still point at it."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+
         from app.models.models import (
-            TournamentEvent, TournamentMembershipEventPreference, TournamentShift, TournamentTrack,
+            TournamentEvent,
+            TournamentMembershipEventPreference,
+            TournamentShift,
+            TournamentTrack,
         )
 
         archived = TournamentTrack(tournament_id=td_tournament.id, name="Retired", is_archived=True)
@@ -753,7 +769,7 @@ class TestRosterFilters:
         db.add_all([archived, event])
         m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
         db.flush()
-        start = datetime.now(timezone.utc)
+        start = datetime.now(UTC)
         db.add(TournamentShift(
             tournament_id=td_tournament.id, track_id=archived.id, label="Old",
             start=start, end=start + timedelta(hours=2),
@@ -867,13 +883,14 @@ class TestRosterFilters:
     def test_shift_filter_takes_a_track_or_one_shift(self, client, db, td_user, td_tournament):
         """A track-level value resolves to every shift on that track. Was
         day-level, which couldn't separate two sites running the same day."""
-        from datetime import datetime, timezone as dt_timezone
+        from datetime import datetime
+
         from app.models.models import TournamentMembershipAvailability, TournamentShift
 
         track_id = primary_track_id(db, td_tournament.id)
         morning = TournamentShift(tournament_id=td_tournament.id, track_id=track_id, label="Impound",
-            start=datetime(2026, 5, 21, 15, 0, tzinfo=dt_timezone.utc),
-            end=datetime(2026, 5, 21, 17, 0, tzinfo=dt_timezone.utc),
+            start=datetime(2026, 5, 21, 15, 0, tzinfo=UTC),
+            end=datetime(2026, 5, 21, 17, 0, tzinfo=UTC),
         )
         db.add(morning)
         db.flush()
@@ -968,7 +985,7 @@ def test_search_params_combine_with_roster_filters(client, td_user, td_tournamen
     """The point of folding the two routes together: a name search and a
     member-data filter are now expressible in one request, which they never
     were while they lived on separate endpoints."""
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
     db.add(track)
@@ -1304,8 +1321,11 @@ def test_get_membership_availability_and_lunch_empty(client, td_user, td_tournam
 
 def test_get_membership_availability_and_lunch_populated(client, td_user, td_tournament, db):
     from datetime import datetime
+
     from app.models.models import (
-        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
+        TournamentMembershipAvailability,
+        TournamentMembershipLunch,
+        TournamentShift,
     )
 
     u = _make_user(db)
@@ -1414,7 +1434,7 @@ def _set_display_config(db, tournament, viewer, surface, hidden):
 
 
 def test_get_membership_surface_hides_track_status(client, td_user, td_tournament, db):
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
@@ -1513,7 +1533,7 @@ def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament,
     """No `surface` query param at all is a no-op — existing callers with no
     opinion on filtering keep getting the full payload even if display_config
     has hidden items configured for some other surface."""
-    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+    from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
 
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
@@ -1595,9 +1615,15 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     permission still reads their own availability/lunch/custom answers/age
     flags."""
     from datetime import datetime
+
     from app.core.auth import hash_password
     from app.models.models import (
-        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift, User as UserModel,
+        TournamentMembershipAvailability,
+        TournamentMembershipLunch,
+        TournamentShift,
+    )
+    from app.models.models import (
+        User as UserModel,
     )
 
     u = _make_user(db, "volunteer2@example.com")
@@ -1786,8 +1812,11 @@ def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, ot
     """Declining sets the status column only — availability, lunch, track
     statuses, and event preferences all survive."""
     from datetime import datetime
+
     from app.models.models import (
-        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
+        TournamentMembershipAvailability,
+        TournamentMembershipLunch,
+        TournamentShift,
     )
 
     td_tournament.collect_is_over_21 = True
@@ -1908,8 +1937,8 @@ def _make_shift(db, tournament_id, label="Morning", day=1):
     from app.models.models import TournamentShift
 
     shift = TournamentShift(tournament_id=tournament_id, track_id=primary_track_id(db, tournament_id), label=label,
-        start=datetime(2026, 3, day, 15, 0, tzinfo=timezone.utc),
-        end=datetime(2026, 3, day, 19, 0, tzinfo=timezone.utc),
+        start=datetime(2026, 3, day, 15, 0, tzinfo=UTC),
+        end=datetime(2026, 3, day, 19, 0, tzinfo=UTC),
     )
     db.add(shift)
     db.commit()
@@ -2030,8 +2059,8 @@ def test_put_my_availability_leaves_another_track_alone(client, td_user, td_tour
     mine = _make_shift(db, td_tournament.id, "Morning", day=1)
     theirs = TournamentShift(
         tournament_id=td_tournament.id, track_id=other.id, label="Day 2 morning",
-        start=datetime(2026, 3, 3, 15, 0, tzinfo=timezone.utc),
-        end=datetime(2026, 3, 3, 19, 0, tzinfo=timezone.utc),
+        start=datetime(2026, 3, 3, 15, 0, tzinfo=UTC),
+        end=datetime(2026, 3, 3, 19, 0, tzinfo=UTC),
     )
     db.add(theirs)
     db.commit()

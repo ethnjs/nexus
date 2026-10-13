@@ -6,9 +6,6 @@ Kept here (not inline in the route) so 3.3's apply-the-config step reuses the
 same known sets rather than redefining them."""
 
 import re
-from datetime import datetime
-
-from app.core.tournament import tournament_local_date
 
 MEMBERS_PANEL = "members_panel"
 MEMBERS_TABLE = "members_table"
@@ -569,11 +566,18 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     submitted — the same data that would ever appear on a panel worth hiding
     something from. Custom fields reuse get_custom_form_answers' reserved-key
     exclusion, but tournament-wide rather than per-user."""
-    from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN, TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
-    from app.core.tournament import tournament_local_date
+    from app.core.form.validation import (
+        LUNCH_FIELD_KEY_PATTERN,
+        TOURNAMENT_PRESET_FIELD_KEY_PATTERNS,
+    )
     from app.models.models import (
-        Form, FormField, Tournament, TournamentMembership, TournamentMembershipEventPreference,
-        TournamentMembershipLunch, TournamentShift, TournamentTrack,
+        Form,
+        FormField,
+        TournamentMembership,
+        TournamentMembershipEventPreference,
+        TournamentMembershipLunch,
+        TournamentShift,
+        TournamentTrack,
     )
 
     # Live tracks only: a pending-delete track is on its way out, so it is not

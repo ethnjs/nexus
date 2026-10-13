@@ -1,18 +1,20 @@
 """Unit tests for sync_service helpers — no DB, no Google API."""
-import pytest
 from datetime import datetime
+from unittest.mock import MagicMock
+
+import pytest
+
+from app.schemas.sheet_config import coerce_legacy_type
 from app.services.sync_service import (
+    _apply_rules,
+    _merge_availability,
+    _parse_availability,
+    _parse_day_string,
     _parse_time,
     _parse_time_range,
-    _parse_day_string,
-    _parse_availability,
-    _merge_availability,
-    _rule_matches,
-    _apply_rules,
     _process_cell,
+    _rule_matches,
 )
-from app.schemas.sheet_config import coerce_legacy_type
-from unittest.mock import MagicMock
 
 
 def _make_tournament(start_date=None):

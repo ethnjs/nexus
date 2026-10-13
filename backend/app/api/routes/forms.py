@@ -1,7 +1,5 @@
-from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -9,18 +7,20 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     assign_option_ids,
-    field_key_taken_in_tournament,
+    changes,
     delete_pending_updates_for_field,
+    field_key_taken_in_tournament,
     flag_pending_updates,
     resolve_field_options,
     selected_option_ids,
     slugify,
     snapshot_answer_value,
 )
-from app.core.form import changes
 from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
 from app.core.form.permissions import (
-    require_form_manage_access, require_form_not_archived, require_form_view_access,
+    require_form_manage_access,
+    require_form_not_archived,
+    require_form_view_access,
 )
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -29,8 +29,6 @@ from app.core.form.validation import (
     LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
     availability_field_track_id,
-    event_preference_field_track_id,
-    validate_preset_track,
     collect_active_field_errors,
     option_shift_ids,
     option_track_assignments,
@@ -44,23 +42,22 @@ from app.core.form.validation import (
     validate_track_status_options,
 )
 from app.core.form.write_through import (
+    event_preference_items_from_answer,
+    lunch_values_from_answer,
     parse_availability_field_key,
     parse_event_preference_field_key,
     parse_lunch_field_key,
     shift_ids_on_tracks,
-    lunch_values_from_answer,
-    event_preference_items_from_answer,
     sync_availability,
     sync_event_preferences,
     sync_lunch,
     sync_track_statuses,
 )
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
-from app.core.tournament.memberships import get_membership_by_user, is_declined
-from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
-from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
+from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
+from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
+from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -83,13 +80,13 @@ from app.schemas.form import (
     FormCreate,
     FormFieldRead,
     FormListRead,
-    MemberFormRead,
     FormRead,
     FormRespondentRead,
     FormResponseCreate,
     FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
+    MemberFormRead,
     TournamentFormPrerequisitesUpdate,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead

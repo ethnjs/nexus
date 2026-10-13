@@ -13,8 +13,12 @@ from app.core.form.validation import availability_field_track_id, option_shift_i
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.core.tournament.onboarding import onboarding_progress_bulk
 from app.models.models import (
-    Tournament, TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipTrackStatus, TournamentShift, TournamentTrack,
+    Tournament,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipTrackStatus,
+    TournamentShift,
+    TournamentTrack,
 )
 
 STATUSES = ("confirmed", "interested", "declined")

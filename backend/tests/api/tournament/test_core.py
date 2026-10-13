@@ -1,14 +1,21 @@
 """Tests for /tournaments/ core CRUD endpoints (app/api/routes/tournament/__init__.py)."""
 from datetime import date, timedelta
 
-from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, future_date, grant_role, login
 from app.core.tournament.audit import (
-    OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED,
+    OWNERSHIP_TRANSFERRED,
+    TOURNAMENT_ARCHIVED,
+    TOURNAMENT_UNARCHIVED,
 )
 from app.models.models import (
-    AuditLogEntry, Form, JoinCode, TournamentMembership, TournamentTrackAssignment,
-    TournamentRole, University,
+    AuditLogEntry,
+    Form,
+    JoinCode,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
+    University,
 )
+from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, future_date, grant_role, login
 
 # Required fields every TournamentCreate payload needs now (state/level/division
 # + non-null dates). Tests that only care about other fields spread this in.

@@ -1,22 +1,38 @@
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code
-from app.core.tournament.audit import (
-    JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
+from app.core.tournament import (
+    get_scoped_or_404,
+    get_tournament,
+    require_not_archived,
+    tournament_display_name,
 )
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_display_name
+from app.core.tournament.audit import (
+    JOIN_CODE_CREATED,
+    JOIN_CODE_DEACTIVATED,
+    JOIN_CODE_UPDATED,
+    STAFF_INVITE_SENT,
+    log_action,
+)
 from app.core.tournament.memberships import has_any_membership, resolve_person_refs
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
-from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.models import JoinCode, User
-from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
+from app.schemas.join_code import (
+    JoinCodeCreate,
+    JoinCodeResponse,
+    JoinCodeUpdate,
+    StaffInviteCreate,
+    StaffInviteResponse,
+)
 from app.schemas.person import PersonRefResponse
 from app.services.email_service import send_staff_invite_emails
 
@@ -51,7 +67,7 @@ def list_join_codes(
         .filter(
             JoinCode.tournament_id == tournament_id,
             JoinCode.is_active == True,
-            or_(JoinCode.expires_at.is_(None), JoinCode.expires_at > datetime.now(timezone.utc)),
+            or_(JoinCode.expires_at.is_(None), JoinCode.expires_at > datetime.now(UTC)),
         )
         .order_by(JoinCode.created_at.desc())
         .all()
@@ -79,7 +95,7 @@ def create_join_code(
 
     expires_at = None
     if payload.expires_in_hours is not None:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
 
     join_code = JoinCode(
         tournament_id=tournament_id,

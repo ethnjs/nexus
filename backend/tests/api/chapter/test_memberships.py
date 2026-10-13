@@ -1,8 +1,7 @@
 """Tests for /chapters/{chapter_id}/members/ endpoints (app/api/routes/chapter/memberships.py)."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.models.models import ChapterMembership
-
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/members/ — chapter officer/lead or admin

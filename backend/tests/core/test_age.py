@@ -8,7 +8,6 @@ from datetime import date
 
 from app.core.age import calculate_age, meets_age_requirement
 
-
 # ---------------------------------------------------------------------------
 # calculate_age
 # ---------------------------------------------------------------------------

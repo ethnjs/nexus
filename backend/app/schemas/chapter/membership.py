@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import Literal
+
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from app.schemas.user import UserSlimResponse, UserFullResponse
+from app.schemas.user import UserFullResponse, UserSlimResponse
 
 
 class AssignLeadRequest(BaseModel):

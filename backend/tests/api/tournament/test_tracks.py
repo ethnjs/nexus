@@ -1,16 +1,14 @@
 from datetime import date, timedelta
 
-from tests.conftest import grant_role, login
-
-
 from app.models.models import (
     Form,
     FormField,
-    University,
     TournamentMembership,
     TournamentMembershipTrackStatus,
     TournamentTrack,
+    University,
 )
+from tests.conftest import grant_role, login
 
 
 def _create_track(client, tournament_id: int, name: str, **fields):

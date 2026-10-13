@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -499,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"members    : {len(pairs)} matching {args.email_prefix}*@*"
               + (f" ({', '.join(notes)})" if notes else ""))
         print(f"forms      : {[f.name for f in forms] or 'none'}")
-        print(f"seeding    : " + ", ".join(
+        print("seeding    : " + ", ".join(
             name for name, on in (
                 ("profiles", args.profiles),
                 ("experience", args.experience), ("onboarding", bool(forms)),
@@ -538,7 +538,7 @@ def main(argv: list[str] | None = None) -> int:
             # when the tournament collects an age flag.
             if args.age_consent and collects_age_flag:
                 membership.age_disclosure = "consented"
-                membership.age_disclosure_at = datetime.now(timezone.utc)
+                membership.age_disclosure_at = datetime.now(UTC)
 
             submitted = []
             if forms:

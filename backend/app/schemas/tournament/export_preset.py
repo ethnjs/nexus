@@ -5,9 +5,16 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.tournament.display_config import (
-    KNOWN_EVENT_FILTER_KEYS, KNOWN_FILTER_KEYS, KNOWN_SORT_DIRECTIONS,
+    KNOWN_EVENT_FILTER_KEYS,
+    KNOWN_FILTER_KEYS,
+    KNOWN_SORT_DIRECTIONS,
 )
-from app.core.tournament.export_presets import COLUMN_MODES, OUTPUT_TYPES, ROW_TYPES, is_known_export_column
+from app.core.tournament.export_presets import (
+    COLUMN_MODES,
+    OUTPUT_TYPES,
+    ROW_TYPES,
+    is_known_export_column,
+)
 
 
 class ExportPresetColumn(BaseModel):

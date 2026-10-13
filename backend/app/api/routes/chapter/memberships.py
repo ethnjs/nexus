@@ -1,10 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, with_parent
 
-from app.core.chapters import find_chapter, require_chapter_lead_or_admin, require_lead, require_officer_or_lead
+from app.core.chapters import (
+    find_chapter,
+    require_chapter_lead_or_admin,
+    require_lead,
+    require_officer_or_lead,
+)
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterMembership, User
-from app.schemas.chapter.membership import ChapterMemberProfileResponse, ChapterMemberResponse, ChapterMemberUpdate
+from app.schemas.chapter.membership import (
+    ChapterMemberProfileResponse,
+    ChapterMemberResponse,
+    ChapterMemberUpdate,
+)
 
 router = APIRouter(prefix="/chapters/{chapter_id}/members", tags=["chapters"])
 

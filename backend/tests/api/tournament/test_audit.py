@@ -6,12 +6,16 @@ that emit them — these tests are about the read side (gating, keyset paging,
 filtering, actor/role hydration), so building the log explicitly keeps each
 case's fixture data visible instead of implied by a chain of other endpoints.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.core.tournament.audit import (
-    JOIN_CODE_CREATED, ROLE_CREATED, ROLE_DELETED, ROLE_UPDATED, log_action,
+    JOIN_CODE_CREATED,
+    ROLE_CREATED,
+    ROLE_DELETED,
+    ROLE_UPDATED,
+    log_action,
 )
-from app.models.models import AuditLogEntry, TournamentRole
+from app.models.models import TournamentRole
 from tests.conftest import grant_role, login
 
 
@@ -225,9 +229,9 @@ def test_list_audit_log_filter_since_and_until(client, td_user, td_tournament, d
     recent = _log(db, td_tournament.id, td_user.id)
 
     # Backdate the first entry so the two straddle the cutoff.
-    old.created_at = datetime.now(timezone.utc) - timedelta(days=10)
+    old.created_at = datetime.now(UTC) - timedelta(days=10)
     db.commit()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
     # params= rather than an f-string — the tz offset's "+" would otherwise
     # decode as a space and 422 the request.

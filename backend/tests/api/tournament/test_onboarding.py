@@ -1,8 +1,7 @@
 """API coverage for tournament onboarding configuration and member progress."""
 
-from tests.conftest import grant_role, login
-
 from app.models.models import Form, FormField, FormResponse, TournamentForm, TournamentMembership
+from tests.conftest import grant_role, login
 
 
 def _make_form(db, user, tournament, *, name="Onboarding form", status="published"):

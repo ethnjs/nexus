@@ -6,22 +6,31 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
-    TRACK_DELETE_CANCELLED, TRACK_DELETE_PENDING, log_action,
+    TRACK_DELETE_CANCELLED,
+    TRACK_DELETE_PENDING,
+    log_action,
 )
 from app.core.tournament.permissions import (
-    MANAGE_TOURNAMENT, require_catalog_read, require_permission,
+    MANAGE_TOURNAMENT,
+    require_catalog_read,
+    require_permission,
 )
 from app.core.tournament.tracks import (
-    live_primary_track_count, sync_sole_track_name, track_blocking_references,
-    track_member_data_count, track_shift_count,
+    live_primary_track_count,
+    sync_sole_track_name,
+    track_blocking_references,
+    track_member_data_count,
+    track_shift_count,
 )
 from app.db.session import get_db
 from app.models.models import TournamentRole, TournamentTrack, User
 from app.schemas.tournament.track import (
-    TournamentTrackCreate, TournamentTrackDeleteResult, TournamentTrackRead,
-    TournamentTrackUpdate, require_primary_fields,
+    TournamentTrackCreate,
+    TournamentTrackDeleteResult,
+    TournamentTrackRead,
+    TournamentTrackUpdate,
+    require_primary_fields,
 )
-
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/tracks", tags=["tournaments"])
 

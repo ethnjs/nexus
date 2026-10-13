@@ -18,26 +18,32 @@ Fixture hierarchy:
 
 import os
 from datetime import date, timedelta
+
 import pytest
 
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("API_KEY", "")
 
+from unittest.mock import AsyncMock, MagicMock
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from unittest.mock import MagicMock, AsyncMock
 
-from app.db.session import Base, get_db
-from app.models import models  # noqa: F401
-from app.api.routes.sheets import get_sheets_service, get_forms_service
-from app.services.sheets_service import SheetsService
-from app.services.forms_service import FormsService
+from app.api.routes.sheets import get_forms_service, get_sheets_service
 from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
+from app.db.session import Base, get_db
+from app.models import models  # noqa: F401
 from app.models.models import (
-    Tournament, TournamentMembership, TournamentRole, TournamentTrackAssignment,
-    TournamentTrack, User, Event, EventCategory,
+    Event,
+    EventCategory,
+    Tournament,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
 )
 from app.schemas.sheet_config import (
     FormQuestionOption,
@@ -46,6 +52,8 @@ from app.schemas.sheet_config import (
     SheetHeadersResponse,
     SheetValidateResponse,
 )
+from app.services.forms_service import FormsService
+from app.services.sheets_service import SheetsService
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"

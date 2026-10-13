@@ -1,17 +1,17 @@
 """Tests for /auth routes."""
 import asyncio
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy import event
-from tests.conftest import login
+
 import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
-from app.core.auth import hash_password, create_verification_token, consume_verification_token
+from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import User, VerificationToken
+from tests.conftest import login
 
 
 @pytest.fixture
@@ -717,7 +717,7 @@ class TestConsumeVerificationToken:
     def test_expired_token_rejected(self, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
         row = db.query(VerificationToken).filter(VerificationToken.user_id == td_user.id).one()
-        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
         assert consume_verification_token(db, token, "password_reset") is None
 
@@ -733,7 +733,7 @@ class TestConsumeVerificationToken:
             user_id=td_user.id,
             token_hash=legacy_hash(raw),
             purpose="password_reset",
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         ))
         db.commit()
         assert consume_verification_token(db, raw, "password_reset") is None

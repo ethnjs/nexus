@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, with_parent
@@ -53,7 +53,7 @@ def generate_chapter_join_code(
     """
     expires_at = None
     if payload.expires_in_hours is not None:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
 
     join_code = JoinCode(
         chapter_id=chapter.id,

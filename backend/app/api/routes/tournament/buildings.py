@@ -8,13 +8,17 @@ from app.core.tournament import get_scoped_or_404, get_tournament, require_not_a
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
 from app.models.models import (
-    TournamentBuilding, TournamentEventTrack, TournamentTrack, User,
+    TournamentBuilding,
+    TournamentEventTrack,
+    TournamentTrack,
+    User,
 )
 from app.schemas.tournament.building import (
-    TournamentBuildingCreate, TournamentBuildingDeleteResult, TournamentBuildingRead,
+    TournamentBuildingCreate,
+    TournamentBuildingDeleteResult,
+    TournamentBuildingRead,
     TournamentBuildingUpdate,
 )
-
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/buildings", tags=["tournaments"])
 

@@ -6,9 +6,9 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentMembershipAvailability,
-    TournamentTrackAssignment,
     TournamentRole,
     TournamentShift,
+    TournamentTrackAssignment,
     utcnow,
 )
 from tests.conftest import primary_track_id

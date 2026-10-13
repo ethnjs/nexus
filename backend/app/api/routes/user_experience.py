@@ -1,15 +1,19 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.db.session import get_db
-from app.models.models import User, Event, UserCompetitionExperience, UserVolunteerExperience
+from app.models.models import Event, User, UserCompetitionExperience, UserVolunteerExperience
 from app.schemas.user_experience import (
-    CompetitionExperienceCreate, CompetitionExperienceUpdate, CompetitionExperienceResponse,
-    VolunteerExperienceCreate, VolunteerExperienceUpdate, VolunteerExperienceResponse
+    CompetitionExperienceCreate,
+    CompetitionExperienceResponse,
+    CompetitionExperienceUpdate,
+    VolunteerExperienceCreate,
+    VolunteerExperienceResponse,
+    VolunteerExperienceUpdate,
 )
-
 
 router = APIRouter(tags=["users"])
 

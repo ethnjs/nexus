@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.person import PersonNameRef, PersonRefResponse

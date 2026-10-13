@@ -14,8 +14,6 @@ import re
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from datetime import datetime
-
 from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 

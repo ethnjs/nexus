@@ -1,8 +1,14 @@
 """Tests for GET /tournaments/{tournament_id}/members/summary/."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from app.models.models import (
-    Form, FormField, TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipTrackStatus, TournamentShift, User,
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipTrackStatus,
+    TournamentShift,
+    User,
 )
 from tests.conftest import grant_role, login, primary_track_id
 
@@ -14,8 +20,8 @@ def _url(tournament):
 def _shift(db, tournament, track_id, label, hour):
     shift = TournamentShift(
         tournament_id=tournament.id, track_id=track_id, label=label,
-        start=datetime(2026, 3, 1, hour, tzinfo=timezone.utc),
-        end=datetime(2026, 3, 1, hour + 2, tzinfo=timezone.utc),
+        start=datetime(2026, 3, 1, hour, tzinfo=UTC),
+        end=datetime(2026, 3, 1, hour + 2, tzinfo=UTC),
     )
     db.add(shift)
     db.flush()

@@ -3,7 +3,6 @@ from app.core.tournament.audit import TOURNAMENT_VERIFIED
 from app.models.models import AuditLogEntry
 from tests.conftest import grant_role, login
 
-
 # ---------------------------------------------------------------------------
 # GET /admin/tournaments/ — platform admin only (global list)
 # ---------------------------------------------------------------------------

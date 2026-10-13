@@ -1,7 +1,6 @@
 """Tests for /users/me/competition-experience/ and /users/me/volunteer-experience/."""
-from tests.conftest import login
 from app.models.models import UserCompetitionExperience, UserVolunteerExperience
-
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # POST /users/me/competition-experience/

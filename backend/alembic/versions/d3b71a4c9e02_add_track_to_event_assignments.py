@@ -13,8 +13,8 @@ same way membership_role_id is already paired with membership_id here.
 Revision ID: d3b71a4c9e02
 Revises: c018f2ae8e71
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "d3b71a4c9e02"
 down_revision = "c018f2ae8e71"

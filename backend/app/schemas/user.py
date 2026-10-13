@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import Optional, Literal
-from datetime import datetime, date
-from pydantic import BaseModel, EmailStr, Field, field_validator, computed_field
+
+from datetime import date, datetime
+from typing import Literal
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.phone import normalize_phone as _normalize_phone
-from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
 from app.schemas.university import UniversityResponse
-
+from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
 
 ROLE = Literal["admin", "user"]
 USER_STATUS = Literal["active", "invited", "deactivated", "locked"]
@@ -15,25 +16,25 @@ STUDENT_STATUS = Literal["Undergraduate", "Graduate", "Non-Student"]
 
 class UserUpdate(BaseModel):
     """Partial update — all fields optional."""
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    phone: Optional[str] = None
-    date_of_birth: Optional[date] = None
-    pronouns: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    date_of_birth: date | None = None
+    pronouns: str | None = None
 
-    student_status: Optional[STUDENT_STATUS] = None
-    university_id: Optional[int] = None
-    major: Optional[str] = None
-    year_level: Optional[int] = None
-    graduation_year: Optional[int] = None
+    student_status: STUDENT_STATUS | None = None
+    university_id: int | None = None
+    major: str | None = None
+    year_level: int | None = None
+    graduation_year: int | None = None
 
-    employer: Optional[str] = None
+    employer: str | None = None
 
-    has_competition_experience: Optional[bool] = None
-    has_volunteer_experience: Optional[bool] = None
+    has_competition_experience: bool | None = None
+    has_volunteer_experience: bool | None = None
 
-    shirt_size: Optional[str] = None
-    dietary_restriction: Optional[str] = None
+    shirt_size: str | None = None
+    dietary_restriction: str | None = None
 
     @field_validator("first_name", "last_name", "phone")
     @classmethod
@@ -44,22 +45,22 @@ class UserUpdate(BaseModel):
 
     @field_validator("phone", mode="before")
     @classmethod
-    def normalize_phone(cls, v: Optional[str]) -> str | None:
+    def normalize_phone(cls, v: str | None) -> str | None:
         return _normalize_phone(v)
 
 class AdminUserUpdate(BaseModel):
-    role: Optional[Literal["user", "admin"]] = None
-    status: Optional[USER_STATUS] = None
+    role: Literal["user", "admin"] | None = None
+    status: USER_STATUS | None = None
 
     
 
 class UserSlimResponse(BaseModel):
     id: int
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
     email: EmailStr
-    phone: Optional[str] = None
-    pronouns: Optional[str] = None
+    phone: str | None = None
+    pronouns: str | None = None
 
     created_at: datetime
     updated_at: datetime
@@ -79,28 +80,28 @@ class UserMeSlimResponse(AdminUserSlimResponse):
 
 
 class UserFullResponse(UserSlimResponse):
-    student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[UniversityResponse] = None
-    major: Optional[str] = None
-    year_level: Optional[int] = None
-    graduation_year: Optional[int] = None
+    student_status: STUDENT_STATUS | None = None
+    university: UniversityResponse | None = None
+    major: str | None = None
+    year_level: int | None = None
+    graduation_year: int | None = None
 
-    employer: Optional[str] = None
+    employer: str | None = None
 
-    has_competition_experience: Optional[bool] = None
-    has_volunteer_experience: Optional[bool] = None
+    has_competition_experience: bool | None = None
+    has_volunteer_experience: bool | None = None
 
     competition_experience: list[CompetitionExperienceResponse] = []
     volunteer_experience: list[VolunteerExperienceResponse] = []
 
-    shirt_size: Optional[str] = None
-    dietary_restriction: Optional[str] = None
+    shirt_size: str | None = None
+    dietary_restriction: str | None = None
 
 
 class OwnedTournamentRef(BaseModel):
     id: int
     name: str
-    short_name: Optional[str] = None
+    short_name: str | None = None
     is_archived: bool
 
     model_config = {"from_attributes": True}
@@ -113,5 +114,5 @@ class AdminUserFullResponse(UserFullResponse, AdminUserSlimResponse):
 
 
 class UserMeFullResponse(UserFullResponse, UserMeSlimResponse):
-    date_of_birth: Optional[date] = None
+    date_of_birth: date | None = None
     missing_profile_fields: list[str] = []

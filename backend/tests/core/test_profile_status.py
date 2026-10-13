@@ -17,7 +17,6 @@ from app.core.profile_status import (
 )
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience
 
-
 COMPLETE_NON_STUDENT = dict(
     first_name="Ada", last_name="Lovelace", phone="9495551234",
     date_of_birth=date(1990, 1, 1), shirt_size="M", dietary_restriction="None",

@@ -1,15 +1,16 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.api.routes.tournament import _serialize
 from app.core.auth import require_admin
-from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
 from app.core.tournament import get_tournament, require_not_archived, tournament_counts
+from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
 from app.db.session import get_db
 from app.models.models import Tournament, User
 from app.schemas.tournament import AdminTournamentRead
-from app.api.routes.tournament import _serialize
 
 router = APIRouter(prefix="/admin/tournaments", tags=["tournaments"])
 

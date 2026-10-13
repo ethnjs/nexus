@@ -1,8 +1,7 @@
 """Tests for /admin/chapters/ endpoints (app/api/routes/chapter/admin.py)."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.models.models import AlumniChapter, ChapterMembership
-
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /admin/chapters/ — admin only

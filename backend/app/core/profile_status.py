@@ -1,9 +1,10 @@
+
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience
 
-def _has_competition_rows(user: User, db: Optional[Session]) -> bool:
+
+def _has_competition_rows(user: User, db: Session | None) -> bool:
     if db is not None:
         return db.query(
             db.query(UserCompetitionExperience).filter_by(user_id=user.id).exists()
@@ -11,7 +12,7 @@ def _has_competition_rows(user: User, db: Optional[Session]) -> bool:
     return bool(user.competition_experience)
 
 
-def _has_volunteer_rows(user: User, db: Optional[Session]) -> bool:
+def _has_volunteer_rows(user: User, db: Session | None) -> bool:
     """
     Manual entries ONLY — intentionally does not include NEXUS-synthesized rows
     (from TournamentMembership, once that integration exists).
@@ -26,7 +27,7 @@ def _has_volunteer_rows(user: User, db: Optional[Session]) -> bool:
     return bool(user.volunteer_experience)
 
 
-def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) -> list[str]:
+def compute_missing_profile_fields(user: User, *, db: Session | None = None) -> list[str]:
     always_required = ["first_name", "last_name", "phone", "date_of_birth", "shirt_size", "dietary_restriction"]
     missing = [f for f in always_required if not getattr(user, f)]
 
@@ -53,11 +54,11 @@ def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) 
     return missing
 
 
-def is_profile_complete(user: User, *, db: Optional[Session] = None) -> bool:
+def is_profile_complete(user: User, *, db: Session | None = None) -> bool:
     return not compute_missing_profile_fields(user, db=db)
 
 
-def is_onboarding_complete(user: User, *, db: Optional[Session] = None) -> bool:
+def is_onboarding_complete(user: User, *, db: Session | None = None) -> bool:
     """Onboarding is complete once every profile field is filled except
     pronouns — which is nullable and never in compute_missing_profile_fields'
     output. Delegates rather than keeping a second required-field list, since

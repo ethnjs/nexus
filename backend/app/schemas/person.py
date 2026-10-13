@@ -47,7 +47,7 @@ class PersonNameRef(BaseModel):
     last_name: str | None = None
 
     @classmethod
-    def from_membership(cls, membership) -> "PersonNameRef":
+    def from_membership(cls, membership) -> PersonNameRef:
         """Built from a TournamentMembership, whose name lives one hop away on
         the joined user."""
         return cls(

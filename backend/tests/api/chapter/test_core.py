@@ -1,8 +1,7 @@
 """Tests for GET/PATCH /chapters/{chapter_id}/ (app/api/routes/chapter/__init__.py)."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.models.models import ChapterMembership
-
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/ — public

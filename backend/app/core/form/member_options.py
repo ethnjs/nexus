@@ -34,8 +34,13 @@ from app.core.form.validation import (
 )
 from app.core.form.write_through import parse_lunch_field_key
 from app.models.models import (
-    Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentShift, TournamentTrack,
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipEventPreference,
+    TournamentMembershipLunch,
+    TournamentShift,
+    TournamentTrack,
 )
 
 

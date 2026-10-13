@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel
 
 from app.schemas.person import PersonNameRef, PersonRoleRead
@@ -83,7 +85,7 @@ class AssignmentRead(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_row(cls, row) -> "AssignmentRead":
+    def from_row(cls, row) -> AssignmentRead:
         return cls(
             id=row.id,
             event=EventMemberRead.from_row(row.tournament_event),

@@ -1,30 +1,29 @@
 """Unit tests for SheetsService and pure helper functions — all Google API calls are mocked."""
 
-import pytest
 from unittest.mock import patch
-from app.services.sheets_service import (
-    SheetsService,
-    _build_question_index,
-    _match_question,
-    _extract_row_key,
-    _hint_field,
-    _alias_rules,
-    _slugify,
-    _dedup,
-    _infer_row_key,
-    _find_multi_matrix_columns,
-    _extract_options,
-    _mapped_from_hint,
-)
-from app.services.volunteer_hints import (
-    AVAILABILITY_BRACKET_PATTERN,
-    FieldHint,
-    match_volunteer_hint,
-)
+
+import pytest
+
 from app.schemas.sheet_config import (
+    PARSE_TIME_RANGE_ACTIONS,
     FormQuestionOption,
     MappedHeader,
-    PARSE_TIME_RANGE_ACTIONS,
+)
+from app.services.sheets_service import (
+    SheetsService,
+    _alias_rules,
+    _build_question_index,
+    _dedup,
+    _extract_options,
+    _extract_row_key,
+    _find_multi_matrix_columns,
+    _hint_field,
+    _infer_row_key,
+    _match_question,
+    _slugify,
+)
+from app.services.volunteer_hints import (
+    match_volunteer_hint,
 )
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/abc123/edit"

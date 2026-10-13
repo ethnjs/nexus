@@ -1,7 +1,17 @@
 from __future__ import annotations
+
 from datetime import date, datetime
 from zoneinfo import available_timezones
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from app.schemas.tournament.role import RoleRead
 from app.schemas.tournament.track import TournamentTrackCreate, TournamentTrackRead

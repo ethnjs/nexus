@@ -217,7 +217,7 @@ class MembershipTrackStatusRead(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_row(cls, row) -> "MembershipTrackStatusRead":
+    def from_row(cls, row) -> MembershipTrackStatusRead:
         """Flattens the track relationship — `name`/`is_archived`/
         `allow_confirm`/`lock_responses` live on TournamentTrack, not on the
         status row itself, so from_attributes alone can't build this."""

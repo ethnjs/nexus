@@ -5,13 +5,23 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
-    CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, PAGE_HEADER, build_catalog, is_known_surface,
-    is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
-    is_known_sort_field, section_field_ids,
+    CUSTOM_SECTION_PREFIX,
+    KNOWN_SORT_DIRECTIONS,
+    PAGE_HEADER,
+    build_catalog,
+    is_known_column,
+    is_known_hidden_item,
+    is_known_section,
+    is_known_sort_field,
+    is_known_surface,
+    known_filter_keys,
+    section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_any_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_any_permission,
 )
 from app.db.session import get_db
 from app.models.models import User

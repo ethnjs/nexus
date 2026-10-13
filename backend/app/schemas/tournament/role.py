@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
-from pydantic import BaseModel, model_validator, field_validator
+
+from pydantic import BaseModel, field_validator, model_validator
+
 from app.core.tournament.permissions import ALL_PERMISSIONS
 from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 
@@ -187,7 +190,7 @@ class RoleAssignmentUpdate(BaseModel):
     is_tournament_wide: bool = False
 
     @model_validator(mode="after")
-    def _check_scope(self) -> "RoleAssignmentUpdate":
+    def _check_scope(self) -> RoleAssignmentUpdate:
         if self.is_tournament_wide and self.track_id is not None:
             raise ValueError("a tournament-wide grant must not name a track")
         if not self.is_tournament_wide and self.track_id is None:

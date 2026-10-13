@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +11,11 @@ from app.core.join_codes import is_join_code_expired
 from app.db.session import get_db
 from app.models.models import ChapterMembership, JoinCode, Tournament, TournamentMembership, User
 from app.schemas.join_code import (
-    JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemRequest, JoinRedeemResponse,
+    JoinPreviewChapter,
+    JoinPreviewResponse,
+    JoinPreviewTournament,
+    JoinRedeemRequest,
+    JoinRedeemResponse,
 )
 from app.schemas.tournament.track import TournamentTrackRead
 from app.schemas.university import UniversityResponse
@@ -145,7 +149,7 @@ def _redeem_tournament_code(
     )
     if collects_age_flag:
         membership.age_disclosure = "consented"
-        membership.age_disclosure_at = datetime.now(timezone.utc)
+        membership.age_disclosure_at = datetime.now(UTC)
     join_code.use_count += 1
 
     try:

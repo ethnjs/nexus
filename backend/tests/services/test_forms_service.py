@@ -1,7 +1,9 @@
 """Unit tests for FormsService — all Google API calls are mocked."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from app.services.forms_service import FormsService, _suggest_alias
 
 

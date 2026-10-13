@@ -2,11 +2,9 @@
 availability/lunch/track_status reserved-key answers to their structural
 tables. See tests/api/test_forms.py for the route-level wiring (fires on
 tournament-owned forms, no-ops on chapter-owned forms)."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from tests.conftest import primary_track_id
 
 from app.core.form.write_through import (
     can_set_track_status,
@@ -29,13 +27,14 @@ from app.models.models import (
     TournamentShift,
     TournamentTrack,
 )
+from tests.conftest import primary_track_id
 
 
 def _make_shift(db, tournament, label="Shift"):
     shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
         label=label,
-        start=datetime.now(timezone.utc),
-        end=datetime.now(timezone.utc) + timedelta(hours=4),
+        start=datetime.now(UTC),
+        end=datetime.now(UTC) + timedelta(hours=4),
     )
     db.add(shift)
     db.flush()

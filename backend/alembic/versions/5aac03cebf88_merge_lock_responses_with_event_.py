@@ -5,17 +5,13 @@ Revises: 9777a35487d8, 5b5c2f46ad06
 Create Date: 2026-09-29 14:13:51.588542
 
 """
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-
+from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = '5aac03cebf88'
-down_revision: Union[str, None] = ('9777a35487d8', '5b5c2f46ad06')
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = ('9777a35487d8', '5b5c2f46ad06')
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # A merge, not a re-parent: a database already at either head (prod at the

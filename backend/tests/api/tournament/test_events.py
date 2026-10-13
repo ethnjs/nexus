@@ -1,8 +1,6 @@
 """Tests for /tournaments/{tournament_id}/events endpoints (TournamentEvent model)."""
 from datetime import date, timedelta
 
-import pytest
-from fastapi.testclient import TestClient
 from tests.conftest import grant_role, login, primary_track_id
 
 # td_tournament spans [today, today + 1 day] — event/shift times must fall

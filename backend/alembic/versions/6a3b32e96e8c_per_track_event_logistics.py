@@ -18,17 +18,16 @@ the only storage, and an event on no track has none. Their building strings
 still become catalog rows, so nothing is lost from the tournament's point of
 view, but the event itself comes back unplaced.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '6a3b32e96e8c'
-down_revision: Union[str, None] = 'd3b71a4c9e02'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'd3b71a4c9e02'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

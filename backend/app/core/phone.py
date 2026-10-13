@@ -1,10 +1,9 @@
 from __future__ import annotations
-from typing import Optional
 
 import re
 
 
-def normalize_phone(value: Optional[str]) -> Optional[str]:
+def normalize_phone(value: str | None) -> str | None:
     """
     """
     if value is None:

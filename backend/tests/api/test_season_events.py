@@ -1,7 +1,7 @@
 """Tests for /admin/season-events endpoints (SeasonEvent model) and the
 /tournaments/{tournament_id}/events/load-defaults bulk-load action."""
-from tests.conftest import login
 from app.models.models import SeasonEvent
+from tests.conftest import login
 
 
 def _login_admin(client):

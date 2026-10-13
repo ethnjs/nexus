@@ -82,7 +82,7 @@ class TournamentBuildingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_row(cls, row) -> "TournamentBuildingRead":
+    def from_row(cls, row) -> TournamentBuildingRead:
         # track_ids is not a column — from_attributes alone can't reach
         # through the bridge to build it.
         return cls(

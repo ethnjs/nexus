@@ -32,7 +32,6 @@ from sqlalchemy.orm import Session
 
 from app.models.models import TournamentEventTrack, TournamentZone, TournamentZoneMember
 
-
 KIND_BUILDING = "building"
 KIND_FLOOR = "floor"
 KIND_EVENT = "event"

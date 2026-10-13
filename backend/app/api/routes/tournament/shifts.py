@@ -1,19 +1,33 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.form import shift_referenced_by_live_field
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
+from app.core.tournament import (
+    get_scoped_or_404,
+    get_tournament,
+    require_not_archived,
+    tournament_local_date,
+)
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, require_membership, require_permission,
+    MANAGE_EVENTS,
+    require_membership,
+    require_permission,
 )
 from app.core.tournament.tracks import purge_pending_tracks
 from app.db.session import get_db
 from app.models.models import (
-    TournamentEvent, TournamentEventShift, TournamentShift, TournamentTrack, User,
+    TournamentShift,
+    TournamentTrack,
+    User,
 )
-from app.schemas.tournament.shift import TournamentShiftCreate, TournamentShiftRead, TournamentShiftUpdate
+from app.schemas.tournament.shift import (
+    TournamentShiftCreate,
+    TournamentShiftRead,
+    TournamentShiftUpdate,
+)
 
 # Routes are nested: /tournaments/{tournament_id}/shifts/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/shifts", tags=["tournaments"])

@@ -1,15 +1,16 @@
-from fastapi import HTTPException, status, Depends
-from typing import Optional
+
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import University
 from app.db.session import get_db
+from app.models.models import University
+
 
 def create_university_record(
         db: Session,
         name: str,
-        abbreviation: Optional[str] = None,
-        location: Optional[str] = None
+        abbreviation: str | None = None,
+        location: str | None = None
     ) -> University:
 
     university = University(

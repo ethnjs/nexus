@@ -1,7 +1,11 @@
 """Tests for the canonical /events/ and /event-categories/ routes."""
+from app.models.models import (
+    Event,
+    EventCategory,
+    UserCompetitionExperience,
+    UserVolunteerExperience,
+)
 from tests.conftest import login
-from app.models.models import Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience
-
 
 # ---------------------------------------------------------------------------
 # GET /events/

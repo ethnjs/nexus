@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -7,17 +8,33 @@ from app.core.tournament import get_scoped_or_404, get_tournament, require_not_a
 from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_catalog_read, require_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_catalog_read,
+    require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
-    SeasonEvent, TournamentBuilding, TournamentBuildingTrack, TournamentEvent,
-    TournamentEventStaffingNeed, TournamentEventTrack, TournamentRole, TournamentShift,
-    TournamentTrack, User,
+    SeasonEvent,
+    TournamentBuilding,
+    TournamentBuildingTrack,
+    TournamentEvent,
+    TournamentEventStaffingNeed,
+    TournamentEventTrack,
+    TournamentRole,
+    TournamentShift,
+    TournamentTrack,
+    User,
 )
 from app.schemas.tournament.event import (
-    EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
-    EventStaffingNeed, EventTrackDetail, EventUpdate,
+    EventCreate,
+    EventLoadDefaultsResponse,
+    EventLoadDefaultsSkipped,
+    EventMemberRead,
+    EventRead,
+    EventStaffingNeed,
+    EventTrackDetail,
+    EventUpdate,
 )
 
 # Routes are nested: /tournaments/{tournament_id}/events/...

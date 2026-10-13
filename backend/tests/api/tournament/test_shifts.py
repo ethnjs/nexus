@@ -1,12 +1,15 @@
 """Tests for /tournaments/{tournament_id}/shifts endpoints (TournamentShift model)
 and event/shift attach-detach."""
-from datetime import date, datetime, timedelta, timezone
-
-from tests.conftest import grant_role, login, primary_track_id
+from datetime import UTC, date, datetime, timedelta
 
 from app.models.models import (
-    Form, FormField, TournamentMembership, TournamentMembershipAvailability, TournamentShift,
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentShift,
 )
+from tests.conftest import grant_role, login, primary_track_id
 
 # td_tournament's primary track spans [today, today + 1 day] — a shift is
 # bounded by its *track's* range, not the tournament's, so these are the same
@@ -538,8 +541,8 @@ def test_shifts_from_another_tournament_rejected(client, td_user, td_tournament,
         tournament_id=other_tournament.id,
         track_id=primary_track_id(db, other_tournament.id),
         label="Elsewhere",
-        start=datetime.now(timezone.utc),
-        end=datetime.now(timezone.utc) + timedelta(hours=2),
+        start=datetime.now(UTC),
+        end=datetime.now(UTC) + timedelta(hours=2),
     )
     db.add(foreign)
     db.commit()

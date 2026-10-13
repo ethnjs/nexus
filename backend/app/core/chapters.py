@@ -1,10 +1,11 @@
-from fastapi import HTTPException, status, Depends
-from typing import Optional
+
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import User, AlumniChapter, ChapterMembership
 from app.core.auth import get_current_user
 from app.db.session import get_db
+from app.models.models import AlumniChapter, ChapterMembership, User
+
 
 def create_alumni_chapter(
         db: Session,

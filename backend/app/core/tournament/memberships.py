@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.models import TournamentMembership, User
+
 # Safe at module scope where the tournament schemas aren't: person.py sits at
 # the bottom of the import graph on purpose (see its docstring).
 from app.schemas.person import PersonRefResponse, PersonRoleRead
@@ -15,7 +17,9 @@ if TYPE_CHECKING:
     # schemas/tournament/membership.py -> schemas/tournament/role.py ->
     # core/tournament/permissions.py -> back to this module.
     from app.schemas.tournament.membership import (
-        MembershipCustomAnswerRead, MembershipEventPreferenceRead, MembershipLunchRead,
+        MembershipCustomAnswerRead,
+        MembershipEventPreferenceRead,
+        MembershipLunchRead,
     )
     from app.schemas.tournament.track import MembershipTrackStatusRead
 
@@ -33,7 +37,7 @@ ACTIVE_MEMBERSHIP_CLAUSE = or_(
 )
 
 
-def is_declined(membership: "TournamentMembership") -> bool:
+def is_declined(membership: TournamentMembership) -> bool:
     """Python-side equivalent of ACTIVE_MEMBERSHIP_CLAUSE for an
     already-loaded row — no NULL-comparison hazard here since this is a
     plain Python `==`, not SQL."""
@@ -108,7 +112,7 @@ def resolve_person_refs(
     return resolved
 
 
-def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
+def has_any_membership(user: User, tournament_id: int, db: Session) -> bool:
     """Return True if the user has any *active* membership in
     `tournament_id`. A declined membership counts as none — this is the
     central choke point behind require_membership()/require_permission(),
@@ -178,7 +182,7 @@ def delete_tournament_form_responses(db: Session, tournament_id: int, user_id: i
     )
 
 
-def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list["MembershipCustomAnswerRead"]:
+def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list[MembershipCustomAnswerRead]:
     """This user's answers to non-reserved fields on published,
     tournament-owned forms in `tournament_id`. 'Custom' = field_key matches
     none of the availability_/event_preference_/lunch_/track_status_
@@ -218,7 +222,7 @@ def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> li
     ]
 
 
-def build_event_preferences(db: Session, membership: TournamentMembership) -> list["MembershipEventPreferenceRead"]:
+def build_event_preferences(db: Session, membership: TournamentMembership) -> list[MembershipEventPreferenceRead]:
     """This membership's event preferences, grouped by the *form option* they
     picked rather than the flat per-event rows the DB stores.
 
@@ -367,7 +371,7 @@ def lunch_question_types(db: Session, tournament_id: int, field_keys: set[str]) 
     return type_by_key
 
 
-def build_lunch_rows(rows, type_by_key: dict[str, str]) -> list["MembershipLunchRead"]:
+def build_lunch_rows(rows, type_by_key: dict[str, str]) -> list[MembershipLunchRead]:
     """Read shapes for lunch rows already in hand, given a resolved type map."""
     from app.schemas.tournament.membership import MembershipLunchRead
 
@@ -383,7 +387,7 @@ def build_lunch_rows(rows, type_by_key: dict[str, str]) -> list["MembershipLunch
     ]
 
 
-def build_lunch(db: Session, membership: TournamentMembership) -> list["MembershipLunchRead"]:
+def build_lunch(db: Session, membership: TournamentMembership) -> list[MembershipLunchRead]:
     """This membership's lunch rows, each carrying the question_type of the
     question that produced it.
 
@@ -405,7 +409,7 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
 PENDING_TRACK_STATUS = "pending"
 
 
-def build_track_statuses(db: Session, membership: TournamentMembership) -> list["MembershipTrackStatusRead"]:
+def build_track_statuses(db: Session, membership: TournamentMembership) -> list[MembershipTrackStatusRead]:
     """Every track this member could hold a status on, not just the ones they
     do — a track with no row reads as "pending" rather than being absent.
 
@@ -458,7 +462,7 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
 
 def get_custom_form_answers_bulk(
     db: Session, tournament_id: int, user_ids: list[int],
-) -> dict[int, list["MembershipCustomAnswerRead"]]:
+) -> dict[int, list[MembershipCustomAnswerRead]]:
     """get_custom_form_answers for many users in one query.
 
     The per-user version issued a query per row when the roster asked for

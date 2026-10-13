@@ -1,14 +1,14 @@
 """Tests for the unified POST /join/ endpoint (app/api/routes/join.py) —
 dispatches a single global join code to either tournament or chapter
 redemption depending on which target it points to."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from tests.conftest import grant_role, login
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.models.models import ChapterMembership, JoinCode, TournamentMembership
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import grant_role, login
 
 
 def make_tournament_join_code(db, tournament_id, created_by, **kwargs):
@@ -107,7 +107,7 @@ def test_join_tournament_rejects_deactivated_code(client, td_user, td_tournament
 
 
 def test_join_tournament_rejects_expired_code(client, td_user, td_tournament, other_user, db):
-    expired_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    expired_at = datetime.now(UTC) - timedelta(hours=1)
     make_tournament_join_code(db, td_tournament.id, td_user.id, code="EXPIRED1", expires_at=expired_at)
     login(client, "other@test.com", "otherpass")
 
@@ -247,7 +247,7 @@ def test_join_chapter_rejects_deactivated_code(client, td_user, admin_user, db):
 def test_join_chapter_rejects_expired_code(client, td_user, admin_user, db):
     university = make_university(db)
     chapter = make_chapter(db, university.id)
-    expired_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    expired_at = datetime.now(UTC) - timedelta(hours=1)
     make_chapter_join_code(db, chapter.id, admin_user.id, code="EXPIRED1", expires_at=expired_at)
     login(client, "td@test.com", "tdpass")
 

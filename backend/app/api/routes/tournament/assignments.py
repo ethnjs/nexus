@@ -1,18 +1,28 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import (
-    authorize_role_grant, resolve_assignment_track, validate_shift_on_event,
+    authorize_role_grant,
+    resolve_assignment_track,
+    validate_shift_on_event,
 )
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_any_permission, require_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_any_permission,
+    require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
-    TournamentEvent, TournamentMembership, TournamentRole, TournamentTrackAssignment, User,
+    TournamentEvent,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
+    User,
 )
 from app.schemas.tournament.assignment import AssignmentCreate, AssignmentRead, AssignmentUpdate
 

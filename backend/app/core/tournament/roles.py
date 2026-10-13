@@ -5,6 +5,7 @@ drag-to-reorder are computed client-side and applied via a bulk endpoint —
 this module just guards who's allowed to touch which ranks.
 """
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
@@ -26,7 +27,7 @@ DUOSMIUM_ROLES = frozenset({"tournament_director", "scoremaster", "event_supervi
 NULLABLE_ROLE_FIELDS = frozenset({"torus_role", "duosmium_role"})
 
 
-def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["TournamentRole"]:
+def with_member_counts(db: Session, roles: list[TournamentRole]) -> list[TournamentRole]:
     """
     Attaches member_count as a transient attribute on each role — RoleRead
     reads it via from_attributes. One grouped count query regardless of how
@@ -54,7 +55,7 @@ def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["Tour
     return roles
 
 
-def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: Session) -> None:
+def validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Session) -> None:
     """
     A MANAGE_ROLES holder can never create or edit a role that outranks (or
     ties) their own highest role. Only the Owner and platform admins are
@@ -93,7 +94,7 @@ def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: S
         )
 
 
-def validate_member_target(actor: "User", tournament: "Tournament", membership: "TournamentMembership", db: Session) -> None:
+def validate_member_target(actor: User, tournament: Tournament, membership: TournamentMembership, db: Session) -> None:
     """
     Guards actions taken on a member's own row — removing them from the
     tournament, editing their day-of logistics, or (via validate_role_action)
@@ -141,10 +142,10 @@ def validate_member_target(actor: "User", tournament: "Tournament", membership: 
 
 
 def validate_role_action(
-    actor: "User",
-    tournament: "Tournament",
-    membership: "TournamentMembership",
-    role: "TournamentRole",
+    actor: User,
+    tournament: Tournament,
+    membership: TournamentMembership,
+    role: TournamentRole,
     db: Session,
 ) -> None:
     """

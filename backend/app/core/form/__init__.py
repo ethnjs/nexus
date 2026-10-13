@@ -1,4 +1,8 @@
+import re
+import secrets
+
 from sqlalchemy.orm import Session, joinedload
+
 from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -16,9 +20,6 @@ from app.models.models import (
     TournamentShift,
     TournamentTrack,
 )
-
-import re
-import secrets
 
 
 def slugify(text: str, max_len: int = 64) -> str:
@@ -147,7 +148,9 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
     # availability_{track}/lunch_{track}/event_preference_{track} field points
     # at the track through its key, not through any option value.
     from app.core.form.validation import (
-        availability_field_track_id, event_preference_field_track_id, lunch_field_track_id,
+        availability_field_track_id,
+        event_preference_field_track_id,
+        lunch_field_track_id,
     )
 
     for field in fields:

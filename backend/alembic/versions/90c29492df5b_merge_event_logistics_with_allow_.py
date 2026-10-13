@@ -5,17 +5,13 @@ Revises: 5aac03cebf88, c5f1a9e3d2b7
 Create Date: 2026-10-04 21:44:33.074526
 
 """
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-
+from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = '90c29492df5b'
-down_revision: Union[str, None] = ('5aac03cebf88', 'c5f1a9e3d2b7')
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = ('5aac03cebf88', 'c5f1a9e3d2b7')
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # Same reasoning as 5aac03cebf88: 5aac is already applied on preview databases,

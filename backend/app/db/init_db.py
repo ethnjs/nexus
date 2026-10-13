@@ -10,8 +10,9 @@ Or called automatically from app startup lifespan.
 from pathlib import Path
 
 from sqlalchemy.orm import Session
-from app.models import models  # noqa: F401 — must import so Base sees the models
+
 from app.core.config import get_settings
+from app.models import models  # noqa: F401 — must import so Base sees the models
 
 settings = get_settings()
 
@@ -56,8 +57,8 @@ def seed_dev_data(db: Session) -> None:
     Idempotent per account — any email that already exists is skipped. A prod
     copy run through anonymize_users already holds user<id>@nexus.dev rows.
     """
-    from app.models.models import User
     from app.core.auth import hash_password
+    from app.models.models import User
 
     # Admin account — full site-wide access, bypasses all tournament checks.
     # 15 regular user accounts — user1@nexus.dev .. user15@nexus.dev, all password "user1234"

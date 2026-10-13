@@ -1,22 +1,43 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
-    get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
-    get_current_session, revoke_all_other_sessions,
+    clear_auth_cookie,
+    get_current_session,
+    get_current_user,
+    require_admin,
+    revoke_all_other_sessions,
+    revoke_all_sessions,
+    verify_password,
+)
+from app.core.profile_status import (
+    compute_missing_profile_fields,
+    is_onboarding_complete,
+    is_profile_complete,
 )
 from app.core.users import find_user_by_id, require_not_last_admin
-from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
-from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
-from app.schemas.user import (
-    UserMeFullResponse, AdminUserSlimResponse,
-    AdminUserFullResponse, UserMeSlimResponse, UserUpdate, AdminUserUpdate
+from app.models.models import (
+    Event,
+    User,
+    UserCompetitionExperience,
+    UserSession,
+    UserVolunteerExperience,
 )
-from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
+from app.schemas.auth import AccountDeactivateRequest, AccountDeleteRequest, MessageResponse
 from app.schemas.session import SessionResponse
+from app.schemas.user import (
+    AdminUserFullResponse,
+    AdminUserSlimResponse,
+    AdminUserUpdate,
+    UserMeFullResponse,
+    UserMeSlimResponse,
+    UserUpdate,
+)
 from app.services.email_service import send_password_reset_request_email
 
 router = APIRouter(tags=["users"])
@@ -320,7 +341,7 @@ def list_my_sessions(
     current_session: UserSession = Depends(get_current_session),
 ):
     """Lists active (not revoked, not expired) sessions, most recently active first."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sessions = (
         db.query(UserSession)
         .filter(

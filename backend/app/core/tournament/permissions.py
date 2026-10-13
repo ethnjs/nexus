@@ -16,14 +16,15 @@ ADDING A NEW DEFAULT ROLE:
 """
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.core.auth import get_current_user
 from app.core.tournament.memberships import has_any_membership
+from app.db.session import get_db
 
 if TYPE_CHECKING:
     from app.models.models import User
@@ -144,7 +145,7 @@ DEFAULT_ROLES: list[dict] = [
 # ---------------------------------------------------------------------------
 
 def get_user_permissions(
-    user: "User",
+    user: User,
     tournament_id: int,
     db: Session,
 ) -> set[str]:
@@ -161,7 +162,7 @@ def get_user_permissions(
 
     Returns an empty set if the user has no membership in this tournament.
     """
-    from app.models.models import TournamentMembership, TournamentRole, Tournament
+    from app.models.models import Tournament, TournamentMembership, TournamentRole
 
     if user.role == "admin":
         return set(ALL_PERMISSIONS)
@@ -199,7 +200,7 @@ def get_user_permissions(
 
 
 def has_permission(
-    user: "User",
+    user: User,
     tournament_id: int,
     permission: str,
     db: Session,
@@ -209,7 +210,7 @@ def has_permission(
 
 
 def get_highest_rank(
-    user: "User",
+    user: User,
     tournament_id: int,
     db: Session,
 ) -> int | None:
@@ -222,6 +223,7 @@ def get_highest_rank(
     unbounded authority.
     """
     from sqlalchemy import func
+
     from app.models.models import TournamentMembership, TournamentRole
 
     membership = (
@@ -269,9 +271,9 @@ def require_membership(tournament_id_param: str = "tournament_id"):
     """
     def _dependency(
         tournament_id: int,
-        current_user: "User" = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
-    ) -> "User":
+    ) -> User:
         if not has_any_membership(current_user, tournament_id, db):
             # 404 to avoid leaking tournament existence
             raise HTTPException(
@@ -300,9 +302,9 @@ def require_permission(
     """
     def _dependency(
         tournament_id: int,
-        current_user: "User" = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
-    ) -> "User":
+    ) -> User:
         # First check membership exists (404 before 403)
         if not has_any_membership(current_user, tournament_id, db):
             raise HTTPException(
@@ -334,9 +336,9 @@ def require_catalog_read(*permissions: str, tournament_id_param: str = "tourname
     def _dependency(
         tournament_id: int,
         public: bool = Query(False),
-        current_user: "User" = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
-    ) -> "User":
+    ) -> User:
         # Membership first either way, so a non-member can't tell a
         # permission failure from a tournament that doesn't exist.
         if not has_any_membership(current_user, tournament_id, db):
@@ -362,9 +364,9 @@ def require_any_permission(*permissions: str):
     """
     def _dependency(
         tournament_id: int,
-        current_user: "User" = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
-    ) -> "User":
+    ) -> User:
         if not has_any_membership(current_user, tournament_id, db):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

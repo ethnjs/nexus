@@ -1,8 +1,8 @@
 """Tests for /universities and /admin/universities endpoints."""
 import uuid
 
-from tests.conftest import login
 from app.models.models import AlumniChapter, TournamentTrack, University
+from tests.conftest import login
 
 
 def _university(db, **kwargs):

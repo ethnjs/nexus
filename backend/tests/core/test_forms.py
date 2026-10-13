@@ -2,14 +2,11 @@
 helpers, field_key derivation/uniqueness, and the access-control dependency
 functions, all exercised directly (no HTTP layer). See tests/api/test_forms.py
 for the routes."""
+from datetime import UTC, datetime
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-
-from tests.conftest import grant_role, primary_track_id
-from tests.api.chapter._helpers import make_chapter, make_university, make_user
-
-from datetime import datetime, timedelta, timezone
 
 from app.core.form import (
     field_key_taken_in_tournament,
@@ -27,7 +24,8 @@ from app.models.models import (
     TournamentForm,
     TournamentShift,
 )
-
+from tests.api.chapter._helpers import make_chapter, make_university, make_user
+from tests.conftest import grant_role, primary_track_id
 
 # ---------------------------------------------------------------------------
 # Builders
@@ -216,8 +214,8 @@ class TestModelCRUD:
 class TestResolveAvailabilityOptions:
     def test_single_shift_option_resolves_to_one_value_entry(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
-        end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
+        start = datetime(2027, 2, 13, 7, 0, tzinfo=UTC)
+        end = datetime(2027, 2, 13, 16, 0, tzinfo=UTC)
         shift = _make_shift(db, td_tournament, "Saturday", start, end)
         field = _make_field(
             db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
@@ -243,7 +241,7 @@ class TestResolveAvailabilityOptions:
         form = _make_form(db, td_user, td_tournament)
         shift = _make_shift(
             db, td_tournament, "Saturday",
-            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+            datetime(2027, 2, 13, 7, 0, tzinfo=UTC), datetime(2027, 2, 13, 16, 0, tzinfo=UTC),
         )
         other = _make_field(db, form, field_key="favorite_color", order=2)
         field = _make_field(
@@ -263,10 +261,10 @@ class TestResolveAvailabilityOptions:
 
     def test_grouped_shifts_resolve_to_one_entry_each(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        morning_start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
-        morning_end = datetime(2027, 2, 13, 12, 0, tzinfo=timezone.utc)
-        afternoon_start = datetime(2027, 2, 13, 12, 0, tzinfo=timezone.utc)
-        afternoon_end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
+        morning_start = datetime(2027, 2, 13, 7, 0, tzinfo=UTC)
+        morning_end = datetime(2027, 2, 13, 12, 0, tzinfo=UTC)
+        afternoon_start = datetime(2027, 2, 13, 12, 0, tzinfo=UTC)
+        afternoon_end = datetime(2027, 2, 13, 16, 0, tzinfo=UTC)
         morning = _make_shift(db, td_tournament, "Morning", morning_start, morning_end)
         afternoon = _make_shift(db, td_tournament, "Afternoon", afternoon_start, afternoon_end)
         field = _make_field(
@@ -296,7 +294,7 @@ class TestResolveAvailabilityOptions:
         form = _make_form(db, td_user, td_tournament)
         shift = _make_shift(
             db, td_tournament, "Saturday",
-            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+            datetime(2027, 2, 13, 7, 0, tzinfo=UTC), datetime(2027, 2, 13, 16, 0, tzinfo=UTC),
         )
         field = _make_field(
             db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
@@ -310,7 +308,7 @@ class TestResolveAvailabilityOptions:
         form = _make_form(db, td_user, td_tournament)
         shift = _make_shift(
             db, td_tournament, "Saturday",
-            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+            datetime(2027, 2, 13, 7, 0, tzinfo=UTC), datetime(2027, 2, 13, 16, 0, tzinfo=UTC),
         )
         from app.models.models import TournamentTrack
         track = TournamentTrack(tournament_id=td_tournament.id, name="Day 1")

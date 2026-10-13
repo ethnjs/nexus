@@ -1,7 +1,5 @@
 """Unit tests for validate_column_mappings."""
-import pytest
 from app.services.sheets_validation import validate_column_mappings
-
 
 # ---------------------------------------------------------------------------
 # Helpers

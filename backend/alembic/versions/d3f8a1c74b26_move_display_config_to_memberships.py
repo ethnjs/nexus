@@ -12,17 +12,16 @@ Saved configs are dropped rather than fanned out onto every membership —
 same call c7d1e93a5b02 made for its own reshape. Everyone starts from the
 defaults (all columns default, nothing hidden, no filters, default sort).
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
 revision: str = 'd3f8a1c74b26'
-down_revision: Union[str, None] = 'c7d1e93a5b02'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'c7d1e93a5b02'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

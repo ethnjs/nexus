@@ -1,10 +1,9 @@
 """Tests for chapter join-code management endpoints
 (app/api/routes/chapter/join_codes.py). Redemption via POST /join/ is
 covered in tests/api/test_join.py, alongside the tournament case."""
-from tests.conftest import login
-from tests.api.chapter._helpers import make_chapter, make_join_code, make_university, make_user
 from app.models.models import ChapterMembership, JoinCode
-
+from tests.api.chapter._helpers import make_chapter, make_join_code, make_university, make_user
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # Chapter join code endpoints — chapter lead only

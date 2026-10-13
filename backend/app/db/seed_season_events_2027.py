@@ -8,8 +8,8 @@ Run directly:
     python -m app.db.seed_season_events_2027
 """
 
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 from app.db.seed_canon_events import seed_events_and_categories
 

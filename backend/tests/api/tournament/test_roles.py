@@ -1,12 +1,17 @@
 """Tests for TournamentRole CRUD and membership-role assignment
 (app/api/routes/tournament/roles.py)."""
-from tests.conftest import future_date, grant_role, login
 from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
 from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
 from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 from app.models.models import (
-    AuditLogEntry, Tournament, TournamentMembership, TournamentTrackAssignment, TournamentRole, User,
+    AuditLogEntry,
+    Tournament,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
+    User,
 )
+from tests.conftest import future_date, grant_role, login
 
 
 def make_role(db, tournament: Tournament, label: str, rank: int, permissions=None) -> TournamentRole:

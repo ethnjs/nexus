@@ -1,9 +1,6 @@
 """Tests for /tournaments/{tournament_id}/sheets endpoints."""
-import pytest
-from unittest.mock import MagicMock
-from fastapi.testclient import TestClient
+from app.schemas.sheet_config import SheetValidateResponse
 from tests.conftest import grant_role, login
-from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, MappedHeader
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 FAKE_FORM_URL = "https://docs.google.com/forms/d/fake_form/edit"

@@ -7,17 +7,16 @@ Create Date: 2026-03-28 13:46:15.901067
 Adds student_status, competition_exp, volunteering_exp columns to users table.
 Changes lunch_order on memberships from String(255) to JSON.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'e975e198a8e1'
-down_revision: Union[str, None] = 'b2c3d4e5f6a7'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'b2c3d4e5f6a7'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

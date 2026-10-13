@@ -1,12 +1,11 @@
 import asyncio
+
 import resend
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
 
+from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
-from app.core.auth import create_verification_token, RateLimitedError
-
 
 # ---------------------------------------------------------------------------
 # Shared HTML template
@@ -61,8 +60,8 @@ def _render_email_html(
     heading: str,
     body_lines: list[str],
     footnote: str,
-    cta_label: Optional[str] = None,
-    cta_url: Optional[str] = None,
+    cta_label: str | None = None,
+    cta_url: str | None = None,
 ) -> str:
     body_html = "".join(
         f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{line}</p>'
@@ -121,7 +120,7 @@ def _render_email_html(
 """
 
 
-def _cta_url(path: str, token: Optional[str] = None) -> str:
+def _cta_url(path: str, token: str | None = None) -> str:
     settings = get_settings()
     base = f"{settings.frontend_url.rstrip('/')}{path}"
     return f"{base}?token={token}" if token else base

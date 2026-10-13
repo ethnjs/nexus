@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from fastapi import HTTPException, Query, status
 from sqlalchemy.orm import joinedload, noload, selectinload
 
-
 # ---------------------------------------------------------------------------
 # Always-present keys — see rule 3.
 #
@@ -145,7 +144,10 @@ def loader_options(requested: frozenset[str] | None) -> list:
     what varies with `fields`.
     """
     from app.models.models import (
-        TournamentEvent, TournamentEventTrack, TournamentShift, TournamentTrack,
+        TournamentEvent,
+        TournamentEventTrack,
+        TournamentShift,
+        TournamentTrack,
     )
 
     # Relationships needing a further hop to be usable: a shift's event_count

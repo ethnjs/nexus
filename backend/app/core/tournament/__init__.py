@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TypeVar
 from zoneinfo import ZoneInfo
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session

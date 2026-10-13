@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, with_parent
 
 from app.core.auth import require_admin
-from app.core.chapters import assign_chapter_lead, create_alumni_chapter, check_if_chapter_exists, find_chapter
+from app.core.chapters import (
+    assign_chapter_lead,
+    check_if_chapter_exists,
+    create_alumni_chapter,
+    find_chapter,
+)
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterMembership, User
 from app.schemas.chapter import ChapterCreate, ChapterResponse

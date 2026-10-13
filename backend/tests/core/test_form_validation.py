@@ -3,11 +3,9 @@
 field_key pairing, branching option targets, availability's TournamentShift
 resolution, and the aggregate whole-form publish pass. See
 tests/api/test_forms.py for the route-level wiring of these checks."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from tests.api.chapter._helpers import make_chapter, make_university
 
 from app.core.form.validation import (
     FormFieldValidationError,
@@ -19,12 +17,12 @@ from app.core.form.validation import (
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
-    validate_track_status_options,
     validate_tournament_preset,
+    validate_track_status_options,
 )
 from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
+from tests.api.chapter._helpers import make_chapter, make_university
 from tests.conftest import primary_track_id
-
 
 # ---------------------------------------------------------------------------
 # Builders
@@ -85,7 +83,7 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
 
 
 def _make_shift(db, tournament, label="Saturday", day=None):
-    start = datetime(2026, 3, 15, tzinfo=timezone.utc) if day is None else day
+    start = datetime(2026, 3, 15, tzinfo=UTC) if day is None else day
     shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
         label=label,
         start=start,
@@ -383,20 +381,20 @@ class TestValidateAvailabilityOptions:
         """Availability write-through owns a whole track: a stray shift from a
         different track would be added by this question and removed by that
         track's own question, or the reverse, depending on submission order."""
-        shift = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Sunday"}]}
         with pytest.raises(FormFieldValidationError, match="outside this question's track"):
             validate_availability_options(db, td_tournament.id, config, shift.track_id + 999)
 
     def test_shift_on_the_field_track_passes(self, db, td_user, td_tournament):
-        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Morning"}]}
         validate_availability_options(db, td_tournament.id, config, shift.track_id)  # no raise
 
     def test_date_check_skipped_when_no_field_date_given(self, db, td_user, td_tournament):
-        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=UTC))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Whenever"}]}
         validate_availability_options(db, td_tournament.id, config)  # no raise

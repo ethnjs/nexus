@@ -1,12 +1,12 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
-from app.models.models import SheetConfig, Tournament, User
+from app.models.models import SheetConfig, User
 from app.schemas.sheet_config import (
     SheetConfigCreate,
     SheetConfigRead,
@@ -20,10 +20,10 @@ from app.schemas.sheet_config import (
     ValidateMappingsRequest,
     ValidateMappingsResponse,
 )
-from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
-from app.services.sync_service import sync_sheet
+from app.services.sheets_service import SheetsService
 from app.services.sheets_validation import validate_column_mappings
+from app.services.sync_service import sync_sheet
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/sheets", tags=["sheets"])
 

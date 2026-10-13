@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
     ROLE_CREATED,
     ROLE_DELETED,
@@ -13,21 +15,30 @@ from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     MANAGE_ROLES,
     require_any_permission,
-    require_membership,
     require_permission,
 )
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.roles import (
-    NULLABLE_ROLE_FIELDS, validate_rank_bound, validate_role_action, with_member_counts,
+    NULLABLE_ROLE_FIELDS,
+    validate_rank_bound,
+    validate_role_action,
+    with_member_counts,
 )
 from app.db.session import get_db
 from app.models.models import (
-    TournamentMembership, TournamentRole, TournamentTrack, TournamentTrackAssignment, User,
-)
-from app.schemas.tournament.role import (
-    RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
 )
 from app.schemas.tournament.membership import MembershipFullResponse
+from app.schemas.tournament.role import (
+    RoleAssignmentUpdate,
+    RoleBulkReorder,
+    RoleDefinition,
+    RoleUpdate,
+    RoleWithMemberCount,
+)
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.

@@ -3,6 +3,7 @@ Per-tournament audit log — records who did what, to what, when. Not
 cross-tournament, not chapter-wide (tournaments don't live inside chapters).
 """
 from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
 from app.models.models import AuditLogEntry

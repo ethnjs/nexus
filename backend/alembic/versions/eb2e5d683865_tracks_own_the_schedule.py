@@ -24,9 +24,8 @@ Revision ID: eb2e5d683865
 Revises: e5c2b7a91f38
 Create Date: 2026-09-03
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = 'eb2e5d683865'
 down_revision = 'e5c2b7a91f38'

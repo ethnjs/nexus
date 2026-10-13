@@ -17,16 +17,16 @@ never named a track, so there's no per-track fact to recover from it.
 Irreversible in practice — downgrade recreates the column with the old default
 rather than the values it held.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'a3f81c60e274'
-down_revision: Union[str, None] = '066d0807d514'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '066d0807d514'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

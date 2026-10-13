@@ -5,20 +5,33 @@ NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
 with SQLAlchemy 2.0.36 + Python 3.13.
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
+from typing import NamedTuple
+from zoneinfo import ZoneInfo
+
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
-    Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint,
-    Column, event, Index, text,
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+    text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
-from typing import NamedTuple, Optional
-from zoneinfo import ZoneInfo
 
-from app.db.session import Base
 from app.core.age import meets_age_requirement
+from app.db.session import Base
 
 
 def generate_public_id() -> str:
@@ -36,7 +49,7 @@ def generate_public_id() -> str:
 
 def utcnow():
     """Timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -571,7 +584,7 @@ class TournamentMembership(Base):
         (#83), so the callers that matter — get_user_permissions,
         get_highest_rank — must not care which day a role was granted on.
         """
-        seen: dict[int, "TournamentRole"] = {}
+        seen: dict[int, TournamentRole] = {}
         for assignment in self.track_assignments:
             if assignment.role_id not in seen:
                 seen[assignment.role_id] = assignment.role
@@ -615,7 +628,7 @@ class TournamentMembership(Base):
         whole tournament by definition, so a per-track column omitting it
         would be claiming the member lacks it that day.
         """
-        seen: dict[int, "TournamentRole"] = {}
+        seen: dict[int, TournamentRole] = {}
         for assignment in self.track_assignments:
             if assignment.is_tournament_wide or assignment.tournament_track_id == track_id:
                 seen.setdefault(assignment.role_id, assignment.role)
@@ -655,14 +668,14 @@ class TournamentMembership(Base):
         return datetime.now(ZoneInfo(self.tournament.timezone)).date()
 
     @hybrid_property
-    def is_over_18(self) -> Optional[bool]:
+    def is_over_18(self) -> bool | None:
         if self.user.date_of_birth is None:
             return None
 
         return meets_age_requirement(self.user.date_of_birth, self._age_reference_day, 18)
 
     @hybrid_property
-    def is_over_21(self) -> Optional[bool]:
+    def is_over_21(self) -> bool | None:
         if self.user.date_of_birth is None:
             return None
 

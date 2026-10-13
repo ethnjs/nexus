@@ -11,8 +11,8 @@ Tournament-level permission checking lives in app/core/tournament/permissions.py
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Literal
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import Cookie, Depends, HTTPException, Request, Response, status
 from pwdlib import PasswordHash
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.models import User, VerificationToken, UserSession
+from app.models.models import User, UserSession, VerificationToken
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -56,7 +56,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, Optional[str]]:
+def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, str | None]:
     """Verify, and return a replacement hash when `hashed` uses an outdated
     scheme or parameters (e.g. a legacy bcrypt hash). The caller persists it."""
     return pwd_context.verify_and_update(plain, hashed)
@@ -89,7 +89,7 @@ def _hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
-def get_client_ip(request: Request) -> Optional[str]:
+def get_client_ip(request: Request) -> str | None:
     """
     Prefers X-Forwarded-For (Render sits in front of the app), falls back
     to the direct connection IP. Takes the first entry — the original
@@ -104,14 +104,14 @@ def get_client_ip(request: Request) -> Optional[str]:
 def create_session(
     db: Session,
     user_id: int,
-    user_agent: Optional[str] = None,
-    ip_address: Optional[str] = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> str:
     """
     Creates a new session and returns the raw token — this is the only
     time it exists in plaintext; only its SHA-256 hash is persisted.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     raw_token = secrets.token_urlsafe(32)
 
     session_row = UserSession(
@@ -127,7 +127,7 @@ def create_session(
     return raw_token
 
 
-def get_active_session(db: Session, raw_token: str) -> Optional[UserSession]:
+def get_active_session(db: Session, raw_token: str) -> UserSession | None:
     """
     Looks up a session by its raw token. Returns the row if valid (not
     revoked, not expired), else None.
@@ -137,7 +137,7 @@ def get_active_session(db: Session, raw_token: str) -> Optional[UserSession]:
     settings device list's "active Xh ago"), not part of any validity
     check, so it doesn't need writing on every request.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token_hash = _hash_token(raw_token)
 
     session_row = db.query(UserSession).filter(
@@ -158,13 +158,13 @@ def get_active_session(db: Session, raw_token: str) -> Optional[UserSession]:
 
 def revoke_session(db: Session, session_row: UserSession) -> None:
     """Revokes a single session — e.g. explicit logout of just this device."""
-    session_row.revoked_at = datetime.now(timezone.utc)
+    session_row.revoked_at = datetime.now(UTC)
     db.commit()
 
 
 def revoke_all_other_sessions(db: Session, user_id: int, keep_session_id: int) -> None:
     """'Log out everywhere' — revokes every session for the user except the current one."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db.query(UserSession).filter(
         UserSession.user_id == user_id,
         UserSession.id != keep_session_id,
@@ -179,7 +179,7 @@ def revoke_all_sessions(db: Session, user_id: int) -> None:
     active — used for admin account-locking, where the point is immediate
     total lockout, not preserving anyone's current session.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db.query(UserSession).filter(
         UserSession.user_id == user_id,
         UserSession.revoked_at.is_(None),
@@ -253,7 +253,7 @@ def create_verification_token(
     db: Session,
     user_id: int,
     purpose: Purpose,
-    new_email: Optional[str] = None,
+    new_email: str | None = None,
 ) -> str:
     """
     Creates a new verification token for the given user + purpose.
@@ -266,7 +266,7 @@ def create_verification_token(
 
     Returns the raw token — this is the only time it exists in plaintext.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     existing = (
         db.query(VerificationToken)
@@ -304,14 +304,14 @@ def create_verification_token(
     return raw_token
 
 
-def get_pending_email_change(db: Session, user_id: int) -> Optional[VerificationToken]:
+def get_pending_email_change(db: Session, user_id: int) -> VerificationToken | None:
     """
     Returns the user's active (unconsumed, unexpired) email_change token, if
     any. create_verification_token invalidates older tokens for the same
     (user_id, purpose) on each new request, so at most one row can ever
     match — no ordering/tiebreak needed.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     return (
         db.query(VerificationToken)
@@ -329,7 +329,7 @@ def consume_verification_token(
     db: Session,
     raw_token: str,
     expected_purpose: Purpose,
-) -> Optional[VerificationToken]:
+) -> VerificationToken | None:
     """
     Validates and consumes a raw token for the given purpose.
 
@@ -343,7 +343,7 @@ def consume_verification_token(
     switch to SHA-256 stored Argon2/bcrypt hashes, which never match a digest,
     so they're simply rejected and the user requests a new link.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     row = db.scalars(
         update(VerificationToken)
@@ -366,7 +366,7 @@ def consume_verification_token(
 # ---------------------------------------------------------------------------
 
 def get_current_session(
-    access_token: Optional[str] = Cookie(default=None),
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> UserSession:
     """

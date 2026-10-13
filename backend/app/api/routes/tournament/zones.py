@@ -7,22 +7,39 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import authorize_role_grant
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS, MANAGE_MEMBERS, require_permission,
+    MANAGE_EVENTS,
+    MANAGE_MEMBERS,
+    require_permission,
 )
 from app.core.tournament.zones import (
-    KIND_BUILDING, KIND_EVENT, KIND_FLOOR, events_by_zone, unplaced_event_ids,
+    KIND_BUILDING,
+    KIND_EVENT,
+    KIND_FLOOR,
+    events_by_zone,
+    unplaced_event_ids,
     unzoned_event_ids,
 )
 from app.db.session import get_db
 from app.models.models import (
-    TournamentBuildingTrack, TournamentEventTrack, TournamentMembership, TournamentRole,
-    TournamentTrack, TournamentTrackAssignment, TournamentZone, TournamentZoneMember, User,
+    TournamentBuildingTrack,
+    TournamentEventTrack,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    TournamentZone,
+    TournamentZoneMember,
+    User,
 )
 from app.schemas.tournament.zone import (
-    ZoneAssignmentCreate, ZoneAssignmentRead, ZoneCoverageRead, ZoneCreate, ZoneMember,
-    ZoneRead, ZoneUpdate,
+    ZoneAssignmentCreate,
+    ZoneAssignmentRead,
+    ZoneCoverageRead,
+    ZoneCreate,
+    ZoneMember,
+    ZoneRead,
+    ZoneUpdate,
 )
-
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/zones", tags=["tournaments"])
 
