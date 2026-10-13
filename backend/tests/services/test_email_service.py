@@ -1,11 +1,7 @@
-"""
-Tests for the SES-backed _send in app/services/email_service.py.
+"""Tests for the real _send. Nothing reaches AWS.
 
-conftest's autouse mock_send_email stubs _send for every other test; it's
-overridden below so the real implementation runs here. Nothing reaches AWS:
-sends go either to a fake client, or through a real botocore sesv2 client
-whose HTTP layer is answered by a before-send handler (so botocore's actual
-retry logic runs — botocore's Stubber short-circuits before retries).
+Retry tests answer a real botocore client's HTTP layer with a before-send handler, because
+botocore's Stubber short-circuits before retries run.
 """
 
 import asyncio
@@ -164,10 +160,9 @@ def _error(status: int, code: str):
 
 @pytest.fixture
 def ses_http(use_settings, monkeypatch):
-    """
-    Queue (status, payload, error_type) tuples on .responses; each HTTP
-    attempt pops one, and the last one repeats. Retry backoff sleeps are
-    recorded instead of slept.
+    """Each HTTP attempt pops a (status, payload, error_type) from .responses; the last repeats.
+
+    Retry backoff sleeps are recorded in .backoffs instead of slept.
     """
     settings = use_settings()
     client = _real_get_ses_client(

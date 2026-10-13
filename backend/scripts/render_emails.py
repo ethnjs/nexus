@@ -2,7 +2,7 @@
 
 From backend/:
 
-    python scripts/render_emails.py
+    uv run python scripts/render_emails.py
 
 Links use FRONTEND_URL. Set FRONTEND_URL=https://nexus.socalscioly.org
 for samples that show the real domain.
@@ -16,7 +16,9 @@ Writes HTML files to backend/tmp_emails/. Open index.html in a browser.
 
 import asyncio
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -33,7 +35,7 @@ TOURNAMENT = "2026 SoCal Invitational"
 captured: list[tuple[str, str, str, str]] = []
 
 
-async def _capture_ses_call(fn, /, *args, **kwargs) -> None:
+async def _capture_ses_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> None:
     content = kwargs["Content"]["Simple"]
     captured.append(
         (
@@ -45,7 +47,7 @@ async def _capture_ses_call(fn, /, *args, **kwargs) -> None:
     )
 
 
-def _token(*_args, **_kwargs) -> str:
+def _token(*_args: Any, **_kwargs: Any) -> str:
     return TOKEN
 
 
