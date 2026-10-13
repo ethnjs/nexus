@@ -1,0 +1,13 @@
+[src]
+# The Google Sheets import is deprecated and unmaintained; sync_sheet still
+# writes membership columns that were dropped. `**/` because exclude paths are
+# relative to the project root, which is the repo root in the editor
+# (.vscode/settings.json) and backend/ everywhere else.
+exclude = [
+    "**/app/api/routes/sheets.py",
+    "**/app/services/sheets_validation.py",
+    "**/app/services/sync_service.py",
+]
+
+[terminal]
+error-on-warning = true

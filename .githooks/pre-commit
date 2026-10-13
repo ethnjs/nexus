@@ -53,7 +53,7 @@ fi
 # change the result. The whole backend: a change can break callers that aren't staged.
 snapshot=$(mktemp -d)
 trap 'rm -rf "$snapshot"' EXIT
-git ls-files -z -- '*.py' pyproject.toml | xargs -0 git checkout-index --prefix="$snapshot/" --
+git ls-files -z -- '*.py' pyproject.toml ty.toml | xargs -0 git checkout-index --prefix="$snapshot/" --
 if ! (cd "$snapshot/backend" && uv run --quiet --project "$root/backend" ty check --python "$root/backend/.venv"); then
     echo "pre-commit: fix the type errors above, then commit again." >&2
     exit 1

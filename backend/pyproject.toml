@@ -37,18 +37,6 @@ addopts = ["-v", "--tb=short"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
-[tool.ty.src]
-# The Google Sheets import is deprecated and unmaintained; sync_sheet still
-# writes membership columns that were dropped.
-exclude = [
-    "app/api/routes/sheets.py",
-    "app/services/sheets_validation.py",
-    "app/services/sync_service.py",
-]
-
-[tool.ty.terminal]
-error-on-warning = true
-
 [tool.ruff]
 line-length = 100
 

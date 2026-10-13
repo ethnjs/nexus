@@ -10,7 +10,7 @@ uv run ty check                                        # likewise
 uv run alembic revision --autogenerate -m "description"
 ```
 
-Ruff is the linter and formatter, and ty the type checker (config for both in `pyproject.toml`; line length 100). Annotate new functions' parameters and return types. Narrow an optional value with an `is not None` check or `assert`, and keep `# ty: ignore[rule]` for checker limits, not real type errors. Use modern syntax (`X | None`, built-in generics, PEP 695 generics); Ruff's `UP` rules enforce most of it.
+Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), and ty the type checker (config in `ty.toml`). Annotate new functions' parameters and return types. Narrow an optional value with an `is not None` check or `assert`, and keep `# ty: ignore[rule]` for checker limits, not real type errors. Use modern syntax (`X | None`, built-in generics, PEP 695 generics); Ruff's `UP` rules enforce most of it.
 
 ## Layout
 

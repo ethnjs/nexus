@@ -1,0 +1,17 @@
+{
+  // Use the ty and Ruff locked in backend/uv.lock, not the extensions' bundled copies.
+  // The first path that exists wins: Windows, then macOS/Linux.
+  "ty.path": [
+    "${workspaceFolder}/backend/.venv/Scripts/ty.exe",
+    "${workspaceFolder}/backend/.venv/bin/ty"
+  ],
+  "ruff.path": [
+    "${workspaceFolder}/backend/.venv/Scripts/ruff.exe",
+    "${workspaceFolder}/backend/.venv/bin/ruff"
+  ],
+  // ty only reads config from the workspace root, and the backend's lives in backend/.
+  "ty.configurationFile": "backend/ty.toml",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  }
+}

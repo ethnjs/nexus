@@ -55,7 +55,7 @@ git config core.hooksPath .githooks
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
-- **pre-commit** lints and formats staged backend files with Ruff, applying safe fixes, then type-checks the staged backend with [ty](https://docs.astral.sh/ty/). CI runs the same checks. To run them by hand from `backend/`: `uv run ruff check --fix`, `uv run ruff format` and `uv run ty check`. To see the same type errors in VS Code, install the ty extension, which takes over from Pylance's language server.
+- **pre-commit** lints and formats staged backend files with Ruff, applying safe fixes, then type-checks the staged backend with [ty](https://docs.astral.sh/ty/). CI runs the same checks. To run them by hand from `backend/`: `uv run ruff check --fix`, `uv run ruff format` and `uv run ty check`. In VS Code, install the recommended ty and Ruff extensions; `.vscode/settings.json` points both at the versions in `backend/.venv` and makes Ruff the Python formatter. The ty extension replaces Pylance's language server.
 - **post-checkout** gives each git worktree its own database (`scripts/setup-worktree-db.sh`), so branches with different migrations don't collide. The main checkout keeps the default `nexus` database.
 
 ### Tests
