@@ -191,9 +191,17 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
             raise RuntimeError(
                 "SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
             )
-        logger.warning("SES not configured, skipping email to %s: %s", to, subject)
         if settings.app_env == "development":
-            logger.warning("Skipped email body:\n%s", text)
+            logger.warning(
+                "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+                "-- Email not sent: SES not configured ".ljust(72, "-"),
+                to,
+                subject,
+                text,
+                "-" * 72,
+            )
+        else:
+            logger.warning("SES not configured, skipping email to %s: %s", to, subject)
         return
 
     client = _get_ses_client(
