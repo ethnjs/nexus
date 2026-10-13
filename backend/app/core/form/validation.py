@@ -10,6 +10,7 @@ resolving to a real field, availability options resolving to a real
 TournamentShift) and reserved field_key pairing."""
 
 import re
+from functools import partial
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -345,14 +346,24 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             continue
 
         for check in (
-            lambda: validate_reserved_field_key(field.field_key, field.question_type),
-            lambda: validate_tournament_preset(field.field_key, form.tournament_id),
-            lambda: validate_preset_track(db, form.tournament_id, field.field_key),
-            lambda: validate_track_status_options(
-                db, form.tournament_id, field.field_key, field.question_type, normalized_config
+            partial(validate_reserved_field_key, field.field_key, field.question_type),
+            partial(validate_tournament_preset, field.field_key, form.tournament_id),
+            partial(validate_preset_track, db, form.tournament_id, field.field_key),
+            partial(
+                validate_track_status_options,
+                db,
+                form.tournament_id,
+                field.field_key,
+                field.question_type,
+                normalized_config,
             ),
-            lambda: validate_branching_options(
-                db, form.id, field.question_type, normalized_config, field_id=field.id
+            partial(
+                validate_branching_options,
+                db,
+                form.id,
+                field.question_type,
+                normalized_config,
+                field_id=field.id,
             ),
         ):
             try:
