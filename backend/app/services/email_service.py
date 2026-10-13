@@ -148,6 +148,7 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
 # Signup verification
 # ---------------------------------------------------------------------------
 
+
 async def send_verification_email(to: str, token: str) -> None:
     url = _cta_url("/verify-email", token)
     html = _render_email_html(
@@ -178,6 +179,7 @@ async def send_signup_verification_email(db: Session, to: str, user_id: int) -> 
 # Email change
 # ---------------------------------------------------------------------------
 
+
 async def send_email_change_email(to_new_email: str, token: str) -> None:
     url = _cta_url("/confirm-email-change", token)
     html = _render_email_html(
@@ -190,7 +192,9 @@ async def send_email_change_email(to_new_email: str, token: str) -> None:
         cta_url=url,
         footnote="This link expires in 24 hours. If you didn't request this change, please contact support.",
     )
-    await _send(to_new_email, "Confirm your new email on NEXUS", f"Confirm your new email: {url}", html)
+    await _send(
+        to_new_email, "Confirm your new email on NEXUS", f"Confirm your new email: {url}", html
+    )
 
 
 async def send_email_change_request_email(db: Session, user_id: int, new_email: str) -> None:
@@ -205,7 +209,9 @@ async def send_email_change_request_email(db: Session, user_id: int, new_email: 
         raise HTTPException(500, "Failed to send email change confirmation")
 
 
-async def send_email_change_requested_notice(db: Session, user_id: int, old_email: str, new_email: str) -> None:
+async def send_email_change_requested_notice(
+    db: Session, user_id: int, old_email: str, new_email: str
+) -> None:
     """
     Sent to the OLD email address the moment an email change is requested
     (not once it's confirmed) — the account owner may not be the one who
@@ -218,7 +224,9 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
     about to become the attacker's address).
     """
     try:
-        revert_token = create_verification_token(db, user_id, "email_change_revert", new_email=old_email)
+        revert_token = create_verification_token(
+            db, user_id, "email_change_revert", new_email=old_email
+        )
     except RateLimitedError as e:
         raise HTTPException(429, str(e))
 
@@ -244,6 +252,7 @@ async def send_email_change_requested_notice(db: Session, user_id: int, old_emai
 # ---------------------------------------------------------------------------
 # Password reset
 # ---------------------------------------------------------------------------
+
 
 async def send_password_reset_email(to: str, token: str) -> None:
     url = _cta_url("/reset-password", token)
@@ -301,6 +310,7 @@ async def send_password_changed_notice(to: str) -> None:
 # Account setup (admin-created invite)
 # ---------------------------------------------------------------------------
 
+
 async def send_account_setup_email(to: str, token: str) -> None:
     url = _cta_url("/account-setup", token)
     html = _render_email_html(
@@ -332,6 +342,7 @@ async def send_account_setup_invite_email(db: Session, user_id: int, to: str) ->
 # Tournament staff invite
 # ---------------------------------------------------------------------------
 
+
 async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) -> None:
     html = _render_email_html(
         heading=f"You're invited to help run {tournament_name}",
@@ -343,10 +354,17 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
         cta_url=join_url,
         footnote="If you weren't expecting this, you can ignore this email.",
     )
-    await _send(to, f"You're invited to help run {tournament_name}", f"Join {tournament_name}: {join_url}", html)
+    await _send(
+        to,
+        f"You're invited to help run {tournament_name}",
+        f"Join {tournament_name}: {join_url}",
+        html,
+    )
 
 
-async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, join_url: str) -> list[str]:
+async def send_staff_invite_emails(
+    to_emails: list[str], tournament_name: str, join_url: str
+) -> list[str]:
     """
     Sends one personalized invite email per address, in parallel — not BCC,
     which counts every recipient against quota anyway and has worse

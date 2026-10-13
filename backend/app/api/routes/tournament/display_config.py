@@ -134,7 +134,7 @@ def update_display_config(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown column '{column}'",
                 )
-        for key in (config.filters or {}):
+        for key in config.filters or {}:
             if key not in known_filter_keys(surface):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -185,7 +185,9 @@ def update_display_config(
                     detail=f"Section '{section.id}' is built-in and cannot be assigned fields",
                 )
 
-    membership.display_config = {surface: config.model_dump() for surface, config in payload.items()}
+    membership.display_config = {
+        surface: config.model_dump() for surface, config in payload.items()
+    }
     db.commit()
     db.refresh(membership)
     return membership.display_config

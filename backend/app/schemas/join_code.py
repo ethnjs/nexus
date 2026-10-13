@@ -42,6 +42,7 @@ class StaffInviteCreate(BaseModel):
     (POST /join-codes/) if the TD chose "create new code" in the invite
     modal, then calls this with the resulting id. This route only sends.
     """
+
     join_code_id: int
     emails: list[EmailStr]
 
@@ -56,6 +57,7 @@ class JoinRedeemRequest(BaseModel):
     """Optional body for POST /join/. `age_disclosure_consent` only matters
     for a tournament join code that collects an age flag — a chapter code,
     or a tournament that collects neither flag, ignores it."""
+
     age_disclosure_consent: bool = False
 
 

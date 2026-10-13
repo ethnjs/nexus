@@ -40,20 +40,25 @@ def _track_form_field(db, td_user, tournament_id: int, track_id: int) -> None:
     )
     db.add(form)
     db.flush()
-    db.add(FormField(
-        form_id=form.id,
-        order=1,
-        field_key="track_status_interest",
-        label="Track status",
-        question_type="single_select_radio",
-        config={
-            "required": True,
-            "options": [{
-                "option_id": "interested", "label": "Interested",
-                "value": [{"id": track_id, "status": "interested"}],
-            }],
-        },
-    ))
+    db.add(
+        FormField(
+            form_id=form.id,
+            order=1,
+            field_key="track_status_interest",
+            label="Track status",
+            question_type="single_select_radio",
+            config={
+                "required": True,
+                "options": [
+                    {
+                        "option_id": "interested",
+                        "label": "Interested",
+                        "value": [{"id": track_id, "status": "interested"}],
+                    }
+                ],
+            },
+        )
+    )
     db.commit()
 
 
@@ -148,15 +153,19 @@ def test_track_is_scoped_to_its_tournament(client, db, td_user, td_tournament, o
     db.commit()
     login(client, "td@test.com", "tdpass")
 
-    assert client.patch(
-        f"/tournaments/{td_tournament.id}/tracks/{other_track.id}/",
-        json={"name": "Nope"},
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/tournaments/{td_tournament.id}/tracks/{other_track.id}/",
+            json={"name": "Nope"},
+        ).status_code
+        == 404
+    )
 
 
 # ---------------------------------------------------------------------------
 # The primary/cosmetic invariant
 # ---------------------------------------------------------------------------
+
 
 def test_primary_track_requires_division(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -217,7 +226,9 @@ def test_primary_track_still_rejects_two_venues(client, db, td_user, td_tourname
     db.add(university)
     db.commit()
     response = _create_track(
-        client, td_tournament.id, "Two venues",
+        client,
+        td_tournament.id,
+        "Two venues",
         **_primary_fields(university_id=university.id),
     )
     assert response.status_code == 422
@@ -253,7 +264,8 @@ def test_patch_is_validated_against_the_stored_row(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     track = _create_track(client, td_tournament.id, "Test Writing").json()
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/tracks/{track['id']}/", json={"is_primary": True},
+        f"/tournaments/{td_tournament.id}/tracks/{track['id']}/",
+        json={"is_primary": True},
     )
     assert response.status_code == 422
 
@@ -263,8 +275,13 @@ def test_cannot_demote_the_last_primary_track(client, td_user, td_tournament, db
     main = next(t for t in td_tournament.tracks if t.is_primary)
     response = client.patch(
         f"/tournaments/{td_tournament.id}/tracks/{main.id}/",
-        json={"is_primary": False, "start_date": None, "end_date": None,
-              "location": None, "division": None},
+        json={
+            "is_primary": False,
+            "start_date": None,
+            "end_date": None,
+            "location": None,
+            "division": None,
+        },
     )
     assert response.status_code == 409
 
@@ -277,15 +294,26 @@ def test_cannot_delete_the_last_primary_track(client, td_user, td_tournament, db
 
 def test_demoting_is_allowed_once_another_primary_exists(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
-    assert _create_track(
-        client, td_tournament.id, "Day 2", **_primary_fields(),
-    ).status_code == 201
+    assert (
+        _create_track(
+            client,
+            td_tournament.id,
+            "Day 2",
+            **_primary_fields(),
+        ).status_code
+        == 201
+    )
 
     main = next(t for t in td_tournament.tracks if t.name == "Main")
     response = client.patch(
         f"/tournaments/{td_tournament.id}/tracks/{main.id}/",
-        json={"is_primary": False, "start_date": None, "end_date": None,
-              "location": None, "division": None},
+        json={
+            "is_primary": False,
+            "start_date": None,
+            "end_date": None,
+            "location": None,
+            "division": None,
+        },
     )
     assert response.status_code == 200
     assert response.json()["is_primary"] is False
@@ -294,6 +322,7 @@ def test_demoting_is_allowed_once_another_primary_exists(client, td_user, td_tou
 # ---------------------------------------------------------------------------
 # Delete lifecycle
 # ---------------------------------------------------------------------------
+
 
 def test_unreferenced_track_is_purged_immediately(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -347,9 +376,10 @@ def test_pending_track_can_be_restored(client, db, td_user, td_tournament):
 def test_restoring_a_live_track_is_a_conflict(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track = _create_track(client, td_tournament.id, "Day 1").json()
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/tracks/{track['id']}/restore/"
-    ).status_code == 409
+    assert (
+        client.post(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/restore/").status_code
+        == 409
+    )
 
 
 def test_pending_track_is_listed_for_both_audiences(client, db, td_user, td_tournament):
@@ -379,20 +409,30 @@ def test_deleting_a_track_takes_its_member_statuses_with_it(client, db, td_user,
     membership = _td_membership(db, td_user, td_tournament)
     _set_status(db, membership.id, track["id"], "confirmed")
 
-    assert client.delete(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/").status_code == 200
-    assert db.query(TournamentMembershipTrackStatus).filter(
-        TournamentMembershipTrackStatus.track_id == track["id"]
-    ).count() == 0
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/").status_code == 200
+    )
+    assert (
+        db.query(TournamentMembershipTrackStatus)
+        .filter(TournamentMembershipTrackStatus.track_id == track["id"])
+        .count()
+        == 0
+    )
 
 
 # ---------------------------------------------------------------------------
 # Member-facing status reads
 # ---------------------------------------------------------------------------
 
+
 def _set_status(db, membership_id, track_id, status):
-    db.add(TournamentMembershipTrackStatus(
-        membership_id=membership_id, track_id=track_id, status=status,
-    ))
+    db.add(
+        TournamentMembershipTrackStatus(
+            membership_id=membership_id,
+            track_id=track_id,
+            status=status,
+        )
+    )
     db.commit()
 
 
@@ -419,9 +459,13 @@ def test_member_reads_their_own_track_statuses(client, db, td_user, td_tournamen
     assert res.status_code == 200
     entry = next(s for s in res.json()["track_statuses"] if s["track_id"] == track["id"])
     assert entry == {
-        "track_id": track["id"], "name": "Test Writing", "is_archived": False,
+        "track_id": track["id"],
+        "name": "Test Writing",
+        "is_archived": False,
         # Created through the API, so locked by default.
-        "status": "confirmed", "allow_confirm": False, "lock_responses": True,
+        "status": "confirmed",
+        "allow_confirm": False,
+        "lock_responses": True,
         "updated_at": entry["updated_at"],
     }
 
@@ -459,11 +503,17 @@ def test_pending_delete_track_drops_out_of_member_statuses(client, db, td_user, 
 # A simple tournament's sole track is named after the tournament
 # ---------------------------------------------------------------------------
 
+
 def _sole_track(db, tournament_id: int) -> TournamentTrack:
     db.expire_all()
-    return db.query(TournamentTrack).filter(
-        TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False),
-    ).one()
+    return (
+        db.query(TournamentTrack)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.is_archived.is_(False),
+        )
+        .one()
+    )
 
 
 def test_renaming_a_simple_tournament_renames_its_track(client, db, td_user, td_tournament):
@@ -481,7 +531,9 @@ def test_renaming_a_simple_tournament_renames_its_track(client, db, td_user, td_
 def test_a_simple_tournaments_track_keeps_the_tournament_name(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track = _sole_track(db, td_tournament.id)
-    response = client.patch(f"/tournaments/{td_tournament.id}/tracks/{track.id}/", json={"name": "Day 1"})
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track.id}/", json={"name": "Day 1"}
+    )
     assert response.status_code == 200
     assert response.json()["name"] == td_tournament.name
 
@@ -490,7 +542,11 @@ def test_deleting_down_to_one_track_renames_it(client, db, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     extra = _create_track(client, td_tournament.id, "Test Writing").json()
     # Two tracks: names are the TD's own.
-    assert {t.name for t in db.query(TournamentTrack).filter_by(tournament_id=td_tournament.id)} == {"Main", "Test Writing"}
+    assert {
+        t.name for t in db.query(TournamentTrack).filter_by(tournament_id=td_tournament.id)
+    } == {"Main", "Test Writing"}
 
-    assert client.delete(f"/tournaments/{td_tournament.id}/tracks/{extra['id']}/").status_code == 200
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/tracks/{extra['id']}/").status_code == 200
+    )
     assert _sole_track(db, td_tournament.id).name == td_tournament.name

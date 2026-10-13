@@ -56,6 +56,7 @@ def _read_app_version() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
+
     scheduler = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
         from app.db.seed_canon_events import seed_events_and_categories
@@ -80,7 +81,9 @@ async def lifespan(app: FastAPI):
                 archive_ended_tournaments(db)
 
         scheduler = BackgroundScheduler()
-        scheduler.add_job(_run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments")
+        scheduler.add_job(
+            _run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments"
+        )
         scheduler.start()
 
     yield
@@ -115,40 +118,46 @@ api_key_dependency = Depends(verify_api_key)
 
 # All routes require API key — including auth (login, logout, register).
 # In development with API_KEY unset, security.py skips the check automatically.
-app.include_router(auth.router,                   prefix="", dependencies=[api_key_dependency])
-app.include_router(join.router,                   prefix="", dependencies=[api_key_dependency])
-app.include_router(events.router,                 prefix="", dependencies=[api_key_dependency])
-app.include_router(events.admin_router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(season_event.router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(season_event.admin_router,     prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_core.router,               prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_events.router,             prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_shifts.router,               prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_memberships.router,        prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_roles.router,               prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_join_codes.router,          prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_admin.router,                prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_audit.router,                prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_setup_checklist.router,      prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_onboarding.router,            prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_onboarding.member_router,     prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_tracks.router,                prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_buildings.router,             prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_zones.router,                 prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_zones.assignments_router,     prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_display_config.router,        prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_assignments.router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_export_presets.router,        prefix="", dependencies=[api_key_dependency])
-app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
-app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
-app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])
-app.include_router(universities.router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(chapter_core.router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(chapter_admin.router,          prefix="", dependencies=[api_key_dependency])
-app.include_router(chapter_memberships.router,    prefix="", dependencies=[api_key_dependency])
-app.include_router(chapter_join_codes.router,     prefix="", dependencies=[api_key_dependency])
-app.include_router(forms.router,                  prefix="", dependencies=[api_key_dependency])
+app.include_router(auth.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(join.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(events.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(events.admin_router, prefix="", dependencies=[api_key_dependency])
+app.include_router(season_event.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(season_event.admin_router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_core.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_events.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_shifts.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_memberships.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_roles.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(
+    tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency]
+)
+app.include_router(tournament_join_codes.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_admin.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_audit.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_setup_checklist.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_onboarding.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(
+    tournament_onboarding.member_router, prefix="", dependencies=[api_key_dependency]
+)
+app.include_router(tournament_tracks.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_buildings.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_zones.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(
+    tournament_zones.assignments_router, prefix="", dependencies=[api_key_dependency]
+)
+app.include_router(tournament_display_config.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_assignments.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_export_presets.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(sheets.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(users.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(user_experience.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(universities.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_core.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_admin.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])
@@ -157,10 +166,10 @@ def health_check():
 
 
 if DEV_DOCS:
+
     @app.get("/reference", include_in_schema=False)
     async def scalar_reference():
         return get_scalar_api_reference(
             openapi_url="/openapi.json",
             title="NEXUS API Reference",
         )
-

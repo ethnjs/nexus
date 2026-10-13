@@ -16,6 +16,7 @@ STUDENT_STATUS = Literal["Undergraduate", "Graduate", "Non-Student"]
 
 class UserUpdate(BaseModel):
     """Partial update — all fields optional."""
+
     first_name: str | None = None
     last_name: str | None = None
     phone: str | None = None
@@ -48,11 +49,11 @@ class UserUpdate(BaseModel):
     def normalize_phone(cls, v: str | None) -> str | None:
         return _normalize_phone(v)
 
+
 class AdminUserUpdate(BaseModel):
     role: Literal["user", "admin"] | None = None
     status: USER_STATUS | None = None
 
-    
 
 class UserSlimResponse(BaseModel):
     id: int

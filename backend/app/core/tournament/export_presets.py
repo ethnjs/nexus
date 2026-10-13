@@ -17,11 +17,24 @@ COLUMN_MODES = frozenset({"names", "times", "full_name", "email"})
 
 # Mirrors the column registry in frontend/lib/exports/columns.ts. Names shared
 # with the members table mean the same thing there.
-EXPORT_FIXED_COLUMNS = frozenset({
-    "first_name", "last_name", "email", "phone", "shirt_size", "dietary_restriction",
-    "roles", "over_18", "over_21", "tracks",
-    "event", "location", "members", "member_emails",
-})
+EXPORT_FIXED_COLUMNS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "shirt_size",
+        "dietary_restriction",
+        "roles",
+        "over_18",
+        "over_21",
+        "tracks",
+        "event",
+        "location",
+        "members",
+        "member_emails",
+    }
+)
 
 # One column per entity. Ids aren't checked against the catalog: a deleted
 # track's column is inert on read, same leniency as display config.

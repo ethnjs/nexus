@@ -143,16 +143,27 @@ def create_assignment(
     require_not_archived(tournament)
 
     event = get_scoped_or_404(
-        db, TournamentEvent, payload.tournament_event_id, tournament_id, "Event",
+        db,
+        TournamentEvent,
+        payload.tournament_event_id,
+        tournament_id,
+        "Event",
     )
     membership = get_scoped_or_404(
-        db, TournamentMembership, payload.membership_id, tournament_id, "Membership",
+        db,
+        TournamentMembership,
+        payload.membership_id,
+        tournament_id,
+        "Membership",
     )
     role = get_scoped_or_404(db, TournamentRole, payload.role_id, tournament_id, "Role")
 
     shift = validate_shift_on_event(db, event, payload.tournament_shift_id, tournament_id)
     track_id = resolve_assignment_track(
-        db, shift, payload.tournament_track_id, tournament_id,
+        db,
+        shift,
+        payload.tournament_track_id,
+        tournament_id,
     )
 
     authorize_role_grant(db, tournament, membership, role, current_user)
@@ -201,7 +212,10 @@ def update_assignment(
 
     if "tournament_shift_id" in payload.model_fields_set:
         shift = validate_shift_on_event(
-            db, assignment.tournament_event, payload.tournament_shift_id, tournament_id,
+            db,
+            assignment.tournament_event,
+            payload.tournament_shift_id,
+            tournament_id,
         )
         # Pinning to a shift takes that shift's track. Unpinning keeps the
         # track the row already had unless the caller names another — "still
@@ -210,14 +224,20 @@ def update_assignment(
         # an event, so the two paths should not disagree.
         if shift is not None or payload.tournament_track_id is not None:
             assignment.tournament_track_id = resolve_assignment_track(
-                db, shift, payload.tournament_track_id, tournament_id,
+                db,
+                shift,
+                payload.tournament_track_id,
+                tournament_id,
             )
         assignment.tournament_shift_id = payload.tournament_shift_id
     elif payload.tournament_track_id is not None:
         # Re-tracking without touching the shift: only meaningful while there
         # isn't one, since a pinned row's track is its shift's.
         assignment.tournament_track_id = resolve_assignment_track(
-            db, assignment.tournament_shift, payload.tournament_track_id, tournament_id,
+            db,
+            assignment.tournament_shift,
+            payload.tournament_track_id,
+            tournament_id,
         )
 
     _flush_or_conflict(db)
@@ -252,7 +272,9 @@ def delete_assignment(
 
 
 def _scoped_assignment(
-    db: Session, assignment_id: int, tournament_id: int,
+    db: Session,
+    assignment_id: int,
+    tournament_id: int,
 ) -> TournamentTrackAssignment:
     """get_scoped_or_404 can't be reused here: it scopes on the row's own
     tournament_id column, and an assignment has none — it reaches its

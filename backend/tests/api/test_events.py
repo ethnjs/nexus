@@ -1,4 +1,5 @@
 """Tests for the canonical /events/ and /event-categories/ routes."""
+
 from app.models.models import (
     Event,
     EventCategory,
@@ -10,6 +11,7 @@ from tests.conftest import login
 # ---------------------------------------------------------------------------
 # GET /events/
 # ---------------------------------------------------------------------------
+
 
 class TestListEvents:
     def test_list_events(self, client, event_category_factory, event_factory):
@@ -29,10 +31,13 @@ class TestListEvents:
 # POST /events/
 # ---------------------------------------------------------------------------
 
+
 class TestCreateEvent:
     def test_admin_can_create_event(self, client, admin_user, event_category):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/admin/events/", json={"name": "Boomilever", "category_id": event_category.id})
+        res = client.post(
+            "/admin/events/", json={"name": "Boomilever", "category_id": event_category.id}
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["name"] == "Boomilever"
@@ -40,11 +45,15 @@ class TestCreateEvent:
 
     def test_non_admin_forbidden(self, client, td_user, event_category):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/admin/events/", json={"name": "Boomilever", "category_id": event_category.id})
+        res = client.post(
+            "/admin/events/", json={"name": "Boomilever", "category_id": event_category.id}
+        )
         assert res.status_code == 403
 
     def test_unauthenticated_forbidden(self, client, event_category):
-        res = client.post("/admin/events/", json={"name": "Boomilever", "category_id": event_category.id})
+        res = client.post(
+            "/admin/events/", json={"name": "Boomilever", "category_id": event_category.id}
+        )
         assert res.status_code == 401
 
     def test_invalid_category_id_404(self, client, admin_user):
@@ -56,6 +65,7 @@ class TestCreateEvent:
 # ---------------------------------------------------------------------------
 # PATCH /events/{id}/
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateEvent:
     def test_partial_update(self, client, admin_user, event):
@@ -84,12 +94,16 @@ class TestUpdateEvent:
 
     def test_non_admin_forbidden(self, client, td_user, event):
         login(client, "td@test.com", "tdpass")
-        assert client.patch(f"/admin/events/{event.id}/", json={"name": "Hovercraft"}).status_code == 403
+        assert (
+            client.patch(f"/admin/events/{event.id}/", json={"name": "Hovercraft"}).status_code
+            == 403
+        )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /events/{id}/
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteEvent:
     def test_delete_with_no_experience_entries(self, client, db, admin_user, event):
@@ -106,10 +120,15 @@ class TestDeleteEvent:
         assert db.get(Event, event.id) is not None
 
     def test_delete_blocked_by_volunteer_experience(self, client, db, admin_user, td_user, event):
-        db.add(UserVolunteerExperience(
-            user_id=td_user.id, event_id=event.id,
-            tournament_name="Regionals", year=2025, role="Event Supervisor",
-        ))
+        db.add(
+            UserVolunteerExperience(
+                user_id=td_user.id,
+                event_id=event.id,
+                tournament_name="Regionals",
+                year=2025,
+                role="Event Supervisor",
+            )
+        )
         db.commit()
         login(client, "admin@test.com", "adminpass")
         res = client.delete(f"/admin/events/{event.id}/")
@@ -129,6 +148,7 @@ class TestDeleteEvent:
 # GET /event-categories/
 # ---------------------------------------------------------------------------
 
+
 class TestListEventCategories:
     def test_list_categories(self, client, event_category):
         res = client.get("/event-categories/")
@@ -140,6 +160,7 @@ class TestListEventCategories:
 # POST /event-categories/
 # ---------------------------------------------------------------------------
 
+
 class TestCreateEventCategory:
     def test_admin_can_create_category(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
@@ -149,36 +170,49 @@ class TestCreateEventCategory:
 
     def test_non_admin_forbidden(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        assert client.post("/admin/event-categories/", json={"name": "Chemistry"}).status_code == 403
+        assert (
+            client.post("/admin/event-categories/", json={"name": "Chemistry"}).status_code == 403
+        )
 
     def test_unauthenticated_forbidden(self, client):
-        assert client.post("/admin/event-categories/", json={"name": "Chemistry"}).status_code == 401
+        assert (
+            client.post("/admin/event-categories/", json={"name": "Chemistry"}).status_code == 401
+        )
 
 
 # ---------------------------------------------------------------------------
 # PATCH /event-categories/{id}/
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateEventCategory:
     def test_partial_update(self, client, admin_user, event_category):
         login(client, "admin@test.com", "adminpass")
-        res = client.patch(f"/admin/event-categories/{event_category.id}/", json={"name": "Physics"})
+        res = client.patch(
+            f"/admin/event-categories/{event_category.id}/", json={"name": "Physics"}
+        )
         assert res.status_code == 200
         assert res.json()["name"] == "Physics"
 
     def test_missing_category_404(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        assert client.patch("/admin/event-categories/9999/", json={"name": "Physics"}).status_code == 404
+        assert (
+            client.patch("/admin/event-categories/9999/", json={"name": "Physics"}).status_code
+            == 404
+        )
 
     def test_non_admin_forbidden(self, client, td_user, event_category):
         login(client, "td@test.com", "tdpass")
-        res = client.patch(f"/admin/event-categories/{event_category.id}/", json={"name": "Physics"})
+        res = client.patch(
+            f"/admin/event-categories/{event_category.id}/", json={"name": "Physics"}
+        )
         assert res.status_code == 403
 
 
 # ---------------------------------------------------------------------------
 # DELETE /event-categories/{id}/
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteEventCategory:
     def test_delete_cascades_to_events(self, client, db, admin_user, event_category, event):

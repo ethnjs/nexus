@@ -34,7 +34,9 @@ def list_events(db: Session = Depends(get_db)):
 # POST /admin/events/ — admin only, create a new event
 # ---------------------------------------------------------------------------
 @admin_router.post("/events/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
-def create_event(body: EventCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def create_event(
+    body: EventCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
     category = db.get(EventCategory, body.category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -50,7 +52,12 @@ def create_event(body: EventCreate, db: Session = Depends(get_db), _: User = Dep
 # PATCH /admin/events/{id}/ — admin only, partial update
 # ---------------------------------------------------------------------------
 @admin_router.patch("/events/{event_id}/", response_model=EventResponse)
-def update_event(event_id: int, body: EventUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def update_event(
+    event_id: int,
+    body: EventUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
@@ -101,8 +108,12 @@ def list_event_categories(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # POST /admin/event-categories/ — admin only, create a new category
 # ---------------------------------------------------------------------------
-@admin_router.post("/event-categories/", response_model=EventCategoryResponse, status_code=status.HTTP_201_CREATED)
-def create_event_category(body: EventCategoryCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+@admin_router.post(
+    "/event-categories/", response_model=EventCategoryResponse, status_code=status.HTTP_201_CREATED
+)
+def create_event_category(
+    body: EventCategoryCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
     category = EventCategory(name=body.name)
     db.add(category)
     db.commit()
@@ -137,7 +148,9 @@ def update_event_category(
 # (blocked if any of those events has experience entries — see delete_event note)
 # ---------------------------------------------------------------------------
 @admin_router.delete("/event-categories/{category_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_event_category(category_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def delete_event_category(
+    category_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
     category = db.get(EventCategory, category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")

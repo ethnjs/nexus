@@ -23,7 +23,9 @@ from app.schemas.tournament.building import (
 router = APIRouter(prefix="/tournaments/{tournament_id}/buildings", tags=["tournaments"])
 
 
-def _name_taken(db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None) -> bool:
+def _name_taken(
+    db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None
+) -> bool:
     query = db.query(TournamentBuilding).filter(
         TournamentBuilding.tournament_id == tournament_id,
         TournamentBuilding.name == name,
@@ -45,10 +47,14 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
     if not track_ids:
         return []
 
-    rows = db.query(TournamentTrack).filter(
-        TournamentTrack.tournament_id == tournament_id,
-        TournamentTrack.id.in_(track_ids),
-    ).all()
+    rows = (
+        db.query(TournamentTrack)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.id.in_(track_ids),
+        )
+        .all()
+    )
 
     found = {track.id for track in rows}
     missing = sorted(set(track_ids) - found)
@@ -63,8 +69,7 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                f"Track(s) pending deletion cannot be tagged: "
-                f"{', '.join(str(i) for i in archived)}"
+                f"Track(s) pending deletion cannot be tagged: {', '.join(str(i) for i in archived)}"
             ),
         )
     return rows
@@ -75,10 +80,14 @@ def _placed_event_count(db: Session, building_id: int, track_ids: list[int]) -> 
     `track_ids`."""
     if not track_ids:
         return 0
-    return db.query(TournamentEventTrack).filter(
-        TournamentEventTrack.building_id == building_id,
-        TournamentEventTrack.track_id.in_(track_ids),
-    ).count()
+    return (
+        db.query(TournamentEventTrack)
+        .filter(
+            TournamentEventTrack.building_id == building_id,
+            TournamentEventTrack.track_id.in_(track_ids),
+        )
+        .count()
+    )
 
 
 def _clear_placements(db: Session, building_id: int) -> int:
@@ -94,10 +103,15 @@ def _clear_placements(db: Session, building_id: int) -> int:
     being removed, and "floor 2, room 210" attached to no building reads as a
     location the event still has.
     """
-    return db.query(TournamentEventTrack).filter(
-        TournamentEventTrack.building_id == building_id,
-    ).update(
-        {"building_id": None, "floor": None, "rooms": None}, synchronize_session=False,
+    return (
+        db.query(TournamentEventTrack)
+        .filter(
+            TournamentEventTrack.building_id == building_id,
+        )
+        .update(
+            {"building_id": None, "floor": None, "rooms": None},
+            synchronize_session=False,
+        )
     )
 
 
@@ -115,13 +129,17 @@ def list_buildings(
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
     get_tournament(tournament_id, db)
-    buildings = db.query(TournamentBuilding).options(
-        # Every row serializes its track ids; without this the listing is one
-        # extra query per building.
-        selectinload(TournamentBuilding.tracks)
-    ).filter(
-        TournamentBuilding.tournament_id == tournament_id
-    ).order_by(TournamentBuilding.name).all()
+    buildings = (
+        db.query(TournamentBuilding)
+        .options(
+            # Every row serializes its track ids; without this the listing is one
+            # extra query per building.
+            selectinload(TournamentBuilding.tracks)
+        )
+        .filter(TournamentBuilding.tournament_id == tournament_id)
+        .order_by(TournamentBuilding.name)
+        .all()
+    )
     return [TournamentBuildingRead.from_row(b) for b in buildings]
 
 
@@ -182,7 +200,9 @@ def update_building(
     building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
 
     updates = payload.model_dump(exclude_unset=True)
-    if "name" in updates and _name_taken(db, tournament_id, updates["name"], excluding_id=building.id):
+    if "name" in updates and _name_taken(
+        db, tournament_id, updates["name"], excluding_id=building.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A building with this name already exists",

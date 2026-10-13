@@ -49,7 +49,13 @@ def _role(db, tournament, label, rank):
 
 def _shift(db, tournament, label):
     start = utcnow()
-    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id), label=label, start=start, end=start + timedelta(hours=2))
+    shift = TournamentShift(
+        tournament_id=tournament.id,
+        track_id=primary_track_id(db, tournament.id),
+        label=label,
+        start=start,
+        end=start + timedelta(hours=2),
+    )
     db.add(shift)
     db.commit()
     return shift
@@ -76,15 +82,33 @@ def test_role_prerequisite_matches_any_or_all(db, td_user, td_tournament, other_
     membership = _membership(db, td_tournament, other_user)
     test_writer = _role(db, td_tournament, "Prerequisite Role A", 20)
     event_supervisor = _role(db, td_tournament, "Prerequisite Role B", 21)
-    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=test_writer.id, is_tournament_wide=True))
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=membership.id, role_id=test_writer.id, is_tournament_wide=True
+        )
+    )
     db.commit()
 
-    any_form = _standard_form(db, td_user, td_tournament, {"roles": {"ids": [test_writer.id, event_supervisor.id], "match": "any"}})
-    all_form = _standard_form(db, td_user, td_tournament, {"roles": {"ids": [test_writer.id, event_supervisor.id], "match": "all"}})
+    any_form = _standard_form(
+        db,
+        td_user,
+        td_tournament,
+        {"roles": {"ids": [test_writer.id, event_supervisor.id], "match": "any"}},
+    )
+    all_form = _standard_form(
+        db,
+        td_user,
+        td_tournament,
+        {"roles": {"ids": [test_writer.id, event_supervisor.id], "match": "all"}},
+    )
 
     assert member_meets_form_prerequisites(db, membership, any_form) is True
     assert member_meets_form_prerequisites(db, membership, all_form) is False
-    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=event_supervisor.id, is_tournament_wide=True))
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=membership.id, role_id=event_supervisor.id, is_tournament_wide=True
+        )
+    )
     db.commit()
     assert member_meets_form_prerequisites(db, membership, all_form) is True
 
@@ -93,15 +117,33 @@ def test_availability_prerequisite_matches_any_or_all(db, td_user, td_tournament
     membership = _membership(db, td_tournament, other_user)
     first_shift = _shift(db, td_tournament, "Morning")
     second_shift = _shift(db, td_tournament, "Afternoon")
-    db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=first_shift.id))
+    db.add(
+        TournamentMembershipAvailability(
+            membership_id=membership.id, tournament_shift_id=first_shift.id
+        )
+    )
     db.commit()
 
-    any_form = _standard_form(db, td_user, td_tournament, {"availability": {"shift_ids": [first_shift.id, second_shift.id], "match": "any"}})
-    all_form = _standard_form(db, td_user, td_tournament, {"availability": {"shift_ids": [first_shift.id, second_shift.id], "match": "all"}})
+    any_form = _standard_form(
+        db,
+        td_user,
+        td_tournament,
+        {"availability": {"shift_ids": [first_shift.id, second_shift.id], "match": "any"}},
+    )
+    all_form = _standard_form(
+        db,
+        td_user,
+        td_tournament,
+        {"availability": {"shift_ids": [first_shift.id, second_shift.id], "match": "all"}},
+    )
 
     assert member_meets_form_prerequisites(db, membership, any_form) is True
     assert member_meets_form_prerequisites(db, membership, all_form) is False
-    db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=second_shift.id))
+    db.add(
+        TournamentMembershipAvailability(
+            membership_id=membership.id, tournament_shift_id=second_shift.id
+        )
+    )
     db.commit()
     assert member_meets_form_prerequisites(db, membership, all_form) is True
 
@@ -123,7 +165,13 @@ def test_every_configured_group_must_pass(db, td_user, td_tournament, other_user
 
     assert member_meets_form_prerequisites(db, membership, tournament_form) is False
     membership.onboarded_at = utcnow()
-    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=role.id, is_tournament_wide=True))
-    db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=membership.id, role_id=role.id, is_tournament_wide=True
+        )
+    )
+    db.add(
+        TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id)
+    )
     db.commit()
     assert member_meets_form_prerequisites(db, membership, tournament_form) is True

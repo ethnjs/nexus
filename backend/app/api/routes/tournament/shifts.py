@@ -76,7 +76,9 @@ def get_shift(
     return get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
 
 
-def _label_taken(db: Session, track_id: int, label: str, *, excluding_id: int | None = None) -> bool:
+def _label_taken(
+    db: Session, track_id: int, label: str, *, excluding_id: int | None = None
+) -> bool:
     """Same label, same track only — a shift's label just needs to disambiguate
     within the track it's picked from (the Add-shift list, the availability
     question), so the same label reused on a different track is fine."""

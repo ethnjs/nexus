@@ -29,6 +29,7 @@ from app.models.models import User, UserSession, VerificationToken
 # Password hashing
 # ---------------------------------------------------------------------------
 
+
 class _LegacyBcryptHasher(BcryptHasher):
     """Verifies the $2b$ hashes written by the old passlib setup.
 
@@ -140,16 +141,23 @@ def get_active_session(db: Session, raw_token: str) -> UserSession | None:
     now = datetime.now(UTC)
     token_hash = _hash_token(raw_token)
 
-    session_row = db.query(UserSession).filter(
-        UserSession.token_hash == token_hash,
-        UserSession.revoked_at.is_(None),
-        UserSession.expires_at > now,
-    ).first()
+    session_row = (
+        db.query(UserSession)
+        .filter(
+            UserSession.token_hash == token_hash,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .first()
+    )
 
     if session_row is None:
         return None
 
-    if session_row.last_active_at is None or (now - session_row.last_active_at) >= SESSION_ACTIVITY_THROTTLE:
+    if (
+        session_row.last_active_at is None
+        or (now - session_row.last_active_at) >= SESSION_ACTIVITY_THROTTLE
+    ):
         session_row.last_active_at = now
         db.commit()
 
@@ -231,7 +239,9 @@ def clear_auth_cookie(response: Response) -> None:
 # is ever persisted (VerificationToken.token_hash, via _hash_token).
 # ---------------------------------------------------------------------------
 
-Purpose = Literal["signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"]
+Purpose = Literal[
+    "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
+]
 
 TOKEN_TTL: dict[Purpose, timedelta] = {
     "signup_verify": timedelta(hours=24),
@@ -246,6 +256,7 @@ RATE_LIMIT_WINDOW = timedelta(seconds=60)
 
 class RateLimitedError(Exception):
     """Raised when a new token is requested too soon after a prior one."""
+
     pass
 
 
@@ -365,6 +376,7 @@ def consume_verification_token(
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
+
 def get_current_session(
     access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
@@ -406,10 +418,14 @@ def get_current_user(
         detail="Not authenticated",
     )
 
-    user = db.query(User).filter(
-        User.id == session_row.user_id,
-        User.status == "active",
-    ).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.id == session_row.user_id,
+            User.status == "active",
+        )
+        .first()
+    )
     if user is None:
         raise credentials_exception
 

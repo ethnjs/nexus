@@ -1,6 +1,7 @@
 """Tests for GET /tournaments/{tournament_id}/setup-checklist/
 (app/api/routes/tournament/setup_checklist.py). Status is computed live off
 other tables, not stored — see app/core/tournament/setup_checklist.py."""
+
 from app.models.models import Form, TournamentForm
 from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, grant_role, login
 
@@ -15,9 +16,7 @@ def _checklist_by_key(response_json):
 
 
 def _statuses(client, tournament_id):
-    return _checklist_by_key(
-        client.get(f"/tournaments/{tournament_id}/setup-checklist/").json()
-    )
+    return _checklist_by_key(client.get(f"/tournaments/{tournament_id}/setup-checklist/").json())
 
 
 def _new_tournament(client, name="Fresh"):
@@ -36,19 +35,23 @@ def _add_form(db, user, tournament_id, *, status="draft", is_onboarding=None):
     db.add(form)
     db.flush()
     if is_onboarding is not None:
-        db.add(TournamentForm(
-            form_id=form.id, tournament_id=tournament_id,
-            is_onboarding=is_onboarding, order=1,
-        ))
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=tournament_id,
+                is_onboarding=is_onboarding,
+                order=1,
+            )
+        )
     db.commit()
     return form
 
 
 def test_checklist_fresh_tournament_has_everything_pending(client, td_user):
     login(client, "td@test.com", "tdpass")
-    tournament_id = client.post(
-        "/tournaments/", json={"name": "Fresh", **REQUIRED_FIELDS}
-    ).json()["id"]
+    tournament_id = client.post("/tournaments/", json={"name": "Fresh", **REQUIRED_FIELDS}).json()[
+        "id"
+    ]
 
     response = client.get(f"/tournaments/{tournament_id}/setup-checklist/")
     assert response.status_code == 200
@@ -68,9 +71,9 @@ def test_checklist_fresh_tournament_has_everything_pending(client, td_user):
 
 def test_checklist_roles_complete_after_apply_template(client, td_user):
     login(client, "td@test.com", "tdpass")
-    tournament_id = client.post(
-        "/tournaments/", json={"name": "Rolled", **REQUIRED_FIELDS}
-    ).json()["id"]
+    tournament_id = client.post("/tournaments/", json={"name": "Rolled", **REQUIRED_FIELDS}).json()[
+        "id"
+    ]
     client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
 
     statuses = _checklist_by_key(
@@ -99,36 +102,36 @@ def test_checklist_invite_staff_complete_after_invite(client, td_user, mock_send
 def test_checklist_requires_manage_tournament(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/setup-checklist/"
-    ).status_code == 403
+    assert client.get(f"/tournaments/{other_tournament.id}/setup-checklist/").status_code == 403
 
 
 def test_checklist_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/setup-checklist/"
-    ).status_code == 404
+    assert client.get(f"/tournaments/{other_tournament.id}/setup-checklist/").status_code == 404
 
 
 def test_checklist_unauthenticated(client, td_tournament):
-    assert client.get(
-        f"/tournaments/{td_tournament.id}/setup-checklist/"
-    ).status_code == 401
+    assert client.get(f"/tournaments/{td_tournament.id}/setup-checklist/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
 # Items that used to be hardcoded not_started and now read real tables
 # ---------------------------------------------------------------------------
 
+
 def test_checklist_events_complete_after_creating_one(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = _new_tournament(client, "Evented")
     assert _statuses(client, tournament_id)["events"] == "not_started"
 
-    client.post(f"/tournaments/{tournament_id}/events/", json={
-        "tournament_id": tournament_id, "name": "Boomilever", "division": "C",
-    })
+    client.post(
+        f"/tournaments/{tournament_id}/events/",
+        json={
+            "tournament_id": tournament_id,
+            "name": "Boomilever",
+            "division": "C",
+        },
+    )
     assert _statuses(client, tournament_id)["events"] == "complete"
 
 
@@ -139,11 +142,15 @@ def test_checklist_shifts_complete_after_creating_one(client, td_user):
 
     tracks = client.get(f"/tournaments/{tournament_id}/tracks/?public=true").json()
     primary = next(t for t in tracks if t["is_primary"])
-    client.post(f"/tournaments/{tournament_id}/shifts/", json={
-        "track_id": primary["id"], "label": "Morning",
-        "start": f"{primary['start_date']}T08:00:00Z",
-        "end": f"{primary['start_date']}T12:00:00Z",
-    })
+    client.post(
+        f"/tournaments/{tournament_id}/shifts/",
+        json={
+            "track_id": primary["id"],
+            "label": "Morning",
+            "start": f"{primary['start_date']}T08:00:00Z",
+            "end": f"{primary['start_date']}T12:00:00Z",
+        },
+    )
     assert _statuses(client, tournament_id)["shifts"] == "complete"
 
 

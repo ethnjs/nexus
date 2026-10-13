@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, model_validator
 
 from app.schemas.event import EventResponse
@@ -9,10 +8,12 @@ class CompetitionExperienceCreate(BaseModel):
     school: str
     notes: str | None = None
 
+
 class CompetitionExperienceUpdate(BaseModel):
     event_id: int | None = None
     school: str | None = None
     notes: str | None = None
+
 
 class CompetitionExperienceResponse(BaseModel):
     id: int
@@ -27,6 +28,7 @@ class VolunteerExperienceNotes(BaseModel):
     event: str | None = None
     other: str | None = None
 
+
 class VolunteerExperienceCreate(BaseModel):
     tournament_name: str
     year: int
@@ -40,6 +42,7 @@ class VolunteerExperienceCreate(BaseModel):
             raise ValueError("event_id and notes.event are mutually exclusive")
         return self
 
+
 class VolunteerExperienceUpdate(BaseModel):
     tournament_name: str | None = None
     year: int | None = None
@@ -47,9 +50,10 @@ class VolunteerExperienceUpdate(BaseModel):
     role: str | None = None
     notes: VolunteerExperienceNotes | None = None
 
+
 class VolunteerExperienceResponse(BaseModel):
     id: int
-    
+
     tournament_name: str
     year: int
     event: EventResponse | None = None

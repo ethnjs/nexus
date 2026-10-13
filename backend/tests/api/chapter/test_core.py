@@ -1,4 +1,5 @@
 """Tests for GET/PATCH /chapters/{chapter_id}/ (app/api/routes/chapter/__init__.py)."""
+
 from app.models.models import ChapterMembership
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from tests.conftest import login
@@ -6,6 +7,7 @@ from tests.conftest import login
 # ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/ — public
 # ---------------------------------------------------------------------------
+
 
 def test_get_chapter_is_public(client, db):
     university = make_university(db)
@@ -24,6 +26,7 @@ def test_get_chapter_not_found(client):
 # ---------------------------------------------------------------------------
 # PATCH /chapters/{chapter_id}/ — chapter lead or admin
 # ---------------------------------------------------------------------------
+
 
 def test_update_chapter_admin_can_change_name(client, admin_user, db):
     university = make_university(db)

@@ -42,8 +42,7 @@ def list_all_tournaments(
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
     return [
-        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id])
-        for t in tournaments
+        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id]) for t in tournaments
     ]
 
 
@@ -64,8 +63,12 @@ def set_tournament_verified(
     tournament.is_verified = payload.is_verified
 
     log_action(
-        db, tournament.id, current_user.id, TOURNAMENT_VERIFIED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament.id,
+        current_user.id,
+        TOURNAMENT_VERIFIED,
+        target_type="tournament",
+        target_id=tournament.id,
         extra_data={"is_verified": payload.is_verified},
     )
 

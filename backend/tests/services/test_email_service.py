@@ -3,6 +3,7 @@
 Every other test stubs out _send (the autouse mock_send_email fixture), so
 nothing else exercises the real Resend client setup.
 """
+
 import resend
 
 

@@ -9,11 +9,13 @@ class UniversityCreate(BaseModel):
     abbreviation: str | None = None
     location: str | None = None
 
+
 # Request Schema
 class UniversityUpdate(BaseModel):
     name: str | None = None
     abbreviation: str | None = None
     location: str | None = None
+
 
 # Response Schema
 class UniversityResponse(BaseModel):

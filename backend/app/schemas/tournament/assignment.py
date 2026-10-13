@@ -40,6 +40,7 @@ class AssignmentUpdate(BaseModel):
     sending an explicit null clears it. Pydantic can't express that in the
     type, so the route reads `model_fields_set` to tell the two apart — see
     update_assignment."""
+
     role_id: int | None = None
     tournament_shift_id: int | None = None
     # Only read when the row ends up with no shift — pinning it to one takes
@@ -93,7 +94,8 @@ class AssignmentRead(BaseModel):
             role=PersonRoleRead(id=row.role_id, label=row.role.label),
             shift=(
                 TournamentShiftBase.model_validate(row.tournament_shift)
-                if row.tournament_shift is not None else None
+                if row.tournament_shift is not None
+                else None
             ),
             track=TournamentTrackRef.model_validate(row.track),
             created_at=row.created_at,

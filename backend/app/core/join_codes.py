@@ -4,6 +4,7 @@ tournaments). Both share the JoinCode table — code generation, expiry
 checking, updating, and deactivation are identical regardless of which
 target (tournament_id/chapter_id) a given code points to.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -54,7 +55,9 @@ def get_unique_join_code(db: Session, max_retries: int = 10) -> str:
     )
 
 
-def apply_join_code_update(join_code: JoinCodeLike, label: str | None, add_hours: int | None) -> None:
+def apply_join_code_update(
+    join_code: JoinCodeLike, label: str | None, add_hours: int | None
+) -> None:
     """
     Apply a label change and/or extend expiry by `add_hours`. Extension is
     cumulative from the code's current expires_at (or from now, if the code

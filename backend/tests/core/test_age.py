@@ -4,6 +4,7 @@ The whole point of these helpers is the off-by-one around a birthday, so the
 cases that matter are the day before / day of / day after, plus the Feb 29
 birthday that has no anniversary in a common year.
 """
+
 from datetime import date
 
 from app.core.age import calculate_age, meets_age_requirement
@@ -11,6 +12,7 @@ from app.core.age import calculate_age, meets_age_requirement
 # ---------------------------------------------------------------------------
 # calculate_age
 # ---------------------------------------------------------------------------
+
 
 def test_calculate_age_day_before_birthday_has_not_ticked_over():
     assert calculate_age(date(2000, 6, 15), date(2020, 6, 14)) == 19
@@ -45,6 +47,7 @@ def test_calculate_age_leap_day_birthday_in_common_year():
 # ---------------------------------------------------------------------------
 # meets_age_requirement
 # ---------------------------------------------------------------------------
+
 
 def test_meets_age_requirement_exactly_on_birthday_passes():
     assert meets_age_requirement(date(2002, 6, 15), date(2020, 6, 15), 18) is True

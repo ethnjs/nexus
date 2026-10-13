@@ -1,4 +1,5 @@
 """Shared test data builders for chapter API tests."""
+
 import uuid
 
 from app.core.auth import hash_password

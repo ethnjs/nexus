@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 class SessionResponse(BaseModel):
     """GET /users/me/sessions/ — one row per active session."""
+
     id: int
     user_agent: str | None = None
     ip_address: str | None = None

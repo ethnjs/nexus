@@ -21,16 +21,57 @@ from app.schemas.user import UserSlimResponse
 VALID_LEVELS = {"regionals", "state", "nationals", "invitational"}
 VALID_DIVISIONS = {"A", "B", "C"}
 VALID_STATES = {
-    "Alabama", "Alaska", "Arizona", "Arkansas", "Colorado", "Connecticut",
-    "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana",
-    "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
-    "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
-    "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-    "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
-    "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
-    "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
-    "Washington", "West Virginia", "Wisconsin", "Wyoming",
-    "Southern California", "Northern California",
+    "Alabama",
+    "Alaska",
+    "Arizona",
+    "Arkansas",
+    "Colorado",
+    "Connecticut",
+    "Delaware",
+    "Florida",
+    "Georgia",
+    "Hawaii",
+    "Idaho",
+    "Illinois",
+    "Indiana",
+    "Iowa",
+    "Kansas",
+    "Kentucky",
+    "Louisiana",
+    "Maine",
+    "Maryland",
+    "Massachusetts",
+    "Michigan",
+    "Minnesota",
+    "Mississippi",
+    "Missouri",
+    "Montana",
+    "Nebraska",
+    "Nevada",
+    "New Hampshire",
+    "New Jersey",
+    "New Mexico",
+    "New York",
+    "North Carolina",
+    "North Dakota",
+    "Ohio",
+    "Oklahoma",
+    "Oregon",
+    "Pennsylvania",
+    "Rhode Island",
+    "South Carolina",
+    "South Dakota",
+    "Tennessee",
+    "Texas",
+    "Utah",
+    "Vermont",
+    "Virginia",
+    "Washington",
+    "West Virginia",
+    "Wisconsin",
+    "Wyoming",
+    "Southern California",
+    "Northern California",
 }
 
 
@@ -200,6 +241,7 @@ class TournamentPublic(BaseModel):
     TournamentSummary (dashboard list) and JoinPreviewTournament (public
     invite preview) — deliberately has no id/target_id field since the two
     callers use different names for it."""
+
     name: str
     short_name: str | None = None
     # See TournamentRead.dates — a list of days, never a range.
@@ -226,6 +268,7 @@ class TournamentPublic(BaseModel):
 
 class TournamentSummary(TournamentPublic):
     """GET /tournaments/me/ — lightweight card view, no roles/owner."""
+
     id: int
     is_public: bool
     is_archived: bool
@@ -246,6 +289,7 @@ class AdminTournamentRead(TournamentRead):
     No track counts: TournamentRead already ships the full `tracks` list, so
     a reader that wants "how many sites" counts the primary ones itself.
     """
+
     # Null when the owner deleted their account — the tournament outlives them.
     owner: UserSlimResponse | None = None
     event_count: int

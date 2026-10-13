@@ -2,6 +2,7 @@
 availability/lunch/track_status reserved-key answers to their structural
 tables. See tests/api/test_forms.py for the route-level wiring (fires on
 tournament-owned forms, no-ops on chapter-owned forms)."""
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -31,7 +32,9 @@ from tests.conftest import primary_track_id
 
 
 def _make_shift(db, tournament, label="Shift"):
-    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
+    shift = TournamentShift(
+        tournament_id=tournament.id,
+        track_id=primary_track_id(db, tournament.id),
         label=label,
         start=datetime.now(UTC),
         end=datetime.now(UTC) + timedelta(hours=4),
@@ -45,7 +48,10 @@ def _make_shift(db, tournament, label="Shift"):
 def membership(db, td_user, td_tournament):
     return (
         db.query(TournamentMembership)
-        .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+        .filter(
+            TournamentMembership.user_id == td_user.id,
+            TournamentMembership.tournament_id == td_tournament.id,
+        )
         .first()
     )
 
@@ -102,6 +108,7 @@ def _make_track(db, tournament, name):
 # ---------------------------------------------------------------------------
 # sync_availability
 # ---------------------------------------------------------------------------
+
 
 class TestSyncAvailability:
     def test_insert_only(self, db, td_tournament, membership):
@@ -172,6 +179,7 @@ class TestSyncAvailability:
 # sync_lunch
 # ---------------------------------------------------------------------------
 
+
 class TestSyncLunch:
     @pytest.fixture
     def track_id(self, db, td_tournament):
@@ -179,7 +187,10 @@ class TestSyncLunch:
 
     def test_insert_only(self, db, membership, track_id):
         sync_lunch(
-            db, membership.id, track_id, "protein",
+            db,
+            membership.id,
+            track_id,
+            "protein",
             [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
         )
         db.commit()
@@ -188,7 +199,9 @@ class TestSyncLunch:
         assert {row.value for row in rows} == {"chicken", "tofu"}
 
     def test_delete_only(self, db, membership, track_id):
-        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
+        sync_lunch(
+            db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}]
+        )
         db.commit()
 
         sync_lunch(db, membership.id, track_id, "protein", [])
@@ -198,14 +211,20 @@ class TestSyncLunch:
 
     def test_mixed_diff(self, db, membership, track_id):
         sync_lunch(
-            db, membership.id, track_id, "protein",
+            db,
+            membership.id,
+            track_id,
+            "protein",
             [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
         )
         db.commit()
 
         # Drop chicken, keep tofu, add beef.
         sync_lunch(
-            db, membership.id, track_id, "protein",
+            db,
+            membership.id,
+            track_id,
+            "protein",
             [{"value": "tofu", "label": "Tofu"}, {"value": "beef", "label": "Beef"}],
         )
         db.commit()
@@ -216,7 +235,9 @@ class TestSyncLunch:
     def test_category_isolation(self, db, membership, track_id):
         """Syncing one category never touches another category's rows for
         the same membership/date."""
-        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
+        sync_lunch(
+            db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}]
+        )
         sync_lunch(db, membership.id, track_id, "drink", [{"value": "water", "label": "Water"}])
         db.commit()
 
@@ -232,7 +253,9 @@ class TestSyncLunch:
         """Same category, different track — also isolated. Two sites can ask
         the same question and get different answers, even on the same day."""
         other = _make_track(db, td_tournament, "Day 2")
-        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
+        sync_lunch(
+            db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}]
+        )
         sync_lunch(db, membership.id, other.id, "protein", [{"value": "tofu", "label": "Tofu"}])
         db.commit()
 
@@ -248,6 +271,7 @@ class TestSyncLunch:
 # sync_event_preferences
 # ---------------------------------------------------------------------------
 
+
 class TestSyncEventPreferences:
     @pytest.fixture
     def track_id(self, db, td_tournament):
@@ -259,19 +283,26 @@ class TestSyncEventPreferences:
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, track_id,
+            db,
+            membership.id,
+            track_id,
             [{"tournament_event_id": e1.id, "rank": 1}, {"tournament_event_id": e2.id, "rank": 2}],
         )
         db.commit()
 
-        rows = {row.tournament_event_id: row.rank for row in _event_preference_rows(db, membership.id, track_id)}
+        rows = {
+            row.tournament_event_id: row.rank
+            for row in _event_preference_rows(db, membership.id, track_id)
+        }
         assert rows == {e1.id: 1, e2.id: 2}
 
     def test_delete_only(self, db, membership, td_tournament, track_id):
         event = _make_event(db, td_tournament)
         db.commit()
 
-        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": None}])
+        sync_event_preferences(
+            db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": None}]
+        )
         db.commit()
 
         sync_event_preferences(db, membership.id, track_id, [])
@@ -286,29 +317,47 @@ class TestSyncEventPreferences:
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, track_id,
-            [{"tournament_event_id": e1.id, "rank": None}, {"tournament_event_id": e2.id, "rank": None}],
+            db,
+            membership.id,
+            track_id,
+            [
+                {"tournament_event_id": e1.id, "rank": None},
+                {"tournament_event_id": e2.id, "rank": None},
+            ],
         )
         db.commit()
 
         # Drop e1, keep e2, add e3.
         sync_event_preferences(
-            db, membership.id, track_id,
-            [{"tournament_event_id": e2.id, "rank": None}, {"tournament_event_id": e3.id, "rank": None}],
+            db,
+            membership.id,
+            track_id,
+            [
+                {"tournament_event_id": e2.id, "rank": None},
+                {"tournament_event_id": e3.id, "rank": None},
+            ],
         )
         db.commit()
 
-        rows = {row.tournament_event_id for row in _event_preference_rows(db, membership.id, track_id)}
+        rows = {
+            row.tournament_event_id for row in _event_preference_rows(db, membership.id, track_id)
+        }
         assert rows == {e2.id, e3.id}
 
-    def test_rank_change_on_unchanged_event_updates_in_place(self, db, membership, td_tournament, track_id):
+    def test_rank_change_on_unchanged_event_updates_in_place(
+        self, db, membership, td_tournament, track_id
+    ):
         event = _make_event(db, td_tournament)
         db.commit()
 
-        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 1}])
+        sync_event_preferences(
+            db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 1}]
+        )
         db.commit()
 
-        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 2}])
+        sync_event_preferences(
+            db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 2}]
+        )
         db.commit()
 
         rows = _event_preference_rows(db, membership.id, track_id)
@@ -323,8 +372,12 @@ class TestSyncEventPreferences:
         writing = _make_track(db, td_tournament, "Test Writing")
         db.commit()
 
-        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": day_event.id, "rank": None}])
-        sync_event_preferences(db, membership.id, writing.id, [{"tournament_event_id": writing_event.id, "rank": None}])
+        sync_event_preferences(
+            db, membership.id, track_id, [{"tournament_event_id": day_event.id, "rank": None}]
+        )
+        sync_event_preferences(
+            db, membership.id, writing.id, [{"tournament_event_id": writing_event.id, "rank": None}]
+        )
         db.commit()
 
         sync_event_preferences(db, membership.id, track_id, [])
@@ -334,7 +387,9 @@ class TestSyncEventPreferences:
         writing_rows = _event_preference_rows(db, membership.id, writing.id)
         assert {row.tournament_event_id for row in writing_rows} == {writing_event.id}
 
-    def test_repeated_ranked_selection_across_ranks_allowed(self, db, membership, td_tournament, track_id):
+    def test_repeated_ranked_selection_across_ranks_allowed(
+        self, db, membership, td_tournament, track_id
+    ):
         """sync_event_preferences itself doesn't enforce the no-repeat-rank
         rule — that's validate_event_preference_options'/
         duplicate_ranked_choice_field_keys' job, upstream of write-through.
@@ -346,8 +401,13 @@ class TestSyncEventPreferences:
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, track_id,
-            [{"tournament_event_id": event.id, "rank": 1}, {"tournament_event_id": event.id, "rank": 2}],
+            db,
+            membership.id,
+            track_id,
+            [
+                {"tournament_event_id": event.id, "rank": 1},
+                {"tournament_event_id": event.id, "rank": 2},
+            ],
         )
         db.commit()
 
@@ -358,6 +418,7 @@ class TestSyncEventPreferences:
 # ---------------------------------------------------------------------------
 # Track statuses
 # ---------------------------------------------------------------------------
+
 
 class TestCanSetTrackStatus:
     """The whole rule: `confirmed` never falls back to `interested`."""
@@ -425,10 +486,14 @@ class TestSyncTrackStatuses:
         sync_track_statuses(db, membership.id, {track.id: {"status": "confirmed"}})
         db.commit()
 
-        rows = db.query(TournamentMembershipTrackStatus).filter(
-            TournamentMembershipTrackStatus.membership_id == membership.id,
-            TournamentMembershipTrackStatus.track_id == track.id,
-        ).all()
+        rows = (
+            db.query(TournamentMembershipTrackStatus)
+            .filter(
+                TournamentMembershipTrackStatus.membership_id == membership.id,
+                TournamentMembershipTrackStatus.track_id == track.id,
+            )
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].status == "confirmed"
 
@@ -461,14 +526,21 @@ class TestSyncTrackStatuses:
         source_field_id are real FKs, so provenance can't be faked with
         made-up ids."""
         form = Form(
-            owner_type="tournament", tournament_id=tournament.id, chapter_id=None,
-            name="Track form", created_by=td_user.id,
+            owner_type="tournament",
+            tournament_id=tournament.id,
+            chapter_id=None,
+            name="Track form",
+            created_by=td_user.id,
         )
         db.add(form)
         db.flush()
         field = FormField(
-            form_id=form.id, order=1, field_key=field_key, label="Interested?",
-            question_type="single_select_radio", config={"required": True, "options": []},
+            form_id=form.id,
+            order=1,
+            field_key=field_key,
+            label="Interested?",
+            question_type="single_select_radio",
+            config={"required": True, "options": []},
         )
         response = FormResponse(form_id=form.id, user_id=td_user.id)
         db.add_all([field, response])
@@ -491,7 +563,8 @@ class TestSyncTrackStatuses:
         db.commit()
 
         sync_track_statuses(
-            db, membership.id,
+            db,
+            membership.id,
             {track.id: {"status": "confirmed", "field_id": field.id}},
             response.id,
         )
@@ -504,18 +577,22 @@ class TestSyncTrackStatuses:
     def test_a_refused_write_leaves_provenance_alone(self, db, td_user, td_tournament, membership):
         track = self._track(db, td_tournament)
         first_response, first_field = self._response(db, td_user, td_tournament)
-        second_response, second_field = self._response(db, td_user, td_tournament, "track_status_later")
+        second_response, second_field = self._response(
+            db, td_user, td_tournament, "track_status_later"
+        )
         db.commit()
 
         sync_track_statuses(
-            db, membership.id,
+            db,
+            membership.id,
             {track.id: {"status": "confirmed", "field_id": first_field.id}},
             first_response.id,
         )
         db.commit()
 
         sync_track_statuses(
-            db, membership.id,
+            db,
+            membership.id,
             {track.id: {"status": "interested", "field_id": second_field.id}},
             second_response.id,
         )
@@ -532,10 +609,14 @@ class TestSyncTrackStatuses:
         mine = self._track(db, td_tournament, "Day 1")
         theirs = self._track(db, td_tournament, "Test Writing")
         db.commit()
-        sync_track_statuses(db, membership.id, {
-            mine.id: {"status": "interested"},
-            theirs.id: {"status": "confirmed"},
-        })
+        sync_track_statuses(
+            db,
+            membership.id,
+            {
+                mine.id: {"status": "interested"},
+                theirs.id: {"status": "confirmed"},
+            },
+        )
         db.commit()
 
         sync_track_statuses(db, membership.id, {mine.id: {"status": "declined"}})
@@ -560,6 +641,7 @@ class TestSyncTrackStatuses:
 # ---------------------------------------------------------------------------
 # parse_lunch_field_key
 # ---------------------------------------------------------------------------
+
 
 class TestParseLunchFieldKey:
     def test_splits_track_and_category(self):

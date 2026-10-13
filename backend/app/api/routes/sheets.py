@@ -131,7 +131,9 @@ def list_sheet_configs(
     return db.query(SheetConfig).filter(SheetConfig.tournament_id == tournament_id).all()
 
 
-@router.post("/configs/", response_model=SheetConfigReadWithWarnings, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/configs/", response_model=SheetConfigReadWithWarnings, status_code=status.HTTP_201_CREATED
+)
 def create_sheet_config(
     tournament_id: int,
     payload: SheetConfigCreate,

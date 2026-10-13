@@ -20,6 +20,7 @@ class MembershipAvailabilityUpdate(BaseModel):
     Scoped to a track rather than the whole tournament because the edit page
     is laid out per track: saving Day 1 must not disturb Day 2, which the
     member may not even have been shown."""
+
     shift_ids: list[int] = []
     # Set alongside the shifts in one call, since the two move together: the
     # "Not available" control clears the shifts *and* declines the track, and
@@ -41,6 +42,7 @@ class MembershipLunchUpdate(BaseModel):
 
     That pair is the unit sync_lunch is scoped to, so a PUT here can't
     disturb another category or another track's answer to the same one."""
+
     # Option ids for a select question; `text` for a free-text one. Exactly
     # one applies — which, is decided by the question's type, so sending the
     # wrong one is a 422 rather than something to guess at.
@@ -60,6 +62,7 @@ class MembershipEventPreferenceUpdate(BaseModel):
 
     A track has exactly one preference question, so it owns its rows outright
     and there is nothing else on the track for a replace to damage."""
+
     selections: list[MembershipEventPreferenceSelection] = []
 
 
@@ -69,6 +72,7 @@ class MembershipTrackStatusUpdate(BaseModel):
     Which transitions are allowed is not this schema's business — see the
     route. Briefly: opting out is always the member's own call, opting in to
     `confirmed` needs the track's allow_self_confirm."""
+
     status: str
 
     @field_validator("status")
@@ -84,11 +88,13 @@ class MembershipTrackStatusUpdate(BaseModel):
 class AgeDisclosureRequest(BaseModel):
     """POST .../members/me/age-disclosure/ — one answer covers both
     is_over_18 and is_over_21, there is no partial consent."""
+
     consent: bool
 
 
 class MembershipCoordinatorUpdate(BaseModel):
     """manage_members override — day-of logistics only, not onboarding data."""
+
     notes: str | None = None
 
 
@@ -99,6 +105,7 @@ class MembershipJoinCodeInfo(BaseModel):
     be circular — this duplicates just what's needed. Codes are never hard-
     deleted (deactivation only flips is_active), so this is populated for
     every membership with source == "join_code"."""
+
     id: int
     code: str
     label: str | None = None
@@ -114,6 +121,7 @@ class MembershipEventPreferenceEventRead(BaseModel):
     """One event within a preference group — same {id, name, division} shape
     resolve_field_options gives an event_preference option's events, so a
     renderer can reuse the same event-display component either way."""
+
     id: int
     name: str | None = None
     division: str | None = None
@@ -127,6 +135,7 @@ class MembershipEventPreferenceOptionRead(BaseModel):
     group 20+ events. Built by app.core.tournament.memberships.
     build_event_preferences — the reverse mapping needs the form's options,
     so it can't be derived from the membership rows alone."""
+
     # None only for an event that matched no option at all — see is_archived.
     option_id: str | None = None
     label: str
@@ -145,6 +154,7 @@ class MembershipEventPreferenceRead(BaseModel):
     by the option picked. Each track is its own independent axis — a member
     ranks Day 1's events separately from Test Writing's — so this is a list,
     not a single preference."""
+
     track_id: int
     track_name: str
     options: list[MembershipEventPreferenceOptionRead]
@@ -167,6 +177,7 @@ class MembershipAvailabilityRead(BaseModel):
     not match the tournament's, so a client-side conversion drifts a day near
     midnight.
     """
+
     shift_id: int
     track_id: int
     label: str
@@ -202,6 +213,7 @@ class MembershipLunchRead(BaseModel):
 
     `track_name` rides along so a renderer never needs a second catalog
     request, the same treatment MembershipTrackStatusRead gives track rows."""
+
     track_id: int
     track_name: str
     category: str
@@ -223,6 +235,7 @@ class MembershipCustomAnswerRead(BaseModel):
     app.core.tournament.memberships.get_custom_form_answers, which runs the
     cross-model query this can't do from a plain TournamentMembership
     relationship alone."""
+
     form_title: str
     field_label: str
     # The panel labels answers by key, not by the question's full sentence —
@@ -262,6 +275,7 @@ class MembershipBaseResponse(BaseModel):
     the identity fields below, which MembershipFullResponse then narrows back
     to required.
     """
+
     # None only on /members/me for a caller with no membership row.
     # MembershipFullResponse re-declares all four as required: a roster row
     # that couldn't say who it was about would be meaningless.
@@ -284,7 +298,9 @@ class MembershipBaseResponse(BaseModel):
 
     # The ORM relationships are named availability_shifts/lunch_selections —
     # validation_alias points from_attributes at the actual attribute names.
-    availability: list[MembershipAvailabilityRead] = Field(default=[], validation_alias="availability_shifts")
+    availability: list[MembershipAvailabilityRead] = Field(
+        default=[], validation_alias="availability_shifts"
+    )
     lunch: list[MembershipLunchRead] = Field(default=[], validation_alias="lunch_selections")
     event_preferences: list[MembershipEventPreferenceRead] = []
     # Not an ORM relationship — get_custom_form_answers runs a cross-model
@@ -324,6 +340,7 @@ class MembershipBaseResponse(BaseModel):
 
 class MembershipOnboardingRead(BaseModel):
     """Live onboarding steps answered, out of the live total."""
+
     completed: int
     total: int
 
@@ -332,6 +349,7 @@ class MembershipFullResponse(MembershipBaseResponse):
     """Manager-facing view of one membership. The roster row and the detail
     panel are the same shape, narrowed by the `fields` query parameter rather
     than by a second schema. Only reachable with manage_members."""
+
     # Required here, unlike on the base — this route always has a row.
     id: int
     created_at: datetime
@@ -371,7 +389,9 @@ class MembershipFullResponse(MembershipBaseResponse):
         MembershipTrackStatusRead has a from_row."""
         if not v:
             return []
-        return [row if isinstance(row, AssignmentRead) else AssignmentRead.from_row(row) for row in v]
+        return [
+            row if isinstance(row, AssignmentRead) else AssignmentRead.from_row(row) for row in v
+        ]
 
 
 class MembershipMeResponse(MembershipBaseResponse):
@@ -384,6 +404,7 @@ class MembershipMeResponse(MembershipBaseResponse):
     about someone else — a member is not shown less about themselves than a
     coordinator is. The one asymmetry runs the other way: date_of_birth is
     serialized to nobody, only the derived is_over_18/21 flags are."""
+
     is_owner: bool = False
     permissions: list[str] = []
     # True when the tournament collects an age flag and this member hasn't

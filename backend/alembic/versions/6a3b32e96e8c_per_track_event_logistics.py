@@ -18,14 +18,15 @@ the only storage, and an event on no track has none. Their building strings
 still become catalog rows, so nothing is lost from the tournament's point of
 view, but the event itself comes back unplaced.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '6a3b32e96e8c'
-down_revision: str | None = 'd3b71a4c9e02'
+revision: str = "6a3b32e96e8c"
+down_revision: str | None = "d3b71a4c9e02"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -34,37 +35,53 @@ def upgrade() -> None:
     # -----------------------------------------------------------------------
     # Buildings catalog
     # -----------------------------------------------------------------------
-    op.create_table('tournament_buildings',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('tournament_id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['tournament_id'], ['tournaments.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('tournament_id', 'name', name='uq_tournament_building_name')
+    op.create_table(
+        "tournament_buildings",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("tournament_id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["tournament_id"], ["tournaments.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("tournament_id", "name", name="uq_tournament_building_name"),
     )
-    op.create_index(op.f('ix_tournament_buildings_id'), 'tournament_buildings', ['id'], unique=False)
-    op.create_index(op.f('ix_tournament_buildings_tournament_id'), 'tournament_buildings', ['tournament_id'], unique=False)
+    op.create_index(
+        op.f("ix_tournament_buildings_id"), "tournament_buildings", ["id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_tournament_buildings_tournament_id"),
+        "tournament_buildings",
+        ["tournament_id"],
+        unique=False,
+    )
 
     # The (building_id, track_id) primary key here is also a foreign-key
     # target: an event's location names both, so the composite FK below is
     # what stops a Day 1 event being placed in a Day 2-only building.
-    op.create_table('tournament_building_tracks',
-    sa.Column('building_id', sa.Integer(), nullable=False),
-    sa.Column('track_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['building_id'], ['tournament_buildings.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['track_id'], ['tournament_tracks.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('building_id', 'track_id')
+    op.create_table(
+        "tournament_building_tracks",
+        sa.Column("building_id", sa.Integer(), nullable=False),
+        sa.Column("track_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["building_id"], ["tournament_buildings.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["track_id"], ["tournament_tracks.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("building_id", "track_id"),
     )
 
     # -----------------------------------------------------------------------
     # Event location moves onto the event<->track link
     # -----------------------------------------------------------------------
-    op.add_column('tournament_event_tracks', sa.Column('building_id', sa.Integer(), nullable=True))
-    op.add_column('tournament_event_tracks', sa.Column('floor', sa.String(length=64), nullable=True))
-    op.add_column('tournament_event_tracks', sa.Column('rooms', sa.JSON(), nullable=True))
-    op.create_index(op.f('ix_tournament_event_tracks_building_id'), 'tournament_event_tracks', ['building_id'], unique=False)
+    op.add_column("tournament_event_tracks", sa.Column("building_id", sa.Integer(), nullable=True))
+    op.add_column(
+        "tournament_event_tracks", sa.Column("floor", sa.String(length=64), nullable=True)
+    )
+    op.add_column("tournament_event_tracks", sa.Column("rooms", sa.JSON(), nullable=True))
+    op.create_index(
+        op.f("ix_tournament_event_tracks_building_id"),
+        "tournament_event_tracks",
+        ["building_id"],
+        unique=False,
+    )
 
     # -----------------------------------------------------------------------
     # Backfill, before the foreign key exists — the FK is what requires every
@@ -123,7 +140,14 @@ def upgrade() -> None:
     # cannot be nulled, so the pair can't be cleared by the database. Deleting
     # a building, or untagging it from a track, has to clear the locations
     # pointing at it first — see the buildings routes.
-    op.create_foreign_key('fk_event_track_building', 'tournament_event_tracks', 'tournament_building_tracks', ['building_id', 'track_id'], ['building_id', 'track_id'], ondelete='RESTRICT')
+    op.create_foreign_key(
+        "fk_event_track_building",
+        "tournament_event_tracks",
+        "tournament_building_tracks",
+        ["building_id", "track_id"],
+        ["building_id", "track_id"],
+        ondelete="RESTRICT",
+    )
 
     # -----------------------------------------------------------------------
     # The event's own location and staffing columns go, now that the backfill
@@ -134,10 +158,10 @@ def upgrade() -> None:
     # so TDs re-enter staffing as per-role lines. This is the one lossy part
     # of this revision, and the downgrade cannot bring it back.
     # -----------------------------------------------------------------------
-    op.drop_column('tournament_events', 'building')
-    op.drop_column('tournament_events', 'room')
-    op.drop_column('tournament_events', 'floor')
-    op.drop_column('tournament_events', 'volunteers_needed')
+    op.drop_column("tournament_events", "building")
+    op.drop_column("tournament_events", "room")
+    op.drop_column("tournament_events", "floor")
+    op.drop_column("tournament_events", "volunteers_needed")
 
     # -----------------------------------------------------------------------
     # Per-role staffing needs, replacing the number just dropped.
@@ -146,24 +170,52 @@ def upgrade() -> None:
     # composite FK makes a need for a track the event doesn't run on
     # unrepresentable, and dropping the link takes its needs with it.
     # -----------------------------------------------------------------------
-    op.create_table('tournament_event_staffing_needs',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('tournament_event_id', sa.Integer(), nullable=False),
-    sa.Column('track_id', sa.Integer(), nullable=False),
-    sa.Column('role_id', sa.Integer(), nullable=False),
-    sa.Column('count', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.CheckConstraint('count >= 1', name='ck_staffing_need_count_positive'),
-    sa.ForeignKeyConstraint(['role_id'], ['tournament_roles.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['tournament_event_id', 'track_id'], ['tournament_event_tracks.tournament_event_id', 'tournament_event_tracks.track_id'], name='fk_staffing_need_event_track', ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('tournament_event_id', 'track_id', 'role_id', name='uq_staffing_need_event_track_role')
+    op.create_table(
+        "tournament_event_staffing_needs",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("tournament_event_id", sa.Integer(), nullable=False),
+        sa.Column("track_id", sa.Integer(), nullable=False),
+        sa.Column("role_id", sa.Integer(), nullable=False),
+        sa.Column("count", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("count >= 1", name="ck_staffing_need_count_positive"),
+        sa.ForeignKeyConstraint(["role_id"], ["tournament_roles.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_staffing_need_event_track",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "tournament_event_id", "track_id", "role_id", name="uq_staffing_need_event_track_role"
+        ),
     )
-    op.create_index(op.f('ix_tournament_event_staffing_needs_id'), 'tournament_event_staffing_needs', ['id'], unique=False)
-    op.create_index(op.f('ix_tournament_event_staffing_needs_role_id'), 'tournament_event_staffing_needs', ['role_id'], unique=False)
-    op.create_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), 'tournament_event_staffing_needs', ['tournament_event_id'], unique=False)
-    op.create_index(op.f('ix_tournament_event_staffing_needs_track_id'), 'tournament_event_staffing_needs', ['track_id'], unique=False)
+    op.create_index(
+        op.f("ix_tournament_event_staffing_needs_id"),
+        "tournament_event_staffing_needs",
+        ["id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_event_staffing_needs_role_id"),
+        "tournament_event_staffing_needs",
+        ["role_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_event_staffing_needs_tournament_event_id"),
+        "tournament_event_staffing_needs",
+        ["tournament_event_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_event_staffing_needs_track_id"),
+        "tournament_event_staffing_needs",
+        ["track_id"],
+        unique=False,
+    )
 
     # -----------------------------------------------------------------------
     # Zones
@@ -176,76 +228,178 @@ def upgrade() -> None:
 
     # Must come first: tournament_zones carries a composite FK against it, and
     # Postgres requires the referenced unique index to exist beforehand.
-    op.create_unique_constraint('uq_tournament_track_id_tournament', 'tournament_tracks', ['id', 'tournament_id'])
-
-    op.create_table('tournament_zones',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('tournament_id', sa.Integer(), nullable=False),
-    sa.Column('track_id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('default_role_id', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['default_role_id'], ['tournament_roles.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['track_id', 'tournament_id'], ['tournament_tracks.id', 'tournament_tracks.tournament_id'], name='fk_zone_track_tournament', ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('id', 'track_id', name='uq_tournament_zone_id_track'),
-    sa.UniqueConstraint('track_id', 'name', name='uq_tournament_zone_name')
+    op.create_unique_constraint(
+        "uq_tournament_track_id_tournament", "tournament_tracks", ["id", "tournament_id"]
     )
-    op.create_index(op.f('ix_tournament_zones_id'), 'tournament_zones', ['id'], unique=False)
-    op.create_index(op.f('ix_tournament_zones_tournament_id'), 'tournament_zones', ['tournament_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zones_track_id'), 'tournament_zones', ['track_id'], unique=False)
 
-    op.create_table('tournament_zone_members',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('zone_id', sa.Integer(), nullable=False),
-    sa.Column('track_id', sa.Integer(), nullable=False),
-    sa.Column('kind', sa.String(length=16), nullable=False),
-    sa.Column('building_id', sa.Integer(), nullable=True),
-    sa.Column('floor', sa.String(length=64), nullable=True),
-    sa.Column('tournament_event_id', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.CheckConstraint(
-        "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
-        "  AND tournament_event_id IS NULL) OR "
-        "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
-        "  AND tournament_event_id IS NULL) OR "
-        "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
-        "  AND floor IS NULL)",
-        name='ck_zone_member_shape'),
-    sa.ForeignKeyConstraint(['building_id', 'track_id'], ['tournament_building_tracks.building_id', 'tournament_building_tracks.track_id'], name='fk_zone_member_building', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['tournament_event_id', 'track_id'], ['tournament_event_tracks.tournament_event_id', 'tournament_event_tracks.track_id'], name='fk_zone_member_event', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['zone_id', 'track_id'], ['tournament_zones.id', 'tournament_zones.track_id'], name='fk_zone_member_zone', ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    op.create_table(
+        "tournament_zones",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("tournament_id", sa.Integer(), nullable=False),
+        sa.Column("track_id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("default_role_id", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["default_role_id"], ["tournament_roles.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["track_id", "tournament_id"],
+            ["tournament_tracks.id", "tournament_tracks.tournament_id"],
+            name="fk_zone_track_tournament",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id", "track_id", name="uq_tournament_zone_id_track"),
+        sa.UniqueConstraint("track_id", "name", name="uq_tournament_zone_name"),
     )
-    op.create_index(op.f('ix_tournament_zone_members_building_id'), 'tournament_zone_members', ['building_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_members_id'), 'tournament_zone_members', ['id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_members_tournament_event_id'), 'tournament_zone_members', ['tournament_event_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_members_track_id'), 'tournament_zone_members', ['track_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_members_zone_id'), 'tournament_zone_members', ['zone_id'], unique=False)
+    op.create_index(op.f("ix_tournament_zones_id"), "tournament_zones", ["id"], unique=False)
+    op.create_index(
+        op.f("ix_tournament_zones_tournament_id"),
+        "tournament_zones",
+        ["tournament_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zones_track_id"), "tournament_zones", ["track_id"], unique=False
+    )
+
+    op.create_table(
+        "tournament_zone_members",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("zone_id", sa.Integer(), nullable=False),
+        sa.Column("track_id", sa.Integer(), nullable=False),
+        sa.Column("kind", sa.String(length=16), nullable=False),
+        sa.Column("building_id", sa.Integer(), nullable=True),
+        sa.Column("floor", sa.String(length=64), nullable=True),
+        sa.Column("tournament_event_id", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
+            "  AND tournament_event_id IS NULL) OR "
+            "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
+            "  AND tournament_event_id IS NULL) OR "
+            "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
+            "  AND floor IS NULL)",
+            name="ck_zone_member_shape",
+        ),
+        sa.ForeignKeyConstraint(
+            ["building_id", "track_id"],
+            ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
+            name="fk_zone_member_building",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_zone_member_event",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["zone_id", "track_id"],
+            ["tournament_zones.id", "tournament_zones.track_id"],
+            name="fk_zone_member_zone",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_members_building_id"),
+        "tournament_zone_members",
+        ["building_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_members_id"), "tournament_zone_members", ["id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_members_tournament_event_id"),
+        "tournament_zone_members",
+        ["tournament_event_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_members_track_id"),
+        "tournament_zone_members",
+        ["track_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_members_zone_id"),
+        "tournament_zone_members",
+        ["zone_id"],
+        unique=False,
+    )
     # One zone per thing per track. Partial, because each kind uses different
     # columns and a NULL in a plain unique index would let duplicates through.
-    op.create_index('uq_zone_member_building', 'tournament_zone_members', ['track_id', 'building_id'], unique=True, postgresql_where=sa.text("kind = 'building'"))
-    op.create_index('uq_zone_member_floor', 'tournament_zone_members', ['track_id', 'building_id', 'floor'], unique=True, postgresql_where=sa.text("kind = 'floor'"))
-    op.create_index('uq_zone_member_event', 'tournament_zone_members', ['track_id', 'tournament_event_id'], unique=True, postgresql_where=sa.text("kind = 'event'"))
-
-    op.create_table('tournament_zone_assignments',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('zone_id', sa.Integer(), nullable=False),
-    sa.Column('membership_id', sa.Integer(), nullable=False),
-    sa.Column('membership_role_id', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['membership_role_id', 'membership_id'], ['tournament_membership_roles.id', 'tournament_membership_roles.membership_id'], name='fk_zone_assignment_membership_role', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['zone_id'], ['tournament_zones.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('zone_id', 'membership_id', 'membership_role_id', name='uq_zone_assignment')
+    op.create_index(
+        "uq_zone_member_building",
+        "tournament_zone_members",
+        ["track_id", "building_id"],
+        unique=True,
+        postgresql_where=sa.text("kind = 'building'"),
     )
-    op.create_index(op.f('ix_tournament_zone_assignments_id'), 'tournament_zone_assignments', ['id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_assignments_membership_id'), 'tournament_zone_assignments', ['membership_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_assignments_membership_role_id'), 'tournament_zone_assignments', ['membership_role_id'], unique=False)
-    op.create_index(op.f('ix_tournament_zone_assignments_zone_id'), 'tournament_zone_assignments', ['zone_id'], unique=False)
+    op.create_index(
+        "uq_zone_member_floor",
+        "tournament_zone_members",
+        ["track_id", "building_id", "floor"],
+        unique=True,
+        postgresql_where=sa.text("kind = 'floor'"),
+    )
+    op.create_index(
+        "uq_zone_member_event",
+        "tournament_zone_members",
+        ["track_id", "tournament_event_id"],
+        unique=True,
+        postgresql_where=sa.text("kind = 'event'"),
+    )
+
+    op.create_table(
+        "tournament_zone_assignments",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("zone_id", sa.Integer(), nullable=False),
+        sa.Column("membership_id", sa.Integer(), nullable=False),
+        sa.Column("membership_role_id", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["membership_id"], ["tournament_memberships.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["membership_role_id", "membership_id"],
+            ["tournament_membership_roles.id", "tournament_membership_roles.membership_id"],
+            name="fk_zone_assignment_membership_role",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(["zone_id"], ["tournament_zones.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "zone_id", "membership_id", "membership_role_id", name="uq_zone_assignment"
+        ),
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_assignments_id"),
+        "tournament_zone_assignments",
+        ["id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_assignments_membership_id"),
+        "tournament_zone_assignments",
+        ["membership_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_assignments_membership_role_id"),
+        "tournament_zone_assignments",
+        ["membership_role_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tournament_zone_assignments_zone_id"),
+        "tournament_zone_assignments",
+        ["zone_id"],
+        unique=False,
+    )
 
     # -----------------------------------------------------------------------
     # Saved display configs follow the surfaces that just changed shape.
@@ -268,7 +422,8 @@ def upgrade() -> None:
     # Cast through jsonb both ways: the column is `json`, which has neither
     # the `-` operator nor jsonb_set.
     # -----------------------------------------------------------------------
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE tournament_memberships SET display_config = (
             (display_config::jsonb - 'assignments_events' - 'assignment_card')
             || CASE WHEN jsonb_exists(display_config::jsonb, 'assignments_events')
@@ -284,9 +439,11 @@ def upgrade() -> None:
           AND jsonb_typeof(display_config::jsonb) = 'object'
           AND (jsonb_exists(display_config::jsonb, 'assignments_events')
                OR jsonb_exists(display_config::jsonb, 'assignment_card'))
-    """))
+    """)
+    )
 
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE tournament_memberships SET display_config = jsonb_set(
             display_config::jsonb,
             '{events_table,columns}',
@@ -297,14 +454,16 @@ def upgrade() -> None:
         )::json
         WHERE display_config IS NOT NULL
           AND jsonb_typeof(display_config::jsonb #> '{events_table,columns}') = 'array'
-    """))
+    """)
+    )
 
 
 def downgrade() -> None:
     # The All tab's config goes back under the bare key. Per-track tabs are
     # dropped — the un-tabbed board has nowhere to put them, and they were
     # never configured before this revision.
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE tournament_memberships SET display_config = (
             (SELECT COALESCE(jsonb_object_agg(k, v), '{}'::jsonb)
                FROM jsonb_each(display_config::jsonb) AS e(k, v)
@@ -320,39 +479,65 @@ def downgrade() -> None:
         )::json
         WHERE display_config IS NOT NULL
           AND jsonb_typeof(display_config::jsonb) = 'object'
-    """))
+    """)
+    )
 
-    op.drop_table('tournament_zone_assignments')
-    op.drop_index('uq_zone_member_event', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'event'"))
-    op.drop_index('uq_zone_member_floor', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'floor'"))
-    op.drop_index('uq_zone_member_building', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'building'"))
-    op.drop_table('tournament_zone_members')
-    op.drop_table('tournament_zones')
+    op.drop_table("tournament_zone_assignments")
+    op.drop_index(
+        "uq_zone_member_event",
+        table_name="tournament_zone_members",
+        postgresql_where=sa.text("kind = 'event'"),
+    )
+    op.drop_index(
+        "uq_zone_member_floor",
+        table_name="tournament_zone_members",
+        postgresql_where=sa.text("kind = 'floor'"),
+    )
+    op.drop_index(
+        "uq_zone_member_building",
+        table_name="tournament_zone_members",
+        postgresql_where=sa.text("kind = 'building'"),
+    )
+    op.drop_table("tournament_zone_members")
+    op.drop_table("tournament_zones")
     # Last of the zone teardown: the composite FK above depended on it.
-    op.drop_constraint('uq_tournament_track_id_tournament', 'tournament_tracks', type_='unique')
+    op.drop_constraint("uq_tournament_track_id_tournament", "tournament_tracks", type_="unique")
 
-    op.drop_index(op.f('ix_tournament_event_staffing_needs_track_id'), table_name='tournament_event_staffing_needs')
-    op.drop_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), table_name='tournament_event_staffing_needs')
-    op.drop_index(op.f('ix_tournament_event_staffing_needs_role_id'), table_name='tournament_event_staffing_needs')
-    op.drop_index(op.f('ix_tournament_event_staffing_needs_id'), table_name='tournament_event_staffing_needs')
-    op.drop_table('tournament_event_staffing_needs')
+    op.drop_index(
+        op.f("ix_tournament_event_staffing_needs_track_id"),
+        table_name="tournament_event_staffing_needs",
+    )
+    op.drop_index(
+        op.f("ix_tournament_event_staffing_needs_tournament_event_id"),
+        table_name="tournament_event_staffing_needs",
+    )
+    op.drop_index(
+        op.f("ix_tournament_event_staffing_needs_role_id"),
+        table_name="tournament_event_staffing_needs",
+    )
+    op.drop_index(
+        op.f("ix_tournament_event_staffing_needs_id"), table_name="tournament_event_staffing_needs"
+    )
+    op.drop_table("tournament_event_staffing_needs")
 
     # The columns come back empty. The location could in principle be read
     # back off the link rows, but only for an event on exactly one track —
     # which is precisely the case this revision exists to stop pretending is
     # the only one — so nothing is restored rather than restoring a lie.
-    op.add_column('tournament_events', sa.Column('building', sa.String(length=255), nullable=True))
-    op.add_column('tournament_events', sa.Column('room', sa.String(length=64), nullable=True))
-    op.add_column('tournament_events', sa.Column('floor', sa.String(length=64), nullable=True))
-    op.add_column('tournament_events', sa.Column('volunteers_needed', sa.Integer(), nullable=True))
+    op.add_column("tournament_events", sa.Column("building", sa.String(length=255), nullable=True))
+    op.add_column("tournament_events", sa.Column("room", sa.String(length=64), nullable=True))
+    op.add_column("tournament_events", sa.Column("floor", sa.String(length=64), nullable=True))
+    op.add_column("tournament_events", sa.Column("volunteers_needed", sa.Integer(), nullable=True))
 
-    op.drop_constraint('fk_event_track_building', 'tournament_event_tracks', type_='foreignkey')
-    op.drop_index(op.f('ix_tournament_event_tracks_building_id'), table_name='tournament_event_tracks')
-    op.drop_column('tournament_event_tracks', 'rooms')
-    op.drop_column('tournament_event_tracks', 'floor')
-    op.drop_column('tournament_event_tracks', 'building_id')
+    op.drop_constraint("fk_event_track_building", "tournament_event_tracks", type_="foreignkey")
+    op.drop_index(
+        op.f("ix_tournament_event_tracks_building_id"), table_name="tournament_event_tracks"
+    )
+    op.drop_column("tournament_event_tracks", "rooms")
+    op.drop_column("tournament_event_tracks", "floor")
+    op.drop_column("tournament_event_tracks", "building_id")
 
-    op.drop_table('tournament_building_tracks')
-    op.drop_index(op.f('ix_tournament_buildings_tournament_id'), table_name='tournament_buildings')
-    op.drop_index(op.f('ix_tournament_buildings_id'), table_name='tournament_buildings')
-    op.drop_table('tournament_buildings')
+    op.drop_table("tournament_building_tracks")
+    op.drop_index(op.f("ix_tournament_buildings_tournament_id"), table_name="tournament_buildings")
+    op.drop_index(op.f("ix_tournament_buildings_id"), table_name="tournament_buildings")
+    op.drop_table("tournament_buildings")

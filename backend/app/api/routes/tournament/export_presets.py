@@ -26,7 +26,9 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/export-presets", tags=["
 _NAME_TAKEN = "An export preset with this name already exists"
 
 
-def _name_taken(db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None) -> bool:
+def _name_taken(
+    db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None
+) -> bool:
     query = db.query(TournamentExportPreset).filter(
         TournamentExportPreset.tournament_id == tournament_id,
         TournamentExportPreset.name == name,
@@ -87,7 +89,9 @@ def create_export_preset(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
 
     preset = TournamentExportPreset(
-        tournament_id=tournament_id, created_by=current_user.id, **payload.model_dump(exclude_none=True),
+        tournament_id=tournament_id,
+        created_by=current_user.id,
+        **payload.model_dump(exclude_none=True),
     )
     db.add(preset)
     _commit(db, preset)
@@ -106,21 +110,29 @@ def update_export_preset(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
-    preset = get_scoped_or_404(db, TournamentExportPreset, preset_id, tournament_id, "Export preset")
+    preset = get_scoped_or_404(
+        db, TournamentExportPreset, preset_id, tournament_id, "Export preset"
+    )
 
     # Null means "not sent" for every field; none of them can be cleared to null.
     updates = payload.model_dump(exclude_none=True)
-    if "name" in updates and _name_taken(db, tournament_id, updates["name"], excluding_id=preset.id):
+    if "name" in updates and _name_taken(
+        db, tournament_id, updates["name"], excluding_id=preset.id
+    ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
 
     # Either half may arrive alone, so check the merged result.
     if payload.sorts is not None or payload.columns is not None:
-        columns = payload.columns if payload.columns is not None else [
-            ExportPresetColumn.model_construct(**column) for column in preset.columns
-        ]
-        sorts = payload.sorts if payload.sorts is not None else [
-            ExportPresetSort.model_construct(**sort) for sort in preset.sorts
-        ]
+        columns = (
+            payload.columns
+            if payload.columns is not None
+            else [ExportPresetColumn.model_construct(**column) for column in preset.columns]
+        )
+        sorts = (
+            payload.sorts
+            if payload.sorts is not None
+            else [ExportPresetSort.model_construct(**sort) for sort in preset.sorts]
+        )
         _check_sorts(sorts, columns)
 
     for field, value in updates.items():
@@ -140,6 +152,8 @@ def delete_export_preset(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
-    preset = get_scoped_or_404(db, TournamentExportPreset, preset_id, tournament_id, "Export preset")
+    preset = get_scoped_or_404(
+        db, TournamentExportPreset, preset_id, tournament_id, "Export preset"
+    )
     db.delete(preset)
     db.commit()

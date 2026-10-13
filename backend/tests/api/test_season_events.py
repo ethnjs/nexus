@@ -1,5 +1,6 @@
 """Tests for /admin/season-events endpoints (SeasonEvent model) and the
 /tournaments/{tournament_id}/events/load-defaults bulk-load action."""
+
 from app.models.models import SeasonEvent
 from tests.conftest import login
 
@@ -17,6 +18,7 @@ def _make_season_event(client, **overrides):
 # ---------------------------------------------------------------------------
 # Admin CRUD
 # ---------------------------------------------------------------------------
+
 
 def test_create_season_event(client, admin_user, event):
     _login_admin(client)
@@ -36,7 +38,9 @@ def test_create_season_event_duplicate_rejected(client, admin_user, event):
     assert _make_season_event(client, event_id=event.id).status_code == 409
 
 
-def test_list_season_events_filter_by_year_division(client, admin_user, event_factory, event_category):
+def test_list_season_events_filter_by_year_division(
+    client, admin_user, event_factory, event_category
+):
     _login_admin(client)
     e1 = event_factory(event_category, name="Boomilever")
     e2 = event_factory(event_category, name="Hovercraft")
@@ -49,7 +53,9 @@ def test_list_season_events_filter_by_year_division(client, admin_user, event_fa
     assert response.json()[0]["event"]["id"] == e1.id
 
 
-def test_list_season_events_filter_by_multiple_divisions(client, admin_user, event_factory, event_category):
+def test_list_season_events_filter_by_multiple_divisions(
+    client, admin_user, event_factory, event_category
+):
     _login_admin(client)
     e_a = event_factory(event_category, name="Anatomy")
     e_b = event_factory(event_category, name="Boomilever")
@@ -94,14 +100,19 @@ def test_list_season_events_is_public(client, event):
 # Bulk-load
 # ---------------------------------------------------------------------------
 
-def test_load_defaults_only_pulls_supported_divisions(client, admin_user, td_user, td_tournament, db, event_factory, event_category):
+
+def test_load_defaults_only_pulls_supported_divisions(
+    client, admin_user, td_user, td_tournament, db, event_factory, event_category
+):
     """td_tournament supports divisions B/C only (see conftest)."""
     e_c = event_factory(event_category, name="Boomilever")
     e_a = event_factory(event_category, name="Elementary Event")
-    db.add_all([
-        SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=True),
-        SeasonEvent(event_id=e_a.id, year=2026, division="A", is_active=True),
-    ])
+    db.add_all(
+        [
+            SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=True),
+            SeasonEvent(event_id=e_a.id, year=2026, division="A", is_active=True),
+        ]
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -113,7 +124,9 @@ def test_load_defaults_only_pulls_supported_divisions(client, admin_user, td_use
     assert data["skipped"] == []
 
 
-def test_load_defaults_skips_already_loaded(client, admin_user, td_user, td_tournament, db, event_factory, event_category):
+def test_load_defaults_skips_already_loaded(
+    client, admin_user, td_user, td_tournament, db, event_factory, event_category
+):
     e_c = event_factory(event_category, name="Boomilever")
     db.add(SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=True))
     db.commit()
@@ -136,7 +149,9 @@ def test_load_defaults_no_active_season_events_is_noop(client, td_user, td_tourn
     assert response.json() == {"created": [], "skipped": []}
 
 
-def test_load_defaults_ignores_inactive_season_events(client, td_user, td_tournament, db, event_factory, event_category):
+def test_load_defaults_ignores_inactive_season_events(
+    client, td_user, td_tournament, db, event_factory, event_category
+):
     e_c = event_factory(event_category, name="Boomilever")
     db.add(SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=False))
     db.commit()
@@ -149,6 +164,9 @@ def test_load_defaults_ignores_inactive_season_events(client, td_user, td_tourna
 
 def test_load_defaults_requires_manage_events(client, td_user, other_tournament, db):
     from tests.conftest import grant_role
+
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.post(f"/tournaments/{other_tournament.id}/events/load-defaults/").status_code == 403
+    assert (
+        client.post(f"/tournaments/{other_tournament.id}/events/load-defaults/").status_code == 403
+    )

@@ -1,5 +1,6 @@
 """Tests for GET/PUT /tournaments/{tournament_id}/display-config/
 (app/api/routes/tournament/display_config.py)."""
+
 from datetime import UTC, datetime
 
 from app.models.models import (
@@ -17,6 +18,7 @@ from tests.conftest import grant_role, login, primary_track_id, set_display_conf
 # ---------------------------------------------------------------------------
 # GET — manage_members, lenient on read
 # ---------------------------------------------------------------------------
+
 
 def test_get_display_config_defaults_to_empty(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -39,9 +41,14 @@ def test_get_display_config_non_member_gets_404(client, td_user, other_tournamen
 def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament, db):
     """A deleted track (or a surface key from a since-removed UI location)
     leaves a dangling reference behind — reading it back must never 500."""
-    set_display_config(db, td_tournament, td_user, {
-        "unknown_surface": {"hidden": ["track:999", "not_a_real_namespace:x"]},
-    })
+    set_display_config(
+        db,
+        td_tournament,
+        td_user,
+        {
+            "unknown_surface": {"hidden": ["track:999", "not_a_real_namespace:x"]},
+        },
+    )
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
@@ -50,8 +57,12 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
     assert response.json() == {
         "unknown_surface": {
             "hidden": ["track:999", "not_a_real_namespace:x"],
-            "columns": None, "sections": None, "filters": None,
-            "sort": None, "sorts": None, "collapsed": None,
+            "columns": None,
+            "sections": None,
+            "filters": None,
+            "sort": None,
+            "sorts": None,
+            "collapsed": None,
         },
     }
 
@@ -59,6 +70,7 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
 # ---------------------------------------------------------------------------
 # PUT — manage_members, strict on write
 # ---------------------------------------------------------------------------
+
 
 def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -71,8 +83,12 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     saved = {
         surface: {
             **config,
-            "columns": None, "sections": None, "filters": None,
-            "sort": None, "sorts": None, "collapsed": None,
+            "columns": None,
+            "sections": None,
+            "filters": None,
+            "sort": None,
+            "sorts": None,
+            "collapsed": None,
         }
         for surface, config in payload.items()
     }
@@ -110,10 +126,12 @@ def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_table": {
-            "filters": {"role": ["3"], "track": ["7:confirmed"]},
-            "sort": {"field": "last_name", "direction": "desc"},
-        }},
+        json={
+            "members_table": {
+                "filters": {"role": ["3"], "track": ["7:confirmed"]},
+                "sort": {"field": "last_name", "direction": "desc"},
+            }
+        },
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
@@ -195,6 +213,7 @@ def test_put_display_config_rejects_unknown_namespace(client, td_user, td_tourna
 # The assignments board's two surfaces — event rows and the belt card
 # ---------------------------------------------------------------------------
 
+
 def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     payload = {
@@ -213,7 +232,8 @@ def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournamen
     body = response.json()
     assert body["assignments_events:all"]["columns"] == ["division", "time"]
     assert body["assignment_card:all"]["hidden"] == [
-        "card_field:availability", "card_track:event_preferences:7",
+        "card_field:availability",
+        "card_track:event_preferences:7",
     ]
     assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json() == body
 
@@ -235,10 +255,14 @@ def test_put_assignments_events_saves_sort_chain(client, td_user, td_tournament)
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignments_events:all": {"sorts": [
-            {"field": "staffing", "direction": "desc"},
-            {"field": "start", "direction": "asc"},
-        ]}},
+        json={
+            "assignments_events:all": {
+                "sorts": [
+                    {"field": "staffing", "direction": "desc"},
+                    {"field": "start", "direction": "asc"},
+                ]
+            }
+        },
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
@@ -255,10 +279,14 @@ def test_put_assignments_events_rejects_unknown_sort_field(client, td_user, td_t
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignments_events:all": {"sorts": [
-            {"field": "name", "direction": "asc"},
-            {"field": "shoe_size", "direction": "asc"},
-        ]}},
+        json={
+            "assignments_events:all": {
+                "sorts": [
+                    {"field": "name", "direction": "asc"},
+                    {"field": "shoe_size", "direction": "asc"},
+                ]
+            }
+        },
     )
     assert response.status_code == 422
 
@@ -420,8 +448,10 @@ def test_put_display_config_allowed_on_archived_tournament(client, td_user, td_t
 # GET .../catalog/ — every toggleable item, surface-agnostic
 # ---------------------------------------------------------------------------
 
+
 def _make_user(db, email="alice@example.com"):
     from app.models.models import User as UserModel
+
     user = UserModel(first_name="Alice", last_name="Smith", email=email)
     db.add(user)
     db.commit()
@@ -453,8 +483,16 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert body["custom_fields"] == []
     # Fixed columns exist regardless of tournament data; each track adds one.
     assert [c["key"] for c in body["columns"]] == [
-        "email", "phone", "account_age", "joined", "method", "age", "shirt_size", "onboarding",
-        "dietary_restriction", f"track:{main.id}",
+        "email",
+        "phone",
+        "account_age",
+        "joined",
+        "method",
+        "age",
+        "shirt_size",
+        "onboarding",
+        "dietary_restriction",
+        f"track:{main.id}",
     ]
     # Custom Responses is no longer built in — it's seeded as a deletable
     # custom section instead, so it doesn't appear in the catalog.
@@ -462,13 +500,20 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert "custom_responses" not in [s["id"] for s in body["sections"]]
     # Membership offers its static fields plus one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
-        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}",
+        "joined",
+        "join_method",
+        "roles",
+        "age",
+        "onboarding",
+        f"track:{main.id}",
     ]
 
 
 def test_get_display_config_catalog_includes_tracks(client, td_user, td_tournament, db):
     track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
-    archived = TournamentTrack(tournament_id=td_tournament.id, name="Retired Track", is_archived=True)
+    archived = TournamentTrack(
+        tournament_id=td_tournament.id, name="Retired Track", is_archived=True
+    )
     db.add_all([track, archived])
     db.commit()
 
@@ -481,15 +526,31 @@ def test_get_display_config_catalog_includes_tracks(client, td_user, td_tourname
     assert all(item["key"] != f"track:{archived.id}" for item in tracks)
 
 
-def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td_user, td_tournament, db):
+def test_get_display_config_catalog_includes_lunch_categories_deduped(
+    client, td_user, td_tournament, db
+):
     u1 = _make_user(db, "a@example.com")
     u2 = _make_user(db, "b@example.com")
     m1 = _make_membership(db, td_tournament.id, u1.id)
     m2 = _make_membership(db, td_tournament.id, u2.id)
-    db.add_all([
-        TournamentMembershipLunch(membership_id=m1.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap"),
-        TournamentMembershipLunch(membership_id=m2.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="turkey", label="Turkey sandwich"),
-    ])
+    db.add_all(
+        [
+            TournamentMembershipLunch(
+                membership_id=m1.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                category="entree",
+                value="veggie",
+                label="Veggie wrap",
+            ),
+            TournamentMembershipLunch(
+                membership_id=m2.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                category="entree",
+                value="turkey",
+                label="Turkey sandwich",
+            ),
+        ]
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -504,12 +565,24 @@ def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td
 
 def test_get_display_config_catalog_includes_event_preferences(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
-    event = client.post(f"/tournaments/{td_tournament.id}/events/", json={
-        "tournament_id": td_tournament.id, "name": "Boomilever", "division": "C",
-    }).json()
+    event = client.post(
+        f"/tournaments/{td_tournament.id}/events/",
+        json={
+            "tournament_id": td_tournament.id,
+            "name": "Boomilever",
+            "division": "C",
+        },
+    ).json()
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipEventPreference(membership_id=m.id, tournament_event_id=event["id"], track_id=primary_track_id(db, td_tournament.id), rank=1))
+    db.add(
+        TournamentMembershipEventPreference(
+            membership_id=m.id,
+            tournament_event_id=event["id"],
+            track_id=primary_track_id(db, td_tournament.id),
+            rank=1,
+        )
+    )
     db.commit()
 
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
@@ -520,20 +593,35 @@ def test_get_display_config_catalog_includes_event_preferences(client, td_user, 
     ]
 
 
-def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(client, td_user, td_tournament, db):
+def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(
+    client, td_user, td_tournament, db
+):
     form = Form(
-        owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
-        name="Volunteer interest", title="Volunteer interest", status="published", created_by=td_user.id,
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        chapter_id=None,
+        name="Volunteer interest",
+        title="Volunteer interest",
+        status="published",
+        created_by=td_user.id,
     )
     db.add(form)
     db.flush()
     custom_field = FormField(
-        form_id=form.id, order=1, label="Favorite color", question_type="single_select_dropdown",
-        field_key="favorite_color", config={"required": False, "options": []},
+        form_id=form.id,
+        order=1,
+        label="Favorite color",
+        question_type="single_select_dropdown",
+        field_key="favorite_color",
+        config={"required": False, "options": []},
     )
     reserved_field = FormField(
-        form_id=form.id, order=2, label="Track status", question_type="single_select_radio",
-        field_key="track_status_writer", config={"required": False, "options": []},
+        form_id=form.id,
+        order=2,
+        label="Track status",
+        question_type="single_select_radio",
+        field_key="track_status_writer",
+        config={"required": False, "options": []},
     )
     db.add_all([custom_field, reserved_field])
     db.commit()
@@ -550,27 +638,40 @@ def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(cli
 def test_get_display_config_catalog_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/display-config/catalog/").status_code == 403
+    assert (
+        client.get(f"/tournaments/{other_tournament.id}/display-config/catalog/").status_code == 403
+    )
 
 
 def test_get_display_config_catalog_includes_availability_days(client, td_user, td_tournament, db):
     """One item per day the tournament runs shifts on, deduped across shifts."""
     from app.models.models import TournamentShift
 
-    db.add_all([
-        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
-            start=datetime(2026, 3, 1, 15, 0, tzinfo=UTC),
-            end=datetime(2026, 3, 1, 19, 0, tzinfo=UTC),
-        ),
-        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon",
-            start=datetime(2026, 3, 1, 20, 0, tzinfo=UTC),
-            end=datetime(2026, 3, 1, 23, 0, tzinfo=UTC),
-        ),
-        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Day two",
-            start=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
-            end=datetime(2026, 3, 2, 19, 0, tzinfo=UTC),
-        ),
-    ])
+    db.add_all(
+        [
+            TournamentShift(
+                tournament_id=td_tournament.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                label="Morning",
+                start=datetime(2026, 3, 1, 15, 0, tzinfo=UTC),
+                end=datetime(2026, 3, 1, 19, 0, tzinfo=UTC),
+            ),
+            TournamentShift(
+                tournament_id=td_tournament.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                label="Afternoon",
+                start=datetime(2026, 3, 1, 20, 0, tzinfo=UTC),
+                end=datetime(2026, 3, 1, 23, 0, tzinfo=UTC),
+            ),
+            TournamentShift(
+                tournament_id=td_tournament.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                label="Day two",
+                start=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
+                end=datetime(2026, 3, 2, 19, 0, tzinfo=UTC),
+            ),
+        ]
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -588,14 +689,20 @@ def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournamen
     one reads as "pending" rather than being missing."""
     answered = TournamentTrack(tournament_id=td_tournament.id, name="Answered Track")
     unanswered = TournamentTrack(tournament_id=td_tournament.id, name="Unanswered Track")
-    retired = TournamentTrack(tournament_id=td_tournament.id, name="Retired Track", is_archived=True)
+    retired = TournamentTrack(
+        tournament_id=td_tournament.id, name="Retired Track", is_archived=True
+    )
     db.add_all([answered, unanswered, retired])
     db.flush()
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipTrackStatus(
-        membership_id=m.id, track_id=answered.id, status="confirmed",
-    ))
+    db.add(
+        TournamentMembershipTrackStatus(
+            membership_id=m.id,
+            track_id=answered.id,
+            status="confirmed",
+        )
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -603,7 +710,8 @@ def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournamen
     assert response.status_code == 200
     by_name = {t["name"]: t["status"] for t in response.json()["track_statuses"]}
     assert by_name == {
-        "Answered Track": "confirmed", "Unanswered Track": "pending",
+        "Answered Track": "confirmed",
+        "Unanswered Track": "pending",
         "Main": "pending",  # the fixture's primary track, also unanswered
     }
     # An archived track nobody answered isn't pending anything.
@@ -622,14 +730,15 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    assert client.put(
-        f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"hidden": [f"track:{hidden_track.id}"]}},
-    ).status_code == 200
-
-    response = client.get(
-        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
+    assert (
+        client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={"members_panel": {"hidden": [f"track:{hidden_track.id}"]}},
+        ).status_code
+        == 200
     )
+
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel")
     assert response.status_code == 200
     assert [t["name"] for t in response.json()["track_statuses"]] == ["Main", "Shown Track"]
 
@@ -659,10 +768,13 @@ def test_panel_contact_survives_hiding_every_section(client, td_user, td_tournam
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    assert client.put(
-        f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"hidden": [], "sections": []}},
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={"members_panel": {"hidden": [], "sections": []}},
+        ).status_code
+        == 200
+    )
 
     body = client.get(
         f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
@@ -676,16 +788,29 @@ def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td
     section was actually filtered away."""
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipLunch(
-        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
-    ))
+    db.add(
+        TournamentMembershipLunch(
+            membership_id=m.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            category="entree",
+            value="veggie",
+            label="Veggie wrap",
+        )
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    assert client.put(
-        f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"hidden": [f"lunch:{primary_track_id(db, td_tournament.id)}:entree"]}},
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={
+                "members_panel": {
+                    "hidden": [f"lunch:{primary_track_id(db, td_tournament.id)}:entree"]
+                }
+            },
+        ).status_code
+        == 200
+    )
 
     body = client.get(
         f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
@@ -700,9 +825,15 @@ def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td
 def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, td_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipLunch(
-        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
-    ))
+    db.add(
+        TournamentMembershipLunch(
+            membership_id=m.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            category="entree",
+            value="veggie",
+            label="Veggie wrap",
+        )
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -717,15 +848,30 @@ def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, t
 # Columns and sections — write validation
 # ---------------------------------------------------------------------------
 
+
 def test_put_accepts_columns_and_sections(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     payload = {
         "members_table": {"hidden": [], "columns": ["email", "joined", "track:1"]},
-        "members_panel": {"hidden": [], "sections": [
-            {"id": "membership", "hidden": False, "hidden_fields": ["age"], "title": None, "fields": []},
-            {"id": "custom:abc123", "hidden": False, "hidden_fields": [],
-             "title": "Dietary Notes", "fields": ["form_field:xyz"]},
-        ]},
+        "members_panel": {
+            "hidden": [],
+            "sections": [
+                {
+                    "id": "membership",
+                    "hidden": False,
+                    "hidden_fields": ["age"],
+                    "title": None,
+                    "fields": [],
+                },
+                {
+                    "id": "custom:abc123",
+                    "hidden": False,
+                    "hidden_fields": [],
+                    "title": "Dietary Notes",
+                    "fields": ["form_field:xyz"],
+                },
+            ],
+        },
     }
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200, response.json()
@@ -770,9 +916,13 @@ def test_put_rejects_field_not_in_its_section(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"sections": [
-            {"id": "membership", "hidden_fields": ["shirt_size"]},
-        ]}},
+        json={
+            "members_panel": {
+                "sections": [
+                    {"id": "membership", "hidden_fields": ["shirt_size"]},
+                ]
+            }
+        },
     )
     assert response.status_code == 422
     assert "shirt_size" in response.json()["detail"]
@@ -784,9 +934,13 @@ def test_put_rejects_fields_on_a_builtin_section(client, td_user, td_tournament)
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"sections": [
-            {"id": "lunch", "fields": ["form_field:xyz"]},
-        ]}},
+        json={
+            "members_panel": {
+                "sections": [
+                    {"id": "lunch", "fields": ["form_field:xyz"]},
+                ]
+            }
+        },
     )
     assert response.status_code == 422
     assert "built-in" in response.json()["detail"]
@@ -801,22 +955,38 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
     db.flush()
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipLunch(
-        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
-    ))
+    db.add(
+        TournamentMembershipLunch(
+            membership_id=m.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            category="entree",
+            value="veggie",
+            label="Veggie wrap",
+        )
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    sections = {s["id"]: s for s in client.get(
-        f"/tournaments/{td_tournament.id}/display-config/catalog/"
-    ).json()["sections"]}
+    sections = {
+        s["id"]: s
+        for s in client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()[
+            "sections"
+        ]
+    }
 
     main = next(t for t in td_tournament.tracks if t.name == "Main")
     assert [f["key"] for f in sections["membership"]["fields"]] == [
-        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}", f"track:{track.id}",
+        "joined",
+        "join_method",
+        "roles",
+        "age",
+        "onboarding",
+        f"track:{main.id}",
+        f"track:{track.id}",
     ]
     assert [f["key"] for f in sections["lunch"]["fields"]] == [
-        "dietary_restriction", f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
+        "dietary_restriction",
+        f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
     ]
 
 
@@ -829,15 +999,18 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
 # the events keys are accepted.
 # ---------------------------------------------------------------------------
 
+
 def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"events_table": {
-            "columns": ["division", "category", "tracks", "shifts"],
-            "filters": {"division": ["A"], "category": ["Life Science"]},
-            "sort": {"field": "day", "direction": "asc"},
-        }},
+        json={
+            "events_table": {
+                "columns": ["division", "category", "tracks", "shifts"],
+                "filters": {"division": ["A"], "category": ["Life Science"]},
+                "sort": {"field": "day", "direction": "asc"},
+            }
+        },
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["events_table"]
@@ -850,8 +1023,11 @@ def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournam
     """The table and the board filter with one predicate, so they share keys."""
     login(client, "td@test.com", "tdpass")
     filters = {
-        "track": ["3"], "building": ["5", "__unset__"], "shifts": ["none"],
-        "shift": ["9"], "staffing": ["short", "empty"],
+        "track": ["3"],
+        "building": ["5", "__unset__"],
+        "shifts": ["none"],
+        "shift": ["9"],
+        "staffing": ["short", "empty"],
     }
     for surface in ("events_table", "assignments_events:all"):
         response = client.put(
@@ -900,9 +1076,19 @@ def test_put_accepts_every_per_track_column_family(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"events_table": {"hidden": [], "columns": [
-            "time:7", "location:7", "staffing:7", "time", "location", "staffing",
-        ]}},
+        json={
+            "events_table": {
+                "hidden": [],
+                "columns": [
+                    "time:7",
+                    "location:7",
+                    "staffing:7",
+                    "time",
+                    "location",
+                    "staffing",
+                ],
+            }
+        },
     )
     assert response.status_code == 200
 
@@ -942,8 +1128,14 @@ def test_events_table_and_members_table_are_saved_independently(client, td_user,
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={
-            "members_table": {"columns": ["email"], "sort": {"field": "last_name", "direction": "asc"}},
-            "events_table": {"columns": ["division"], "sort": {"field": "name", "direction": "asc"}},
+            "members_table": {
+                "columns": ["email"],
+                "sort": {"field": "last_name", "direction": "asc"},
+            },
+            "events_table": {
+                "columns": ["division"],
+                "sort": {"field": "name", "direction": "asc"},
+            },
         },
     )
     assert response.status_code == 200
@@ -953,7 +1145,7 @@ def test_events_table_and_members_table_are_saved_independently(client, td_user,
 
 
 def test_put_rejects_members_column_on_events_table(client, td_user, td_tournament):
-    """"email" is a real column — just not one an event has."""
+    """ "email" is a real column — just not one an event has."""
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
@@ -1019,7 +1211,10 @@ def test_catalog_serves_event_columns(client, td_user, td_tournament):
     live = sorted((t for t in td_tournament.tracks if not t.is_archived), key=lambda t: t.name)
     primary = [t for t in live if t.is_primary]
     assert [c["key"] for c in body["event_columns"]] == [
-        "division", "type", "category", "tracks",
+        "division",
+        "type",
+        "category",
+        "tracks",
         "time",
         *[f"shifts:{t.id}" for t in primary],
         *[f"location:{t.id}" for t in primary],
@@ -1030,14 +1225,21 @@ def test_catalog_serves_event_columns(client, td_user, td_tournament):
 
 
 def test_manage_events_alone_can_read_and_write_display_config(
-    client, td_tournament, other_user, db,
+    client,
+    td_tournament,
+    other_user,
+    db,
 ):
     """The events table is configured by people who may hold no roster
     permission at all, so either permission opens this route."""
-    db.add(TournamentRole(
-        tournament_id=td_tournament.id, label="Schedule Only",
-        permissions=["manage_events"], rank=25,
-    ))
+    db.add(
+        TournamentRole(
+            tournament_id=td_tournament.id,
+            label="Schedule Only",
+            permissions=["manage_events"],
+            rank=25,
+        )
+    )
     db.commit()
     grant_role(db, td_tournament, other_user, "Schedule Only")
     login(client, "other@test.com", "otherpass")
@@ -1055,15 +1257,21 @@ def test_manage_events_alone_can_read_and_write_display_config(
 # Shifts table
 # ---------------------------------------------------------------------------
 
+
 def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"shifts_table": {
-            "hidden": [],
-            "filters": {"track": ["3"], "events": ["none"]},
-            "sorts": [{"field": "start", "direction": "asc"}, {"field": "label", "direction": "desc"}],
-        }},
+        json={
+            "shifts_table": {
+                "hidden": [],
+                "filters": {"track": ["3"], "events": ["none"]},
+                "sorts": [
+                    {"field": "start", "direction": "asc"},
+                    {"field": "label", "direction": "desc"},
+                ],
+            }
+        },
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["shifts_table"]
@@ -1080,39 +1288,64 @@ def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_u
         {"hidden": [], "filters": {"category": ["x"]}},
         {"hidden": [], "sorts": [{"field": "staffing", "direction": "asc"}]},
     ):
-        response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json={"shifts_table": body})
+        response = client.put(
+            f"/tournaments/{td_tournament.id}/display-config/", json={"shifts_table": body}
+        )
         assert response.status_code == 422, body
 
 
-
-def test_catalog_offers_lunch_column_from_a_published_question_nobody_answered(client, td_user, td_tournament, db):
+def test_catalog_offers_lunch_column_from_a_published_question_nobody_answered(
+    client, td_user, td_tournament, db
+):
     track_id = primary_track_id(db, td_tournament.id)
     published = Form(
-        owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
-        name="Lunch", title="Lunch", status="published", created_by=td_user.id,
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        chapter_id=None,
+        name="Lunch",
+        title="Lunch",
+        status="published",
+        created_by=td_user.id,
     )
     draft = Form(
-        owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
-        name="Lunch draft", title="Lunch draft", status="draft", created_by=td_user.id,
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        chapter_id=None,
+        name="Lunch draft",
+        title="Lunch draft",
+        status="draft",
+        created_by=td_user.id,
     )
     db.add_all([published, draft])
     db.flush()
-    db.add_all([
-        FormField(
-            form_id=published.id, order=1, label="Entree", question_type="single_select_dropdown",
-            field_key=f"lunch_{track_id}_entree", config={"required": False, "options": []},
-        ),
-        # A draft isn't asking anyone yet, so it offers no column.
-        FormField(
-            form_id=draft.id, order=1, label="Dessert", question_type="single_select_dropdown",
-            field_key=f"lunch_{track_id}_dessert", config={"required": False, "options": []},
-        ),
-    ])
+    db.add_all(
+        [
+            FormField(
+                form_id=published.id,
+                order=1,
+                label="Entree",
+                question_type="single_select_dropdown",
+                field_key=f"lunch_{track_id}_entree",
+                config={"required": False, "options": []},
+            ),
+            # A draft isn't asking anyone yet, so it offers no column.
+            FormField(
+                form_id=draft.id,
+                order=1,
+                label="Dessert",
+                question_type="single_select_dropdown",
+                field_key=f"lunch_{track_id}_dessert",
+                config={"required": False, "options": []},
+            ),
+        ]
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
     body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
-    assert [c["key"] for c in body["columns"] if c["key"].startswith("lunch:")] == [f"lunch:{track_id}:entree"]
+    assert [c["key"] for c in body["columns"] if c["key"].startswith("lunch:")] == [
+        f"lunch:{track_id}:entree"
+    ]
 
 
 def test_put_accepts_event_preference_column_on_members_table(client, td_user, td_tournament):
@@ -1138,7 +1371,13 @@ def test_members_table_accepts_per_track_sorts(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     sorts = [
         {"field": field, "direction": "asc"}
-        for field in ("onboarding", "track:3", "availability_track:3", "event_pref:3:47", "lunch:3:protein")
+        for field in (
+            "onboarding",
+            "track:3",
+            "availability_track:3",
+            "event_pref:3:47",
+            "lunch:3:protein",
+        )
     ]
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
@@ -1167,27 +1406,43 @@ def test_members_table_rejects_malformed_per_track_sorts(client, td_user, td_tou
 def test_saved_sort_loads_its_data_onto_the_roster(client, td_user, td_tournament, db):
     """Sorting is client-side, so a sort by onboarding needs the onboarding
     group on the rows even with no Onboarding column."""
-    set_display_config(db, td_tournament, td_user, {
-        "members_table": {"hidden": [], "columns": ["email"], "sorts": [{"field": "onboarding", "direction": "asc"}]},
-    })
+    set_display_config(
+        db,
+        td_tournament,
+        td_user,
+        {
+            "members_table": {
+                "hidden": [],
+                "columns": ["email"],
+                "sorts": [{"field": "onboarding", "direction": "asc"}],
+            },
+        },
+    )
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
     assert rows and all("onboarding" in row for row in rows)
 
 
-def test_assignment_card_accepts_new_fields_custom_hides_and_member_sorts(client, td_user, td_tournament):
+def test_assignment_card_accepts_new_fields_custom_hides_and_member_sorts(
+    client, td_user, td_tournament
+):
     login(client, "td@test.com", "tdpass")
     body = {
         "hidden": [
-            "card_field:onboarding", "card_field:dietary_restriction", "card_field:custom_fields",
-            "card_track:lunch:3", "card_custom:abc123",
+            "card_field:onboarding",
+            "card_field:dietary_restriction",
+            "card_field:custom_fields",
+            "card_track:lunch:3",
+            "card_custom:abc123",
         ],
         "sorts": [
             {"field": "first_name", "direction": "asc"},
             {"field": "event_pref:3:47", "direction": "asc"},
         ],
     }
-    response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json={"assignment_card:all": body})
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/", json={"assignment_card:all": body}
+    )
     assert response.status_code == 200, response.json()
 
 
@@ -1207,7 +1462,12 @@ def test_page_header_saves_collapsed(client, td_user, td_tournament):
         json={"page_header": {"hidden": [], "collapsed": True}},
     )
     assert response.status_code == 200, response.json()
-    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["page_header"]["collapsed"] is True
+    assert (
+        client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["page_header"][
+            "collapsed"
+        ]
+        is True
+    )
 
 
 def test_collapsed_is_page_header_only(client, td_user, td_tournament):

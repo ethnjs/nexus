@@ -5,11 +5,12 @@ Revises: 9777a35487d8, 5b5c2f46ad06
 Create Date: 2026-09-29 14:13:51.588542
 
 """
+
 from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
-revision: str = '5aac03cebf88'
-down_revision: str | None = ('9777a35487d8', '5b5c2f46ad06')
+revision: str = "5aac03cebf88"
+down_revision: str | None = ("9777a35487d8", "5b5c2f46ad06")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

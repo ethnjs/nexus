@@ -9,6 +9,7 @@ track status, or their existing commitments is legal and stays legal — the
 board shows it as a warning. TDs override reality constantly, and a hard block
 there makes the tool unusable (issue #70).
 """
+
 from __future__ import annotations
 
 from fastapi import HTTPException, status
@@ -53,16 +54,17 @@ def authorize_role_grant(
     a grant, and making it re-run the rank check would stop a coordinator
     moving their own peers between events.
     """
-    already_held = any(
-        assignment.role_id == role.id for assignment in membership.track_assignments
-    )
+    already_held = any(assignment.role_id == role.id for assignment in membership.track_assignments)
     if already_held:
         return
     validate_role_action(actor, tournament, membership, role, db)
 
 
 def validate_shift_on_event(
-    db: Session, event: TournamentEvent, shift_id: int | None, tournament_id: int,
+    db: Session,
+    event: TournamentEvent,
+    shift_id: int | None,
+    tournament_id: int,
 ) -> TournamentShift | None:
     """A shift must be one this event actually runs in.
 
@@ -132,7 +134,9 @@ def resolve_assignment_track(
 
 
 def detach_shifts_from_assignments(
-    db: Session, event_id: int, shift_ids: set[int],
+    db: Session,
+    event_id: int,
+    shift_ids: set[int],
 ) -> int:
     """Null the shift on this event's assignments that pointed at one of
     `shift_ids`, returning how many were touched.

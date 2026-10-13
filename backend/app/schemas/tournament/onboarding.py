@@ -29,6 +29,7 @@ class OnboardingFormReorder(BaseModel):
     client-side (drag-and-drop preview); the backend just validates the set
     matches the current onboarding forms and applies them atomically.
     """
+
     forms: list[OnboardingFormReorderItem]
 
 

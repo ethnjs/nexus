@@ -1,4 +1,5 @@
 """Tests for /tournaments/{tournament_id}/buildings/ (TournamentBuilding)."""
+
 from app.models.models import TournamentEventTrack, TournamentTrack
 from tests.conftest import grant_role, login, primary_track_id
 
@@ -15,13 +16,15 @@ def _make_building(client, tournament_id, **overrides):
 
 def _cosmetic_track(client, tournament_id, name="Test Writing"):
     return client.post(
-        f"/tournaments/{tournament_id}/tracks/", json={"name": name, "is_primary": False},
+        f"/tournaments/{tournament_id}/tracks/",
+        json={"name": name, "is_primary": False},
     ).json()
 
 
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
+
 
 def test_create_building(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -48,7 +51,11 @@ def test_building_names_are_unique_per_tournament(client, td_user, td_tournament
 
 
 def test_same_building_name_allowed_in_another_tournament(
-    client, db, td_user, td_tournament, other_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
+    other_tournament,
 ):
     """Scoped to the tournament, not global — two regionals both using a
     "Science Hall" is the norm, not a collision."""
@@ -70,7 +77,8 @@ def test_rename_building(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     building = _make_building(client, td_tournament.id).json()
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"name": "Rowland"},
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"name": "Rowland"},
     )
     assert response.status_code == 200
     assert response.json()["name"] == "Rowland"
@@ -81,7 +89,8 @@ def test_rename_onto_an_existing_name_conflicts(client, td_user, td_tournament):
     _make_building(client, td_tournament.id, name="Aldrich")
     building = _make_building(client, td_tournament.id, name="Steinhaus").json()
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"name": "Aldrich"},
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"name": "Aldrich"},
     )
     assert response.status_code == 409
 
@@ -98,6 +107,7 @@ def test_delete_building(client, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 # Track tagging
 # ---------------------------------------------------------------------------
+
 
 def test_track_ids_are_whole_set(client, db, td_user, td_tournament):
     """A PATCH replaces the tags rather than adding to them — the same
@@ -139,7 +149,8 @@ def test_omitting_track_ids_leaves_them_alone(client, db, td_user, td_tournament
     track_id = primary_track_id(db, td_tournament.id)
     building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"name": "Renamed"},
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"name": "Renamed"},
     )
     assert response.json()["track_ids"] == [track_id]
 
@@ -159,7 +170,11 @@ def test_unknown_track_id_rejected(client, td_user, td_tournament):
 
 
 def test_track_from_another_tournament_rejected(
-    client, db, td_user, td_tournament, other_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
+    other_tournament,
 ):
     """The track lookup is tournament-scoped, so another tournament's track is
     indistinguishable from one that does not exist."""
@@ -185,6 +200,7 @@ def test_pending_delete_track_cannot_be_tagged(client, db, td_user, td_tournamen
 # ---------------------------------------------------------------------------
 # Validation and permissions
 # ---------------------------------------------------------------------------
+
 
 def test_blank_name_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -228,7 +244,10 @@ def test_archived_tournament_blocks_writes(client, db, td_user, td_tournament):
     db.commit()
     base = f"/tournaments/{td_tournament.id}/buildings/"
     assert client.get(base).status_code == 200
-    assert client.post(base, json={"name": "Later", "track_ids": building["track_ids"]}).status_code == 403
+    assert (
+        client.post(base, json={"name": "Later", "track_ids": building["track_ids"]}).status_code
+        == 403
+    )
     assert client.patch(f"{base}{building['id']}/", json={"name": "Nope"}).status_code == 403
     assert client.delete(f"{base}{building['id']}/").status_code == 403
 
@@ -241,11 +260,17 @@ def test_archived_tournament_blocks_writes(client, db, td_user, td_tournament):
 # constraint and the routes that have to work around it.
 # ---------------------------------------------------------------------------
 
+
 def _make_event(client, tournament_id, track_ids, name="Anatomy"):
-    response = client.post(f"/tournaments/{tournament_id}/events/", json={
-        "tournament_id": tournament_id, "name": name, "division": "C",
-        "track_details": [{"track_id": t} for t in track_ids],
-    })
+    response = client.post(
+        f"/tournaments/{tournament_id}/events/",
+        json={
+            "tournament_id": tournament_id,
+            "name": name,
+            "division": "C",
+            "track_details": [{"track_id": t} for t in track_ids],
+        },
+    )
     # Surface the body on a non-201 rather than letting the caller trip over a
     # KeyError three lines later.
     assert response.status_code == 201, response.text
@@ -261,14 +286,21 @@ def _place(db, event_id, track_id, building_id, floor="2", rooms=("210",)):
 
 
 def _link(db, event_id, track_id):
-    return db.query(TournamentEventTrack).filter(
-        TournamentEventTrack.tournament_event_id == event_id,
-        TournamentEventTrack.track_id == track_id,
-    ).one()
+    return (
+        db.query(TournamentEventTrack)
+        .filter(
+            TournamentEventTrack.tournament_event_id == event_id,
+            TournamentEventTrack.track_id == track_id,
+        )
+        .one()
+    )
 
 
 def test_delete_building_clears_placements_and_reports_the_cost(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     """Deleting a building plainly is a request to unplace what is in it, so
     it clears rather than refuses — but says how much it cleared."""
@@ -301,7 +333,8 @@ def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tourn
 
     # Keep only the other track, dropping the one the event is placed on.
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"track_ids": [cosmetic]},
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"track_ids": [cosmetic]},
     )
     assert response.status_code == 409
     assert "move those events first" in response.json()["detail"]
@@ -313,7 +346,9 @@ def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament
     track_id = primary_track_id(db, td_tournament.id)
     cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
     building = _make_building(
-        client, td_tournament.id, track_ids=[track_id, cosmetic],
+        client,
+        td_tournament.id,
+        track_ids=[track_id, cosmetic],
     ).json()
     event = _make_event(client, td_tournament.id, [track_id])
     _place(db, event["id"], track_id, building["id"])
@@ -327,7 +362,10 @@ def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament
 
 
 def test_placing_an_event_in_a_building_not_on_its_track_is_rejected_by_the_db(
-    client, db, td_user, td_tournament,
+    client,
+    db,
+    td_user,
+    td_tournament,
 ):
     """The composite FK, not a route check: this is what makes a Day 1 event
     in a Day 2-only building unrepresentable."""

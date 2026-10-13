@@ -35,12 +35,12 @@ if TYPE_CHECKING:
 # Treat these as the canonical source of truth — import from here everywhere.
 # ---------------------------------------------------------------------------
 
-MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all below
-MANAGE_ROLES       = "manage_roles"        # role *definitions* only — create/edit/delete a role, reorder rank
-MANAGE_MEMBERS     = "manage_members"      # membership data — roster + assign member roles
-MANAGE_EVENTS      = "manage_events"       # read + write events page
-MANAGE_INVITES     = "manage_invites"      # join codes + staff invites
-MANAGE_FORMS       = "manage_forms"        # forms creation and editing
+MANAGE_TOURNAMENT = "manage_tournament"  # full access — superset of all below
+MANAGE_ROLES = "manage_roles"  # role *definitions* only — create/edit/delete a role, reorder rank
+MANAGE_MEMBERS = "manage_members"  # membership data — roster + assign member roles
+MANAGE_EVENTS = "manage_events"  # read + write events page
+MANAGE_INVITES = "manage_invites"  # join codes + staff invites
+MANAGE_FORMS = "manage_forms"  # forms creation and editing
 
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
@@ -49,9 +49,8 @@ ALL_PERMISSIONS: list[str] = [
     MANAGE_MEMBERS,
     MANAGE_EVENTS,
     MANAGE_INVITES,
-    MANAGE_FORMS
+    MANAGE_FORMS,
 ]
-
 
 
 # ---------------------------------------------------------------------------
@@ -65,77 +64,84 @@ ALL_PERMISSIONS: list[str] = [
 #
 # Rank tiers (lower = higher authority; sparse gaps of 10 to leave room for
 # drag-to-reorder without a full rebalance)
-# 
+#
 # Owner is NOT in this list — it's never a role, it's Tournament.owner_id.
 # ---------------------------------------------------------------------------
 
 DEFAULT_ROLES: list[dict] = [
     {
-        "label":       "Tournament Director",
-        "rank":        10,
-        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
-        "torus_role":    "tournament_director",
+        "label": "Tournament Director",
+        "rank": 10,
+        "permissions": [
+            MANAGE_TOURNAMENT,
+            MANAGE_ROLES,
+            MANAGE_MEMBERS,
+            MANAGE_EVENTS,
+            MANAGE_INVITES,
+            MANAGE_FORMS,
+        ],
+        "torus_role": "tournament_director",
         "duosmium_role": "tournament_director",
     },
     {
-        "label":       "Volunteer Coordinator",
-        "rank":        20,
+        "label": "Volunteer Coordinator",
+        "rank": 20,
         "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
     },
     {
-        "label":       "Test Coordinator",
-        "rank":        20,
+        "label": "Test Coordinator",
+        "rank": 20,
         "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES, MANAGE_FORMS],
-        "torus_role":    "test_coordinator",
+        "torus_role": "test_coordinator",
     },
     {
-        "label":       "Runner",
-        "rank":        30,
+        "label": "Runner",
+        "rank": 30,
         "permissions": [],
     },
     {
-        "label":       "Scoremaster",
-        "rank":        30,
+        "label": "Scoremaster",
+        "rank": 30,
         "permissions": [],
         "duosmium_role": "scoremaster",
     },
     {
-        "label":       "Lead Event Supervisor",
-        "rank":        40,
+        "label": "Lead Event Supervisor",
+        "rank": 40,
         "permissions": [],
         "duosmium_role": "event_supervisor",
     },
     {
-        "label":       "Volunteer",
-        "rank":        50,
+        "label": "Volunteer",
+        "rank": 50,
         "permissions": [],
     },
     {
-        "label":       "Scoring",
-        "rank":        50,
+        "label": "Scoring",
+        "rank": 50,
         "permissions": [],
     },
     {
-        "label":       "Arbitrations",
-        "rank":        50,
+        "label": "Arbitrations",
+        "rank": 50,
         "permissions": [],
     },
     {
-        "label":       "Awards",
-        "rank":        50,
+        "label": "Awards",
+        "rank": 50,
         "permissions": [],
     },
     {
-        "label":       "Test Writer",
-        "rank":        50,
+        "label": "Test Writer",
+        "rank": 50,
         "permissions": [],
-        "torus_role":    "writer",
+        "torus_role": "writer",
     },
     {
-        "label":       "Test Reviewer",
-        "rank":        50,
+        "label": "Test Reviewer",
+        "rank": 50,
         "permissions": [],
-        "torus_role":    "reviewer",
+        "torus_role": "reviewer",
     },
 ]
 
@@ -143,6 +149,7 @@ DEFAULT_ROLES: list[dict] = [
 # ---------------------------------------------------------------------------
 # Runtime permission helpers
 # ---------------------------------------------------------------------------
+
 
 def get_user_permissions(
     user: User,
@@ -245,16 +252,13 @@ def get_highest_rank(
     if not role_ids:
         return None
 
-    return (
-        db.query(func.min(TournamentRole.rank))
-        .filter(TournamentRole.id.in_(role_ids))
-        .scalar()
-    )
+    return db.query(func.min(TournamentRole.rank)).filter(TournamentRole.id.in_(role_ids)).scalar()
 
 
 # ---------------------------------------------------------------------------
 # FastAPI dependency factories
 # ---------------------------------------------------------------------------
+
 
 def require_membership(tournament_id_param: str = "tournament_id"):
     """
@@ -269,6 +273,7 @@ def require_membership(tournament_id_param: str = "tournament_id"):
             _: None = Depends(require_membership()),
         ):
     """
+
     def _dependency(
         tournament_id: int,
         current_user: User = Depends(get_current_user),
@@ -281,6 +286,7 @@ def require_membership(tournament_id_param: str = "tournament_id"):
                 detail="Tournament not found",
             )
         return current_user
+
     return _dependency
 
 
@@ -300,6 +306,7 @@ def require_permission(
             _: None = Depends(require_permission(MANAGE_EVENTS)),
         ):
     """
+
     def _dependency(
         tournament_id: int,
         current_user: User = Depends(get_current_user),
@@ -317,6 +324,7 @@ def require_permission(
                 detail="Insufficient permissions",
             )
         return current_user
+
     return _dependency
 
 
@@ -333,6 +341,7 @@ def require_catalog_read(*permissions: str, tournament_id_param: str = "tourname
     the handler can't declare a static response_model where the shapes
     differ (events); see the note there.
     """
+
     def _dependency(
         tournament_id: int,
         public: bool = Query(False),
@@ -346,12 +355,15 @@ def require_catalog_read(*permissions: str, tournament_id_param: str = "tourname
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Tournament not found",
             )
-        if not public and not any(has_permission(current_user, tournament_id, p, db) for p in permissions):
+        if not public and not any(
+            has_permission(current_user, tournament_id, p, db) for p in permissions
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
         return current_user
+
     return _dependency
 
 
@@ -362,6 +374,7 @@ def require_any_permission(*permissions: str):
     the role catalog is read both to assign roles (manage_members) and to
     define them (manage_roles), and neither implies the other.
     """
+
     def _dependency(
         tournament_id: int,
         current_user: User = Depends(get_current_user),
@@ -378,4 +391,5 @@ def require_any_permission(*permissions: str):
                 detail="Insufficient permissions",
             )
         return current_user
+
     return _dependency

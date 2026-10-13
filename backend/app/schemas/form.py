@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
@@ -15,6 +15,7 @@ from app.schemas.person import PersonNameRef, PersonRefResponse
 # resolving to a real TournamentShift, reserved field_key pairing) stay in
 # app/core/form/validation.py since they need a Session, not just the dict.
 # ---------------------------------------------------------------------------
+
 
 def _unique_option_fields(options: list) -> list:
     """option_id must be unique within a field's option list — it's the
@@ -47,6 +48,7 @@ VALID_TRACK_STATUSES = {"interested", "confirmed", "declined"}
 
 class TrackStatusAssignment(BaseModel):
     """One track status attached to a selectable option."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: int = Field(gt=0)
@@ -68,6 +70,7 @@ class AvailabilityTrackStatusValue(BaseModel):
     would let an option contradict its own field key, and every entry but one
     would be dead weight. (A track_status_{suffix} field, which names no track
     at all, keeps the list shape; that's what it exists for.)"""
+
     model_config = ConfigDict(extra="forbid")
 
     shift_ids: list[int] = Field(min_length=1)
@@ -89,6 +92,7 @@ class PlainOption(BaseModel):
     entities (TournamentShifts, TournamentEvents, ...) this option groups
     together; the client is responsible for interpreting which shape to
     expect based on the field's field_key."""
+
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
@@ -99,6 +103,7 @@ class PlainOption(BaseModel):
 class BranchingOption(BaseModel):
     """An option that may carry branching — single_select_radio/dropdown only.
     See PlainOption for value's dual str/list[int] shape."""
+
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
@@ -106,7 +111,6 @@ class BranchingOption(BaseModel):
     is_archived: bool = False
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
-
 
     @model_validator(mode="after")
     def _mutually_exclusive(self):
@@ -202,6 +206,7 @@ QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
 # Form Field Schemas
 # ---------------------------------------------------------------------------
 
+
 class FormFieldRead(BaseModel):
     id: str
     form_id: str
@@ -223,6 +228,7 @@ class BulkFieldEntry(BaseModel):
     means "create"; `id` present must match a currently-live field on this
     form. `field_key` is required on create; on an update, omitting it leaves
     the existing key alone while sending one renames the field."""
+
     id: str | None = None
     field_key: str | None = None
     label: str
@@ -242,6 +248,7 @@ class FieldChangeRead(BaseModel):
     """One question a proposed save would ask previous responders to review.
     Returned by the classify dry-run so the builder's confirmation can show
     the server's own verdict instead of re-deriving the rules client-side."""
+
     field_id: str
     label: str
     reasons: list[str]
@@ -261,8 +268,10 @@ class BulkFieldsUpdate(BaseModel):
 # Tournament form prerequisites
 # ---------------------------------------------------------------------------
 
+
 class PrerequisiteIdMatch(BaseModel):
     """A required set of IDs and whether the member needs any or all of it."""
+
     model_config = ConfigDict(extra="forbid")
 
     ids: list[int]
@@ -296,6 +305,7 @@ class AvailabilityPrerequisite(BaseModel):
 
 class TournamentFormPrerequisites(BaseModel):
     """Optional conditions a member must all satisfy to access a standard form."""
+
     model_config = ConfigDict(extra="forbid")
 
     onboarding_complete: bool = False
@@ -306,6 +316,7 @@ class TournamentFormPrerequisites(BaseModel):
 # ---------------------------------------------------------------------------
 # Form Schemas
 # ---------------------------------------------------------------------------
+
 
 class FormRead(BaseModel):
     id: str
@@ -359,6 +370,7 @@ class FormListRead(BaseModel):
 
 class MemberFormRead(BaseModel):
     """A member's completed or currently available tournament form."""
+
     id: str
     name: str
     title: str | None = None
@@ -408,6 +420,7 @@ class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
 # Form Response / Answer Schemas
 # ---------------------------------------------------------------------------
 
+
 class FormAnswerCreate(BaseModel):
     field_id: str
     value: Any
@@ -429,6 +442,7 @@ class FormPendingUpdateRead(BaseModel):
     """A question this response is being asked to look at again. `field_id` is
     the only field PATCH .../responses/me/ will accept — see
     backend/form-edit-lifecycle.md."""
+
     field_id: str
     reasons: list[str] = []
     created_at: datetime
@@ -451,10 +465,12 @@ class FormResponseRead(BaseModel):
 class FormRespondentRead(PersonNameRef):
     """Who submitted a response. Email rides along for the managers' search
     and follow-up — this only ever reaches people with manage access."""
+
     email: str
 
 
 class FormResponseManagerRead(FormResponseRead):
     """GET /forms/{form_id}/responses/ — the managers' audience. Adds who
     answered; a respondent reading their own response already knows."""
+
     respondent: FormRespondentRead

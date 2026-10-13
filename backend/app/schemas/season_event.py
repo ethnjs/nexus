@@ -24,6 +24,7 @@ class SeasonEventCreate(BaseModel):
 
 class SeasonEventUpdate(BaseModel):
     """Partial update — primarily used to toggle is_active."""
+
     year: int | None = None
     division: str | None = None
     is_active: bool | None = None

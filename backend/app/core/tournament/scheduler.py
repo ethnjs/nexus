@@ -5,6 +5,7 @@ flagged as automatic in extra_data. Skips tournaments already archived and
 ones with an archive_override_at set (a human already unarchived a past-due
 tournament — see Tournament.archive_override_at for the full rationale).
 """
+
 from __future__ import annotations
 
 from datetime import date

@@ -26,6 +26,7 @@ Ambiguity is impossible rather than merely unlikely: the three partial unique
 indexes on tournament_zone_members mean at most one zone per track can claim a
 given building, floor, or event, so each lookup below has at most one answer.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -51,27 +52,13 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     member; the rules have nothing to compare against. Those are the rows the
     zones page shows as unplaced rather than merely unzoned.
     """
-    members = (
-        db.query(TournamentZoneMember)
-        .filter(TournamentZoneMember.track_id == track_id)
-        .all()
-    )
+    members = db.query(TournamentZoneMember).filter(TournamentZoneMember.track_id == track_id).all()
 
-    by_event = {
-        m.tournament_event_id: m.zone_id for m in members if m.kind == KIND_EVENT
-    }
-    by_floor = {
-        (m.building_id, m.floor): m.zone_id for m in members if m.kind == KIND_FLOOR
-    }
-    by_building = {
-        m.building_id: m.zone_id for m in members if m.kind == KIND_BUILDING
-    }
+    by_event = {m.tournament_event_id: m.zone_id for m in members if m.kind == KIND_EVENT}
+    by_floor = {(m.building_id, m.floor): m.zone_id for m in members if m.kind == KIND_FLOOR}
+    by_building = {m.building_id: m.zone_id for m in members if m.kind == KIND_BUILDING}
 
-    links = (
-        db.query(TournamentEventTrack)
-        .filter(TournamentEventTrack.track_id == track_id)
-        .all()
-    )
+    links = db.query(TournamentEventTrack).filter(TournamentEventTrack.track_id == track_id).all()
 
     resolved: dict[int, int | None] = {}
     for link in links:
@@ -93,7 +80,8 @@ def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
     a TD built and has not filled is exactly the thing they need to see.
     """
     zone_ids = [
-        row_id for (row_id,) in db.query(TournamentZone.id).filter(
+        row_id
+        for (row_id,) in db.query(TournamentZone.id).filter(
             TournamentZone.track_id == track_id,
         )
     ]

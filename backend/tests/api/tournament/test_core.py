@@ -1,4 +1,5 @@
 """Tests for /tournaments/ core CRUD endpoints (app/api/routes/tournament/__init__.py)."""
+
 from datetime import date, timedelta
 
 from app.core.tournament.audit import (
@@ -26,6 +27,7 @@ REQUIRED_FIELDS = TOURNAMENT_REQUIRED_FIELDS
 # GET /tournaments/me/ — user's own tournaments
 # ---------------------------------------------------------------------------
 
+
 def test_list_my_tournaments_returns_own(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.get("/tournaments/me/")
@@ -42,9 +44,7 @@ def test_list_my_tournaments_excludes_others(
     assert other_tournament.id not in ids
 
 
-def test_list_my_tournaments_includes_volunteer_membership(
-    client, td_user, other_tournament, db
-):
+def test_list_my_tournaments_includes_volunteer_membership(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     ids = [t["id"] for t in client.get("/tournaments/me/").json()]
@@ -67,17 +67,18 @@ def test_list_my_tournaments_unauthenticated(client):
     assert client.get("/tournaments/me/").status_code == 401
 
 
-def test_list_my_tournaments_returns_summary_shape(
-    client, td_user, td_tournament, other_user, db
-):
+def test_list_my_tournaments_returns_summary_shape(client, td_user, td_tournament, other_user, db):
     """TournamentSummary — event_count/volunteer_count computed, no
     roles/owner_id leaked (those belong to the full TournamentRead detail)."""
     login(client, "td@test.com", "tdpass")
-    client.post(f"/tournaments/{td_tournament.id}/events/", json={
-        "tournament_id": td_tournament.id,
-        "name": "Boomilever",
-        "division": "C",
-    })
+    client.post(
+        f"/tournaments/{td_tournament.id}/events/",
+        json={
+            "tournament_id": td_tournament.id,
+            "name": "Boomilever",
+            "division": "C",
+        },
+    )
     grant_role(db, td_tournament, other_user, "Volunteer")
 
     data = client.get("/tournaments/me/").json()
@@ -100,7 +101,9 @@ def test_list_my_tournaments_excludes_declined_membership(client, td_tournament,
     assert td_tournament.id not in ids
 
 
-def test_volunteer_count_excludes_declined_membership(client, td_user, td_tournament, other_user, db):
+def test_volunteer_count_excludes_declined_membership(
+    client, td_user, td_tournament, other_user, db
+):
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     membership.age_disclosure = "declined"
     db.commit()
@@ -114,11 +117,16 @@ def test_volunteer_count_excludes_declined_membership(client, td_user, td_tourna
 # POST /tournaments/ — any authenticated user
 # ---------------------------------------------------------------------------
 
+
 def test_create_tournament_minimal(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        "name": "Minimal Tournament", **REQUIRED_FIELDS,
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            "name": "Minimal Tournament",
+            **REQUIRED_FIELDS,
+        },
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Minimal Tournament"
@@ -131,24 +139,36 @@ def test_create_tournament_has_zero_roles(client, td_user):
     full permissions via owner_id, and sets up roles later via apply-template
     or custom creation."""
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        "name": "Auto Roles", **REQUIRED_FIELDS,
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            "name": "Auto Roles",
+            **REQUIRED_FIELDS,
+        },
+    )
     assert response.status_code == 201
     assert response.json()["roles"] == []
 
 
 def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user, db):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        "name": "Auto TournamentMembership", **REQUIRED_FIELDS,
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            "name": "Auto TournamentMembership",
+            **REQUIRED_FIELDS,
+        },
+    )
     assert response.status_code == 201
     tournament_id = response.json()["id"]
-    membership = db.query(TournamentMembership).filter(
-        TournamentMembership.user_id == td_user.id,
-        TournamentMembership.tournament_id == tournament_id,
-    ).first()
+    membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == td_user.id,
+            TournamentMembership.tournament_id == tournament_id,
+        )
+        .first()
+    )
     assert membership is not None
     roles_held = (
         db.query(TournamentRole)
@@ -161,18 +181,26 @@ def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user
 
 def test_create_tournament_full(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        "name": "Nationals",
-        "state": "Southern California",
-        "level": "nationals",
-        "timezone": "America/Los_Angeles",
-        "is_public": True,
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "start_date": future_date(5, 21), "end_date": future_date(5, 23),
-            "location": "USC", "division": ["B", "C"],
-        }],
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            "name": "Nationals",
+            "state": "Southern California",
+            "level": "nationals",
+            "timezone": "America/Los_Angeles",
+            "is_public": True,
+            "tracks": [
+                {
+                    "name": "Main",
+                    "is_primary": True,
+                    "start_date": future_date(5, 21),
+                    "end_date": future_date(5, 23),
+                    "location": "USC",
+                    "division": ["B", "C"],
+                }
+            ],
+        },
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Nationals"
@@ -192,33 +220,56 @@ def test_create_tournament_invalid_dates(client, td_user):
     trip the end<start rule — with past dates it would 422 either way and the
     test would still pass with that validator deleted."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Bad Dates",
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "start_date": future_date(11, 15), "end_date": future_date(11, 14),
-            "location": "Test Location", "division": ["B"],
-        }],
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Bad Dates",
+                "tracks": [
+                    {
+                        "name": "Main",
+                        "is_primary": True,
+                        "start_date": future_date(11, 15),
+                        "end_date": future_date(11, 14),
+                        "location": "Test Location",
+                        "division": ["B"],
+                    }
+                ],
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_name_with_number_rejected(client, td_user):
     """name must exclude the year — it's derived from start_date instead."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Nationals 2025",
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Nationals 2025",
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_invalid_state_rejected(client, td_user):
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Bad State",
-        "state": "California",  # not valid — must be Southern/Northern California
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Bad State",
+                "state": "California",  # not valid — must be Southern/Northern California
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_both_location_and_university_id_rejected(client, td_user, db):
@@ -228,31 +279,49 @@ def test_create_tournament_both_location_and_university_id_rejected(client, td_u
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Both Sources",
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "start_date": future_date(5, 21), "end_date": future_date(5, 23),
-            "location": "Test Location", "university_id": university.id,
-            "division": ["B"],
-        }],
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Both Sources",
+                "tracks": [
+                    {
+                        "name": "Main",
+                        "is_primary": True,
+                        "start_date": future_date(5, 21),
+                        "end_date": future_date(5, 23),
+                        "location": "Test Location",
+                        "university_id": university.id,
+                        "division": ["B"],
+                    }
+                ],
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_with_neither_location_nor_university_id_is_tbd(client, td_user):
     """A venue is often signed weeks after the date is set, so a tournament
     is creatable without one — the track reads as TBD until it has one."""
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "No Source",
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "start_date": future_date(5, 21), "end_date": future_date(5, 23),
-            "division": ["B"],
-        }],
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            **REQUIRED_FIELDS,
+            "name": "No Source",
+            "tracks": [
+                {
+                    "name": "Main",
+                    "is_primary": True,
+                    "start_date": future_date(5, 21),
+                    "end_date": future_date(5, 23),
+                    "division": ["B"],
+                }
+            ],
+        },
+    )
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["location"] is None
@@ -264,14 +333,21 @@ def test_create_tournament_with_an_undated_track_is_tbd(client, td_user):
     """The other axis: "we're running, we don't know when". The past-date
     check has no date to judge and must not trip over its absence."""
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "No Dates",
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "location": "Test Location", "division": ["B"],
-        }],
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            **REQUIRED_FIELDS,
+            "name": "No Dates",
+            "tracks": [
+                {
+                    "name": "Main",
+                    "is_primary": True,
+                    "location": "Test Location",
+                    "division": ["B"],
+                }
+            ],
+        },
+    )
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["dates"] == []
@@ -283,26 +359,44 @@ def test_create_tournament_without_primary_track_rejected(client, td_user):
     """A tournament with no primary track has no dates, venue or divisions at
     all - every derived property would come back empty."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "No Primary",
-        "tracks": [{"name": "Test Writing"}],
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "No Primary",
+                "tracks": [{"name": "Test Writing"}],
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_cosmetic_track_with_dates_rejected(client, td_user):
     """A cosmetic track carrying a venue would show up in the tournament's
     derived location without ever being a real competition day."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Cosmetic With Venue",
-        "tracks": [
-            {"name": "Main", "is_primary": True, "start_date": future_date(5, 21),
-             "end_date": future_date(5, 23), "location": "USC", "division": ["B"]},
-            {"name": "Test Writing", "location": "Somewhere"},
-        ],
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Cosmetic With Venue",
+                "tracks": [
+                    {
+                        "name": "Main",
+                        "is_primary": True,
+                        "start_date": future_date(5, 21),
+                        "end_date": future_date(5, 23),
+                        "location": "USC",
+                        "division": ["B"],
+                    },
+                    {"name": "Test Writing", "location": "Somewhere"},
+                ],
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_multi_track(client, td_user):
@@ -311,17 +405,32 @@ def test_create_tournament_multi_track(client, td_user):
     would claim it does. Divisions are the union; location stays null because
     there is no one answer, so the caller renders `tracks` instead."""
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Orange County Regional",
-        "tracks": [
-            {"name": "Day 1", "is_primary": True, "start_date": future_date(2, 13),
-             "end_date": future_date(2, 13), "location": "UCI", "division": ["C"]},
-            {"name": "Day 2", "is_primary": True, "start_date": future_date(2, 20),
-             "end_date": future_date(2, 20), "location": "Northwood HS", "division": ["B"]},
-            {"name": "Test Writing"},
-        ],
-    })
+    response = client.post(
+        "/tournaments/",
+        json={
+            **REQUIRED_FIELDS,
+            "name": "Orange County Regional",
+            "tracks": [
+                {
+                    "name": "Day 1",
+                    "is_primary": True,
+                    "start_date": future_date(2, 13),
+                    "end_date": future_date(2, 13),
+                    "location": "UCI",
+                    "division": ["C"],
+                },
+                {
+                    "name": "Day 2",
+                    "is_primary": True,
+                    "start_date": future_date(2, 20),
+                    "end_date": future_date(2, 20),
+                    "location": "Northwood HS",
+                    "division": ["B"],
+                },
+                {"name": "Test Writing"},
+            ],
+        },
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["dates"] == [future_date(2, 13), future_date(2, 20)]
@@ -335,16 +444,31 @@ def test_multi_track_dates_exclude_the_gap(client, td_user):
     days. Nothing anywhere may report the six days between them as tournament
     days - that is why `dates` is a list and there is no start/end pair."""
     login(client, "td@test.com", "tdpass")
-    data = client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Gapped",
-        "tracks": [
-            {"name": "Day 1", "is_primary": True, "start_date": future_date(2, 13),
-             "end_date": future_date(2, 13), "location": "UCI", "division": ["C"]},
-            {"name": "Day 2", "is_primary": True, "start_date": future_date(2, 20),
-             "end_date": future_date(2, 20), "location": "Northwood HS", "division": ["B"]},
-        ],
-    }).json()
+    data = client.post(
+        "/tournaments/",
+        json={
+            **REQUIRED_FIELDS,
+            "name": "Gapped",
+            "tracks": [
+                {
+                    "name": "Day 1",
+                    "is_primary": True,
+                    "start_date": future_date(2, 13),
+                    "end_date": future_date(2, 13),
+                    "location": "UCI",
+                    "division": ["C"],
+                },
+                {
+                    "name": "Day 2",
+                    "is_primary": True,
+                    "start_date": future_date(2, 20),
+                    "end_date": future_date(2, 20),
+                    "location": "Northwood HS",
+                    "division": ["B"],
+                },
+            ],
+        },
+    ).json()
     assert data["dates"] == [future_date(2, 13), future_date(2, 20)]
     assert future_date(2, 16) not in data["dates"]
     assert "start_date" not in data and "end_date" not in data
@@ -354,51 +478,84 @@ def test_track_spanning_days_contributes_each_one(client, td_user):
     """A single track really can run a whole weekend, so its own range does
     expand - the list is a union of per-track ranges, not of start dates."""
     login(client, "td@test.com", "tdpass")
-    data = client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Weekend",
-        "tracks": [{
-            "name": "Weekend", "is_primary": True,
-            "start_date": future_date(3, 6), "end_date": future_date(3, 8),
-            "location": "UCI", "division": ["C"],
-        }],
-    }).json()
+    data = client.post(
+        "/tournaments/",
+        json={
+            **REQUIRED_FIELDS,
+            "name": "Weekend",
+            "tracks": [
+                {
+                    "name": "Weekend",
+                    "is_primary": True,
+                    "start_date": future_date(3, 6),
+                    "end_date": future_date(3, 8),
+                    "location": "UCI",
+                    "division": ["C"],
+                }
+            ],
+        },
+    ).json()
     assert data["dates"] == [future_date(3, 6), future_date(3, 7), future_date(3, 8)]
 
 
 def test_create_tournament_invalid_division_rejected(client, td_user):
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Bad Division",
-        "tracks": [{
-            "name": "Main", "is_primary": True,
-            "start_date": future_date(5, 21), "end_date": future_date(5, 23),
-            "location": "Test Location", "division": ["D"],
-        }],
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Bad Division",
+                "tracks": [
+                    {
+                        "name": "Main",
+                        "is_primary": True,
+                        "start_date": future_date(5, 21),
+                        "end_date": future_date(5, 23),
+                        "location": "Test Location",
+                        "division": ["D"],
+                    }
+                ],
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_rejects_old_flat_shape(client, td_user):
     """A caller still sending start_date/location/division at the tournament
     level gets a 422, not a tournament with no schedule."""
     login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        **REQUIRED_FIELDS,
-        "name": "Old Shape",
-        "location": "Test Location",
-    }).status_code == 422
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                **REQUIRED_FIELDS,
+                "name": "Old Shape",
+                "location": "Test Location",
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_create_tournament_unauthenticated(client):
-    assert client.post("/tournaments/", json={
-        "name": "Sneaky", **REQUIRED_FIELDS,
-    }).status_code == 401
+    assert (
+        client.post(
+            "/tournaments/",
+            json={
+                "name": "Sneaky",
+                **REQUIRED_FIELDS,
+            },
+        ).status_code
+        == 401
+    )
 
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{id}/ — any member
 # ---------------------------------------------------------------------------
+
 
 def test_get_tournament_member_can_access(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -417,9 +574,7 @@ def test_get_tournament_admin_can_access_any(client, admin_user, td_tournament):
     assert client.get(f"/tournaments/{td_tournament.id}/").status_code == 200
 
 
-def test_get_tournament_volunteer_member_can_access(
-    client, td_user, other_tournament, db
-):
+def test_get_tournament_volunteer_member_can_access(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/").status_code == 200
@@ -444,6 +599,7 @@ def test_get_tournament_declined_member_gets_404(client, other_tournament, other
 # PATCH /tournaments/{id}/ — manage_tournament only
 # ---------------------------------------------------------------------------
 
+
 def test_update_tournament_td_can_patch(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.patch(f"/tournaments/{td_tournament.id}/", json={"name": "New Name"})
@@ -451,21 +607,21 @@ def test_update_tournament_td_can_patch(client, td_user, td_tournament):
     assert response.json()["name"] == "New Name"
 
 
-def test_update_tournament_volunteer_member_cannot_patch(
-    client, td_user, other_tournament, db
-):
+def test_update_tournament_volunteer_member_cannot_patch(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.patch(
-        f"/tournaments/{other_tournament.id}/", json={"name": "Sneaky"}
-    ).status_code == 403
+    assert (
+        client.patch(f"/tournaments/{other_tournament.id}/", json={"name": "Sneaky"}).status_code
+        == 403
+    )
 
 
 def test_update_tournament_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.patch(
-        f"/tournaments/{other_tournament.id}/", json={"name": "Ghost"}
-    ).status_code == 404
+    assert (
+        client.patch(f"/tournaments/{other_tournament.id}/", json={"name": "Ghost"}).status_code
+        == 404
+    )
 
 
 def test_update_tournament_is_public(client, td_user, td_tournament):
@@ -478,6 +634,7 @@ def test_update_tournament_is_public(client, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 # Age disclosure collection toggles — manage_tournament read/write
 # ---------------------------------------------------------------------------
+
 
 def test_update_tournament_sets_collection_toggles(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -501,13 +658,18 @@ def test_update_tournament_toggles_require_manage_tournament(client, td_user, ot
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/", json={"collect_is_over_18": True},
+        f"/tournaments/{other_tournament.id}/",
+        json={"collect_is_over_18": True},
     )
     assert response.status_code == 403
 
 
 def test_turning_toggle_on_does_not_retroactively_expose_unconsented_members(
-    client, td_user, td_tournament, other_user, db,
+    client,
+    td_user,
+    td_tournament,
+    other_user,
+    db,
 ):
     """The whole privacy promise of this feature: an existing member who
     never answered the consent prompt stays hidden the instant a TD flips
@@ -537,7 +699,9 @@ def test_update_tournament_rejects_moved_fields(client, td_user, td_tournament):
     no-op that leaves the TD thinking it saved."""
     login(client, "td@test.com", "tdpass")
     for field, value in (
-        ("location", "Somewhere"), ("start_date", "2030-06-01"), ("division", ["A"]),
+        ("location", "Somewhere"),
+        ("start_date", "2030-06-01"),
+        ("division", ["A"]),
     ):
         response = client.patch(f"/tournaments/{td_tournament.id}/", json={field: value})
         assert response.status_code == 422, field
@@ -546,6 +710,7 @@ def test_update_tournament_rejects_moved_fields(client, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{id}/ — owner or admin only
 # ---------------------------------------------------------------------------
+
 
 def test_delete_tournament_owner_can_delete(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
@@ -557,9 +722,7 @@ def test_delete_tournament_admin_can_delete(client, admin_user, td_tournament):
     assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 204
 
 
-def test_delete_tournament_non_owner_member_cannot_delete(
-    client, td_user, other_tournament, db
-):
+def test_delete_tournament_non_owner_member_cannot_delete(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Tournament Director")
     login(client, "td@test.com", "tdpass")
     assert client.delete(f"/tournaments/{other_tournament.id}/").status_code == 403
@@ -579,10 +742,15 @@ def test_delete_tournament_not_found(client, td_user):
 # POST /tournaments/{id}/archive/ — owner or admin only
 # ---------------------------------------------------------------------------
 
+
 def _make_join_code(db, tournament_id, created_by, code="ARCHIVE1"):
     join_code = JoinCode(
-        tournament_id=tournament_id, created_by=created_by,
-        code=code, label="Join code", expires_at=None, is_active=True,
+        tournament_id=tournament_id,
+        created_by=created_by,
+        code=code,
+        label="Join code",
+        expires_at=None,
+        is_active=True,
     )
     db.add(join_code)
     db.commit()
@@ -626,8 +794,12 @@ def test_archive_tournament_deactivates_join_codes(client, td_user, td_tournamen
 
 def _make_tournament_form(db, tournament, created_by, status):
     form = Form(
-        owner_type="tournament", tournament_id=tournament.id, chapter_id=None,
-        name=f"{status} form", status=status, created_by=created_by,
+        owner_type="tournament",
+        tournament_id=tournament.id,
+        chapter_id=None,
+        name=f"{status} form",
+        status=status,
+        created_by=created_by,
     )
     db.add(form)
     db.commit()
@@ -680,9 +852,10 @@ def test_archived_tournament_rejects_patch(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     client.post(f"/tournaments/{td_tournament.id}/archive/")
 
-    assert client.patch(
-        f"/tournaments/{td_tournament.id}/", json={"name": "Renamed"}
-    ).status_code == 403
+    assert (
+        client.patch(f"/tournaments/{td_tournament.id}/", json={"name": "Renamed"}).status_code
+        == 403
+    )
 
 
 def test_archived_tournament_still_readable(client, td_user, td_tournament):
@@ -714,6 +887,7 @@ def test_archived_tournament_admin_can_delete(client, admin_user, td_tournament,
 # ---------------------------------------------------------------------------
 # POST /tournaments/{id}/unarchive/ — owner or admin, admin-only once ended
 # ---------------------------------------------------------------------------
+
 
 def _end_tournament(db, tournament):
     """Push the primary track's dates into the past so the tournament counts
@@ -814,6 +988,7 @@ def test_unarchive_tournament_writes_audit_entry(client, td_user, td_tournament,
 # POST /tournaments/{id}/transfer-ownership/ — owner only
 # ---------------------------------------------------------------------------
 
+
 def test_transfer_ownership_owner_can_transfer(client, td_user, td_tournament, other_user, db):
     grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
@@ -826,7 +1001,9 @@ def test_transfer_ownership_owner_can_transfer(client, td_user, td_tournament, o
     assert response.json()["owner_id"] == other_user.id
 
 
-def test_transfer_ownership_rejected_on_archived_tournament(client, td_user, td_tournament, other_user, db):
+def test_transfer_ownership_rejected_on_archived_tournament(
+    client, td_user, td_tournament, other_user, db
+):
     grant_role(db, td_tournament, other_user, "Volunteer")
     td_tournament.is_archived = True
     db.commit()
@@ -839,7 +1016,9 @@ def test_transfer_ownership_rejected_on_archived_tournament(client, td_user, td_
     assert response.status_code == 403
 
 
-def test_transfer_ownership_requires_new_owner_membership(client, td_user, td_tournament, other_user):
+def test_transfer_ownership_requires_new_owner_membership(
+    client, td_user, td_tournament, other_user
+):
     """Can't hand a tournament to someone who isn't in it."""
     login(client, "td@test.com", "tdpass")
     response = client.post(
@@ -849,7 +1028,9 @@ def test_transfer_ownership_requires_new_owner_membership(client, td_user, td_to
     assert response.status_code == 400
 
 
-def test_transfer_ownership_rejects_declined_new_owner(client, td_user, td_tournament, other_user, db):
+def test_transfer_ownership_rejects_declined_new_owner(
+    client, td_user, td_tournament, other_user, db
+):
     """A declined membership doesn't count as "already a member" for
     transfer eligibility — same treatment as everywhere else declined."""
     membership = grant_role(db, td_tournament, other_user, "Volunteer")

@@ -80,10 +80,7 @@ def list_my_tournaments(
         .all()
     )
     counts = tournament_counts(db, [t.id for t in tournaments])
-    return [
-        TournamentSummary(**_serialize(t), **counts[t.id])
-        for t in tournaments
-    ]
+    return [TournamentSummary(**_serialize(t), **counts[t.id]) for t in tournaments]
 
 
 # ---------------------------------------------------------------------------
@@ -269,13 +266,17 @@ def unarchive_tournament(
             )
 
     tournament.is_archived = False
-    
+
     if has_ended:
         tournament.archive_override_at = datetime.now(UTC)
 
     log_action(
-        db, tournament_id, current_user.id, TOURNAMENT_UNARCHIVED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament_id,
+        current_user.id,
+        TOURNAMENT_UNARCHIVED,
+        target_type="tournament",
+        target_id=tournament.id,
     )
 
     db.commit()
@@ -336,8 +337,12 @@ def transfer_ownership(
         return name or user.email
 
     log_action(
-        db, tournament_id, current_user.id, OWNERSHIP_TRANSFERRED,
-        target_type="tournament", target_id=tournament.id,
+        db,
+        tournament_id,
+        current_user.id,
+        OWNERSHIP_TRANSFERRED,
+        target_type="tournament",
+        target_id=tournament.id,
         extra_data={
             # The previous owner, not the actor — an admin can transfer too.
             "old": {"id": old_owner.id if old_owner else None, "name": _display_name(old_owner)},

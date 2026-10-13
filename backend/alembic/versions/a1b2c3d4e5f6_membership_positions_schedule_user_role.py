@@ -14,6 +14,7 @@ Changes:
       "volunteer" → "user"
       "admin"     → "admin"  (unchanged)
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -47,9 +48,7 @@ def upgrade() -> None:
     # users — collapse "td" and "volunteer" → "user"
     # ------------------------------------------------------------------
     conn = op.get_bind()
-    conn.execute(
-        text("UPDATE users SET role = 'user' WHERE role IN ('td', 'volunteer')")
-    )
+    conn.execute(text("UPDATE users SET role = 'user' WHERE role IN ('td', 'volunteer')"))
 
 
 def downgrade() -> None:
@@ -73,6 +72,4 @@ def downgrade() -> None:
     # users — cannot recover original roles, fall back to "volunteer"
     # ------------------------------------------------------------------
     conn = op.get_bind()
-    conn.execute(
-        text("UPDATE users SET role = 'volunteer' WHERE role = 'user'")
-    )
+    conn.execute(text("UPDATE users SET role = 'volunteer' WHERE role = 'user'"))

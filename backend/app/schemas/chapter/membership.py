@@ -11,8 +11,10 @@ from app.schemas.user import UserFullResponse, UserSlimResponse
 class AssignLeadRequest(BaseModel):
     user_id: int
 
+
 class ChapterMemberUpdate(BaseModel):
     role: Literal["lead", "officer", "member"]
+
 
 class ChapterMemberResponse(UserSlimResponse):
     membership_id: int
@@ -33,6 +35,7 @@ class ChapterMemberResponse(UserSlimResponse):
             "role": data.role,
             "joined_at": data.joined_at,
         }
+
 
 class ChapterMemberProfileResponse(UserFullResponse):
     membership_id: int

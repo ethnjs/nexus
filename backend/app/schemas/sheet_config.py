@@ -60,20 +60,20 @@ KNOWN_FIELDS = VOLUNTEER_KNOWN_FIELDS
 # Map of sheet type → its scoped field list, for SheetHeadersResponse
 KNOWN_FIELDS_BY_TYPE: dict[str, list[str]] = {
     "volunteers": VOLUNTEER_KNOWN_FIELDS,
-    "events":     EVENT_KNOWN_FIELDS,
+    "events": EVENT_KNOWN_FIELDS,
 }
 
 # ---------------------------------------------------------------------------
 # Valid column mapping types
 # ---------------------------------------------------------------------------
 VALID_MAPPING_TYPES: set[str] = {
-    "string",        # store value as-is
-    "ignore",        # skip this column entirely
-    "boolean",       # "Yes"/"No" → True/False
-    "integer",       # parse to int
+    "string",  # store value as-is
+    "ignore",  # skip this column entirely
+    "boolean",  # "Yes"/"No" → True/False
+    "integer",  # parse to int
     "multi_select",  # split on delimiter → JSON array; rules run before splitting
-    "matrix_row",    # one row of a grid question → merged into availability JSON
-                     # requires row_key; use parse_time_range rule to parse time slots
+    "matrix_row",  # one row of a grid question → merged into availability JSON
+    # requires row_key; use parse_time_range rule to parse time slots
 }
 
 VALID_SHEET_TYPES = {"volunteers", "events"}
@@ -83,11 +83,11 @@ VALID_SHEET_TYPES = {"volunteers", "events"}
 # ---------------------------------------------------------------------------
 _LEGACY_TYPE_MAP: dict[str, str] = {
     "availability_row": "matrix_row",
-    "category_events":  "string",
+    "category_events": "string",
 }
 
 LEGACY_SHEET_TYPE_MAP: dict[str, str] = {
-    "interest":     "volunteers",
+    "interest": "volunteers",
     "confirmation": "volunteers",
 }
 
@@ -95,11 +95,13 @@ LEGACY_SHEET_TYPE_MAP: dict[str, str] = {
 def coerce_legacy_type(type_value: str) -> str:
     if type_value in _LEGACY_TYPE_MAP:
         import logging
+
         new_type = _LEGACY_TYPE_MAP[type_value]
         logging.getLogger(__name__).warning(
             "Legacy ColumnMapping type '%s' coerced to '%s'. "
             "Resave this sheet config to clear this warning.",
-            type_value, new_type,
+            type_value,
+            new_type,
         )
         return new_type
     return type_value
@@ -123,7 +125,7 @@ VALID_RULE_ACTIONS: set[str] = {
     "prepend",
     "append",
     "discard",
-    "parse_time_range",    # canonical — parses time block on matrix_row cells
+    "parse_time_range",  # canonical — parses time block on matrix_row cells
     "parse_availability",  # legacy alias — accepted on read, treated identically
 }
 
@@ -170,22 +172,23 @@ class ParseRule(BaseModel):
 # Google Forms integration
 # ---------------------------------------------------------------------------
 FORMS_TYPE_MAP: dict[str, str] = {
-    "TEXT":            "string",
-    "PARAGRAPH_TEXT":  "string",
+    "TEXT": "string",
+    "PARAGRAPH_TEXT": "string",
     "MULTIPLE_CHOICE": "string",
-    "CHECKBOX":        "multi_select",
-    "DROP_DOWN":       "string",
-    "LINEAR_SCALE":    "integer",
-    "SCALE":           "integer",
-    "GRID":            "matrix_row",
-    "DATE":            "string",
-    "TIME":            "string",
+    "CHECKBOX": "multi_select",
+    "DROP_DOWN": "string",
+    "LINEAR_SCALE": "integer",
+    "SCALE": "integer",
+    "GRID": "matrix_row",
+    "DATE": "string",
+    "TIME": "string",
 }
 
 
 class FormQuestionOption(BaseModel):
     """A single answer choice from a Google Form choice question."""
-    raw: str    # exact string as it appears in the form
+
+    raw: str  # exact string as it appears in the form
     alias: str  # auto-suggested short version for DB storage
 
 
@@ -208,8 +211,8 @@ class ColumnMapping(BaseModel):
 
     # Form question enrichment — persisted so edit page + exports retain alias editor context
     # options is a flat list of raw option strings; aliases are encoded in rules (is_alias=True)
-    options:      list[str] | None = None
-    grid_rows:    list[str] | None = None
+    options: list[str] | None = None
+    grid_rows: list[str] | None = None
     grid_columns: list[str] | None = None
 
     def model_dump(self, **kwargs):
@@ -243,6 +246,7 @@ class ColumnMappingEntry(ColumnMapping):
     This is the canonical shape for persisted/read mapping data:
       {column_index, header, field, type, ...}
     """
+
     column_index: int
     header: str
 
@@ -273,27 +277,38 @@ def normalize_column_mappings_input(
     if isinstance(value, dict):
         out: list[dict[str, Any]] = []
         for idx, (header, mapping) in enumerate(value.items()):
-            md = mapping.model_dump(exclude_none=True) if hasattr(mapping, "model_dump") else dict(mapping)
-            out.append({
-                "column_index": idx,
-                "header": header,
-                **md,
-            })
+            md = (
+                mapping.model_dump(exclude_none=True)
+                if hasattr(mapping, "model_dump")
+                else dict(mapping)
+            )
+            out.append(
+                {
+                    "column_index": idx,
+                    "header": header,
+                    **md,
+                }
+            )
         return out
 
     # Canonical shape: list[ColumnMappingEntry-like]
     if isinstance(value, list):
         out: list[dict[str, Any]] = []
         for idx, entry in enumerate(value):
-            ed = entry.model_dump(exclude_none=True) if hasattr(entry, "model_dump") else dict(entry)
-            out.append({
-                "column_index": ed.get("column_index", idx),
-                "header": ed.get("header", ""),
-                **{k: v for k, v in ed.items() if k not in ("column_index", "header")},
-            })
+            ed = (
+                entry.model_dump(exclude_none=True) if hasattr(entry, "model_dump") else dict(entry)
+            )
+            out.append(
+                {
+                    "column_index": ed.get("column_index", idx),
+                    "header": ed.get("header", ""),
+                    **{k: v for k, v in ed.items() if k not in ("column_index", "header")},
+                }
+            )
         return out
 
     raise ValueError("column_mappings must be a dict or list")
+
 
 # ---------------------------------------------------------------------------
 # MappedHeader — flat response item replacing the old headers+suggestions split.
@@ -309,18 +324,19 @@ class MappedHeader(BaseModel):
     """
     A single sheet column with its suggested mapping and optional form enrichment.
     """
+
     column_index: int = 0
-    header:      str
-    field:       str
-    type:        str
-    row_key:     str | None = None
-    extra_key:   str | None = None
-    rules:       list[ParseRule] | None = None
-    delimiter:   str | None = None
+    header: str
+    field: str
+    type: str
+    row_key: str | None = None
+    extra_key: str | None = None
+    rules: list[ParseRule] | None = None
+    delimiter: str | None = None
 
     # Form question enrichment — None when no form URL provided or no question matched
-    options:      list[FormQuestionOption] | None = None
-    grid_rows:    list[str] | None = None
+    options: list[FormQuestionOption] | None = None
+    grid_rows: list[str] | None = None
     grid_columns: list[str] | None = None
 
     def model_dump(self, **kwargs):
@@ -365,11 +381,12 @@ class SheetConfigCreate(SheetConfigBase):
 
 class SheetConfigUpdate(BaseModel):
     """Partial update — all fields optional."""
-    label:           str | None = None
-    sheet_type:      str | None = None
-    sheet_name:      str | None = None
+
+    label: str | None = None
+    sheet_type: str | None = None
+    sheet_name: str | None = None
     column_mappings: list[ColumnMappingEntry] | None = None
-    is_active:       bool | None = None
+    is_active: bool | None = None
 
     @field_validator("column_mappings", mode="before")
     @classmethod
@@ -393,6 +410,7 @@ class SheetConfigRead(SheetConfigBase):
 
 class SheetConfigReadWithWarnings(SheetConfigRead):
     """SheetConfigRead extended with validation warnings from a successful save."""
+
     warnings: list[dict] = []
 
 
@@ -406,8 +424,8 @@ class ValidateMappingsRequest(BaseModel):
 
 
 class ValidateMappingsResponse(BaseModel):
-    ok:       bool
-    errors:   list[dict] = []
+    ok: bool
+    errors: list[dict] = []
     warnings: list[dict] = []
 
 
@@ -432,10 +450,10 @@ class SheetValidateResponse(BaseModel):
 
 
 class SheetHeadersRequest(BaseModel):
-    sheet_url:  str
+    sheet_url: str
     sheet_name: str
     sheet_type: Literal["volunteers", "events"]
-    form_url:   str | None = None
+    form_url: str | None = None
 
     @field_validator("form_url")
     @classmethod
@@ -453,13 +471,14 @@ class SheetHeadersResponse(BaseModel):
     (list) triple. Each MappedHeader includes the suggested field mapping and
     any form question enrichment, already cross-referenced by the service layer.
     """
+
     sheet_name: str
     sheet_type: str
-    mappings:   list[MappedHeader]
-    known_fields:          list[str] = VOLUNTEER_KNOWN_FIELDS
-    valid_types:           list[str] = list(VALID_MAPPING_TYPES)
+    mappings: list[MappedHeader]
+    known_fields: list[str] = VOLUNTEER_KNOWN_FIELDS
+    valid_types: list[str] = list(VALID_MAPPING_TYPES)
     valid_rule_conditions: list[str] = list(VALID_RULE_CONDITIONS)
-    valid_rule_actions:    list[str] = list(VALID_RULE_ACTIONS)
+    valid_rule_actions: list[str] = list(VALID_RULE_ACTIONS)
 
 
 # ---------------------------------------------------------------------------

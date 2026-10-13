@@ -66,8 +66,7 @@ def seed_dev_data(db: Session) -> None:
         (f"user{i}@nexus.dev", "user1234", "User", str(i), "user") for i in range(1, 16)
     ]
     existing = {
-        email for (email,) in
-        db.query(User.email).filter(User.email.in_([w[0] for w in wanted]))
+        email for (email,) in db.query(User.email).filter(User.email.in_([w[0] for w in wanted]))
     }
     missing = [w for w in wanted if w[0] not in existing]
     if not missing:

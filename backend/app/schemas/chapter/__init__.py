@@ -11,9 +11,11 @@ class ChapterUpdate(BaseModel):
     name: str | None = None
     university_id: int | None = None
 
+
 class ChapterCreate(BaseModel):
     name: str
     university_id: int
+
 
 class ChapterResponse(BaseModel):
     id: int

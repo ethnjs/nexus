@@ -9,8 +9,10 @@ from app.services.forms_service import FormsService, _suggest_alias
 
 @pytest.fixture
 def svc() -> FormsService:
-    with patch("app.services.forms_service.service_account"), \
-         patch("app.services.forms_service.build"):
+    with (
+        patch("app.services.forms_service.service_account"),
+        patch("app.services.forms_service.build"),
+    ):
         return FormsService()
 
 
@@ -22,6 +24,7 @@ def _make_form_response(items: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 # extract_form_id
 # ---------------------------------------------------------------------------
+
 
 def test_extract_form_id(svc: FormsService):
     url = "https://docs.google.com/forms/d/abc123XYZ/edit"
@@ -42,8 +45,10 @@ def test_extract_form_id_invalid(svc: FormsService):
 # get_form_questions — error handling
 # ---------------------------------------------------------------------------
 
+
 def test_get_form_questions_403(svc: FormsService):
     from googleapiclient.errors import HttpError
+
     resp = MagicMock()
     resp.status = 403
     svc._client.forms().get().execute.side_effect = HttpError(resp=resp, content=b"Forbidden")
@@ -53,6 +58,7 @@ def test_get_form_questions_403(svc: FormsService):
 
 def test_get_form_questions_404(svc: FormsService):
     from googleapiclient.errors import HttpError
+
     resp = MagicMock()
     resp.status = 404
     svc._client.forms().get().execute.side_effect = HttpError(resp=resp, content=b"Not Found")
@@ -64,17 +70,20 @@ def test_get_form_questions_404(svc: FormsService):
 # get_form_questions — return shape is list[dict] with google_type + nexus_type
 # ---------------------------------------------------------------------------
 
+
 def test_returns_plain_dicts(svc: FormsService):
     """get_form_questions returns plain dicts, not Pydantic models."""
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "First Name",
-            "questionItem": {
-                "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "First Name",
+                "questionItem": {
+                    "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert isinstance(questions, list)
     assert isinstance(questions[0], dict)
@@ -86,17 +95,20 @@ def test_returns_plain_dicts(svc: FormsService):
 # get_form_questions — skips non-question items
 # ---------------------------------------------------------------------------
 
+
 def test_skips_section_headers(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {"itemId": "001", "title": "Section 1"},  # no questionItem
-        {
-            "itemId": "002",
-            "title": "Email",
-            "questionItem": {
-                "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {"itemId": "001", "title": "Section 1"},  # no questionItem
+            {
+                "itemId": "002",
+                "title": "Email",
+                "questionItem": {
+                    "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
+                },
             },
-        },
-    ])
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert len(questions) == 1
     assert questions[0]["title"] == "Email"
@@ -106,16 +118,19 @@ def test_skips_section_headers(svc: FormsService):
 # get_form_questions — text questions
 # ---------------------------------------------------------------------------
 
+
 def test_parses_short_text_question(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "First Name",
-            "questionItem": {
-                "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "First Name",
+                "questionItem": {
+                    "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert len(questions) == 1
     assert questions[0]["google_type"] == "TEXT"
@@ -124,15 +139,17 @@ def test_parses_short_text_question(svc: FormsService):
 
 
 def test_parses_paragraph_question(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "Additional Notes",
-            "questionItem": {
-                "question": {"questionId": "q1", "textQuestion": {"paragraph": True}}
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "Additional Notes",
+                "questionItem": {
+                    "question": {"questionId": "q1", "textQuestion": {"paragraph": True}}
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert questions[0]["nexus_type"] == "string"
 
@@ -141,25 +158,28 @@ def test_parses_paragraph_question(svc: FormsService):
 # get_form_questions — choice questions
 # ---------------------------------------------------------------------------
 
+
 def test_parses_checkbox_as_multi_select(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "Which events?",
-            "questionItem": {
-                "question": {
-                    "questionId": "q1",
-                    "choiceQuestion": {
-                        "type": "CHECKBOX",
-                        "options": [
-                            {"value": "Anatomy and Physiology - Study the human body"},
-                            {"value": "Chemistry Lab - Hands-on lab skills"},
-                        ],
-                    },
-                }
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "Which events?",
+                "questionItem": {
+                    "question": {
+                        "questionId": "q1",
+                        "choiceQuestion": {
+                            "type": "CHECKBOX",
+                            "options": [
+                                {"value": "Anatomy and Physiology - Study the human body"},
+                                {"value": "Chemistry Lab - Hands-on lab skills"},
+                            ],
+                        },
+                    }
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     q = questions[0]
     assert q["google_type"] == "CHECKBOX"
@@ -173,21 +193,23 @@ def test_parses_checkbox_as_multi_select(svc: FormsService):
 
 
 def test_parses_radio_as_string(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "T-shirt size",
-            "questionItem": {
-                "question": {
-                    "questionId": "q1",
-                    "choiceQuestion": {
-                        "type": "MULTIPLE_CHOICE",
-                        "options": [{"value": "S"}, {"value": "M"}, {"value": "L"}],
-                    },
-                }
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "T-shirt size",
+                "questionItem": {
+                    "question": {
+                        "questionId": "q1",
+                        "choiceQuestion": {
+                            "type": "MULTIPLE_CHOICE",
+                            "options": [{"value": "S"}, {"value": "M"}, {"value": "L"}],
+                        },
+                    }
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert questions[0]["google_type"] == "MULTIPLE_CHOICE"
     assert questions[0]["nexus_type"] == "string"
@@ -195,21 +217,23 @@ def test_parses_radio_as_string(svc: FormsService):
 
 
 def test_parses_dropdown_as_string(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "Division",
-            "questionItem": {
-                "question": {
-                    "questionId": "q1",
-                    "choiceQuestion": {
-                        "type": "DROP_DOWN",
-                        "options": [{"value": "B"}, {"value": "C"}],
-                    },
-                }
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "Division",
+                "questionItem": {
+                    "question": {
+                        "questionId": "q1",
+                        "choiceQuestion": {
+                            "type": "DROP_DOWN",
+                            "options": [{"value": "B"}, {"value": "C"}],
+                        },
+                    }
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert questions[0]["google_type"] == "DROP_DOWN"
     assert questions[0]["nexus_type"] == "string"
@@ -219,19 +243,22 @@ def test_parses_dropdown_as_string(svc: FormsService):
 # get_form_questions — scale questions
 # ---------------------------------------------------------------------------
 
+
 def test_parses_scale_as_integer(svc: FormsService):
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "Rate your experience",
-            "questionItem": {
-                "question": {
-                    "questionId": "q1",
-                    "scaleQuestion": {"low": 1, "high": 5},
-                }
-            },
-        }
-    ])
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "Rate your experience",
+                "questionItem": {
+                    "question": {
+                        "questionId": "q1",
+                        "scaleQuestion": {"low": 1, "high": 5},
+                    }
+                },
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert questions[0]["google_type"] == "LINEAR_SCALE"
     assert questions[0]["nexus_type"] == "integer"
@@ -242,26 +269,29 @@ def test_parses_scale_as_integer(svc: FormsService):
 # get_form_questions — grid questions
 # ---------------------------------------------------------------------------
 
+
 def test_parses_grid_question(svc: FormsService):
     # Grid questions use questionGroupItem at the item level (not questionItem).
     # The group has a list of sub-questions (rows) and a grid with columns.
-    svc._client.forms().get().execute.return_value = _make_form_response([
-        {
-            "itemId": "001",
-            "title": "Availability",
-            "questionGroupItem": {
-                "questions": [
-                    {"questionId": "q1", "rowQuestion": {"title": "8:00 AM - 10:00 AM"}},
-                    {"questionId": "q2", "rowQuestion": {"title": "10:00 AM - 12:00 PM"}},
-                ],
-                "grid": {
-                    "columns": {
-                        "options": [{"value": "Available"}, {"value": "Maybe"}],
-                    }
+    svc._client.forms().get().execute.return_value = _make_form_response(
+        [
+            {
+                "itemId": "001",
+                "title": "Availability",
+                "questionGroupItem": {
+                    "questions": [
+                        {"questionId": "q1", "rowQuestion": {"title": "8:00 AM - 10:00 AM"}},
+                        {"questionId": "q2", "rowQuestion": {"title": "10:00 AM - 12:00 PM"}},
+                    ],
+                    "grid": {
+                        "columns": {
+                            "options": [{"value": "Available"}, {"value": "Maybe"}],
+                        }
+                    },
                 },
-            },
-        }
-    ])
+            }
+        ]
+    )
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     q = questions[0]
     assert q["google_type"] == "GRID"
@@ -275,19 +305,23 @@ def test_parses_grid_question(svc: FormsService):
 # _suggest_alias
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("raw,expected", [
-    # Dash separator
-    ("Anatomy and Physiology - Study the human body", "Anatomy and Physiology"),
-    ("Chemistry Lab - Hands-on laboratory skills",    "Chemistry Lab"),
-    # Parenthetical suffix
-    ("Chemistry Lab (hands-on lab work)",             "Chemistry Lab"),
-    # Comma continuation
-    ("Yes, I am available to volunteer",              "Yes"),
-    # No pattern — returned as-is
-    ("Codebusters",                                   "Codebusters"),
-    ("Option A",                                      "Option A"),
-    # Whitespace trimmed
-    ("  Anatomy  - Something  ",                      "Anatomy"),
-])
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Dash separator
+        ("Anatomy and Physiology - Study the human body", "Anatomy and Physiology"),
+        ("Chemistry Lab - Hands-on laboratory skills", "Chemistry Lab"),
+        # Parenthetical suffix
+        ("Chemistry Lab (hands-on lab work)", "Chemistry Lab"),
+        # Comma continuation
+        ("Yes, I am available to volunteer", "Yes"),
+        # No pattern — returned as-is
+        ("Codebusters", "Codebusters"),
+        ("Option A", "Option A"),
+        # Whitespace trimmed
+        ("  Anatomy  - Something  ", "Anatomy"),
+    ],
+)
 def test_suggest_alias(raw, expected):
     assert _suggest_alias(raw) == expected

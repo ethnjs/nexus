@@ -92,7 +92,10 @@ from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
 def _build_me_response(
-    db: Session, tournament: Tournament, membership: TournamentMembership, current_user: User,
+    db: Session,
+    tournament: Tournament,
+    membership: TournamentMembership,
+    current_user: User,
     requested: frozenset[str] | None = None,
 ) -> JSONResponse:
     """Shared by GET .../me/ and POST .../me/age-disclosure/ — both return
@@ -106,36 +109,46 @@ def _build_me_response(
     permissions = sorted(get_user_permissions(current_user, tournament.id, db))
     is_owner = current_user.id == tournament.owner_id
     needs_age_consent = (
-        (tournament.collect_is_over_18 or tournament.collect_is_over_21)
-        and membership.age_disclosure is None
-    )
+        tournament.collect_is_over_18 or tournament.collect_is_over_21
+    ) and membership.age_disclosure is None
     resp = MembershipMeResponse(
-        id=membership.id, created_at=membership.created_at,
-        updated_at=membership.updated_at, user=membership.user,
-        is_owner=is_owner, permissions=permissions,
+        id=membership.id,
+        created_at=membership.created_at,
+        updated_at=membership.updated_at,
+        user=membership.user,
+        is_owner=is_owner,
+        permissions=permissions,
         needs_age_consent=needs_age_consent,
         roles=membership.held_roles if wants(requested, ROLES) else [],
-        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
+        is_over_18=membership.is_over_18,
+        is_over_21=membership.is_over_21,
         # build_track_statuses rather than the raw rows: it pads every live
         # track the member has no row for as "pending", and those are exactly
         # the tracks a self-service control needs to offer.
         track_statuses=build_track_statuses(db, membership) if wants(requested, TRACKS) else [],
-        event_preferences=build_event_preferences(db, membership) if wants(requested, EVENT_PREFS) else [],
+        event_preferences=build_event_preferences(db, membership)
+        if wants(requested, EVENT_PREFS)
+        else [],
         availability=[
             MembershipAvailabilityRead.from_row(row, tournament)
             for row in membership.availability_shifts
-        ] if wants(requested, AVAILABILITY) else [],
+        ]
+        if wants(requested, AVAILABILITY)
+        else [],
         lunch=build_lunch(db, membership) if wants(requested, LUNCH) else [],
         custom_responses=(
             get_custom_form_answers(db, tournament.id, current_user.id)
-            if wants(requested, CUSTOM) else []
+            if wants(requested, CUSTOM)
+            else []
         ),
     )
     data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
     return JSONResponse(gate_age_flags(membership, data))
 
 
-def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
+def _resolve_join_code_creators(
+    db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list
+):
     """Overwrites each response's .join_code.creator with a properly resolved
     PersonRefResponse. Automatic from_attributes validation would otherwise
     read JoinCode.creator (a plain User relationship), which knows nothing of
@@ -149,6 +162,7 @@ def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: li
     for m, resp in zip(memberships, responses):
         if m.join_code is not None:
             resp.join_code.creator = creators[m.join_code.created_by]
+
 
 # Routes nested: /tournaments/{tournament_id}/members/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/members", tags=["tournaments"])
@@ -225,13 +239,23 @@ def list_memberships(
     query = apply_member_filters(
         query,
         tournament=tournament,
-        roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
-        competition_events=competition_event, volunteer_events=volunteer_event,
-        age_flags=age, shifts=shift, assigned=assigned,
+        roles=role,
+        tracks=track,
+        lunch=lunch,
+        event_preferences=event_pref,
+        competition_events=competition_event,
+        volunteer_events=volunteer_event,
+        age_flags=age,
+        shifts=shift,
+        assigned=assigned,
     )
     query = apply_member_search(
-        query, db,
-        q=q, role_id=role_id, exclude_role_id=exclude_role_id, max_rank=max_rank,
+        query,
+        db,
+        q=q,
+        role_id=role_id,
+        exclude_role_id=exclude_role_id,
+        max_rank=max_rank,
     )
     memberships = query.order_by(TournamentMembership.id).all()
     # Age flags are derived, not stored, so they can't be part of the query.
@@ -245,7 +269,8 @@ def list_memberships(
     exclude = dump_exclude(requested)
     data = [
         apply_display_config(
-            config, surface,
+            config,
+            surface,
             gate_age_flags(membership, resp.model_dump(mode="json", exclude=exclude)),
             tournament,
         )
@@ -308,7 +333,9 @@ def get_my_membership(
     tournament = get_tournament(tournament_id, db)
 
     membership = get_membership_by_user(
-        db, tournament_id, current_user.id,
+        db,
+        tournament_id,
+        current_user.id,
         # The role rides along on each assignment via its own lazy="joined".
         selectinload(TournamentMembership.track_assignments),
     )
@@ -321,7 +348,9 @@ def get_my_membership(
     if not membership:
         # No id/user either — there is no membership to describe.
         resp = MembershipMeResponse(
-            is_owner=is_owner, roles=[], permissions=permissions,
+            is_owner=is_owner,
+            roles=[],
+            permissions=permissions,
         )
         data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
         return JSONResponse(gate_age_flags(None, data))
@@ -349,7 +378,9 @@ def set_my_age_disclosure(
     require_not_archived(tournament)
 
     membership = get_membership_by_user(
-        db, tournament_id, current_user.id,
+        db,
+        tournament_id,
+        current_user.id,
         # The role rides along on each assignment via its own lazy="joined".
         selectinload(TournamentMembership.track_assignments),
     )
@@ -462,12 +493,15 @@ def _live_track(db: Session, tournament_id: int, track_id: int) -> TournamentTra
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     if track.is_archived:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="This track is pending deletion",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This track is pending deletion",
         )
     return track
 
 
-def _set_track_status(db: Session, membership_id: int, track: TournamentTrack, incoming: str) -> None:
+def _set_track_status(
+    db: Session, membership_id: int, track: TournamentTrack, incoming: str
+) -> None:
     """The self-service status write, shared by the status route and the
     availability route (whose "Not available" clears shifts and declines in
     one call). The transition rules live in backend/track-status-rules.md."""
@@ -491,9 +525,13 @@ def _set_track_status(db: Session, membership_id: int, track: TournamentTrack, i
         .first()
     )
     if row is None:
-        db.add(TournamentMembershipTrackStatus(
-            membership_id=membership_id, track_id=track.id, status=incoming,
-        ))
+        db.add(
+            TournamentMembershipTrackStatus(
+                membership_id=membership_id,
+                track_id=track.id,
+                status=incoming,
+            )
+        )
     else:
         row.status = incoming
 
@@ -589,7 +627,8 @@ def update_my_lunch(
 
     field = next(
         (
-            f for f in member_editable_reserved_fields(db, tournament_id)
+            f
+            for f in member_editable_reserved_fields(db, tournament_id)
             if f.field_key == f"lunch_{track_id}_{category}"
         ),
         None,
@@ -659,7 +698,8 @@ def update_my_event_preferences(
 
     field = next(
         (
-            f for f in member_editable_reserved_fields(db, tournament_id)
+            f
+            for f in member_editable_reserved_fields(db, tournament_id)
             if event_preference_field_track_id(f.field_key) == track_id
         ),
         None,
@@ -723,7 +763,10 @@ def update_my_event_preferences(
         answer = option_ids
 
     sync_event_preferences(
-        db, m.id, track_id, event_preference_items_from_answer(field, answer),
+        db,
+        m.id,
+        track_id,
+        event_preference_items_from_answer(field, answer),
     )
     db.commit()
     db.refresh(m)

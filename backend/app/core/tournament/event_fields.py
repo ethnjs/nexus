@@ -21,6 +21,7 @@ events, and the only thing genuinely common is the three rules above plus
 ~20 lines of parsing. Generalizing that would couple the two catalogs for no
 saving worth having.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,10 +36,19 @@ from sqlalchemy.orm import joinedload, noload, selectinload
 # because display_name resolves through it: a catalog-linked event leaves its
 # own name column null, so withholding it would render the event nameless.
 # ---------------------------------------------------------------------------
-ALWAYS_KEYS = frozenset({
-    "id", "tournament_id", "name", "division", "event_type", "event_id", "event",
-    "created_at", "updated_at",
-})
+ALWAYS_KEYS = frozenset(
+    {
+        "id",
+        "tournament_id",
+        "name",
+        "division",
+        "event_type",
+        "event_id",
+        "event",
+        "created_at",
+        "updated_at",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,7 @@ class EventFieldGroup:
     noload()ed when not — a relationship left on its default lazy strategy
     would issue a query per row for data about to be excluded from the dump.
     """
+
     name: str
     keys: frozenset[str] = frozenset()
     relationships: tuple[str, ...] = ()

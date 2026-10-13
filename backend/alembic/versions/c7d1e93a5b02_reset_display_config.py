@@ -12,13 +12,14 @@ from the defaults — everything visible, default order.
 
 Data-only: the column itself is unchanged.
 """
+
 from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'c7d1e93a5b02'
-down_revision: str | None = 'a1c4f2b90d17'
+revision: str = "c7d1e93a5b02"
+down_revision: str | None = "a1c4f2b90d17"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

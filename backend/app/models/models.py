@@ -75,6 +75,7 @@ class UserSession(Base):
 
     user = relationship("User")
 
+
 # ---------------------------------------------------------------------------
 # VerificationToken — backs signup verify, email change and revert, password
 # reset, and account setup. Only the SHA-256 hash is stored (see
@@ -88,14 +89,19 @@ class VerificationToken(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     token_hash = Column(String(255), nullable=False, index=True, unique=True)
-    purpose = Column(String(32), nullable=False)  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
-    new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
+    purpose = Column(
+        String(32), nullable=False
+    )  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
+    new_email = Column(
+        String(255), nullable=True
+    )  # "email_change": new address. "email_change_revert": address to revert TO (old address).
 
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User")
+
 
 # ---------------------------------------------------------------------------
 # University — canonical lookup table so free-text names ("OSU" vs "Ohio
@@ -106,8 +112,8 @@ class University(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
-    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
-    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+    abbreviation = Column(String(32), nullable=True)  # e.g. "USC", "UCLA", "UCI"
+    location = Column(String(255), nullable=True)  # e.g. "Los Angeles, CA"
 
     # Relationships — a university hosts *tracks*, not tournaments: a
     # multi-site tournament has one track per venue (see TournamentTrack).
@@ -127,6 +133,7 @@ class EventCategory(Base):
 
     events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
 
+
 # ---------------------------------------------------------------------------
 # Event
 # ---------------------------------------------------------------------------
@@ -135,7 +142,7 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False)
-    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+    category_id = Column(Integer, ForeignKey("event_categories.id"), nullable=False)
 
     category = relationship("EventCategory", back_populates="events")
     user_competition_experience = relationship(
@@ -169,9 +176,7 @@ class SeasonEvent(Base):
 
     event = relationship("Event")
 
-    __table_args__ = (
-        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
-    )
+    __table_args__ = (UniqueConstraint("event_id", "year", "division", name="uq_season_event"),)
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +196,9 @@ class User(Base):
     pronouns = Column(String(100), nullable=True)
 
     # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
+    hashed_password = Column(
+        String(255), nullable=True
+    )  # null = cannot log in, must reset password and verify via email
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
@@ -206,7 +213,9 @@ class User(Base):
     # if a student
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     major = Column(String(255), nullable=True)
-    student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
+    student_status = Column(
+        String(255), nullable=True
+    )  # "Undergraduate", "Graduate", "Non-Student"
     year_level = Column(Integer, nullable=True)
     graduation_year = Column(Integer, nullable=True)
 
@@ -227,33 +236,43 @@ class User(Base):
         "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
     )
     tournaments = relationship(
-        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id", passive_deletes=True,
+        "Tournament",
+        back_populates="owner",
+        foreign_keys="Tournament.owner_id",
+        passive_deletes=True,
     )
     competition_experience = relationship(
         "UserCompetitionExperience",
         back_populates="user",
         foreign_keys="UserCompetitionExperience.user_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     volunteer_experience = relationship(
         "UserVolunteerExperience",
         back_populates="user",
         foreign_keys="UserVolunteerExperience.user_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     university = relationship("University", back_populates="users")
     # passive_deletes hands deletion to the DB's ON DELETE rules. Without it
     # the ORM nulls each child's user_id first, which fails on the NOT NULL
     # ones — that's what made users with form responses undeletable.
     chapter_membership = relationship(
-        "ChapterMembership", back_populates="user", uselist=False,
-        cascade="all, delete-orphan", passive_deletes=True,
+        "ChapterMembership",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     join_codes = relationship("JoinCode", back_populates="creator", passive_deletes=True)
     created_forms = relationship("Form", back_populates="creator", passive_deletes=True)
     form_responses = relationship(
-        "FormResponse", back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
+        "FormResponse",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
+
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -262,13 +281,14 @@ class UserCompetitionExperience(Base):
     __tablename__ = "user_competition_experience"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
-    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="RESTRICT"), nullable=False)
     school = Column(String(255), nullable=False)
     notes = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="competition_experience")
     event = relationship("Event", back_populates="user_competition_experience")
+
 
 # ---------------------------------------------------------------------------
 # UserVolunteerExperience — manual entry only for now
@@ -277,12 +297,12 @@ class UserVolunteerExperience(Base):
     __tablename__ = "user_volunteer_experience"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # manual add by the user
     tournament_name = Column(String(255), nullable=False)
     year = Column(Integer, nullable=False)
-    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="RESTRICT"), nullable=True)
     role = Column(String(63), nullable=False)
 
     notes = Column(JSON, nullable=True)  # {"event": custom name, "other": free notes}
@@ -297,15 +317,19 @@ class UserVolunteerExperience(Base):
 class AlumniChapter(Base):
     __tablename__ = "alumni_chapters"
 
-    id = Column(Integer,  primary_key=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     university = relationship("University", back_populates="alumni_chapter")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    chapter_memberships = relationship(
+        "ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan"
+    )
+    join_codes = relationship(
+        "JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan"
+    )
     tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
     forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
 
@@ -317,8 +341,12 @@ class ChapterMembership(Base):
     __tablename__ = "chapter_memberships"
 
     id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
+    chapter_id = Column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )  # one chapter per user
     role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
     joined_at = Column(DateTime(timezone=True), default=utcnow)
 
@@ -334,8 +362,12 @@ class Tournament(Base):
     __tablename__ = "tournaments"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)                 # excludes year, e.g. "Science Olympiad Invitational"
-    short_name = Column(String(64), nullable=True)              # includes abbreviation, e.g. "SoCal", "OC", "LA"
+    name = Column(
+        String(255), nullable=False
+    )  # excludes year, e.g. "Science Olympiad Invitational"
+    short_name = Column(
+        String(64), nullable=True
+    )  # includes abbreviation, e.g. "SoCal", "OC", "LA"
 
     # When/where/what-division a tournament runs is *not* stored here — it
     # lives on its primary tracks (see TournamentTrack.is_primary) and is
@@ -343,7 +375,9 @@ class Tournament(Base):
     # can run Day 1 at UCI in division C and Day 2 at Northwood in division B;
     # one location and one date range per tournament could never say that.
     state = Column(String(32), nullable=False)
-    level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
+    level = Column(
+        String(32), nullable=False
+    )  # "regionals" | "state" | "nationals" | "invitational"
 
     # IANA name (e.g. "America/Los_Angeles"). Set once at creation from the
     # creator's browser timezone — immutable after, no update path.
@@ -390,20 +424,29 @@ class Tournament(Base):
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
-    roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
+    roles = relationship(
+        "TournamentRole", back_populates="tournament", cascade="all, delete-orphan"
+    )
     export_presets = relationship(
         "TournamentExportPreset", back_populates="tournament", cascade="all, delete-orphan"
     )
-    join_codes =relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
-    audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
-    event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
-    tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
+    join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
+    audit_log = relationship(
+        "AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    event_shifts = relationship(
+        "TournamentShift", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    tracks = relationship(
+        "TournamentTrack", back_populates="tournament", cascade="all, delete-orphan"
+    )
     buildings = relationship(
         "TournamentBuilding", back_populates="tournament", cascade="all, delete-orphan"
     )
     forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
-    tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
-
+    tournament_forms = relationship(
+        "TournamentForm", back_populates="tournament", cascade="all, delete-orphan"
+    )
 
     # -----------------------------------------------------------------------
     # Schedule derived from primary tracks.
@@ -504,6 +547,7 @@ class HeldRole(NamedTuple):
     assembled from track_assignments on read. `track_ids` is empty when the
     role is tournament-wide, which already means "every track".
     """
+
     role: "TournamentRole"
     is_tournament_wide: bool
     track_ids: list[int]
@@ -513,9 +557,7 @@ class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
@@ -523,9 +565,7 @@ class TournamentMembership(Base):
 
     # Join code redeemed, if source=="join_code". SET NULL on code delete so
     # history survives.
-    join_code_id = Column(
-        Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
-    )
+    join_code_id = Column(Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True)
 
     # Set once this member has answered every currently-onboarding-flagged,
     # published TournamentForm for this tournament. Permanent once set —
@@ -567,7 +607,8 @@ class TournamentMembership(Base):
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
     track_assignments = relationship(
-        "TournamentTrackAssignment", back_populates="membership",
+        "TournamentTrackAssignment",
+        back_populates="membership",
         cascade="all, delete-orphan",
     )
 
@@ -633,15 +674,28 @@ class TournamentMembership(Base):
             if assignment.is_tournament_wide or assignment.tournament_track_id == track_id:
                 seen.setdefault(assignment.role_id, assignment.role)
         return sorted(seen.values(), key=lambda role: (role.rank, role.label))
+
     # No `roles` relationship any more. A member's roles are not stored — they
     # are the distinct roles across their track assignments, which is what makes
     # being staffed and holding a role one fact rather than two (#83). Read them
     # through `held_roles` below, or query track_assignments for the rows.
     join_code = relationship("JoinCode")
-    availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
-    lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
-    track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
-    event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
+    availability_shifts = relationship(
+        "TournamentMembershipAvailability",
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
+    lunch_selections = relationship(
+        "TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan"
+    )
+    track_statuses = relationship(
+        "TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan"
+    )
+    event_preferences = relationship(
+        "TournamentMembershipEventPreference",
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
     # Staffing rows only — a member panel asks "what are they on", not "what
     # roles do they hold", which is held_roles. Read-only: every write goes
     # through track_assignments, which owns the cascade; a second writable path
@@ -685,9 +739,7 @@ class TournamentMembership(Base):
     # doubly so: first_day is a Python-side aggregate over tracks, not a
     # column SQL could compare against.
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),)
 
 
 # ---------------------------------------------------------------------------
@@ -698,8 +750,10 @@ class TournamentRole(Base):
     __tablename__ = "tournament_roles"
 
     id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    label = Column(String(255), nullable=False)        # human-readable name
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    label = Column(String(255), nullable=False)  # human-readable name
 
     # Strings from ALL_PERMISSIONS (core/permissions.py). JSON, not a junction
     # table — permissions are a small fixed enum, no relational benefit.
@@ -728,9 +782,7 @@ class TournamentRole(Base):
         viewonly=True,
     )
 
-    __table_args__ = (
-        UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),
-    )
+    __table_args__ = (UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),)
 
 
 # ---------------------------------------------------------------------------
@@ -748,8 +800,10 @@ class TournamentExportPreset(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournaments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name = Column(String(255), nullable=False)
     # What one row is: "member" | "event" (an event and its members).
@@ -789,7 +843,9 @@ class JoinCode(Base):
 
     id = Column(Integer, primary_key=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True
+    )
     # Null once the creator's account is deleted; the code keeps working.
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     code = Column(String(8), unique=True, nullable=False)
@@ -821,11 +877,13 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log_entries"
 
     id = Column(Integer, primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
     # Null once the actor's account is deleted — the entry stays as history.
     actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action = Column(String(64), nullable=False)
-    target_type = Column(String(64), nullable=True)   # e.g. "membership", "role", "join_code"
+    target_type = Column(String(64), nullable=True)  # e.g. "membership", "role", "join_code"
     target_id = Column(Integer, nullable=True)
     extra_data = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -847,7 +905,7 @@ class TournamentEvent(Base):
     # A custom (event_id-less) event's name, or a catalog-linked one's
     # tournament-level override of the catalog name (null = use the catalog's).
     name = Column(String(255), nullable=True)
-    division = Column(String(4), nullable=True)           # "A" | "B" | "C"
+    division = Column(String(4), nullable=True)  # "A" | "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
 
     # Canonical event table link — SET NULL on delete so custom (event_id-less)
@@ -879,7 +937,9 @@ class TournamentEvent(Base):
     # printed the day as 8am, 12pm, 4pm, 8am. `start` is a full datetime, so
     # this orders a multi-day event's shifts correctly too.
     shifts = relationship(
-        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events",
+        "TournamentShift",
+        secondary="tournament_event_shifts",
+        back_populates="tournament_events",
         order_by="(TournamentShift.start, TournamentShift.id)",
     )
     # Which tracks this event runs on. Explicit rather than derived through
@@ -894,7 +954,9 @@ class TournamentEvent(Base):
     # same rows and let one silently undo the other. Still the shape almost
     # every reader wants — the track objects, in schedule order.
     tracks = relationship(
-        "TournamentTrack", secondary="tournament_event_tracks", viewonly=True,
+        "TournamentTrack",
+        secondary="tournament_event_tracks",
+        viewonly=True,
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
     # The link rows themselves, and the only writable side of the pairing.
@@ -902,7 +964,8 @@ class TournamentEvent(Base):
     # relationship can't express, and the readers that care sort on the way
     # out.
     track_details = relationship(
-        "TournamentEventTrack", back_populates="tournament_event",
+        "TournamentEventTrack",
+        back_populates="tournament_event",
         cascade="all, delete-orphan",
     )
     # Read-only, like every view onto track assignments. Deleting an event
@@ -926,7 +989,9 @@ class TournamentEvent(Base):
     __table_args__ = (
         Index(
             "uq_tournament_event_catalog_division",
-            "tournament_id", "event_id", "division",
+            "tournament_id",
+            "event_id",
+            "division",
             unique=True,
             postgresql_where=(event_id.isnot(None)),
         ),
@@ -942,15 +1007,19 @@ class TournamentShift(Base):
     __tablename__ = "tournament_shifts"
 
     id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
     # Which day of the tournament this shift belongs to. Required, and always
     # a *primary* track: a shift is a time range, and only a primary track has
     # dates for it to fall inside. A cosmetic track (Test Writing) has no
     # schedule and therefore no shifts — which is exactly why events reach it
     # through tournament_event_tracks rather than through shifts.
     track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     label = Column(String(255), nullable=False)
     start = Column(DateTime(timezone=True), nullable=False)
@@ -964,7 +1033,9 @@ class TournamentShift(Base):
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
     membership_availabilities = relationship(
-        "TournamentMembershipAvailability", back_populates="tournament_shift", cascade="all, delete-orphan"
+        "TournamentMembershipAvailability",
+        back_populates="tournament_shift",
+        cascade="all, delete-orphan",
     )
     assignments = relationship(
         "TournamentTrackAssignment",
@@ -1024,7 +1095,9 @@ class TournamentTrack(Base):
     __tablename__ = "tournament_tracks"
 
     id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String(255), nullable=False)
 
     # See the class docstring. Nullable at the DB level because a cosmetic
@@ -1036,7 +1109,7 @@ class TournamentTrack(Base):
     end_date = Column(Date, nullable=True)
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
-    division = Column(JSON, nullable=True)                      # list of "A" | "B" | "C"
+    division = Column(JSON, nullable=True)  # list of "A" | "B" | "C"
 
     # Pending delete, not a TD-facing archive. Set only by DELETE /tracks/
     # when TD-authored references (shifts, form fields) still point here; the
@@ -1073,7 +1146,9 @@ class TournamentTrack(Base):
     # a competition day's is more often a general volunteer role. SET NULL
     # rather than a blocking FK: deleting a role a track defaults to should
     # not be blocked by that default, just clear it.
-    default_role_id = Column(Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True)
+    default_role_id = Column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -1084,7 +1159,9 @@ class TournamentTrack(Base):
     # Read-only for the same reason TournamentEvent.tracks is — this is the
     # other half of the same secondary, and writes belong to the link rows.
     events = relationship(
-        "TournamentEvent", secondary="tournament_event_tracks", viewonly=True,
+        "TournamentEvent",
+        secondary="tournament_event_tracks",
+        viewonly=True,
     )
     buildings = relationship(
         "TournamentBuilding", secondary="tournament_building_tracks", back_populates="tracks"
@@ -1139,8 +1216,10 @@ class TournamentBuilding(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournaments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name = Column(String(255), nullable=False)
 
@@ -1151,7 +1230,9 @@ class TournamentBuilding(Base):
     # Ordered by date so a building lists its tracks in schedule order, the
     # same way TournamentEvent.tracks does; cosmetic tracks sort last.
     tracks = relationship(
-        "TournamentTrack", secondary="tournament_building_tracks", back_populates="buildings",
+        "TournamentTrack",
+        secondary="tournament_building_tracks",
+        back_populates="buildings",
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
 
@@ -1186,8 +1267,12 @@ class TournamentBuildingTrack(Base):
 class TournamentEventShift(Base):
     __tablename__ = "tournament_event_shifts"
 
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
-    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True)
+    tournament_event_id = Column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True
+    )
+    tournament_shift_id = Column(
+        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1208,8 +1293,12 @@ class TournamentEventShift(Base):
 class TournamentEventTrack(Base):
     __tablename__ = "tournament_event_tracks"
 
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
-    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
+    tournament_event_id = Column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True
+    )
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
+    )
 
     # -----------------------------------------------------------------------
     # Where the event physically happens on this track.
@@ -1232,7 +1321,7 @@ class TournamentEventTrack(Base):
     # An override: null means "derive it from the rooms" (see effective_floor).
     # Kept as a column for the building whose numbering doesn't follow the rule.
     floor = Column(String(64), nullable=True)
-    rooms = Column(JSON, nullable=True)                        # list of str
+    rooms = Column(JSON, nullable=True)  # list of str
 
     @property
     def effective_floor(self) -> str | None:
@@ -1263,8 +1352,10 @@ class TournamentEventTrack(Base):
     # How many of each role this event wants on this track. Ordered by role
     # so a needs list renders the same way twice running.
     needs = relationship(
-        "TournamentEventStaffingNeed", back_populates="track_detail",
-        cascade="all, delete-orphan", order_by="TournamentEventStaffingNeed.role_id",
+        "TournamentEventStaffingNeed",
+        back_populates="track_detail",
+        cascade="all, delete-orphan",
+        order_by="TournamentEventStaffingNeed.role_id",
     )
 
     __table_args__ = (
@@ -1308,8 +1399,10 @@ class TournamentEventStaffingNeed(Base):
     track_id = Column(Integer, nullable=False, index=True)
 
     role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     count = Column(Integer, nullable=False)
 
@@ -1328,7 +1421,9 @@ class TournamentEventStaffingNeed(Base):
             ondelete="CASCADE",
         ),
         UniqueConstraint(
-            "tournament_event_id", "track_id", "role_id",
+            "tournament_event_id",
+            "track_id",
+            "role_id",
             name="uq_staffing_need_event_track_role",
         ),
         CheckConstraint("count >= 1", name="ck_staffing_need_count_positive"),
@@ -1367,7 +1462,9 @@ class TournamentZone(Base):
     # a zone on that same day almost always wants Runner. SET NULL rather
     # than a blocking FK, matching TournamentTrack.default_role_id.
     default_role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True,
+        Integer,
+        ForeignKey("tournament_roles.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
@@ -1376,7 +1473,9 @@ class TournamentZone(Base):
     track = relationship("TournamentTrack")
     default_role = relationship("TournamentRole")
     members = relationship(
-        "TournamentZoneMember", back_populates="zone", cascade="all, delete-orphan",
+        "TournamentZoneMember",
+        back_populates="zone",
+        cascade="all, delete-orphan",
     )
     # Read-only: zone coverage lives in tournament_track_assignments now, and
     # deleting a zone still clears it through that table's composite FK.
@@ -1433,7 +1532,7 @@ class TournamentZoneMember(Base):
     # database guarantee rather than a route check two writers can race past.
     track_id = Column(Integer, nullable=False, index=True)
 
-    kind = Column(String(16), nullable=False)          # building | floor | event
+    kind = Column(String(16), nullable=False)  # building | floor | event
 
     building_id = Column(Integer, nullable=True, index=True)
     floor = Column(String(64), nullable=True)
@@ -1492,16 +1591,26 @@ class TournamentZoneMember(Base):
         # rule rests on. Partial, because each kind uses different columns and
         # a NULL in a plain unique index would let duplicates through.
         Index(
-            "uq_zone_member_building", "track_id", "building_id",
-            unique=True, postgresql_where=text("kind = 'building'"),
+            "uq_zone_member_building",
+            "track_id",
+            "building_id",
+            unique=True,
+            postgresql_where=text("kind = 'building'"),
         ),
         Index(
-            "uq_zone_member_floor", "track_id", "building_id", "floor",
-            unique=True, postgresql_where=text("kind = 'floor'"),
+            "uq_zone_member_floor",
+            "track_id",
+            "building_id",
+            "floor",
+            unique=True,
+            postgresql_where=text("kind = 'floor'"),
         ),
         Index(
-            "uq_zone_member_event", "track_id", "tournament_event_id",
-            unique=True, postgresql_where=text("kind = 'event'"),
+            "uq_zone_member_event",
+            "track_id",
+            "tournament_event_id",
+            unique=True,
+            postgresql_where=text("kind = 'event'"),
         ),
     )
 
@@ -1542,12 +1651,16 @@ class TournamentTrackAssignment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     membership_id = Column(
-        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     role_id = Column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # A role that isn't about a particular day. Legal only with no track,
@@ -1560,8 +1673,10 @@ class TournamentTrackAssignment(Base):
     # when any of its columns is null, so a plain grant row — track set, event
     # and zone null — would otherwise have nothing checking its track exists.
     tournament_track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=True, index=True,
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
 
     # No inline ForeignKeys on these three. Each is paired with the track in
@@ -1610,19 +1725,21 @@ class TournamentTrackAssignment(Base):
         ForeignKeyConstraint(
             ["tournament_event_id", "tournament_track_id"],
             ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
-            name="fk_track_assignment_event", ondelete="CASCADE",
+            name="fk_track_assignment_event",
+            ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
             ["tournament_shift_id", "tournament_track_id"],
             ["tournament_shifts.id", "tournament_shifts.track_id"],
-            name="fk_track_assignment_shift", ondelete="CASCADE",
+            name="fk_track_assignment_shift",
+            ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
             ["zone_id", "tournament_track_id"],
             ["tournament_zones.id", "tournament_zones.track_id"],
-            name="fk_track_assignment_zone", ondelete="CASCADE",
+            name="fk_track_assignment_zone",
+            ondelete="CASCADE",
         ),
-
         # A tournament-wide row is about no day in particular, so it carries
         # nothing that names one; every other row must name a track.
         CheckConstraint(
@@ -1642,15 +1759,20 @@ class TournamentTrackAssignment(Base):
             "tournament_shift_id IS NULL OR tournament_event_id IS NOT NULL",
             name="ck_track_assignment_shift_needs_event",
         ),
-
         # One row per shape. Partial, because each shape is keyed by different
         # columns and nulls in a plain unique index would let duplicates past.
         Index(
-            "uq_track_assignment_wide", "membership_id", "role_id",
-            unique=True, postgresql_where=text("is_tournament_wide"),
+            "uq_track_assignment_wide",
+            "membership_id",
+            "role_id",
+            unique=True,
+            postgresql_where=text("is_tournament_wide"),
         ),
         Index(
-            "uq_track_assignment_grant", "membership_id", "role_id", "tournament_track_id",
+            "uq_track_assignment_grant",
+            "membership_id",
+            "role_id",
+            "tournament_track_id",
             unique=True,
             postgresql_where=text(
                 "NOT is_tournament_wide AND tournament_event_id IS NULL AND zone_id IS NULL"
@@ -1661,8 +1783,11 @@ class TournamentTrackAssignment(Base):
         # Test Reviewing — and without the track those are one row, not two.
         # The shift key below needs no track: a shift already names one.
         Index(
-            "uq_track_assignment_event", "membership_id", "role_id",
-            "tournament_event_id", "tournament_track_id",
+            "uq_track_assignment_event",
+            "membership_id",
+            "role_id",
+            "tournament_event_id",
+            "tournament_track_id",
             unique=True,
             postgresql_where=text(
                 "tournament_event_id IS NOT NULL AND tournament_shift_id IS NULL"
@@ -1670,12 +1795,20 @@ class TournamentTrackAssignment(Base):
         ),
         Index(
             "uq_track_assignment_event_shift",
-            "membership_id", "role_id", "tournament_event_id", "tournament_shift_id",
-            unique=True, postgresql_where=text("tournament_shift_id IS NOT NULL"),
+            "membership_id",
+            "role_id",
+            "tournament_event_id",
+            "tournament_shift_id",
+            unique=True,
+            postgresql_where=text("tournament_shift_id IS NOT NULL"),
         ),
         Index(
-            "uq_track_assignment_zone", "membership_id", "role_id", "zone_id",
-            unique=True, postgresql_where=text("zone_id IS NOT NULL"),
+            "uq_track_assignment_zone",
+            "membership_id",
+            "role_id",
+            "zone_id",
+            unique=True,
+            postgresql_where=text("zone_id IS NOT NULL"),
         ),
     )
 
@@ -1692,6 +1825,7 @@ class TournamentChapter(Base):
     # Relationships
     tournament = relationship("Tournament", back_populates="tournament_chapters")
     chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
+
 
 # ---------------------------------------------------------------------------
 # SheetConfig
@@ -1729,9 +1863,11 @@ class Form(Base):
     # ix_forms_id and prod has it — declared here so the model matches the
     # migrations rather than silently drifting from them.
     id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
+    owner_type = Column(String(16), nullable=False)  # "tournament" | "chapter"
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(
+        Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True
+    )
     name = Column(String(255), nullable=False)
     # Respondent-facing title, shown on the actual form — distinct from
     # `name` (the TD-facing dashboard/list label). Independently editable;
@@ -1739,7 +1875,9 @@ class Form(Base):
     # nothing here enforces them staying in sync afterward.
     title = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
-    status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
+    status = Column(
+        String(16), nullable=False, default="draft"
+    )  # "draft" | "published" | "archived"
 
     # Null once the creator's account is deleted.
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -1754,9 +1892,13 @@ class Form(Base):
     tournament = relationship("Tournament", back_populates="forms")
     chapter = relationship("AlumniChapter", back_populates="forms")
     creator = relationship("User", back_populates="created_forms")
-    fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
+    fields = relationship(
+        "FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order"
+    )
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
-    tournament_form = relationship("TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan")
+    tournament_form = relationship(
+        "TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan"
+    )
 
     @property
     def tournament_is_archived(self) -> bool | None:
@@ -1811,7 +1953,9 @@ class TournamentForm(Base):
     __tablename__ = "tournament_forms"
 
     form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
     is_onboarding = Column(Boolean, nullable=False, default=False)
     order = Column(Integer, nullable=True)
     # Optional member-visibility requirements for standard tournament forms.
@@ -1870,7 +2014,9 @@ class FormField(Base):
         # replacing it can share a name. A plain UniqueConstraint here would
         # block that at the DB even though the application allows it.
         Index(
-            "uq_form_field_key", "form_id", "field_key",
+            "uq_form_field_key",
+            "form_id",
+            "field_key",
             unique=True,
             postgresql_where=text("is_archived = false"),
         ),
@@ -1900,11 +2046,11 @@ class FormResponse(Base):
     form = relationship("Form", back_populates="responses")
     user = relationship("User", back_populates="form_responses")
     answers = relationship("FormAnswer", back_populates="response", cascade="all, delete-orphan")
-    pending_updates = relationship("FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),
+    pending_updates = relationship(
+        "FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),)
 
 
 # ---------------------------------------------------------------------------
@@ -1915,7 +2061,9 @@ class FormAnswer(Base):
     __tablename__ = "form_answers"
 
     id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
-    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    response_id = Column(
+        String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False
+    )
     field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
     value = Column(JSON, nullable=False)
     # The semantics this answer was given under. `value`'s shape is a function
@@ -1930,9 +2078,7 @@ class FormAnswer(Base):
     response = relationship("FormResponse", back_populates="answers")
     field = relationship("FormField", back_populates="answer")
 
-    __table_args__ = (
-        UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
-    )
+    __table_args__ = (UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),)
 
 
 # ---------------------------------------------------------------------------
@@ -1955,7 +2101,9 @@ class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
 
     id = Column(Integer, primary_key=True, index=True)
-    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    response_id = Column(
+        String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False
+    )
     field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False)
     # See app/core/form/changes.py for the values and what raises each.
     reasons = Column(JSON, nullable=False, default=list)
@@ -1977,8 +2125,12 @@ class TournamentMembershipAvailability(Base):
     __tablename__ = "tournament_membership_availability"
 
     id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
-    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), nullable=False)
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False
+    )
+    tournament_shift_id = Column(
+        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), nullable=False
+    )
 
     membership = relationship("TournamentMembership", back_populates="availability_shifts")
     tournament_shift = relationship("TournamentShift", back_populates="membership_availabilities")
@@ -1997,14 +2149,18 @@ class TournamentMembershipLunch(Base):
     __tablename__ = "tournament_membership_lunch"
 
     id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False
+    )
     # Scoped by track, not by date. A track can span more than one day, so a
     # date was never the unit a lunch question is actually asked about — and
     # a two-site tournament feeds its sites separately even when they run on
     # the same day.
     track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     category = Column(String(64), nullable=False)
     # Text, not String: a lunch_{track}_{category} field can be short_text/
@@ -2023,7 +2179,9 @@ class TournamentMembershipLunch(Base):
         return self.track.name
 
     __table_args__ = (
-        UniqueConstraint("membership_id", "track_id", "category", "value", name="uq_membership_lunch_selection"),
+        UniqueConstraint(
+            "membership_id", "track_id", "category", "value", name="uq_membership_lunch_selection"
+        ),
     )
 
 
@@ -2046,11 +2204,15 @@ class TournamentMembershipTrackStatus(Base):
     __tablename__ = "tournament_membership_track_statuses"
 
     id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False
+    )
     # CASCADE, unlike a form field's reference to a track: a TD who hard-deletes
     # a track is removing it for good, and delete_track already refuses while
     # any form field still references it.
-    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), nullable=False)
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), nullable=False
+    )
 
     # "interested" | "confirmed" | "declined"
     status = Column(String(32), nullable=False)
@@ -2060,8 +2222,12 @@ class TournamentMembershipTrackStatus(Base):
     # ordered. Both SET NULL: invalidating the question that set a status must
     # not take the status with it. NULL also means "not set by a form", which
     # is what a future member self-edit path will write.
-    source_response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="SET NULL"), nullable=True)
-    source_field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="SET NULL"), nullable=True)
+    source_response_id = Column(
+        String(12), ForeignKey("form_responses.id", ondelete="SET NULL"), nullable=True
+    )
+    source_field_id = Column(
+        String(12), ForeignKey("form_fields.id", ondelete="SET NULL"), nullable=True
+    )
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -2091,14 +2257,20 @@ class TournamentMembershipEventPreference(Base):
     __tablename__ = "tournament_membership_event_preferences"
 
     id = Column(Integer, primary_key=True, index=True)
-    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
-    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False)
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False
+    )
+    tournament_event_id = Column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False
+    )
     # The track is the whole scope — exactly one event_preference question per
     # track, so there is no suffix and no `key` column. A member ranking events
     # for Day 1 and for Test Writing has two independent sets.
     track_id = Column(
-        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        Integer,
+        ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # ranked_choice: the submitted rank; single_select: 1; checkbox: null.
@@ -2118,6 +2290,9 @@ class TournamentMembershipEventPreference(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "membership_id", "track_id", "tournament_event_id", name="uq_membership_event_preference",
+            "membership_id",
+            "track_id",
+            "tournament_event_id",
+            name="uq_membership_event_preference",
         ),
     )

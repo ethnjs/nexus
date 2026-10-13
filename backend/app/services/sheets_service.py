@@ -9,6 +9,7 @@ Pure functions handle header → field/type mapping with this priority:
 
 Exception: availability bracket pattern always → matrix_row regardless of form data.
 """
+
 from __future__ import annotations
 
 import json
@@ -81,11 +82,7 @@ class SheetsService:
     def validate_sheet_url(self, sheet_url: str) -> SheetValidateResponse:
         spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
         try:
-            metadata = (
-                self._client.spreadsheets()
-                .get(spreadsheetId=spreadsheet_id)
-                .execute()
-            )
+            metadata = self._client.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         except HttpError as e:
             if e.resp.status == 403:
                 raise PermissionError(
@@ -192,6 +189,7 @@ class SheetsService:
 # Pure functions — outside the class for easy unit testing
 # ---------------------------------------------------------------------------
 
+
 def _build_question_index(form_questions: list) -> dict[str, dict]:
     """
     Build a lowercase-title → question-dict index from a list of FormQuestion
@@ -248,14 +246,16 @@ def _alias_rules(options: list) -> list[ParseRule]:
         raw = opt.raw if hasattr(opt, "raw") else opt["raw"]
         alias = opt.alias if hasattr(opt, "alias") else opt["alias"]
         if raw != alias:
-            rules.append(ParseRule(
-                condition="contains",
-                match=raw,
-                case_sensitive=False,
-                action="replace",
-                value=alias,
-                is_alias=True,
-            ))
+            rules.append(
+                ParseRule(
+                    condition="contains",
+                    match=raw,
+                    case_sensitive=False,
+                    action="replace",
+                    value=alias,
+                    is_alias=True,
+                )
+            )
     return rules
 
 
@@ -370,9 +370,7 @@ def _build_mappings(headers: list[str], q_index: dict) -> list[MappedHeader]:
                 column_index, header, multi_matrix[column_index], q_index
             )
         else:
-            mapped = _map_header(
-                header, column_index, q_index, claimed_fields, claimed_extra_keys
-            )
+            mapped = _map_header(header, column_index, q_index, claimed_fields, claimed_extra_keys)
         mappings.append(mapped)
 
     return mappings
@@ -593,7 +591,9 @@ def _mapped_from_hint(
 
         # __ignore__ → ignore type
         if field == "__ignore__":
-            return MappedHeader(column_index=column_index, header=header, field="__ignore__", type="ignore")
+            return MappedHeader(
+                column_index=column_index, header=header, field="__ignore__", type="ignore"
+            )
 
         # extra_data without a pre-defined extra_key → slugify the header
         if field == "extra_data" and not extra_key:

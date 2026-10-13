@@ -4,6 +4,7 @@ authority; ties are peers who can't edit each other). Final rank values for
 drag-to-reorder are computed client-side and applied via a bulk endpoint —
 this module just guards who's allowed to touch which ranks.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,16 +41,23 @@ def with_member_counts(db: Session, roles: list[TournamentRole]) -> list[Tournam
     # Distinct memberships, not rows: since #83 one member holds a role
     # through a grant per track plus a row per event or zone they cover, and a
     # plain count would report the same person several times.
-    counts = dict(
-        db.query(
-            TournamentTrackAssignment.role_id,
-            func.count(func.distinct(TournamentTrackAssignment.membership_id)),
+    counts = (
+        dict(
+            db.query(
+                TournamentTrackAssignment.role_id,
+                func.count(func.distinct(TournamentTrackAssignment.membership_id)),
+            )
+            .join(
+                TournamentMembership,
+                TournamentMembership.id == TournamentTrackAssignment.membership_id,
+            )
+            .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
+            .group_by(TournamentTrackAssignment.role_id)
+            .all()
         )
-        .join(TournamentMembership, TournamentMembership.id == TournamentTrackAssignment.membership_id)
-        .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
-        .group_by(TournamentTrackAssignment.role_id)
-        .all()
-    ) if role_ids else {}
+        if role_ids
+        else {}
+    )
     for role in roles:
         role.member_count = counts.get(role.id, 0)
     return roles
@@ -94,7 +102,9 @@ def validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sessi
         )
 
 
-def validate_member_target(actor: User, tournament: Tournament, membership: TournamentMembership, db: Session) -> None:
+def validate_member_target(
+    actor: User, tournament: Tournament, membership: TournamentMembership, db: Session
+) -> None:
     """
     Guards actions taken on a member's own row — removing them from the
     tournament, editing their day-of logistics, or (via validate_role_action)
@@ -131,7 +141,9 @@ def validate_member_target(actor: User, tournament: Tournament, membership: Tour
 
     actor_rank = get_highest_rank(actor, tournament.id, db)
     if actor_rank is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
 
     target_rank = get_highest_rank(membership.user, tournament.id, db)
     if target_rank is not None and target_rank < actor_rank:
@@ -173,7 +185,9 @@ def validate_role_action(
 
     actor_rank = get_highest_rank(actor, tournament.id, db)
     if actor_rank is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
 
     if role.rank <= actor_rank:
         raise HTTPException(

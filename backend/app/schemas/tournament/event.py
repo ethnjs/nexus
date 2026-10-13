@@ -273,6 +273,7 @@ class EventMemberRead(BaseModel):
     about. `event_type` joins it because "trial" is something a member should
     be able to see before signing up for an event.
     """
+
     id: int
     name: str | None = None
     division: str | None = None

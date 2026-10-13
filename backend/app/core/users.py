@@ -1,4 +1,3 @@
-
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -16,7 +15,7 @@ def check_if_email_exists(db: Session, email: str, exclude_user_id: int | None =
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
-    
+
 
 def find_user_by_id(db: Session, id: int) -> User:
     user = db.query(User).filter(User.id == id).first()
@@ -41,6 +40,7 @@ def require_not_last_admin(db: Session, user: User) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The platform must keep at least one admin account",
         )
+
 
 def create_user(
     db: Session,

@@ -29,9 +29,17 @@ SHIFTS_TABLE = "shifts_table"
 # that holds only `collapsed` rather than a field repeated on each table's.
 PAGE_HEADER = "page_header"
 
-FLAT_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE, EVENT_PANEL, SHIFTS_TABLE, PAGE_HEADER,
-})
+FLAT_SURFACES = frozenset(
+    {
+        MEMBERS_PANEL,
+        MEMBERS_TABLE,
+        MEMBER_PAGE,
+        EVENTS_TABLE,
+        EVENT_PANEL,
+        SHIFTS_TABLE,
+        PAGE_HEADER,
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Per-tab surfaces
@@ -89,7 +97,8 @@ def is_known_surface(surface: str) -> bool:
         return False
     if tab == TAB_ALL:
         return True
-    return tab.startswith(TAB_TRACK_PREFIX) and tab[len(TAB_TRACK_PREFIX):].isdigit()
+    return tab.startswith(TAB_TRACK_PREFIX) and tab[len(TAB_TRACK_PREFIX) :].isdigit()
+
 
 # ---------------------------------------------------------------------------
 # Members table view state
@@ -105,10 +114,19 @@ def is_known_surface(surface: str) -> bool:
 # layer already ignores anything that no longer resolves, so a deleted track
 # in someone's saved filters is inert rather than an error.
 # ---------------------------------------------------------------------------
-KNOWN_FILTER_KEYS = frozenset({
-    "role", "track", "lunch", "event_pref",
-    "competition_event", "volunteer_event", "age", "shift", "assigned",
-})
+KNOWN_FILTER_KEYS = frozenset(
+    {
+        "role",
+        "track",
+        "lunch",
+        "event_pref",
+        "competition_event",
+        "volunteer_event",
+        "age",
+        "shift",
+        "assigned",
+    }
+)
 
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
@@ -158,7 +176,11 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
 # What a tournament with no saved column config shows — roughly today's table,
 # so the feature landing doesn't silently rearrange anyone's roster.
 DEFAULT_COLUMNS: tuple[str, ...] = (
-    COLUMN_EMAIL, COLUMN_PHONE, COLUMN_ACCOUNT_AGE, COLUMN_JOINED, COLUMN_METHOD,
+    COLUMN_EMAIL,
+    COLUMN_PHONE,
+    COLUMN_ACCOUNT_AGE,
+    COLUMN_JOINED,
+    COLUMN_METHOD,
 )
 
 # ---------------------------------------------------------------------------
@@ -214,8 +236,11 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
 # What the table shows until a viewer saves their own, and what Reset returns
 # to: what the event is and when it runs. Mirrored in eventColumns.tsx.
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
-    EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
-    EVENT_COLUMN_TRACKS, EVENT_COLUMN_TIME,
+    EVENT_COLUMN_DIVISION,
+    EVENT_COLUMN_TYPE,
+    EVENT_COLUMN_CATEGORY,
+    EVENT_COLUMN_TRACKS,
+    EVENT_COLUMN_TIME,
 )
 
 # Unlike the roster's, these filters are applied in the client (the events
@@ -226,17 +251,34 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 # as a deleted track is on the roster.
 # Shared with the board (see EVENTS_FILTER_KEYS in EventsFilterModal.tsx):
 # both pages filter with the same predicate, so they store the same keys.
-KNOWN_EVENT_FILTER_KEYS = frozenset({
-    "division", "type", "category", "track", "building", "shifts", "shift", "staffing",
-})
+KNOWN_EVENT_FILTER_KEYS = frozenset(
+    {
+        "division",
+        "type",
+        "category",
+        "track",
+        "building",
+        "shifts",
+        "shift",
+        "staffing",
+    }
+)
 
 # The table sorts by a chain (`sorts`) over the board's own fields — they
 # mean the same thing on both. "day" is from the single `sort` it saved before
 # that: still accepted so an old blob re-PUT by another save doesn't 422, and
 # read by the client as start.
-KNOWN_EVENT_SORT_FIELDS = frozenset({
-    "name", "division", "category", "start", "staffing", "location", "day",
-})
+KNOWN_EVENT_SORT_FIELDS = frozenset(
+    {
+        "name",
+        "division",
+        "category",
+        "start",
+        "staffing",
+        "location",
+        "day",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +294,9 @@ KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "events"})
 
 # "date" is the day alone, so a chain can group by day and order within it by
 # something other than start time.
-KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "date", "start", "end", "duration", "events"})
+KNOWN_SHIFT_SORT_FIELDS = frozenset(
+    {"label", "track", "date", "start", "end", "duration", "events"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +311,11 @@ KNOWN_SHIFT_SORT_FIELDS = frozenset({"label", "track", "date", "start", "end", "
 #
 # No `shifts` entry: the row's timeline already is the shift display.
 ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = (
-    "division", "type", "room", "time", "tracks",
+    "division",
+    "type",
+    "room",
+    "time",
+    "tracks",
 )
 
 # Everything on. A row's metadata is one line of small text, so the default
@@ -293,9 +341,16 @@ KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = KNOWN_EVENT_FILTER_KEYS
 # adjacent; "division" is its own key for grouping every B event together.
 # "location" is one key, not building/floor/room: the board prints the three
 # as one label ("Kerckhoff 101") and a walking order is that label's order.
-KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset({
-    "name", "division", "category", "start", "staffing", "location",
-})
+KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset(
+    {
+        "name",
+        "division",
+        "category",
+        "start",
+        "staffing",
+        "location",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Assignments board — member belt card
@@ -315,20 +370,36 @@ CARD_TRACK_NAMESPACE = "card_track:"
 # the custom_fields field shows every answer the member gave unless hidden.
 CARD_CUSTOM_NAMESPACE = "card_custom:"
 
-ASSIGNMENT_CARD_FIELDS = frozenset({
-    "roles", "age", "onboarding", "dietary_restriction",
-    "track_status", "event_preferences", "availability", "lunch",
-    "competition_school", "competition_event",
-    "volunteer_tournament", "volunteer_event", "volunteer_role",
-    "custom_fields",
-})
+ASSIGNMENT_CARD_FIELDS = frozenset(
+    {
+        "roles",
+        "age",
+        "onboarding",
+        "dietary_restriction",
+        "track_status",
+        "event_preferences",
+        "availability",
+        "lunch",
+        "competition_school",
+        "competition_event",
+        "volunteer_tournament",
+        "volunteer_event",
+        "volunteer_role",
+        "custom_fields",
+    }
+)
 
 # The fields that are a per-track list, and so can be hidden one track at a
 # time ("card_track:{field}:{track_id}"). Scoped per field, not shared: a TD
 # may well want Day 1's preferences beside every track's availability.
-ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset({
-    "track_status", "event_preferences", "availability", "lunch",
-})
+ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset(
+    {
+        "track_status",
+        "event_preferences",
+        "availability",
+        "lunch",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -340,37 +411,45 @@ ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset({
 # holds more than one — a section with none is all-or-nothing.
 # ---------------------------------------------------------------------------
 PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
-    ("membership", "Membership", (
-        ("joined", "Joined"),
-        ("join_method", "Join method"),
-        ("roles", "Roles"),
-        ("age", "Age"),
-        ("onboarding", "Onboarding"),
-    )),
+    (
+        "membership",
+        "Membership",
+        (
+            ("joined", "Joined"),
+            ("join_method", "Join method"),
+            ("roles", "Roles"),
+            ("age", "Age"),
+            ("onboarding", "Onboarding"),
+        ),
+    ),
     ("availability", "Availability", ()),
     # The member's own staffing, laid out as a timeline per competition day.
     # Its one static field is the availability shading behind that timeline —
     # the assignments themselves are the section, not a field of it.
-    ("assignments", "Assignments", (
-        ("availability", "Availability shading"),
-    )),
-    ("lunch", "Lunch", (
-        ("dietary_restriction", "Dietary restriction"),
-    )),
+    ("assignments", "Assignments", (("availability", "Availability shading"),)),
+    ("lunch", "Lunch", (("dietary_restriction", "Dietary restriction"),)),
     ("event_preferences", "Event Preferences", ()),
-    ("education", "Education", (
-        ("university", "University"),
-        ("major", "Major"),
-        ("year_level", "Year level"),
-        ("graduation_year", "Graduation year"),
-        ("employer", "Employer"),
-    )),
+    (
+        "education",
+        "Education",
+        (
+            ("university", "University"),
+            ("major", "Major"),
+            ("year_level", "Year level"),
+            ("graduation_year", "Graduation year"),
+            ("employer", "Employer"),
+        ),
+    ),
     ("competition_experience", "Competition Experience", ()),
     ("volunteer_experience", "Volunteer Experience", ()),
-    ("logistics", "Logistics", (
-        ("shirt_size", "Shirt size"),
-        ("dietary_restriction", "Dietary restriction"),
-    )),
+    (
+        "logistics",
+        "Logistics",
+        (
+            ("shirt_size", "Shirt size"),
+            ("dietary_restriction", "Dietary restriction"),
+        ),
+    ),
 )
 
 DEFAULT_SECTION_ORDER: tuple[str, ...] = tuple(section_id for section_id, _, _ in PANEL_SECTIONS)
@@ -433,13 +512,13 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     surface = surface_base(surface)
     if surface == ASSIGNMENT_CARD:
         if item.startswith(CARD_FIELD_NAMESPACE):
-            return item[len(CARD_FIELD_NAMESPACE):] in ASSIGNMENT_CARD_FIELDS
+            return item[len(CARD_FIELD_NAMESPACE) :] in ASSIGNMENT_CARD_FIELDS
         if item.startswith(CARD_TRACK_NAMESPACE):
-            field, _, track = item[len(CARD_TRACK_NAMESPACE):].partition(":")
+            field, _, track = item[len(CARD_TRACK_NAMESPACE) :].partition(":")
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
         if item.startswith(CARD_CUSTOM_NAMESPACE):
             # Not checked against the forms: a deleted question's entry is inert.
-            field_id = item[len(CARD_CUSTOM_NAMESPACE):]
+            field_id = item[len(CARD_CUSTOM_NAMESPACE) :]
             return bool(field_id) and ":" not in field_id
         return False
     # An event row's hideable items are the tracks it runs on: hiding one
@@ -456,7 +535,7 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
 
 
 def unslug(text: str) -> str:
-    """"test_review" -> "Test Review". Reserved-key suffixes and field_keys
+    """ "test_review" -> "Test Review". Reserved-key suffixes and field_keys
     are slugs meant for lookup, never for a TD to read — every catalog label
     built from one goes through this."""
     return text.replace("_", " ").strip().title()
@@ -482,7 +561,9 @@ def is_known_column(surface: str, key: str) -> bool:
             # inert, the same leniency every other saved track id gets.
             # "time:<id>" is from when time was per track; the client reads it
             # as "time", and it stays valid so an old blob still re-saves.
-            return (family in EVENT_TRACK_COLUMN_FAMILIES or family == EVENT_COLUMN_TIME) and track_id.isdigit()
+            return (
+                family in EVENT_TRACK_COLUMN_FAMILIES or family == EVENT_COLUMN_TIME
+            ) and track_id.isdigit()
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
         return key in ASSIGNMENT_EVENT_COLUMNS
@@ -490,9 +571,15 @@ def is_known_column(surface: str, key: str) -> bool:
         return False
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
         return True
-    return key.startswith((
-        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, EVENT_PREF_NAMESPACE, FORM_FIELD_NAMESPACE,
-    ))
+    return key.startswith(
+        (
+            TRACK_NAMESPACE,
+            AVAILABILITY_TRACK_NAMESPACE,
+            LUNCH_NAMESPACE,
+            EVENT_PREF_NAMESPACE,
+            FORM_FIELD_NAMESPACE,
+        )
+    )
 
 
 def known_filter_keys(surface: str) -> frozenset[str]:
@@ -522,7 +609,9 @@ def is_known_sort_field(surface: str, field: str) -> bool:
     track's id isn't checked, the same leniency its column key gets."""
     if field in known_sort_fields(surface):
         return True
-    return surface_base(surface) in (MEMBERS_TABLE, ASSIGNMENT_CARD) and bool(MEMBER_SORT_FIELD_PATTERN.match(field))
+    return surface_base(surface) in (MEMBERS_TABLE, ASSIGNMENT_CARD) and bool(
+        MEMBER_SORT_FIELD_PATTERN.match(field)
+    )
 
 
 def known_sort_fields(surface: str) -> frozenset[str]:
@@ -584,7 +673,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # something to configure. Every track-keyed item below is narrowed to these.
     tracks = (
         db.query(TournamentTrack)
-        .filter(TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False))
+        .filter(
+            TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False)
+        )
         .order_by(TournamentTrack.name)
         .all()
     )
@@ -602,7 +693,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     answered_lunch_pairs = (
         db.query(TournamentMembershipLunch.track_id, TournamentMembershipLunch.category)
         .distinct()
-        .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
+        .join(
+            TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id
+        )
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
@@ -629,14 +722,19 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
             "key": lunch_key(track_id, category),
             "label": f"{track_names[track_id]} \u2014 {unslug(category)}",
         }
-        for track_id, category in sorted(lunch_pairs, key=lambda p: (track_names.get(p[0], ""), p[1]))
+        for track_id, category in sorted(
+            lunch_pairs, key=lambda p: (track_names.get(p[0], ""), p[1])
+        )
         if track_id in track_names
     ]
 
     event_pref_track_ids = (
         db.query(TournamentMembershipEventPreference.track_id)
         .distinct()
-        .join(TournamentMembership, TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
+        .join(
+            TournamentMembership,
+            TournamentMembershipEventPreference.membership_id == TournamentMembership.id,
+        )
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
@@ -662,7 +760,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     custom_field_items = [
         {"key": f"{FORM_FIELD_NAMESPACE}{field.id}", "label": unslug(field.field_key)}
         for field, _form in field_rows
-        if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
+        if not any(
+            pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+        )
     ]
 
     # One item per track that has shifts. Was one per *day*, which is the
@@ -690,11 +790,14 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # "Track: " in front of it, and the config modal groups these under their
     # own headings anyway. The key still carries the namespace, so nothing
     # depends on the label to tell the kinds apart.
-    column_items = (
-        [{"key": key, "label": label} for key, label in FIXED_COLUMNS]
-        + [{"key": item["key"], "label": item["label"]}
-           for item in track_items + availability_items + lunch_items + event_pref_items + custom_field_items]
-    )
+    column_items = [{"key": key, "label": label} for key, label in FIXED_COLUMNS] + [
+        {"key": item["key"], "label": item["label"]}
+        for item in track_items
+        + availability_items
+        + lunch_items
+        + event_pref_items
+        + custom_field_items
+    ]
 
     # A section's own toggleable pieces are its static fields plus whatever
     # entities it actually renders — one entry per track, availability day,
@@ -743,9 +846,11 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
             for item in (
                 [
                     {"key": f"{key}:{t.id}", "label": t.name}
-                    for t in tracks if t.is_primary or not EVENT_TRACK_COLUMN_FAMILIES[key]
+                    for t in tracks
+                    if t.is_primary or not EVENT_TRACK_COLUMN_FAMILIES[key]
                 ]
-                if key in EVENT_TRACK_COLUMN_FAMILIES else [{"key": key, "label": label}]
+                if key in EVENT_TRACK_COLUMN_FAMILIES
+                else [{"key": key, "label": label}]
             )
         ],
         "sections": section_items,
@@ -799,7 +904,9 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict, t
 
     if "track_statuses" in data:
         data["track_statuses"] = [
-            ts for ts in data["track_statuses"] if f"{TRACK_NAMESPACE}{ts['track_id']}" not in hidden
+            ts
+            for ts in data["track_statuses"]
+            if f"{TRACK_NAMESPACE}{ts['track_id']}" not in hidden
         ]
     if "availability" in data:
         before_availability = data["availability"]
@@ -807,21 +914,22 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict, t
         # timezone conversion needed any more, unlike the day-keyed version
         # this replaced.
         data["availability"] = [
-            row for row in data["availability"]
+            row
+            for row in data["availability"]
             if f"{AVAILABILITY_TRACK_NAMESPACE}{row['track_id']}" not in hidden
         ]
         _note_if_emptied("availability", before_availability)
     if "lunch" in data:
         before_lunch = data["lunch"]
         data["lunch"] = [
-            row for row in before_lunch
-            if lunch_key(row["track_id"], row["category"]) not in hidden
+            row for row in before_lunch if lunch_key(row["track_id"], row["category"]) not in hidden
         ]
         _note_if_emptied("lunch", before_lunch)
     if "event_preferences" in data:
         before_prefs = data["event_preferences"]
         data["event_preferences"] = [
-            pref for pref in before_prefs
+            pref
+            for pref in before_prefs
             if f"{EVENT_PREF_NAMESPACE}{pref['track_id']}" not in hidden
         ]
         _note_if_emptied("event_preferences", before_prefs)
@@ -897,7 +1005,9 @@ _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
 #
 # Identity (the name) is not a group, so it needs no entry here — see rule 3
 # in field_groups.py.
-_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile", "lunch", "onboarding", "custom"})
+_ASSIGNMENT_CARD_GROUPS = frozenset(
+    {"event_prefs", "tracks", "profile", "lunch", "onboarding", "custom"}
+)
 
 
 def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[str] | None:

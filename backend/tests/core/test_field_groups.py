@@ -3,6 +3,7 @@
 No database and no routes — this covers the mechanism itself. The routes
 that consume it are exercised in tests/api/tournament/test_memberships.py.
 """
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ from app.schemas.user import UserFullResponse
 # unrequestable (or, worse, leaking into a response that excluded its group).
 # ---------------------------------------------------------------------------
 
+
 def test_every_response_field_is_always_present_or_in_exactly_one_group():
     grouped: dict[str, list[str]] = {}
     for name, group in GROUPS.items():
@@ -40,9 +42,13 @@ def test_every_response_field_is_always_present_or_in_exactly_one_group():
         for key in model.model_fields:
             owners = grouped.get(key, [])
             if key in ALWAYS_KEYS:
-                assert owners == [], f"{model.__name__}.{key} is always-present but also in {owners}"
+                assert owners == [], (
+                    f"{model.__name__}.{key} is always-present but also in {owners}"
+                )
             else:
-                assert len(owners) == 1, f"{model.__name__}.{key} is owned by {owners}, expected exactly one group"
+                assert len(owners) == 1, (
+                    f"{model.__name__}.{key} is owned by {owners}, expected exactly one group"
+                )
 
 
 def test_every_user_field_is_always_present_or_in_exactly_one_group():
@@ -71,6 +77,7 @@ def test_date_of_birth_is_not_requestable_at_all():
 # ---------------------------------------------------------------------------
 # parse_fields
 # ---------------------------------------------------------------------------
+
 
 def test_absent_param_means_everything():
     """A caller with no opinion gets the whole row, not an empty one."""
@@ -115,6 +122,7 @@ def test_unknown_group_error_names_only_the_unknown_ones():
 # dump_exclude
 # ---------------------------------------------------------------------------
 
+
 def test_no_narrowing_excludes_nothing():
     assert dump_exclude(None) is None
     assert dump_exclude(ALL_GROUPS) is None
@@ -147,17 +155,32 @@ def test_unrequested_group_is_absent_from_the_dump_not_null():
     """The whole point of the encoding: a missing key means "you didn't ask",
     so null and [] keep their ordinary meanings."""
     row = MembershipFullResponse(
-        id=1, tournament_id=1, source="manual",
-        created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        id=1,
+        tournament_id=1,
+        source="manual",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
         user={
-            "id": 1, "first_name": "Ana", "last_name": "Diaz", "email": "a@x.com",
-            "phone": None, "pronouns": None,
-            "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
-            "student_status": None, "university": None, "major": None,
-            "year_level": None, "graduation_year": None, "employer": None,
-            "has_competition_experience": None, "has_volunteer_experience": None,
-            "competition_experience": [], "volunteer_experience": [],
-            "shirt_size": None, "dietary_restriction": None,
+            "id": 1,
+            "first_name": "Ana",
+            "last_name": "Diaz",
+            "email": "a@x.com",
+            "phone": None,
+            "pronouns": None,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "student_status": None,
+            "university": None,
+            "major": None,
+            "year_level": None,
+            "graduation_year": None,
+            "employer": None,
+            "has_competition_experience": None,
+            "has_volunteer_experience": None,
+            "competition_experience": [],
+            "volunteer_experience": [],
+            "shirt_size": None,
+            "dietary_restriction": None,
         },
     )
     data = row.model_dump(mode="json", exclude=dump_exclude(frozenset({"contact"})))
@@ -190,6 +213,7 @@ def test_one_exclude_set_serves_both_response_models():
 # loader_options
 # ---------------------------------------------------------------------------
 
+
 def test_loader_options_compile_against_a_real_query(db: Session):
     """Guards the failure this module exists to prevent: two strategies for
     one ORM path (a bare joinedload(user) plus a selectinload chained off it)
@@ -199,13 +223,16 @@ def test_loader_options_compile_against_a_real_query(db: Session):
 
     from app.models.models import TournamentMembership
 
-    for requested in (None, frozenset(), frozenset({"profile"}), frozenset({"contact", "roles"}), ALL_GROUPS):
-        query = (
-            db.query(TournamentMembership)
-            .options(
-                joinedload(TournamentMembership.user),
-                *loader_options(requested),
-            )
+    for requested in (
+        None,
+        frozenset(),
+        frozenset({"profile"}),
+        frozenset({"contact", "roles"}),
+        ALL_GROUPS,
+    ):
+        query = db.query(TournamentMembership).options(
+            joinedload(TournamentMembership.user),
+            *loader_options(requested),
         )
         # .all() is what forces the compile; an empty table is fine.
         query.limit(0).all()

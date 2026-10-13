@@ -5,6 +5,7 @@ later step. What they cover is the part of the design that lives in the schema
 rather than in code: the two partial unique indexes, and the composite FK that
 keeps an assignment's membership_id and membership_role_id from disagreeing.
 """
+
 from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
 
@@ -32,10 +33,12 @@ def _make_event(db, tournament, name="Boomilever", track_id=None):
     event = TournamentEvent(tournament_id=tournament.id, name=name, division="C")
     db.add(event)
     db.flush()
-    db.add(TournamentEventTrack(
-        tournament_event_id=event.id,
-        track_id=track_id if track_id is not None else primary_track_id(db, tournament.id),
-    ))
+    db.add(
+        TournamentEventTrack(
+            tournament_event_id=event.id,
+            track_id=track_id if track_id is not None else primary_track_id(db, tournament.id),
+        )
+    )
     db.commit()
     return event
 
@@ -64,18 +67,28 @@ def _attach_shift(db, event, shift):
     route does on a write: an event holding a shift plainly runs on that day,
     and an assignment pinned to the shift needs the pair to exist.
     """
-    db.add(TournamentEventShift(
-        tournament_event_id=event.id, tournament_shift_id=shift.id,
-    ))
-    exists = db.query(TournamentEventTrack).filter_by(
-        tournament_event_id=event.id, track_id=shift.track_id,
-    ).first()
+    db.add(
+        TournamentEventShift(
+            tournament_event_id=event.id,
+            tournament_shift_id=shift.id,
+        )
+    )
+    exists = (
+        db.query(TournamentEventTrack)
+        .filter_by(
+            tournament_event_id=event.id,
+            track_id=shift.track_id,
+        )
+        .first()
+    )
     if exists is None:
-        db.add(TournamentEventTrack(
-            tournament_event_id=event.id, track_id=shift.track_id,
-        ))
+        db.add(
+            TournamentEventTrack(
+                tournament_event_id=event.id,
+                track_id=shift.track_id,
+            )
+        )
     db.commit()
-
 
 
 def _staffing_rows(db):
@@ -210,14 +223,16 @@ class TestCompositeForeignKey:
             .one()
         )
 
-        db.add(TournamentTrackAssignment(
-            tournament_event_id=event.id,
-            membership_id=someone_else.id,
-            role_id=theirs.role_id,
-            # A track the event does not run on — the composite FK's job now
-            # that there is no join row for membership_id to disagree with.
-            tournament_track_id=_other_track_id(db, td_tournament),
-        ))
+        db.add(
+            TournamentTrackAssignment(
+                tournament_event_id=event.id,
+                membership_id=someone_else.id,
+                role_id=theirs.role_id,
+                # A track the event does not run on — the composite FK's job now
+                # that there is no join row for membership_id to disagree with.
+                tournament_track_id=_other_track_id(db, td_tournament),
+            )
+        )
         with pytest.raises(IntegrityError):
             db.commit()
 
@@ -234,9 +249,7 @@ class TestCascades:
 
         assert _staffing_count(db) == 0
 
-    def test_deleting_the_role_itself_removes_the_staffing(
-        self, db, td_tournament, other_user
-    ):
+    def test_deleting_the_role_itself_removes_the_staffing(self, db, td_tournament, other_user):
         """Since #83 there is no join row to drop — the staffing row *is* the
         record that the member holds the role. What still cascades is deleting
         the role from the tournament, which takes every row naming it.
@@ -275,7 +288,8 @@ class TestReadSchema:
         assert read.member.user_id == other_user.id
         assert read.member.membership_id == mr.membership_id
         assert (read.member.first_name, read.member.last_name) == (
-            other_user.first_name, other_user.last_name,
+            other_user.first_name,
+            other_user.last_name,
         )
         assert read.role.label == "Test Writer"
         assert read.shift is not None
@@ -316,9 +330,12 @@ class TestReadSchema:
         db.flush()
         # Built by hand rather than through _make_event, to keep event_id set —
         # but it still needs the track link any staffed event has.
-        db.add(TournamentEventTrack(
-            tournament_event_id=event.id, track_id=primary_track_id(db, td_tournament.id),
-        ))
+        db.add(
+            TournamentEventTrack(
+                tournament_event_id=event.id,
+                track_id=primary_track_id(db, td_tournament.id),
+            )
+        )
         db.commit()
 
         mr = _membership_role(db, td_tournament, other_user)
@@ -351,9 +368,12 @@ class TestShiftDetach:
     def _event_with_shift(self, client, db, tournament, user):
         event = _make_event(db, tournament)
         shift = _make_shift(db, tournament, label="Morning")
-        db.add(TournamentEventShift(
-            tournament_event_id=event.id, tournament_shift_id=shift.id,
-        ))
+        db.add(
+            TournamentEventShift(
+                tournament_event_id=event.id,
+                tournament_shift_id=shift.id,
+            )
+        )
         db.commit()
         mr = _membership_role(db, tournament, user)
         assignment = _assign(db, event, mr, shift)
@@ -375,9 +395,7 @@ class TestShiftDetach:
         db.refresh(assignment)
         assert assignment.tournament_shift_id is None
 
-    def test_the_assignment_itself_survives(
-        self, client, db, td_user, td_tournament, other_user
-    ):
+    def test_the_assignment_itself_survives(self, client, db, td_user, td_tournament, other_user):
         """A TD reshuffling a schedule is not saying the person is off the
         event — losing staffing silently during a schedule edit is the kind of
         thing nobody notices until the day."""
@@ -391,9 +409,7 @@ class TestShiftDetach:
 
         assert _staffing_count(db) == 1
 
-    def test_a_shift_that_stays_is_left_alone(
-        self, client, db, td_user, td_tournament, other_user
-    ):
+    def test_a_shift_that_stays_is_left_alone(self, client, db, td_user, td_tournament, other_user):
         """Only the outgoing shifts are unpinned — replacing the set must not
         clear assignments on shifts that survived the edit."""
         login(client, "td@test.com", "tdpass")
@@ -414,12 +430,7 @@ class TestShiftDetach:
 # Route tests — /tournaments/{tournament_id}/assignments/
 # ---------------------------------------------------------------------------
 def _role_id(db, tournament, label):
-    return (
-        db.query(TournamentRole)
-        .filter_by(tournament_id=tournament.id, label=label)
-        .one()
-        .id
-    )
+    return db.query(TournamentRole).filter_by(tournament_id=tournament.id, label=label).one().id
 
 
 def _membership_id(db, tournament, user):
@@ -459,7 +470,9 @@ class TestTrack:
         login(client, "td@test.com", "tdpass")
 
         body = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -468,20 +481,30 @@ class TestTrack:
         assert body["track"]["id"] == shift.track_id
         assert body["track"]["is_primary"] is True
 
-    def test_an_unpinned_row_must_name_a_track(self, client, db, td_user, td_tournament, other_user):
+    def test_an_unpinned_row_must_name_a_track(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         grant_role(db, td_tournament, other_user, "Test Writer")
         event = _make_event(db, td_tournament, name="Anatomy")
         login(client, "td@test.com", "tdpass")
 
-        response = client.post(f"/tournaments/{td_tournament.id}/assignments/", json={
-            "tournament_event_id": event.id,
-            "membership_id": _membership_id(db, td_tournament, other_user),
-            "role_id": _role_id(db, td_tournament, "Test Writer"),
-        })
+        response = client.post(
+            f"/tournaments/{td_tournament.id}/assignments/",
+            json={
+                "tournament_event_id": event.id,
+                "membership_id": _membership_id(db, td_tournament, other_user),
+                "role_id": _role_id(db, td_tournament, "Test Writer"),
+            },
+        )
         assert response.status_code == 422
 
     def test_a_shift_and_a_contradicting_track_is_rejected(
-        self, client, db, td_user, td_tournament, other_user,
+        self,
+        client,
+        db,
+        td_user,
+        td_tournament,
+        other_user,
     ):
         """Naming both and disagreeing is a confused client, not a second
         opinion — the database would refuse the row anyway."""
@@ -493,7 +516,9 @@ class TestTrack:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -503,7 +528,12 @@ class TestTrack:
         assert response.status_code == 422
 
     def test_the_same_role_on_two_cosmetic_tracks_is_two_rows(
-        self, client, db, td_user, td_tournament, other_user,
+        self,
+        client,
+        db,
+        td_user,
+        td_tournament,
+        other_user,
     ):
         """The case the old uniqueness key could not express: one person, one
         role, one event, two workstreams."""
@@ -514,9 +544,12 @@ class TestTrack:
         # The event has to run on a track before anyone can be staffed there —
         # the assignment's composite FK requires the pair to exist.
         for track in (writing, reviewing):
-            db.add(TournamentEventTrack(
-                tournament_event_id=event.id, track_id=track.id,
-            ))
+            db.add(
+                TournamentEventTrack(
+                    tournament_event_id=event.id,
+                    track_id=track.id,
+                )
+            )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
@@ -525,13 +558,28 @@ class TestTrack:
             "membership_id": _membership_id(db, td_tournament, other_user),
             "role_id": _role_id(db, td_tournament, "Test Writer"),
         }
-        assert _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code == 201
-        assert _post(client, db, td_tournament, **body, tournament_track_id=reviewing.id).status_code == 201
+        assert (
+            _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code
+            == 201
+        )
+        assert (
+            _post(client, db, td_tournament, **body, tournament_track_id=reviewing.id).status_code
+            == 201
+        )
         # ...but the same track twice is still the duplicate it always was.
-        assert _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code == 409
+        assert (
+            _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code
+            == 409
+        )
 
     def test_a_track_from_another_tournament_is_a_404(
-        self, client, db, td_user, td_tournament, other_tournament, other_user,
+        self,
+        client,
+        db,
+        td_user,
+        td_tournament,
+        other_tournament,
+        other_user,
     ):
         grant_role(db, td_tournament, other_user, "Test Writer")
         event = _make_event(db, td_tournament, name="Anatomy")
@@ -539,7 +587,9 @@ class TestTrack:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -548,9 +598,14 @@ class TestTrack:
         assert response.status_code == 404
 
     def test_unpinning_keeps_the_track_it_was_on(
-        self, client, db, td_user, td_tournament, other_user,
+        self,
+        client,
+        db,
+        td_user,
+        td_tournament,
+        other_user,
     ):
-        """"Still Day 1, no particular shift" — the same state a shift leaving
+        """ "Still Day 1, no particular shift" — the same state a shift leaving
         an event leaves behind (see detach_shifts_from_assignments)."""
         membership_role = _membership_role(db, td_tournament, other_user)
         event = _make_event(db, td_tournament, name="Anatomy")
@@ -569,13 +624,17 @@ class TestTrack:
 
 
 class TestCreateRoute:
-    def test_assigns_a_member_holding_the_role(self, client, db, td_user, td_tournament, other_user):
+    def test_assigns_a_member_holding_the_role(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         grant_role(db, td_tournament, other_user, "Test Writer")
         event = _make_event(db, td_tournament, name="Anatomy")
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -593,7 +652,9 @@ class TestCreateRoute:
         """The whole point of naming a role rather than a join row: staffing
         someone should not require leaving the board to grant a role first."""
         membership = TournamentMembership(
-            user_id=other_user.id, tournament_id=td_tournament.id, source="manual",
+            user_id=other_user.id,
+            tournament_id=td_tournament.id,
+            source="manual",
         )
         db.add(membership)
         db.commit()
@@ -602,14 +663,24 @@ class TestCreateRoute:
 
         role_id = _role_id(db, td_tournament, "Test Writer")
         response = _post(
-            client, db, td_tournament,
-            tournament_event_id=event.id, membership_id=membership.id, role_id=role_id,
+            client,
+            db,
+            td_tournament,
+            tournament_event_id=event.id,
+            membership_id=membership.id,
+            role_id=role_id,
         )
 
         assert response.status_code == 201
-        assert db.query(TournamentTrackAssignment).filter_by(
-            membership_id=membership.id, role_id=role_id,
-        ).count() == 1
+        assert (
+            db.query(TournamentTrackAssignment)
+            .filter_by(
+                membership_id=membership.id,
+                role_id=role_id,
+            )
+            .count()
+            == 1
+        )
 
     def test_a_rank_violating_auto_grant_is_refused(self, client, db, td_tournament, other_user):
         """The auto-grant is a real role grant, so the same rank rule binds it —
@@ -619,7 +690,9 @@ class TestCreateRoute:
         login(client, "other@test.com", "otherpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Tournament Director"),
@@ -637,7 +710,9 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -656,7 +731,9 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -693,7 +770,9 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=foreign_event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -713,18 +792,23 @@ class TestOverridesAreAllowed:
 
         grant_role(db, td_tournament, other_user, "Test Writer")
         membership_id = _membership_id(db, td_tournament, other_user)
-        db.add(TournamentMembershipTrackStatus(
-            membership_id=membership_id,
-            track_id=primary_track_id(db, td_tournament.id),
-            status="declined",
-        ))
+        db.add(
+            TournamentMembershipTrackStatus(
+                membership_id=membership_id,
+                track_id=primary_track_id(db, td_tournament.id),
+                status="declined",
+            )
+        )
         db.commit()
         event = _make_event(db, td_tournament)
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, db, td_tournament,
-            tournament_event_id=event.id, membership_id=membership_id,
+            client,
+            db,
+            td_tournament,
+            tournament_event_id=event.id,
+            membership_id=membership_id,
             role_id=_role_id(db, td_tournament, "Test Writer"),
         )
 
@@ -742,7 +826,9 @@ class TestOverridesAreAllowed:
 
         # No TournamentMembershipAvailability row for this shift at all.
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -759,9 +845,12 @@ class TestOverridesAreAllowed:
         first = _make_event(db, td_tournament, name="Anatomy")
         second = _make_event(db, td_tournament, name="Astronomy")
         for event in (first, second):
-            db.add(TournamentEventShift(
-                tournament_event_id=event.id, tournament_shift_id=shift.id,
-            ))
+            db.add(
+                TournamentEventShift(
+                    tournament_event_id=event.id,
+                    tournament_shift_id=shift.id,
+                )
+            )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
@@ -770,8 +859,14 @@ class TestOverridesAreAllowed:
             role_id=_role_id(db, td_tournament, "Test Writer"),
             tournament_shift_id=shift.id,
         )
-        assert _post(client, db, td_tournament, tournament_event_id=first.id, **body).status_code == 201
-        assert _post(client, db, td_tournament, tournament_event_id=second.id, **body).status_code == 201
+        assert (
+            _post(client, db, td_tournament, tournament_event_id=first.id, **body).status_code
+            == 201
+        )
+        assert (
+            _post(client, db, td_tournament, tournament_event_id=second.id, **body).status_code
+            == 201
+        )
 
 
 class TestPermissions:
@@ -780,10 +875,14 @@ class TestPermissions:
     ):
         """The split: staffing is member data, seeing who is staffed is part of
         reading the event."""
-        db.add(TournamentRole(
-            tournament_id=td_tournament.id, label="Schedule Only",
-            permissions=["manage_events"], rank=25,
-        ))
+        db.add(
+            TournamentRole(
+                tournament_id=td_tournament.id,
+                label="Schedule Only",
+                permissions=["manage_events"],
+                rank=25,
+            )
+        )
         db.commit()
         grant_role(db, td_tournament, other_user, "Schedule Only")
         event = _make_event(db, td_tournament)
@@ -792,7 +891,9 @@ class TestPermissions:
         assert client.get(f"/tournaments/{td_tournament.id}/assignments/").status_code == 200
 
         response = _post(
-            client, db, td_tournament,
+            client,
+            db,
+            td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Schedule Only"),
@@ -817,7 +918,10 @@ class TestListRoute:
         login(client, "td@test.com", "tdpass")
         for event in (anatomy, astronomy):
             _post(
-                client, db, td_tournament, tournament_event_id=event.id,
+                client,
+                db,
+                td_tournament,
+                tournament_event_id=event.id,
                 membership_id=membership_id,
                 role_id=_role_id(db, td_tournament, "Test Writer"),
             )
@@ -836,14 +940,19 @@ class TestUpdateAndDeleteRoutes:
         db.add(TournamentEventShift(tournament_event_id=event.id, tournament_shift_id=shift.id))
         db.commit()
         created = _post(
-            client, db, tournament, tournament_event_id=event.id,
+            client,
+            db,
+            tournament,
+            tournament_event_id=event.id,
             membership_id=_membership_id(db, tournament, user),
             role_id=_role_id(db, tournament, "Test Writer"),
             tournament_shift_id=shift.id,
         )
         return created.json(), event, shift
 
-    def test_omitting_the_shift_leaves_it_alone(self, client, db, td_user, td_tournament, other_user):
+    def test_omitting_the_shift_leaves_it_alone(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         """Omitted and explicit-null are different requests on a nullable
         field — this is the half model_fields_set exists to protect."""
         login(client, "td@test.com", "tdpass")
@@ -858,7 +967,9 @@ class TestUpdateAndDeleteRoutes:
         assert response.json()["role"]["label"] == "Test Reviewer"
         assert response.json()["shift"]["id"] == shift.id
 
-    def test_an_explicit_null_clears_the_shift(self, client, db, td_user, td_tournament, other_user):
+    def test_an_explicit_null_clears_the_shift(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         login(client, "td@test.com", "tdpass")
         assignment, _, _ = self._existing(client, db, td_tournament, other_user)
 
@@ -879,9 +990,7 @@ class TestUpdateAndDeleteRoutes:
         assignment, _, _ = self._existing(client, db, td_tournament, other_user)
         membership_id = _membership_id(db, td_tournament, other_user)
 
-        response = client.delete(
-            f"/tournaments/{td_tournament.id}/assignments/{assignment['id']}/"
-        )
+        response = client.delete(f"/tournaments/{td_tournament.id}/assignments/{assignment['id']}/")
 
         assert response.status_code == 204
         assert _staffing_count(db) == 0
@@ -889,10 +998,15 @@ class TestUpdateAndDeleteRoutes:
         # behind. Had the staffing row been the member's only claim on it,
         # deleting it would have removed the role too — which is the
         # behaviour #83 chose deliberately.
-        assert db.query(TournamentTrackAssignment).filter_by(
-            membership_id=membership_id,
-            role_id=_role_id(db, td_tournament, "Test Writer"),
-        ).count() == 1
+        assert (
+            db.query(TournamentTrackAssignment)
+            .filter_by(
+                membership_id=membership_id,
+                role_id=_role_id(db, td_tournament, "Test Writer"),
+            )
+            .count()
+            == 1
+        )
 
     def test_an_assignment_is_invisible_from_another_tournament(
         self, client, db, td_user, td_tournament, other_tournament, other_user
@@ -920,7 +1034,10 @@ class TestMembershipReads:
         grant_role(db, tournament, user, "Test Writer")
         event = _make_event(db, tournament, name="Anatomy")
         return _post(
-            client, db, tournament, tournament_event_id=event.id,
+            client,
+            db,
+            tournament,
+            tournament_event_id=event.id,
             membership_id=_membership_id(db, tournament, user),
             role_id=_role_id(db, tournament, "Test Writer"),
         )
@@ -928,9 +1045,7 @@ class TestMembershipReads:
     def _staffed_track_id(self, db):
         return _staffing_rows(db).one().tournament_track_id
 
-    def test_assigned_filters_by_track(
-        self, client, db, td_user, td_tournament, other_user
-    ):
+    def test_assigned_filters_by_track(self, client, db, td_user, td_tournament, other_user):
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
         track_id = self._staffed_track_id(db)
@@ -1025,9 +1140,7 @@ class TestAssignmentCardSurface:
         assert "email" not in row["user"]
         assert "phone" not in row["user"]
 
-    def test_identity_survives_the_narrowing(
-        self, client, db, td_user, td_tournament, other_user
-    ):
+    def test_identity_survives_the_narrowing(self, client, db, td_user, td_tournament, other_user):
         login(client, "td@test.com", "tdpass")
 
         row = client.get(

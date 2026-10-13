@@ -91,7 +91,11 @@ def sync_availability(
         ).delete(synchronize_session=False)
 
     for shift_id in selected_shift_ids - existing_ids:
-        db.add(TournamentMembershipAvailability(membership_id=membership_id, tournament_shift_id=shift_id))
+        db.add(
+            TournamentMembershipAvailability(
+                membership_id=membership_id, tournament_shift_id=shift_id
+            )
+        )
 
     db.flush()
 
@@ -198,6 +202,7 @@ def sync_event_preferences(
 # rank->option_id payload (every other question type hands over a flat list),
 # and the rank each question type implies.
 # ---------------------------------------------------------------------------
+
 
 def lunch_values_from_answer(field, value) -> list[dict]:
     """One lunch answer as `{"value", "label"}` rows for sync_lunch.

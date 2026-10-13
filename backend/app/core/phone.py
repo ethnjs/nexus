@@ -4,8 +4,7 @@ import re
 
 
 def normalize_phone(value: str | None) -> str | None:
-    """
-    """
+    """ """
     if value is None:
         return None
 
@@ -21,4 +20,3 @@ def normalize_phone(value: str | None) -> str | None:
         return digits
 
     raise ValueError("Invalid US phone number format")
-

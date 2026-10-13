@@ -10,6 +10,7 @@ were never declared on the models, unnoticed since March 2026.
 This builds a throwaway database from the migrations alone and asserts it
 matches the models exactly, so the two can't drift apart silently again.
 """
+
 import os
 import subprocess
 import sys
@@ -52,7 +53,8 @@ def migrated_db_url():
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=BACKEND_ROOT,
             env={**os.environ, "DATABASE_URL": url, "PYTHONIOENCODING": "utf-8"},
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"alembic upgrade head failed:\n{result.stderr}"
         yield url
@@ -88,8 +90,10 @@ def test_migrations_create_every_model_table(migrated_db_url):
     try:
         with engine.connect() as conn:
             built = {
-                row[0] for row in
-                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname='public'"))
+                row[0]
+                for row in conn.execute(
+                    text("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+                )
             }
     finally:
         engine.dispose()

@@ -10,6 +10,7 @@ Two tiers:
   * OPTIONAL_REASONS are judgment calls the TD makes per field at save time.
     Each carries a default for when the caller doesn't say.
 """
+
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
@@ -39,9 +40,15 @@ NOW_REQUIRED = "now_required"
 KEY_CHANGED = "key_changed"
 TEXT_CHANGED = "text_changed"
 
-MANDATORY_REASONS = frozenset({
-    QUESTION_TYPE_CHANGED, OPTION_ADDED, OPTION_INVALIDATED, OPTION_REGROUPED, NOW_REQUIRED,
-})
+MANDATORY_REASONS = frozenset(
+    {
+        QUESTION_TYPE_CHANGED,
+        OPTION_ADDED,
+        OPTION_INVALIDATED,
+        OPTION_REGROUPED,
+        NOW_REQUIRED,
+    }
+)
 
 # Default for each judgment call when the caller doesn't send one. key_changed
 # defaults on because the consequence of skipping it is invisible: those
@@ -82,8 +89,7 @@ def _option_ids(config: dict | None, *, live_only: bool = True) -> set[str]:
 
 def _labels_by_option_id(config: dict | None) -> dict[str, str]:
     return {
-        option["option_id"]: option.get("label")
-        for option in (config or {}).get("options") or []
+        option["option_id"]: option.get("label") for option in (config or {}).get("options") or []
     }
 
 

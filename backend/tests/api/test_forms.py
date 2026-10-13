@@ -2,6 +2,7 @@
 helpers, slugify/uniqueness, and the access-control dependency functions are
 covered directly in tests/core/test_forms.py — this file exercises the HTTP
 layer on top."""
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -44,13 +45,18 @@ def _second_track(db, tournament, name="Day 2"):
     from app.models.models import TournamentTrack
 
     track = TournamentTrack(
-        tournament_id=tournament.id, name=name, is_primary=True,
-        start_date=_date.today(), end_date=_date.today() + _timedelta(days=1),
-        location="Elsewhere", division=["B"],
+        tournament_id=tournament.id,
+        name=name,
+        is_primary=True,
+        start_date=_date.today(),
+        end_date=_date.today() + _timedelta(days=1),
+        location="Elsewhere",
+        division=["B"],
     )
     db.add(track)
     db.flush()
     return track
+
 
 def _make_form(db, user, tournament, **overrides):
     defaults = dict(
@@ -82,7 +88,15 @@ def _make_chapter_form(db, user, chapter, **overrides):
     return form
 
 
-def _make_field(db, form, *, order=1, field_key="favorite_color", question_type="single_select_dropdown", **overrides):
+def _make_field(
+    db,
+    form,
+    *,
+    order=1,
+    field_key="favorite_color",
+    question_type="single_select_dropdown",
+    **overrides,
+):
     defaults = dict(
         form_id=form.id,
         order=order,
@@ -130,12 +144,17 @@ def _make_event(db, tournament, name="Anatomy", division="B"):
 # POST /tournaments/{tournament_id}/forms/ and POST /chapters/{chapter_id}/forms/
 # ---------------------------------------------------------------------------
 
+
 class TestCreateForm:
     def test_td_can_create_tournament_form(self, client, td_user, td_tournament):
         login(client, "td@test.com", "tdpass")
         res = client.post(
             f"/tournaments/{td_tournament.id}/forms/",
-            json={"name": "Interest form", "owner_type": "tournament", "tournament_id": td_tournament.id},
+            json={
+                "name": "Interest form",
+                "owner_type": "tournament",
+                "tournament_id": td_tournament.id,
+            },
         )
         assert res.status_code == 201
         data = res.json()
@@ -147,7 +166,11 @@ class TestCreateForm:
         login(client, "other@test.com", "otherpass")
         res = client.post(
             f"/tournaments/{td_tournament.id}/forms/",
-            json={"name": "Interest form", "owner_type": "tournament", "tournament_id": td_tournament.id},
+            json={
+                "name": "Interest form",
+                "owner_type": "tournament",
+                "tournament_id": td_tournament.id,
+            },
         )
         assert res.status_code == 404
 
@@ -156,7 +179,11 @@ class TestCreateForm:
         login(client, "other@test.com", "otherpass")
         res = client.post(
             f"/tournaments/{td_tournament.id}/forms/",
-            json={"name": "Interest form", "owner_type": "tournament", "tournament_id": td_tournament.id},
+            json={
+                "name": "Interest form",
+                "owner_type": "tournament",
+                "tournament_id": td_tournament.id,
+            },
         )
         assert res.status_code == 403
 
@@ -193,7 +220,11 @@ class TestCreateForm:
     def test_unauthenticated_forbidden(self, client, td_tournament):
         res = client.post(
             f"/tournaments/{td_tournament.id}/forms/",
-            json={"name": "Interest form", "owner_type": "tournament", "tournament_id": td_tournament.id},
+            json={
+                "name": "Interest form",
+                "owner_type": "tournament",
+                "tournament_id": td_tournament.id,
+            },
         )
         assert res.status_code == 401
 
@@ -201,6 +232,7 @@ class TestCreateForm:
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/forms/ and GET /chapters/{chapter_id}/forms/
 # ---------------------------------------------------------------------------
+
 
 class TestListForms:
     def test_manager_lists_tournament_forms(self, client, db, td_user, td_tournament):
@@ -213,7 +245,9 @@ class TestListForms:
         names = {f["name"] for f in res.json()}
         assert names == {"First", "Second"}
 
-    def test_list_excludes_other_tournaments_and_chapter_forms(self, client, db, td_user, td_tournament, chapter):
+    def test_list_excludes_other_tournaments_and_chapter_forms(
+        self, client, db, td_user, td_tournament, chapter
+    ):
         _make_form(db, td_user, td_tournament, name="Mine")
         _make_chapter_form(db, td_user, chapter, name="Not mine")
         db.commit()
@@ -250,6 +284,7 @@ class TestListForms:
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/forms/field-keys/
 # ---------------------------------------------------------------------------
+
 
 class TestListTournamentFieldKeys:
     def test_lists_distinct_live_keys_across_forms(self, client, db, td_user, td_tournament):
@@ -289,6 +324,7 @@ class TestListTournamentFieldKeys:
 # PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/
 # ---------------------------------------------------------------------------
 
+
 class TestTournamentFormPrerequisites:
     def _link(self, db, form, tournament, **overrides):
         row = TournamentForm(form_id=form.id, tournament_id=tournament.id, **overrides)
@@ -296,11 +332,23 @@ class TestTournamentFormPrerequisites:
         db.commit()
         return row
 
-    def test_manager_replaces_prerequisites_and_response_includes_them(self, client, db, td_user, td_tournament):
+    def test_manager_replaces_prerequisites_and_response_includes_them(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
-        role = db.query(TournamentRole).filter(TournamentRole.tournament_id == td_tournament.id).first()
+        role = (
+            db.query(TournamentRole)
+            .filter(TournamentRole.tournament_id == td_tournament.id)
+            .first()
+        )
         now = datetime.now(UTC)
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=now, end=now + timedelta(hours=2))
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
+            start=now,
+            end=now + timedelta(hours=2),
+        )
         db.add(shift)
         db.commit()
         self._link(db, form, td_tournament)
@@ -311,7 +359,9 @@ class TestTournamentFormPrerequisites:
             "roles": {"ids": [role.id], "match": "all"},
             "availability": {"shift_ids": [shift.id], "match": "any"},
         }
-        res = client.patch(f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=payload)
+        res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=payload
+        )
 
         assert res.status_code == 200
         assert res.json()["prerequisites"] == payload
@@ -319,12 +369,24 @@ class TestTournamentFormPrerequisites:
         assert listed.status_code == 200
         assert listed.json()[0]["prerequisites"] == payload
 
-    def test_rejects_role_or_shift_from_another_tournament(self, client, db, td_user, td_tournament, other_tournament):
+    def test_rejects_role_or_shift_from_another_tournament(
+        self, client, db, td_user, td_tournament, other_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
         self._link(db, form, td_tournament)
-        other_role = db.query(TournamentRole).filter(TournamentRole.tournament_id == other_tournament.id).first()
+        other_role = (
+            db.query(TournamentRole)
+            .filter(TournamentRole.tournament_id == other_tournament.id)
+            .first()
+        )
         now = datetime.now(UTC)
-        other_shift = TournamentShift(tournament_id=other_tournament.id, track_id=primary_track_id(db, other_tournament.id), label="Other", start=now, end=now + timedelta(hours=2))
+        other_shift = TournamentShift(
+            tournament_id=other_tournament.id,
+            track_id=primary_track_id(db, other_tournament.id),
+            label="Other",
+            start=now,
+            end=now + timedelta(hours=2),
+        )
         db.add(other_shift)
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -341,53 +403,82 @@ class TestTournamentFormPrerequisites:
         assert role_res.status_code == 422
         assert shift_res.status_code == 422
 
-    def test_rejects_onboarding_form_and_member_without_manage_forms(self, client, db, td_user, td_tournament, other_user):
+    def test_rejects_onboarding_form_and_member_without_manage_forms(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         form = _make_form(db, td_user, td_tournament)
         self._link(db, form, td_tournament, is_onboarding=True, order=1)
         login(client, "td@test.com", "tdpass")
-        assert client.patch(
-            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"onboarding_complete": True},
-        ).status_code == 409
+        assert (
+            client.patch(
+                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+                json={"onboarding_complete": True},
+            ).status_code
+            == 409
+        )
 
-        db.query(TournamentForm).filter(TournamentForm.form_id == form.id).update({TournamentForm.is_onboarding: False, TournamentForm.order: None})
+        db.query(TournamentForm).filter(TournamentForm.form_id == form.id).update(
+            {TournamentForm.is_onboarding: False, TournamentForm.order: None}
+        )
         db.commit()
         grant_role(db, td_tournament, other_user, "Runner")
         login(client, "other@test.com", "otherpass")
-        assert client.patch(
-            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"onboarding_complete": True},
-        ).status_code == 403
+        assert (
+            client.patch(
+                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+                json={"onboarding_complete": True},
+            ).status_code
+            == 403
+        )
 
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/forms/me/
 # ---------------------------------------------------------------------------
 
+
 class TestMyTournamentForms:
-    def _form(self, db, user, tournament, *, status="published", is_onboarding=False, order=None, prerequisites=None):
+    def _form(
+        self,
+        db,
+        user,
+        tournament,
+        *,
+        status="published",
+        is_onboarding=False,
+        order=None,
+        prerequisites=None,
+    ):
         form = _make_form(db, user, tournament, status=status)
-        db.add(TournamentForm(
-            form_id=form.id,
-            tournament_id=tournament.id,
-            is_onboarding=is_onboarding,
-            order=order,
-            prerequisites=prerequisites or {},
-        ))
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=tournament.id,
+                is_onboarding=is_onboarding,
+                order=order,
+                prerequisites=prerequisites or {},
+            )
+        )
         db.commit()
         return form
 
-    def test_lists_completed_history_and_currently_eligible_forms(self, client, db, td_user, td_tournament, other_user):
+    def test_lists_completed_history_and_currently_eligible_forms(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         membership = grant_role(db, td_tournament, other_user, "Runner")
         completed_archived = self._form(db, td_user, td_tournament, status="archived")
         eligible_standard = self._form(db, td_user, td_tournament)
-        blocked_standard = self._form(db, td_user, td_tournament, prerequisites={"onboarding_complete": True})
+        blocked_standard = self._form(
+            db, td_user, td_tournament, prerequisites={"onboarding_complete": True}
+        )
         completed_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=1)
         next_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=2)
-        db.add_all([
-            FormResponse(form_id=completed_archived.id, user_id=other_user.id),
-            FormResponse(form_id=completed_onboarding.id, user_id=other_user.id),
-        ])
+        db.add_all(
+            [
+                FormResponse(form_id=completed_archived.id, user_id=other_user.id),
+                FormResponse(form_id=completed_onboarding.id, user_id=other_user.id),
+            ]
+        )
         db.commit()
         login(client, "other@test.com", "otherpass")
 
@@ -395,7 +486,12 @@ class TestMyTournamentForms:
 
         assert res.status_code == 200
         rows = {row["id"]: row for row in res.json()}
-        assert set(rows) == {completed_archived.id, eligible_standard.id, completed_onboarding.id, next_onboarding.id}
+        assert set(rows) == {
+            completed_archived.id,
+            eligible_standard.id,
+            completed_onboarding.id,
+            next_onboarding.id,
+        }
         assert rows[completed_archived.id]["completed"] is True
         assert rows[completed_archived.id]["eligible"] is False
         assert rows[eligible_standard.id]["eligible"] is True
@@ -414,14 +510,19 @@ class TestMyTournamentForms:
         editable = self._form(db, td_user, td_tournament)
         editable.allow_response_edits = True
         locked = self._form(db, td_user, td_tournament)
-        db.add_all([
-            FormResponse(form_id=editable.id, user_id=other_user.id),
-            FormResponse(form_id=locked.id, user_id=other_user.id),
-        ])
+        db.add_all(
+            [
+                FormResponse(form_id=editable.id, user_id=other_user.id),
+                FormResponse(form_id=locked.id, user_id=other_user.id),
+            ]
+        )
         db.commit()
         login(client, "other@test.com", "otherpass")
 
-        rows = {row["id"]: row for row in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()}
+        rows = {
+            row["id"]: row
+            for row in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()
+        }
         assert rows[editable.id]["allow_response_edits"] is True
         assert rows[locked.id]["allow_response_edits"] is False
 
@@ -429,6 +530,7 @@ class TestMyTournamentForms:
 # ---------------------------------------------------------------------------
 # GET /forms/{form_id}/
 # ---------------------------------------------------------------------------
+
 
 class TestGetFormRaw:
     """?raw=true is the builder's shape — managers only."""
@@ -495,6 +597,7 @@ class TestGetForm:
 # PATCH / delete /forms/{form_id}/
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateArchiveDeleteForm:
     def test_patch_updates_fields(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -514,14 +617,18 @@ class TestUpdateArchiveDeleteForm:
         assert res.status_code == 200
         assert res.json()["status"] == "archived"
 
-    def test_member_cannot_view_standard_form_without_prerequisites(self, client, db, td_user, td_tournament, other_user):
+    def test_member_cannot_view_standard_form_without_prerequisites(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         membership = grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament, status="published")
-        db.add(TournamentForm(
-            form_id=form.id,
-            tournament_id=td_tournament.id,
-            prerequisites={"onboarding_complete": True},
-        ))
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=td_tournament.id,
+                prerequisites={"onboarding_complete": True},
+            )
+        )
         db.commit()
         login(client, "other@test.com", "otherpass")
 
@@ -572,6 +679,7 @@ class TestUpdateArchiveDeleteForm:
 # ---------------------------------------------------------------------------
 # PUT /forms/{form_id}/fields/ — bulk field replace (Edit Lifecycle)
 # ---------------------------------------------------------------------------
+
 
 def _simple_entry(**overrides):
     entry = {
@@ -631,8 +739,20 @@ class TestArchivedTournamentFreezesForms:
 class TestBulkUpdateFieldsDraft:
     def test_create_update_delete_apply_directly(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)  # draft by default
-        existing = _make_field(db, form, field_key="to_delete", question_type="short_text", config={"required": False, "max_length": 50})
-        keep = _make_field(db, form, field_key="to_update", question_type="short_text", config={"required": False, "max_length": 50})
+        existing = _make_field(
+            db,
+            form,
+            field_key="to_delete",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        keep = _make_field(
+            db,
+            form,
+            field_key="to_update",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
@@ -640,7 +760,12 @@ class TestBulkUpdateFieldsDraft:
             f"/forms/{form.id}/fields/",
             json={
                 "fields": [
-                    {"id": keep.id, "label": "Updated label", "question_type": "short_text", "config": {"required": False, "max_length": 200}},
+                    {
+                        "id": keep.id,
+                        "label": "Updated label",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 200},
+                    },
                     _simple_entry(field_key="brand_new"),
                 ]
             },
@@ -649,20 +774,39 @@ class TestBulkUpdateFieldsDraft:
         data = res.json()
         assert {f["field_key"] for f in data} == {"to_update", "brand_new"}
 
-        assert db.query(FormField).filter(FormField.id == existing.id).first() is None  # hard-deleted
+        assert (
+            db.query(FormField).filter(FormField.id == existing.id).first() is None
+        )  # hard-deleted
         db.refresh(keep)
         assert keep.label == "Updated label"
         assert keep.config["max_length"] == 200
 
-    def test_question_type_change_applies_in_place_no_replacement(self, client, db, td_user, td_tournament):
+    def test_question_type_change_applies_in_place_no_replacement(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "long_text",
+                        "config": {"required": False, "max_length": 500},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200
         assert res.json()[0]["id"] == field.id
@@ -676,14 +820,29 @@ class TestBulkUpdateFieldsPublished:
 
     def test_label_only_edit_applies_in_place(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "New label", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "New label",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200
         assert res.json()[0]["id"] == field.id
@@ -694,14 +853,30 @@ class TestBulkUpdateFieldsPublished:
         it, so the id survives and answers stay attached without any lineage
         bookkeeping."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, order=1, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            order=1,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "long_text",
+                        "config": {"required": False, "max_length": 500},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200
         data = res.json()
@@ -715,12 +890,21 @@ class TestBulkUpdateFieldsPublished:
         assert field.field_key == "color"
         assert db.query(FormField).filter(FormField.form_id == form.id).count() == 1
 
-    def test_preset_applied_to_existing_field_uses_submitted_key(self, client, db, td_user, td_tournament):
+    def test_preset_applied_to_existing_field_uses_submitted_key(
+        self, client, db, td_user, td_tournament
+    ):
         """Applying a preset renames the field_key *and* changes the
         question_type in one save. The new config must be validated against
         the submitted key, not the pre-preset one, or it 422s."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, order=1, field_key="interest", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            order=1,
+            field_key="interest",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
         db.add(track)
         db.commit()
@@ -729,30 +913,57 @@ class TestBulkUpdateFieldsPublished:
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id,
-                "field_key": "track_status_volunteer_interest",
-                "label": "Interested?",
-                "question_type": "single_select_radio",
-                "config": {"required": True, "options": [
-                    {"option_id": "yes", "label": "Yes", "value": [{"id": track.id, "status": "interested"}]},
-                    {"option_id": "no", "label": "No", "value": []},
-                ]},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "field_key": "track_status_volunteer_interest",
+                        "label": "Interested?",
+                        "question_type": "single_select_radio",
+                        "config": {
+                            "required": True,
+                            "options": [
+                                {
+                                    "option_id": "yes",
+                                    "label": "Yes",
+                                    "value": [{"id": track.id, "status": "interested"}],
+                                },
+                                {"option_id": "no", "label": "No", "value": []},
+                            ],
+                        },
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
         assert res.json()[0]["field_key"] == "track_status_volunteer_interest"
 
     def test_field_key_rename_applies_in_place(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "field_key": "favorite_color", "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "field_key": "favorite_color",
+                        "label": "Color",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
         assert res.json()[0]["id"] == field.id
@@ -760,7 +971,13 @@ class TestBulkUpdateFieldsPublished:
 
     def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
@@ -773,13 +990,27 @@ class TestBulkUpdateFieldsPublished:
         assert field.is_archived is True
         assert db.query(FormField).filter(FormField.id == field.id).first() is not None
 
-    def test_unpublished_form_with_responses_preserves_removed_field(self, client, db, td_user, td_tournament):
+    def test_unpublished_form_with_responses_preserves_removed_field(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
-        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]}).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": field.id, "value": "blue"}]},
+            ).status_code
+            == 200
+        )
 
         assert client.patch(f"/forms/{form.id}/", json={"status": "draft"}).status_code == 200
         res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
@@ -791,33 +1022,13 @@ class TestBulkUpdateFieldsPublished:
 
     def test_new_entry_inserts(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {"id": field.id, "label": "Favorite color", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
-                    _simple_entry(field_key="brand_new"),
-                ]
-            },
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
         )
-        assert res.status_code == 200
-        assert {f["field_key"] for f in res.json()} == {"color", "brand_new"}
-
-    def test_whole_batch_rejected_together_on_dangling_next_field_id(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        branch_field = _make_field(
-            db, form, field_key="branch", question_type="single_select_radio",
-            config={
-                "required": False,
-                "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 9999}],
-            },
-        )
-        other_field = _make_field(db, form, order=2, field_key="other", question_type="short_text", config={"required": False, "max_length": 50})
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
@@ -827,13 +1038,72 @@ class TestBulkUpdateFieldsPublished:
             json={
                 "fields": [
                     {
-                        "id": branch_field.id, "label": "Branch", "question_type": "single_select_radio",
+                        "id": field.id,
+                        "label": "Favorite color",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                    _simple_entry(field_key="brand_new"),
+                ]
+            },
+        )
+        assert res.status_code == 200
+        assert {f["field_key"] for f in res.json()} == {"color", "brand_new"}
+
+    def test_whole_batch_rejected_together_on_dangling_next_field_id(
+        self, client, db, td_user, td_tournament
+    ):
+        form = _make_form(db, td_user, td_tournament)
+        branch_field = _make_field(
+            db,
+            form,
+            field_key="branch",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 9999}
+                ],
+            },
+        )
+        other_field = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="other",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": branch_field.id,
+                        "label": "Branch",
+                        "question_type": "single_select_radio",
                         "config": {
                             "required": False,
-                            "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 9999}],
+                            "options": [
+                                {
+                                    "option_id": "opt_yes",
+                                    "value": "yes",
+                                    "label": "Yes",
+                                    "next_field_id": 9999,
+                                }
+                            ],
                         },
                     },
-                    {"id": other_field.id, "label": "New label that should not stick", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+                    {
+                        "id": other_field.id,
+                        "label": "New label that should not stick",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
                 ]
             },
         )
@@ -849,21 +1119,31 @@ class TestBulkUpdateFieldsPublished:
 
     def _colour_field(self, db, form):
         return _make_field(
-            db, form, field_key="color", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key="color",
+            question_type="multi_select_checkbox",
             config={"required": False, "options": [dict(o) for o in self.OPTIONS]},
         )
 
     def _save_options(self, client, form, field, options):
         return client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id, "label": "Favorite color",
-                "question_type": "multi_select_checkbox",
-                "config": {"required": False, "options": options},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Favorite color",
+                        "question_type": "multi_select_checkbox",
+                        "config": {"required": False, "options": options},
+                    }
+                ]
+            },
         )
 
-    def test_archiving_an_option_keeps_it_and_flags_nobody(self, client, db, td_user, td_tournament):
+    def test_archiving_an_option_keeps_it_and_flags_nobody(
+        self, client, db, td_user, td_tournament
+    ):
         """Archive means "we ran out" — the option stops being offered, but
         everyone who already picked it still has a valid answer."""
         form = _make_form(db, td_user, td_tournament)
@@ -872,13 +1152,21 @@ class TestBulkUpdateFieldsPublished:
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
+        )
         response_id = res.json()["id"]
 
-        res = self._save_options(client, form, field, [
-            {**self.OPTIONS[0], "is_archived": True},
-            self.OPTIONS[1],
-        ])
+        res = self._save_options(
+            client,
+            form,
+            field,
+            [
+                {**self.OPTIONS[0], "is_archived": True},
+                self.OPTIONS[1],
+            ],
+        )
         assert res.status_code == 200, res.json()
 
         # PUT returns the raw config (the editor's view): the archived option
@@ -888,11 +1176,15 @@ class TestBulkUpdateFieldsPublished:
 
         # GET (the respondent-facing render) filters it out.
         res = client.get(f"/forms/{form.id}/")
-        assert {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]} == {"opt_blue"}
+        assert {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]} == {
+            "opt_blue"
+        }
 
         assert self._pending(db, response_id, field.id) is None
 
-    def test_invalidating_an_option_removes_it_and_flags_who_picked_it(self, client, db, td_user, td_tournament):
+    def test_invalidating_an_option_removes_it_and_flags_who_picked_it(
+        self, client, db, td_user, td_tournament
+    ):
         """Omitting an option entirely is the invalidate verb: it leaves
         storage, and whoever chose it is asked to answer again."""
         form = _make_form(db, td_user, td_tournament)
@@ -901,7 +1193,10 @@ class TestBulkUpdateFieldsPublished:
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
+        )
         response_id = res.json()["id"]
 
         res = self._save_options(client, form, field, [self.OPTIONS[1]])
@@ -920,14 +1215,19 @@ class TestBulkUpdateFieldsPublished:
         assert pending is not None
         assert pending.reasons == ["option_invalidated"]
 
-    def test_invalidating_an_option_spares_who_did_not_pick_it(self, client, db, td_user, td_tournament):
+    def test_invalidating_an_option_spares_who_did_not_pick_it(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
         field = self._colour_field(db, form)
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
+        )
         response_id = res.json()["id"]
 
         self._save_options(client, form, field, [self.OPTIONS[1]])
@@ -938,23 +1238,37 @@ class TestBulkUpdateFieldsPublished:
         settled for a lesser choice while it was unavailable."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
-            db, form, field_key="color", question_type="multi_select_checkbox",
-            config={"required": False, "options": [
-                {**self.OPTIONS[0], "is_archived": True},
-                dict(self.OPTIONS[1]),
-            ]},
+            db,
+            form,
+            field_key="color",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {**self.OPTIONS[0], "is_archived": True},
+                    dict(self.OPTIONS[1]),
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
+        )
         response_id = res.json()["id"]
 
-        res = self._save_options(client, form, field, [
-            {**self.OPTIONS[0], "is_archived": False},
-            self.OPTIONS[1],
-        ])
+        res = self._save_options(
+            client,
+            form,
+            field,
+            [
+                {**self.OPTIONS[0], "is_archived": False},
+                self.OPTIONS[1],
+            ],
+        )
         assert res.status_code == 200, res.json()
 
         pending = self._pending(db, response_id, field.id)
@@ -964,7 +1278,10 @@ class TestBulkUpdateFieldsPublished:
     def test_pending_update_cleared_on_fresh_submission(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
-            db, form, field_key="color", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key="color",
+            question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
@@ -977,7 +1294,10 @@ class TestBulkUpdateFieldsPublished:
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
+        )
         response_id = res.json()["id"]
 
         client.put(
@@ -985,19 +1305,39 @@ class TestBulkUpdateFieldsPublished:
             json={
                 "fields": [
                     {
-                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
-                        "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]},
+                        "id": field.id,
+                        "label": "Favorite color",
+                        "question_type": "multi_select_checkbox",
+                        "config": {
+                            "required": False,
+                            "options": [
+                                {"option_id": "opt_blue", "value": "blue", "label": "Blue"}
+                            ],
+                        },
                     },
                 ]
             },
         )
-        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response_id).count() == 1
+        assert (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id)
+            .count()
+            == 1
+        )
 
         # Answering the flagged question clears it. That goes through PATCH —
         # POST no longer resubmits.
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
+        )
         assert res.status_code == 200, res.json()
-        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response_id).count() == 0
+        assert (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id)
+            .count()
+            == 0
+        )
 
     def _pending(self, db, response_id, field_id):
         return (
@@ -1013,22 +1353,40 @@ class TestBulkUpdateFieldsPublished:
         """short_text -> single_select_radio turns a plain string answer into
         an option reference, so the stored answer no longer means anything."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
         response_id = res.json()["id"]
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id, "label": "Color", "question_type": "single_select_radio",
-                "config": {"required": False, "options": [
-                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
-                ]},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "single_select_radio",
+                        "config": {
+                            "required": False,
+                            "options": [
+                                {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+                            ],
+                        },
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
 
@@ -1041,30 +1399,59 @@ class TestBulkUpdateFieldsPublished:
         """short_text -> long_text is a rendering choice; both store a plain
         string, so no previous answer was invalidated."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
         response_id = res.json()["id"]
 
         client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "long_text",
+                        "config": {"required": False, "max_length": 500},
+                    }
+                ]
+            },
         )
         assert self._pending(db, response_id, field.id) is None
 
-    def test_archived_field_can_be_unarchived_and_keeps_its_answers(self, client, db, td_user, td_tournament):
+    def test_archived_field_can_be_unarchived_and_keeps_its_answers(
+        self, client, db, td_user, td_tournament
+    ):
         """A question deleted by mistake comes back by naming it in the
         payload. It never lost its id, so its answers re-link with no work."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
 
         # Archive it by leaving it out.
         res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
@@ -1075,7 +1462,16 @@ class TestBulkUpdateFieldsPublished:
         # Name it again to bring it back.
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
         assert [f["id"] for f in res.json()] == [field.id]
@@ -1089,18 +1485,36 @@ class TestBulkUpdateFieldsPublished:
         """The question is exactly as it was left, so there's nothing for a
         previous responder to review."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
         response_id = res.json()["id"]
 
         client.put(f"/forms/{form.id}/fields/", json={"fields": []})
         client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert self._pending(db, response_id, field.id) is None
 
@@ -1108,7 +1522,13 @@ class TestBulkUpdateFieldsPublished:
         """An archived field doesn't reserve its key, so the name may be gone
         by the time the TD wants the question back."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
@@ -1117,17 +1537,38 @@ class TestBulkUpdateFieldsPublished:
         # A new question takes the freed key.
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"field_key": "color", "label": "Colour", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "field_key": "color",
+                        "label": "Colour",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200
         replacement_id = res.json()[0]["id"]
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [
-                {"id": replacement_id, "label": "Colour", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
-                {"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
-            ]},
+            json={
+                "fields": [
+                    {
+                        "id": replacement_id,
+                        "label": "Colour",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                ]
+            },
         )
         assert res.status_code == 409
 
@@ -1135,32 +1576,75 @@ class TestBulkUpdateFieldsPublished:
         """A flag on a question nobody can answer any more could never clear,
         so retirement takes them with it."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
-        keep = _make_field(db, form, order=2, field_key="name", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        keep = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="name",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": field.id, "value": "blue"},
-            {"field_id": keep.id, "value": "sam"},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field.id, "value": "blue"},
+                    {"field_id": keep.id, "value": "sam"},
+                ]
+            },
+        )
         response_id = res.json()["id"]
 
         # Flag it via a cross-shape type change, then retire it.
         client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [
-                {"id": field.id, "label": "Color", "question_type": "single_select_radio",
-                 "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]}},
-                {"id": keep.id, "label": "Name", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
-            ]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": "Color",
+                        "question_type": "single_select_radio",
+                        "config": {
+                            "required": False,
+                            "options": [
+                                {"option_id": "opt_blue", "value": "blue", "label": "Blue"}
+                            ],
+                        },
+                    },
+                    {
+                        "id": keep.id,
+                        "label": "Name",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                ]
+            },
         )
         assert self._pending(db, response_id, field.id) is not None
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{"id": keep.id, "label": "Name", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+            json={
+                "fields": [
+                    {
+                        "id": keep.id,
+                        "label": "Name",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
         assert self._pending(db, response_id, field.id) is None
@@ -1175,10 +1659,15 @@ class TestBulkUpdateFieldsPublished:
             json={
                 "fields": [
                     {
-                        "label": "Color", "field_key": "color", "question_type": "multi_select_checkbox",
+                        "label": "Color",
+                        "field_key": "color",
+                        "question_type": "multi_select_checkbox",
                         "config": {
                             "required": False,
-                            "options": [{"value": "red", "label": "Red"}, {"value": "blue", "label": "Blue"}],
+                            "options": [
+                                {"value": "red", "label": "Red"},
+                                {"value": "blue", "label": "Blue"},
+                            ],
                         },
                     },
                 ]
@@ -1190,11 +1679,19 @@ class TestBulkUpdateFieldsPublished:
         assert all(ids)
         assert len(set(ids)) == 2
 
-    def test_option_id_preserved_across_update_when_echoed_back(self, client, db, td_user, td_tournament):
+    def test_option_id_preserved_across_update_when_echoed_back(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
-            db, form, field_key="color", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}]},
+            db,
+            form,
+            field_key="color",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1204,7 +1701,9 @@ class TestBulkUpdateFieldsPublished:
             json={
                 "fields": [
                     {
-                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
+                        "id": field.id,
+                        "label": "Favorite color",
+                        "question_type": "multi_select_checkbox",
                         "config": {
                             "required": False,
                             "options": [
@@ -1233,7 +1732,9 @@ class TestBulkUpdateFieldsPublished:
             json={
                 "fields": [
                     {
-                        "label": "Color", "field_key": "color", "question_type": "multi_select_checkbox",
+                        "label": "Color",
+                        "field_key": "color",
+                        "question_type": "multi_select_checkbox",
                         "config": {
                             "required": False,
                             "options": [
@@ -1251,6 +1752,7 @@ class TestBulkUpdateFieldsPublished:
 # ---------------------------------------------------------------------------
 # POST /forms/{form_id}/responses/ — submission and resubmission
 # ---------------------------------------------------------------------------
+
 
 class TestClassifyFieldChanges:
     """POST /forms/{id}/fields/classify/ — the dry run behind the builder's
@@ -1272,75 +1774,151 @@ class TestClassifyFieldChanges:
     def test_draft_form_reports_nothing(self, client, db, td_user, td_tournament):
         """Nobody has answered, so no edit can strand anyone."""
         form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/fields/classify/", json={
-            "fields": [self._entry(field, question_type="single_select_radio", config={
-                "required": False, "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
-            })],
-        })
+        res = client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [
+                    self._entry(
+                        field,
+                        question_type="single_select_radio",
+                        config={
+                            "required": False,
+                            "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
+                        },
+                    )
+                ],
+            },
+        )
         assert res.status_code == 200
         assert res.json() == []
 
     def test_mandatory_change_is_locked_and_defaults_on(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/fields/classify/", json={
-            "fields": [self._entry(field, question_type="single_select_radio", config={
-                "required": False, "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
-            })],
-        })
+        res = client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [
+                    self._entry(
+                        field,
+                        question_type="single_select_radio",
+                        config={
+                            "required": False,
+                            "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
+                        },
+                    )
+                ],
+            },
+        )
         assert res.status_code == 200
-        assert res.json() == [{
-            "field_id": field.id, "label": "Favorite color",
-            "reasons": ["question_type_changed"], "locked": True, "notify_default": True,
-        }]
+        assert res.json() == [
+            {
+                "field_id": field.id,
+                "label": "Favorite color",
+                "reasons": ["question_type_changed"],
+                "locked": True,
+                "notify_default": True,
+            }
+        ]
 
     def test_wording_change_is_unlocked_and_defaults_off(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/fields/classify/", json={
-            "fields": [self._entry(field, label="What colour?")],
-        })
-        assert res.json() == [{
-            "field_id": field.id, "label": "What colour?",
-            "reasons": ["text_changed"], "locked": False, "notify_default": False,
-        }]
+        res = client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [self._entry(field, label="What colour?")],
+            },
+        )
+        assert res.json() == [
+            {
+                "field_id": field.id,
+                "label": "What colour?",
+                "reasons": ["text_changed"],
+                "locked": False,
+                "notify_default": False,
+            }
+        ]
 
     def test_unchanged_and_new_fields_are_omitted(self, client, db, td_user, td_tournament):
         """The confirmation lists consequences, not a diff of the save."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/fields/classify/", json={
-            "fields": [
-                self._entry(field),
-                {"field_key": "brand_new", "label": "New", "question_type": "short_text",
-                 "config": {"required": False, "max_length": 50}},
-            ],
-        })
+        res = client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [
+                    self._entry(field),
+                    {
+                        "field_key": "brand_new",
+                        "label": "New",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                ],
+            },
+        )
         assert res.json() == []
 
     def test_writes_nothing(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
 
-        client.post(f"/forms/{form.id}/fields/classify/", json={
-            "fields": [self._entry(field, label="What colour?")],
-        })
+        client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [self._entry(field, label="What colour?")],
+            },
+        )
 
         db.refresh(field)
         assert field.label == "Favorite color"
@@ -1351,7 +1929,10 @@ class TestClassifyFieldChanges:
         db.commit()
         grant_role(db, td_tournament, other_user, "Runner")
         login(client, "other@test.com", "otherpass")
-        assert client.post(f"/forms/{form.id}/fields/classify/", json={"fields": []}).status_code == 403
+        assert (
+            client.post(f"/forms/{form.id}/fields/classify/", json={"fields": []}).status_code
+            == 403
+        )
 
 
 class TestListArchivedFields:
@@ -1370,7 +1951,10 @@ class TestListArchivedFields:
     def test_config_comes_back_unresolved(self, client, db, td_user, td_tournament):
         """It's read only to be sent straight back to PUT .../fields/, so the
         option values must be the round-trippable ids, not a rendering."""
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
             start=datetime(2026, 3, 15, tzinfo=UTC),
             end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
         )
@@ -1378,11 +1962,17 @@ class TestListArchivedFields:
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             is_archived=True,
-            config={"required": False, "options": [
-                {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
-            ]},
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1404,17 +1994,39 @@ class TestInvalidateField:
 
     def test_answers_and_flags_are_purged(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
-        keep = _make_field(db, form, order=2, field_key="name", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        keep = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="name",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": field.id, "value": "blue"},
-            {"field_id": keep.id, "value": "sam"},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field.id, "value": "blue"},
+                    {"field_id": keep.id, "value": "sam"},
+                ]
+            },
+        )
         response_id = res.json()["id"]
-        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field.id, reasons=["text_changed"]))
+        db.add(
+            FormResponsePendingUpdate(
+                response_id=response_id, field_id=field.id, reasons=["text_changed"]
+            )
+        )
         db.commit()
 
         field_id = field.id
@@ -1423,22 +2035,36 @@ class TestInvalidateField:
 
         assert db.query(FormField).filter(FormField.id == field_id).first() is None
         assert db.query(FormAnswer).filter(FormAnswer.field_id == field_id).count() == 0
-        assert db.query(FormResponsePendingUpdate).filter(
-            FormResponsePendingUpdate.field_id == field_id
-        ).count() == 0
+        assert (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.field_id == field_id)
+            .count()
+            == 0
+        )
 
         # Only that question's data goes.
         assert db.query(FormAnswer).filter(FormAnswer.field_id == keep.id).count() == 1
 
-    def test_archiving_instead_keeps_the_field_and_answers(self, client, db, td_user, td_tournament):
+    def test_archiving_instead_keeps_the_field_and_answers(
+        self, client, db, td_user, td_tournament
+    ):
         """The contrast that makes the separate route worth having: leaving a
         field out of the bulk payload retires it without touching history, and
         stays undoable."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
 
         res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
         assert res.status_code == 200
@@ -1449,14 +2075,23 @@ class TestInvalidateField:
     def test_lunch_write_through_is_cleared(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="single_select_radio",
-            config={"required": False, "options": [
-                {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
-            ]},
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_chicken"}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_chicken"}]},
+        )
         assert db.query(TournamentMembershipLunch).count() == 1
 
         res = client.delete(f"/forms/{form.id}/fields/{field.id}/")
@@ -1468,46 +2103,76 @@ class TestInvalidateField:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         target = _make_field(
-            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
+            db,
+            form,
+            field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}],
+            },
         )
         other_track_id = _second_track(db, td_tournament).id
         # A preference question may only offer events that run on its track,
         # so the shared event has to be linked to both.
         from app.models.models import TournamentEventTrack
 
-        db.add_all([
-            TournamentEventTrack(tournament_event_id=event.id, track_id=primary_track_id(db, td_tournament.id)),
-            TournamentEventTrack(tournament_event_id=event.id, track_id=other_track_id),
-        ])
+        db.add_all(
+            [
+                TournamentEventTrack(
+                    tournament_event_id=event.id, track_id=primary_track_id(db, td_tournament.id)
+                ),
+                TournamentEventTrack(tournament_event_id=event.id, track_id=other_track_id),
+            ]
+        )
         db.flush()
         other = _make_field(
-            db, form, order=2, field_key=f"event_preference_{other_track_id}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
+            db,
+            form,
+            order=2,
+            field_key=f"event_preference_{other_track_id}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": target.id, "value": ["opt_e1"]},
-            {"field_id": other.id, "value": ["opt_e1"]},
-        ]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": target.id, "value": ["opt_e1"]},
+                    {"field_id": other.id, "value": ["opt_e1"]},
+                ]
+            },
+        )
         membership_id = self._membership_id(db, td_user, td_tournament)
-        assert db.query(TournamentMembershipEventPreference).filter(
-            TournamentMembershipEventPreference.membership_id == membership_id
-        ).count() == 2
+        assert (
+            db.query(TournamentMembershipEventPreference)
+            .filter(TournamentMembershipEventPreference.membership_id == membership_id)
+            .count()
+            == 2
+        )
 
         res = client.delete(f"/forms/{form.id}/fields/{target.id}/")
         assert res.status_code == 204, res.json()
 
-        rows = db.query(TournamentMembershipEventPreference).filter(
-            TournamentMembershipEventPreference.membership_id == membership_id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipEventPreference)
+            .filter(TournamentMembershipEventPreference.membership_id == membership_id)
+            .all()
+        )
         assert [row.track_id for row in rows] == [other_track_id]
 
     def _membership_id(self, db, user, tournament):
         return (
             db.query(TournamentMembership)
-            .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+            .filter(
+                TournamentMembership.user_id == user.id,
+                TournamentMembership.tournament_id == tournament.id,
+            )
             .first()
             .id
         )
@@ -1515,7 +2180,10 @@ class TestInvalidateField:
     def test_availability_write_through_is_left_alone(self, client, db, td_user, td_tournament):
         """Availability rows are shared with whatever else covers that day, so
         this field's contribution can't be separated out after the fact."""
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
             start=datetime(2026, 3, 15, tzinfo=UTC),
             end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
         )
@@ -1523,14 +2191,23 @@ class TestInvalidateField:
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [
-                {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
-            ]},
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]},
+        )
         assert db.query(TournamentMembershipAvailability).count() == 1
 
         res = client.delete(f"/forms/{form.id}/fields/{field.id}/")
@@ -1541,12 +2218,31 @@ class TestInvalidateField:
         """Deleting the row would leave a dangling next_field_id and make the
         form unpublishable, with nothing on screen explaining why."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        target = _make_field(db, form, order=2, field_key="target", question_type="short_text", config={"required": False, "max_length": 50})
+        target = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="target",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         _make_field(
-            db, form, order=1, field_key="chooser", question_type="single_select_radio",
-            config={"required": False, "options": [
-                {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": target.id},
-            ]},
+            db,
+            form,
+            order=1,
+            field_key="chooser",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [
+                    {
+                        "option_id": "opt_yes",
+                        "value": "yes",
+                        "label": "Yes",
+                        "next_field_id": target.id,
+                    },
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1575,17 +2271,24 @@ class TestPatchResponse:
     answer, and only for questions the TD flagged."""
 
     def _submit(self, client, db, form, field, value):
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": value}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": value}]},
+        )
         assert res.status_code == 200, res.json()
         return res.json()["id"]
 
     def _flag(self, db, response_id, field, reasons=("text_changed",)):
-        db.add(FormResponsePendingUpdate(
-            response_id=response_id, field_id=field.id, reasons=list(reasons)
-        ))
+        db.add(
+            FormResponsePendingUpdate(
+                response_id=response_id, field_id=field.id, reasons=list(reasons)
+            )
+        )
         db.commit()
 
-    def test_flagged_field_can_be_patched_and_clears_the_flag(self, client, db, td_user, td_tournament):
+    def test_flagged_field_can_be_patched_and_clears_the_flag(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(db, form, field_key="color")
         db.commit()
@@ -1593,14 +2296,24 @@ class TestPatchResponse:
         response_id = self._submit(client, db, form, field, ["opt_1"])
         self._flag(db, response_id, field)
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
+        )
         assert res.status_code == 200, res.json()
 
-        answer = db.query(FormAnswer).filter(FormAnswer.response_id == response_id, FormAnswer.field_id == field.id).one()
+        answer = (
+            db.query(FormAnswer)
+            .filter(FormAnswer.response_id == response_id, FormAnswer.field_id == field.id)
+            .one()
+        )
         assert answer.value == ["opt_2"]
-        assert db.query(FormResponsePendingUpdate).filter(
-            FormResponsePendingUpdate.response_id == response_id
-        ).count() == 0
+        assert (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id)
+            .count()
+            == 0
+        )
 
     def test_unflagged_field_is_rejected(self, client, db, td_user, td_tournament):
         """The lock is server-side: a respondent can't revise an answer just
@@ -1611,31 +2324,46 @@ class TestPatchResponse:
         login(client, "td@test.com", "tdpass")
         response_id = self._submit(client, db, form, field, ["opt_1"])
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
+        )
         assert res.status_code == 403
 
         answer = db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one()
         assert answer.value == ["opt_1"]
 
-    def test_patching_only_one_of_several_flagged_leaves_the_rest_open(self, client, db, td_user, td_tournament):
+    def test_patching_only_one_of_several_flagged_leaves_the_rest_open(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(db, form, field_key="color")
         other = _make_field(db, form, order=2, field_key="shirt")
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": field.id, "value": ["opt_1"]},
-            {"field_id": other.id, "value": ["opt_1"]},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field.id, "value": ["opt_1"]},
+                    {"field_id": other.id, "value": ["opt_1"]},
+                ]
+            },
+        )
         response_id = res.json()["id"]
         self._flag(db, response_id, field)
         self._flag(db, response_id, other)
 
-        client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]})
+        client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
+        )
 
-        remaining = db.query(FormResponsePendingUpdate).filter(
-            FormResponsePendingUpdate.response_id == response_id
-        ).all()
+        remaining = (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id)
+            .all()
+        )
         assert [row.field_id for row in remaining] == [other.id]
 
     def test_unpatched_answers_are_untouched(self, client, db, td_user, td_tournament):
@@ -1646,18 +2374,28 @@ class TestPatchResponse:
         other = _make_field(db, form, order=2, field_key="shirt")
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": field.id, "value": ["opt_1"]},
-            {"field_id": other.id, "value": ["opt_2"]},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field.id, "value": ["opt_1"]},
+                    {"field_id": other.id, "value": ["opt_2"]},
+                ]
+            },
+        )
         response_id = res.json()["id"]
         self._flag(db, response_id, field)
 
-        client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]})
+        client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
+        )
 
-        untouched = db.query(FormAnswer).filter(
-            FormAnswer.response_id == response_id, FormAnswer.field_id == other.id
-        ).one()
+        untouched = (
+            db.query(FormAnswer)
+            .filter(FormAnswer.response_id == response_id, FormAnswer.field_id == other.id)
+            .one()
+        )
         assert untouched.value == ["opt_2"]
 
     def test_patch_without_a_response_is_404(self, client, db, td_user, td_tournament):
@@ -1666,7 +2404,10 @@ class TestPatchResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
+        )
         assert res.status_code == 404
 
 
@@ -1677,15 +2418,33 @@ class TestAllowResponseEdits:
     def _branching_form(self, db, td_user, td_tournament):
         # opt_1 ends the form; opt_2 falls through to a required question.
         form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
-        branch = _make_field(db, form, order=1, field_key="branch", question_type="single_select_radio", config={
-            "required": True,
-            "options": [
-                {"option_id": "opt_1", "value": "opt_1", "label": "Done", "action": "submit_form"},
-                {"option_id": "opt_2", "value": "opt_2", "label": "More"},
-            ],
-        })
-        followup = _make_field(db, form, order=2, field_key="followup", question_type="short_text",
-                               config={"required": True, "max_length": 50})
+        branch = _make_field(
+            db,
+            form,
+            order=1,
+            field_key="branch",
+            question_type="single_select_radio",
+            config={
+                "required": True,
+                "options": [
+                    {
+                        "option_id": "opt_1",
+                        "value": "opt_1",
+                        "label": "Done",
+                        "action": "submit_form",
+                    },
+                    {"option_id": "opt_2", "value": "opt_2", "label": "More"},
+                ],
+            },
+        )
+        followup = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="followup",
+            question_type="short_text",
+            config={"required": True, "max_length": 50},
+        )
         db.commit()
         return form, branch, followup
 
@@ -1701,28 +2460,58 @@ class TestAllowResponseEdits:
 
     def test_unflagged_field_editable_when_on(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
-        response_id = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "red"}]}).json()["id"]
+        response_id = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "red"}]},
+        ).json()["id"]
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
         assert res.status_code == 200, res.json()
-        assert db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one().value == "blue"
+        assert (
+            db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one().value == "blue"
+        )
 
-    def test_newly_reachable_required_question_must_be_answered(self, client, db, td_user, td_tournament):
+    def test_newly_reachable_required_question_must_be_answered(
+        self, client, db, td_user, td_tournament
+    ):
         form, branch, followup = self._branching_form(db, td_user, td_tournament)
         login(client, "td@test.com", "tdpass")
-        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": branch.id, "value": "opt_1"}]}).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": branch.id, "value": "opt_1"}]},
+            ).status_code
+            == 200
+        )
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": branch.id, "value": "opt_2"}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": branch.id, "value": "opt_2"}]},
+        )
         assert res.status_code == 400
         assert "followup" in res.json()["detail"]
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [
-            {"field_id": branch.id, "value": "opt_2"},
-            {"field_id": followup.id, "value": "details"},
-        ]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={
+                "answers": [
+                    {"field_id": branch.id, "value": "opt_2"},
+                    {"field_id": followup.id, "value": "details"},
+                ]
+            },
+        )
         assert res.status_code == 200, res.json()
 
     def test_stored_answers_count_toward_required(self, client, db, td_user, td_tournament):
@@ -1730,26 +2519,58 @@ class TestAllowResponseEdits:
         as its option_id or the branch would look unanswered."""
         form, branch, followup = self._branching_form(db, td_user, td_tournament)
         login(client, "td@test.com", "tdpass")
-        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": branch.id, "value": "opt_2"},
-            {"field_id": followup.id, "value": "first"},
-        ]}).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={
+                    "answers": [
+                        {"field_id": branch.id, "value": "opt_2"},
+                        {"field_id": followup.id, "value": "first"},
+                    ]
+                },
+            ).status_code
+            == 200
+        )
 
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": followup.id, "value": "second"}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": followup.id, "value": "second"}]},
+        )
         assert res.status_code == 200, res.json()
 
-    def test_completed_onboarding_form_stays_reachable(self, client, db, td_user, td_tournament, other_user):
+    def test_completed_onboarding_form_stays_reachable(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
-        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1))
+        field = _make_field(
+            db,
+            form,
+            field_key="color",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        db.add(
+            TournamentForm(
+                form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1
+            )
+        )
         db.commit()
         login(client, "other@test.com", "otherpass")
-        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "red"}]}).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": field.id, "value": "red"}]},
+            ).status_code
+            == 200
+        )
 
         # No longer their next step — it used to 403 from here on.
         assert client.get(f"/forms/{form.id}/").status_code == 200
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": "blue"}]},
+        )
         assert res.status_code == 200, res.json()
 
 
@@ -1778,12 +2599,25 @@ class TestSubmitResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
+        )
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
+        )
 
         assert res.status_code == 409
-        assert db.query(FormResponse).filter(FormResponse.form_id == form.id, FormResponse.user_id == td_user.id).count() == 1
-        answer = db.query(FormAnswer).join(FormResponse).filter(FormResponse.form_id == form.id).one()
+        assert (
+            db.query(FormResponse)
+            .filter(FormResponse.form_id == form.id, FormResponse.user_id == td_user.id)
+            .count()
+            == 1
+        )
+        answer = (
+            db.query(FormAnswer).join(FormResponse).filter(FormResponse.form_id == form.id).one()
+        )
         assert answer.value == ["opt_1"]
 
     def test_invalid_field_id_rejected(self, client, db, td_user, td_tournament):
@@ -1791,7 +2625,10 @@ class TestSubmitResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": "nonexistent12", "value": "x"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": "nonexistent12", "value": "x"}]},
+        )
         assert res.status_code == 400
 
     def test_non_member_forbidden(self, client, db, td_user, td_tournament, other_user):
@@ -1807,7 +2644,10 @@ class TestSubmitResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
+        )
         assert res.status_code == 409
 
     def test_archived_form_rejects_submission(self, client, db, td_user, td_tournament):
@@ -1816,7 +2656,10 @@ class TestSubmitResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
+        )
         assert res.status_code == 409
 
 
@@ -1825,12 +2668,20 @@ class TestAnswerSnapshotting:
     submission time, not a bare option_id — so a later edit to the option's
     value/label doesn't retroactively change how a past answer displays."""
 
-    def test_multi_select_answer_stores_value_label_snapshot(self, client, db, td_user, td_tournament):
+    def test_multi_select_answer_stores_value_label_snapshot(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(
-            db, td_user, td_tournament, status="published",
+            db,
+            td_user,
+            td_tournament,
+            status="published",
         )
         field = _make_field(
-            db, form, field_key="topics", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key="topics",
+            question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
@@ -1842,21 +2693,35 @@ class TestAnswerSnapshotting:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
+        )
         assert res.status_code == 200
-        assert res.json()["answers"][0]["value"] == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
+        assert res.json()["answers"][0]["value"] == [
+            {"option_id": "opt_red", "value": "red", "label": "Red"}
+        ]
 
     def test_snapshot_survives_later_value_rename(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
-            db, form, field_key="topics", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}]},
+            db,
+            form,
+            field_key="topics",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
         client.patch(f"/forms/{form.id}/", json={"status": "published"})
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
+        )
         response_id = res.json()["id"]
 
         client.put(
@@ -1864,10 +2729,14 @@ class TestAnswerSnapshotting:
             json={
                 "fields": [
                     {
-                        "id": field.id, "label": "Topics", "question_type": "multi_select_checkbox",
+                        "id": field.id,
+                        "label": "Topics",
+                        "question_type": "multi_select_checkbox",
                         "config": {
                             "required": False,
-                            "options": [{"option_id": "opt_red", "value": "crimson", "label": "Crimson"}],
+                            "options": [
+                                {"option_id": "opt_red", "value": "crimson", "label": "Crimson"}
+                            ],
                         },
                     },
                 ]
@@ -1886,10 +2755,15 @@ class TestAnswerSnapshotting:
 # itself; this covers the route wiring.
 # ---------------------------------------------------------------------------
 
+
 class TestWriteThroughOnSubmit:
-    def test_availability_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+    def test_availability_write_through_on_tournament_form(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id),
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
             label="Saturday",
             start=datetime(2026, 3, 15, tzinfo=UTC),
             end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8),
@@ -1897,8 +2771,16 @@ class TestWriteThroughOnSubmit:
         db.add(shift)
         db.flush()
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": f"opt_{shift.id}", "value": [shift.id], "label": shift.label}]},
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": f"opt_{shift.id}", "value": [shift.id], "label": shift.label}
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1911,56 +2793,98 @@ class TestWriteThroughOnSubmit:
 
         membership = (
             db.query(TournamentMembership)
-            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .filter(
+                TournamentMembership.user_id == td_user.id,
+                TournamentMembership.tournament_id == td_tournament.id,
+            )
             .first()
         )
-        rows = db.query(TournamentMembershipAvailability).filter(
-            TournamentMembershipAvailability.membership_id == membership.id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipAvailability)
+            .filter(TournamentMembershipAvailability.membership_id == membership.id)
+            .all()
+        )
         assert [row.tournament_shift_id for row in rows] == [shift.id]
 
     def _shift_ids(self, db, membership_id):
         return {
             row.tournament_shift_id
-            for row in db.query(TournamentMembershipAvailability).filter(
-                TournamentMembershipAvailability.membership_id == membership_id
-            ).all()
+            for row in db.query(TournamentMembershipAvailability)
+            .filter(TournamentMembershipAvailability.membership_id == membership_id)
+            .all()
         }
 
     def _membership_id(self, db, user, tournament):
         return (
             db.query(TournamentMembership)
-            .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+            .filter(
+                TournamentMembership.user_id == user.id,
+                TournamentMembership.tournament_id == tournament.id,
+            )
             .first()
             .id
         )
 
-    def test_grouped_availability_option_writes_one_row_per_shift(self, client, db, td_user, td_tournament):
+    def test_grouped_availability_option_writes_one_row_per_shift(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8))
+        morning = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        afternoon = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Afternoon",
+            start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8),
+        )
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
-            config={"required": False, "options": [{"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"}]},
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [
+                    {
+                        "option_id": "opt_all_day",
+                        "value": [morning.id, afternoon.id],
+                        "label": "All Day",
+                    }
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_all_day"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_all_day"}]},
+        )
         assert res.status_code == 200
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
 
-    def test_opted_in_availability_option_still_writes_its_shifts(self, client, db, td_user, td_tournament):
+    def test_opted_in_availability_option_still_writes_its_shifts(
+        self, client, db, td_user, td_tournament
+    ):
         """With track_status_enabled, an availability option's shift ids move
         under a `shift_ids` key instead of being `value` itself. Reading them
         off `value` directly iterated the dict's keys and fed the strings
         "shift_ids"/"track_statuses" into the shift set."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
             start=datetime(2026, 3, 15, tzinfo=UTC),
             end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
         )
@@ -1970,38 +2894,68 @@ class TestWriteThroughOnSubmit:
         # it, so the option carries a bare status rather than an id list.
         track_id = primary_track_id(db, td_tournament.id)
         field = _make_field(
-            db, form, field_key=f"availability_{track_id}", question_type="single_select_radio",
+            db,
+            form,
+            field_key=f"availability_{track_id}",
+            question_type="single_select_radio",
             config={
                 "required": False,
                 "track_status_enabled": True,
-                "options": [{
-                    "option_id": "opt_morning", "label": "Morning",
-                    "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
-                }],
+                "options": [
+                    {
+                        "option_id": "opt_morning",
+                        "label": "Morning",
+                        "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
+                    }
+                ],
             },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_morning"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_morning"}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {shift.id}
 
-    def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
+    def test_overlapping_selected_options_dedupe_shared_shift(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8))
+        morning = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        afternoon = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Afternoon",
+            start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8),
+        )
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
                     {"option_id": "opt_morning", "value": [morning.id], "label": "Morning"},
-                    {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"},
+                    {
+                        "option_id": "opt_all_day",
+                        "value": [morning.id, afternoon.id],
+                        "label": "All Day",
+                    },
                 ],
             },
         )
@@ -2034,16 +2988,27 @@ class TestWriteThroughOnSubmit:
         )
         return row.status if row else None
 
-    def _track_field(self, db, form, track, *, order=1, field_key="track_status_interest", statuses=None):
+    def _track_field(
+        self, db, form, track, *, order=1, field_key="track_status_interest", statuses=None
+    ):
         """A track_status_* question: "Yes" assigns the given statuses, "No"
         assigns nothing."""
         return _make_field(
-            db, form, order=order, field_key=field_key, question_type="single_select_radio",
+            db,
+            form,
+            order=order,
+            field_key=field_key,
+            question_type="single_select_radio",
             config={
                 "required": True,
                 "options": [
-                    {"option_id": "opt_yes", "label": "Yes",
-                     "value": statuses if statuses is not None else [{"id": track.id, "status": "interested"}]},
+                    {
+                        "option_id": "opt_yes",
+                        "label": "Yes",
+                        "value": statuses
+                        if statuses is not None
+                        else [{"id": track.id, "status": "interested"}],
+                    },
                     {"option_id": "opt_no", "label": "No", "value": []},
                 ],
             },
@@ -2052,49 +3017,74 @@ class TestWriteThroughOnSubmit:
     def test_track_status_write_through_on_submit(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         track = self._track(db, td_tournament)
-        field = self._track_field(db, form, track, statuses=[{"id": track.id, "status": "confirmed"}])
+        field = self._track_field(
+            db, form, track, statuses=[{"id": track.id, "status": "confirmed"}]
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_yes"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_yes"}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._track_status(db, membership_id, track.id) == "confirmed"
 
-    def test_selecting_an_option_with_no_assignments_writes_nothing(self, client, db, td_user, td_tournament):
+    def test_selecting_an_option_with_no_assignments_writes_nothing(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
         track = self._track(db, td_tournament)
         field = self._track_field(db, form, track)
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_no"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_no"}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._track_status(db, membership_id, track.id) is None
 
-    def test_later_field_wins_when_two_name_the_same_track(self, client, db, td_user, td_tournament):
+    def test_later_field_wins_when_two_name_the_same_track(
+        self, client, db, td_user, td_tournament
+    ):
         """Document order decides intent — the second question's answer is the
         one the respondent gave last."""
         form = _make_form(db, td_user, td_tournament, status="published")
         track = self._track(db, td_tournament)
         first = self._track_field(
-            db, form, track, order=1, field_key="track_status_first",
+            db,
+            form,
+            track,
+            order=1,
+            field_key="track_status_first",
             statuses=[{"id": track.id, "status": "declined"}],
         )
         second = self._track_field(
-            db, form, track, order=2, field_key="track_status_second",
+            db,
+            form,
+            track,
+            order=2,
+            field_key="track_status_second",
             statuses=[{"id": track.id, "status": "confirmed"}],
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": first.id, "value": "opt_yes"},
-            {"field_id": second.id, "value": "opt_yes"},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": first.id, "value": "opt_yes"},
+                    {"field_id": second.id, "value": "opt_yes"},
+                ]
+            },
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
@@ -2107,20 +3097,33 @@ class TestWriteThroughOnSubmit:
         form = _make_form(db, td_user, td_tournament, status="published")
         track = self._track(db, td_tournament)
         stale = self._track_field(
-            db, form, track, order=1, field_key="track_status_stale",
+            db,
+            form,
+            track,
+            order=1,
+            field_key="track_status_stale",
             statuses=[{"id": track.id, "status": "confirmed"}],
         )
         patched = self._track_field(
-            db, form, track, order=2, field_key="track_status_patched",
+            db,
+            form,
+            track,
+            order=2,
+            field_key="track_status_patched",
             statuses=[{"id": track.id, "status": "declined"}],
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": stale.id, "value": "opt_yes"},
-            {"field_id": patched.id, "value": "opt_no"},
-        ]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": stale.id, "value": "opt_yes"},
+                    {"field_id": patched.id, "value": "opt_no"},
+                ]
+            },
+        )
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._track_status(db, membership_id, track.id) == "confirmed"
 
@@ -2133,11 +3136,16 @@ class TestWriteThroughOnSubmit:
 
         assert self._track_status(db, membership_id, track.id) == "declined"
 
-    def test_opted_in_availability_writes_shifts_and_statuses(self, client, db, td_user, td_tournament):
+    def test_opted_in_availability_writes_shifts_and_statuses(
+        self, client, db, td_user, td_tournament
+    ):
         """One field, both targets — the track opt-in doesn't displace the
         availability write-through."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
             start=datetime(2026, 3, 15, tzinfo=UTC),
             end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
         )
@@ -2147,20 +3155,29 @@ class TestWriteThroughOnSubmit:
         # the option carries a bare status rather than a track id.
         track_id = primary_track_id(db, td_tournament.id)
         field = _make_field(
-            db, form, field_key=f"availability_{track_id}", question_type="single_select_radio",
+            db,
+            form,
+            field_key=f"availability_{track_id}",
+            question_type="single_select_radio",
             config={
                 "required": False,
                 "track_status_enabled": True,
-                "options": [{
-                    "option_id": "opt_morning", "label": "Morning",
-                    "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
-                }],
+                "options": [
+                    {
+                        "option_id": "opt_morning",
+                        "label": "Morning",
+                        "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
+                    }
+                ],
             },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_morning"}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_morning"}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
@@ -2175,36 +3192,65 @@ class TestWriteThroughOnSubmit:
             .filter(FormResponse.form_id == form.id, FormResponse.user_id == user.id)
             .one()
         )
-        db.add(FormResponsePendingUpdate(
-            response_id=response.id, field_id=field.id, reasons=["option_invalidated"]
-        ))
+        db.add(
+            FormResponsePendingUpdate(
+                response_id=response.id, field_id=field.id, reasons=["option_invalidated"]
+            )
+        )
         db.commit()
 
-    def test_deselecting_option_keeps_shift_still_covered_by_another(self, client, db, td_user, td_tournament):
+    def test_deselecting_option_keeps_shift_still_covered_by_another(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8))
+        morning = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        afternoon = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Afternoon",
+            start=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=8),
+        )
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
                     {"option_id": "opt_morning", "value": [morning.id], "label": "Morning"},
-                    {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"},
+                    {
+                        "option_id": "opt_all_day",
+                        "value": [morning.id, afternoon.id],
+                        "label": "All Day",
+                    },
                 ],
             },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning", "opt_all_day"]}]})
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning", "opt_all_day"]}]},
+        )
         # Deselect "All Day" — "Morning" alone still covers the morning shift.
         # Changing a submitted answer means PATCH, which needs the question
         # flagged first.
         self._flag(db, form, td_user, field)
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
@@ -2217,159 +3263,300 @@ class TestWriteThroughOnSubmit:
         actually asked about."""
         track_one = primary_track_id(db, td_tournament.id)
         track_two = _second_track(db, td_tournament).id
-        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=track_one, label="Saturday", start=datetime(2026, 3, 14, tzinfo=UTC), end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=track_two, label="Sunday", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
+        saturday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=track_one,
+            label="Saturday",
+            start=datetime(2026, 3, 14, tzinfo=UTC),
+            end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4),
+        )
+        sunday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=track_two,
+            label="Sunday",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
         db.add_all([saturday, sunday])
         db.flush()
 
         form_sat = _make_form(db, td_user, td_tournament, name="Saturday form", status="published")
         field_sat = _make_field(
-            db, form_sat, field_key=f"availability_{track_one}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
+            db,
+            form_sat,
+            field_key=f"availability_{track_one}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}],
+            },
         )
         form_sun = _make_form(db, td_user, td_tournament, name="Sunday form", status="published")
         field_sun = _make_field(
-            db, form_sun, field_key=f"availability_{track_two}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
+            db,
+            form_sun,
+            field_key=f"availability_{track_two}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form_sat.id}/responses/", json={"answers": [{"field_id": field_sat.id, "value": ["opt_sat"]}]})
+        res = client.post(
+            f"/forms/{form_sat.id}/responses/",
+            json={"answers": [{"field_id": field_sat.id, "value": ["opt_sat"]}]},
+        )
         assert res.status_code == 200, res.json()
-        res = client.post(f"/forms/{form_sun.id}/responses/", json={"answers": [{"field_id": field_sun.id, "value": ["opt_sun"]}]})
+        res = client.post(
+            f"/forms/{form_sun.id}/responses/",
+            json={"answers": [{"field_id": field_sun.id, "value": ["opt_sun"]}]},
+        )
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {saturday.id, sunday.id}
 
-    def test_regrouping_an_option_still_releases_its_old_shift(self, client, db, td_user, td_tournament):
+    def test_regrouping_an_option_still_releases_its_old_shift(
+        self, client, db, td_user, td_tournament
+    ):
         """The TD drops a shift out of an option. A member who re-answers must
         actually lose it — if ownership came from the options' current
         contents, that shift would belong to nothing and linger forever."""
-        one = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Early", start=datetime(2026, 3, 15, 8, tzinfo=UTC), end=datetime(2026, 3, 15, 10, tzinfo=UTC))
-        two = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Mid", start=datetime(2026, 3, 15, 10, tzinfo=UTC), end=datetime(2026, 3, 15, 12, tzinfo=UTC))
+        one = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Early",
+            start=datetime(2026, 3, 15, 8, tzinfo=UTC),
+            end=datetime(2026, 3, 15, 10, tzinfo=UTC),
+        )
+        two = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Mid",
+            start=datetime(2026, 3, 15, 10, tzinfo=UTC),
+            end=datetime(2026, 3, 15, 12, tzinfo=UTC),
+        )
         db.add_all([one, two])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [
-                {"option_id": "opt_morning", "value": [one.id, two.id], "label": "Morning"},
-            ]},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
-        membership_id = self._membership_id(db, td_user, td_tournament)
-        assert self._shift_ids(db, membership_id) == {one.id, two.id}
-
-        # Morning now covers only the later shift.
-        field.config = {"required": False, "options": [
-            {"option_id": "opt_morning", "value": [two.id], "label": "Morning"},
-        ]}
-        flag_modified(field, "config")
-        self._flag(db, form, td_user, field)
-
-        res = client.patch(f"/forms/{form.id}/responses/me/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
-        assert res.status_code == 200, res.json()
-        assert self._shift_ids(db, membership_id) == {two.id}
-
-    def test_two_availability_fields_disjoint_selections_both_persist(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=_second_track(db, td_tournament).id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=UTC), end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        db.add_all([saturday, sunday])
-        db.flush()
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field_sat = _make_field(
-            db, form, field_key=f"availability_{saturday.track_id}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
-        )
-        field_sun = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [
-                {"field_id": field_sat.id, "value": ["opt_sat"]},
-                {"field_id": field_sun.id, "value": ["opt_sun"]},
-            ]},
-        )
-        assert res.status_code == 200
-
-        membership_id = self._membership_id(db, td_user, td_tournament)
-        assert self._shift_ids(db, membership_id) == {saturday.id, sunday.id}
-
-    def test_two_availability_fields_overlapping_selections_dedupe(self, client, db, td_user, td_tournament):
-        shared = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Shared", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        db.add(shared)
-        db.flush()
-        form = _make_form(db, td_user, td_tournament, status="published")
-        # Two questions covering the same track — which is what the optional
-        # suffix is for, since field_key is unique per tournament.
-        field_a = _make_field(
-            db, form, field_key=f"availability_{shared.track_id}_judges", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_a", "value": [shared.id], "label": "Shared"}]},
-        )
-        field_b = _make_field(
-            db, form, field_key=f"availability_{shared.track_id}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_b", "value": [shared.id], "label": "Shared"}]},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [
-                {"field_id": field_a.id, "value": ["opt_a"]},
-                {"field_id": field_b.id, "value": ["opt_b"]},
-            ]},
-        )
-        assert res.status_code == 200
-
-        membership_id = self._membership_id(db, td_user, td_tournament)
-        rows = db.query(TournamentMembershipAvailability).filter(
-            TournamentMembershipAvailability.membership_id == membership_id
-        ).all()
-        assert [row.tournament_shift_id for row in rows] == [shared.id]
-
-    def test_blanking_one_of_two_availability_fields_only_clears_its_own_shifts(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=_second_track(db, td_tournament).id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=UTC), end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=UTC), end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4))
-        db.add_all([saturday, sunday])
-        db.flush()
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field_sat = _make_field(
-            db, form, field_key=f"availability_{saturday.track_id}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
-        )
-        field_sun = _make_field(
-            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_morning", "value": [one.id, two.id], "label": "Morning"},
+                ],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [
-                {"field_id": field_sat.id, "value": ["opt_sat"]},
-                {"field_id": field_sun.id, "value": ["opt_sun"]},
-            ]},
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]},
+        )
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {one.id, two.id}
+
+        # Morning now covers only the later shift.
+        field.config = {
+            "required": False,
+            "options": [
+                {"option_id": "opt_morning", "value": [two.id], "label": "Morning"},
+            ],
+        }
+        flag_modified(field, "config")
+        self._flag(db, form, td_user, field)
+
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert self._shift_ids(db, membership_id) == {two.id}
+
+    def test_two_availability_fields_disjoint_selections_both_persist(
+        self, client, db, td_user, td_tournament
+    ):
+        saturday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=_second_track(db, td_tournament).id,
+            label="Saturday",
+            start=datetime(2026, 3, 14, tzinfo=UTC),
+            end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4),
+        )
+        sunday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Sunday",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        db.add_all([saturday, sunday])
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field_sat = _make_field(
+            db,
+            form,
+            field_key=f"availability_{saturday.track_id}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}],
+            },
+        )
+        field_sun = _make_field(
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field_sat.id, "value": ["opt_sat"]},
+                    {"field_id": field_sun.id, "value": ["opt_sun"]},
+                ]
+            },
+        )
+        assert res.status_code == 200
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {saturday.id, sunday.id}
+
+    def test_two_availability_fields_overlapping_selections_dedupe(
+        self, client, db, td_user, td_tournament
+    ):
+        shared = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Shared",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        db.add(shared)
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        # Two questions covering the same track — which is what the optional
+        # suffix is for, since field_key is unique per tournament.
+        field_a = _make_field(
+            db,
+            form,
+            field_key=f"availability_{shared.track_id}_judges",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_a", "value": [shared.id], "label": "Shared"}],
+            },
+        )
+        field_b = _make_field(
+            db,
+            form,
+            field_key=f"availability_{shared.track_id}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_b", "value": [shared.id], "label": "Shared"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field_a.id, "value": ["opt_a"]},
+                    {"field_id": field_b.id, "value": ["opt_b"]},
+                ]
+            },
+        )
+        assert res.status_code == 200
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        rows = (
+            db.query(TournamentMembershipAvailability)
+            .filter(TournamentMembershipAvailability.membership_id == membership_id)
+            .all()
+        )
+        assert [row.tournament_shift_id for row in rows] == [shared.id]
+
+    def test_blanking_one_of_two_availability_fields_only_clears_its_own_shifts(
+        self, client, db, td_user, td_tournament
+    ):
+        saturday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=_second_track(db, td_tournament).id,
+            label="Saturday",
+            start=datetime(2026, 3, 14, tzinfo=UTC),
+            end=datetime(2026, 3, 14, tzinfo=UTC) + timedelta(hours=4),
+        )
+        sunday = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Sunday",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        db.add_all([saturday, sunday])
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field_sat = _make_field(
+            db,
+            form,
+            field_key=f"availability_{saturday.track_id}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}],
+            },
+        )
+        field_sun = _make_field(
+            db,
+            form,
+            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": field_sat.id, "value": ["opt_sat"]},
+                    {"field_id": field_sun.id, "value": ["opt_sun"]},
+                ]
+            },
         )
         # Blank the Saturday field — Sunday's shift should survive untouched,
         # even though write-through recomputes the union across both fields.
         self._flag(db, form, td_user, field_sat)
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
-            json={"answers": [
-                {"field_id": field_sat.id, "value": []},
-            ]},
+            json={
+                "answers": [
+                    {"field_id": field_sat.id, "value": []},
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
 
@@ -2379,7 +3566,10 @@ class TestWriteThroughOnSubmit:
     def test_lunch_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="single_select_radio",
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+            question_type="single_select_radio",
             config={
                 "required": False,
                 "options": [
@@ -2399,45 +3589,64 @@ class TestWriteThroughOnSubmit:
 
         membership = (
             db.query(TournamentMembership)
-            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .filter(
+                TournamentMembership.user_id == td_user.id,
+                TournamentMembership.tournament_id == td_tournament.id,
+            )
             .first()
         )
-        rows = db.query(TournamentMembershipLunch).filter(
-            TournamentMembershipLunch.membership_id == membership.id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipLunch)
+            .filter(TournamentMembershipLunch.membership_id == membership.id)
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].value == "chicken"
         assert rows[0].label == "Chicken"
         assert rows[0].category == "protein"
         assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
-    def test_key_change_to_lunch_backfills_existing_answers(self, client, db, td_user, td_tournament):
+    def test_key_change_to_lunch_backfills_existing_answers(
+        self, client, db, td_user, td_tournament
+    ):
         """Answers given while the key was a plain one never reached
         TournamentMembershipLunch, and the key change also drops them from
         custom responses — so the switch replays them rather than stranding
         them until every member resubmits."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="special_requests", question_type="short_text",
+            db,
+            form,
+            field_key="special_requests",
+            question_type="short_text",
             config={"required": False},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        assert client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
-        ).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
+            ).status_code
+            == 200
+        )
         # Plain key: nothing written through yet.
         assert db.query(TournamentMembershipLunch).count() == 0
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests",
-                "label": "Special requests", "question_type": "short_text",
-                "config": {"required": False, "max_length": 200},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests",
+                        "label": "Special requests",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 200},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
 
@@ -2456,25 +3665,37 @@ class TestWriteThroughOnSubmit:
             {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
         ]
         field = _make_field(
-            db, form, field_key="protein_choice", question_type="single_select_radio",
+            db,
+            form,
+            field_key="protein_choice",
+            question_type="single_select_radio",
             config={"required": False, "options": options},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        assert client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
-        ).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
+            ).status_code
+            == 200
+        )
         assert db.query(TournamentMembershipLunch).count() == 0
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                "label": "Protein", "question_type": "single_select_radio",
-                "config": {"required": False, "options": options},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+                        "label": "Protein",
+                        "question_type": "single_select_radio",
+                        "config": {"required": False, "options": options},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
 
@@ -2483,31 +3704,45 @@ class TestWriteThroughOnSubmit:
         assert row.label == "Tofu"
         assert row.category == "protein"
 
-    def test_key_change_between_lunch_keys_does_not_backfill(self, client, db, td_user, td_tournament):
+    def test_key_change_between_lunch_keys_does_not_backfill(
+        self, client, db, td_user, td_tournament
+    ):
         """Only a non-preset -> lunch transition backfills. Editing a key that
         was already lunch leaves the old rows to _clear/-resubmit handling
         rather than silently writing the new (date, category)."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="short_text",
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+            question_type="short_text",
             config={"required": False},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        assert client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
-        ).status_code == 200
+        assert (
+            client.post(
+                f"/forms/{form.id}/responses/",
+                json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
+            ).status_code
+            == 200
+        )
         assert db.query(TournamentMembershipLunch).count() == 1
 
         res = client.put(
             f"/forms/{form.id}/fields/",
-            json={"fields": [{
-                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                "label": "Protein", "question_type": "short_text",
-                "config": {"required": False, "max_length": 200},
-            }]},
+            json={
+                "fields": [
+                    {
+                        "id": field.id,
+                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+                        "label": "Protein",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 200},
+                    }
+                ]
+            },
         )
         assert res.status_code == 200, res.json()
 
@@ -2515,12 +3750,17 @@ class TestWriteThroughOnSubmit:
         assert len(rows) == 1
         assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
-    def test_lunch_free_text_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+    def test_lunch_free_text_write_through_on_tournament_form(
+        self, client, db, td_user, td_tournament
+    ):
         """A short_text lunch question writes its typed answer through as the
         row's value/label — there's no option to resolve."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests", question_type="short_text",
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests",
+            question_type="short_text",
             config={"required": False},
         )
         db.commit()
@@ -2534,23 +3774,33 @@ class TestWriteThroughOnSubmit:
 
         membership = (
             db.query(TournamentMembership)
-            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .filter(
+                TournamentMembership.user_id == td_user.id,
+                TournamentMembership.tournament_id == td_tournament.id,
+            )
             .first()
         )
-        rows = db.query(TournamentMembershipLunch).filter(
-            TournamentMembershipLunch.membership_id == membership.id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipLunch)
+            .filter(TournamentMembershipLunch.membership_id == membership.id)
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].value == "Vegan cheese only"
         assert rows[0].category == "special_requests"
         assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
-    def test_lunch_free_text_longer_than_the_old_column_limit(self, client, db, td_user, td_tournament):
+    def test_lunch_free_text_longer_than_the_old_column_limit(
+        self, client, db, td_user, td_tournament
+    ):
         """value/label are Text, not VARCHAR(64)/(255) — a long_text answer
         that would have blown the old limits stores intact."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_notes", question_type="long_text",
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_notes",
+            question_type="long_text",
             config={"required": False},
         )
         db.commit()
@@ -2563,9 +3813,11 @@ class TestWriteThroughOnSubmit:
         )
         assert res.status_code == 200, res.json()
 
-        row = db.query(TournamentMembershipLunch).filter(
-            TournamentMembershipLunch.category == "notes"
-        ).one()
+        row = (
+            db.query(TournamentMembershipLunch)
+            .filter(TournamentMembershipLunch.category == "notes")
+            .one()
+        )
         assert row.value == answer.strip()
 
     def test_lunch_free_text_blank_answer_writes_no_row(self, client, db, td_user, td_tournament):
@@ -2573,19 +3825,27 @@ class TestWriteThroughOnSubmit:
         reads the same as one that was never asked."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests", question_type="short_text",
+            db,
+            form,
+            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests",
+            question_type="short_text",
             config={"required": False},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/",
-                          json={"answers": [{"field_id": field.id, "value": "   "}]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "   "}]},
+        )
         assert res.status_code == 200, res.json()
 
-        assert db.query(TournamentMembershipLunch).filter(
-            TournamentMembershipLunch.category == "special_requests"
-        ).count() == 0
+        assert (
+            db.query(TournamentMembershipLunch)
+            .filter(TournamentMembershipLunch.category == "special_requests")
+            .count()
+            == 0
+        )
 
     def test_event_preference_write_through_ranked_choice(self, client, db, td_user, td_tournament):
         e1 = _make_event(db, td_tournament, "Anatomy")
@@ -2593,9 +3853,14 @@ class TestWriteThroughOnSubmit:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="ranked_choice",
+            db,
+            form,
+            field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="ranked_choice",
             config={
-                "required": False, "ranks": 2, "allow_duplicates": False,
+                "required": False,
+                "ranks": 2,
+                "allow_duplicates": False,
                 "options": [
                     {"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"},
                     {"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"},
@@ -2614,22 +3879,29 @@ class TestWriteThroughOnSubmit:
         membership_id = self._membership_id(db, td_user, td_tournament)
         rows = {
             row.tournament_event_id: row.rank
-            for row in db.query(TournamentMembershipEventPreference).filter(
-                TournamentMembershipEventPreference.membership_id == membership_id
-            ).all()
+            for row in db.query(TournamentMembershipEventPreference)
+            .filter(TournamentMembershipEventPreference.membership_id == membership_id)
+            .all()
         }
         assert rows == {e1.id: 1, e2.id: 2}
 
-    def test_event_preference_write_through_checkbox_grouped_events(self, client, db, td_user, td_tournament):
+    def test_event_preference_write_through_checkbox_grouped_events(
+        self, client, db, td_user, td_tournament
+    ):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key=f"event_preference_{_second_track(db, td_tournament).id}", question_type="multi_select_checkbox",
+            db,
+            form,
+            field_key=f"event_preference_{_second_track(db, td_tournament).id}",
+            question_type="multi_select_checkbox",
             config={
                 "required": False,
-                "options": [{"option_id": "opt_life", "value": [e1.id, e2.id], "label": "Life Science"}],
+                "options": [
+                    {"option_id": "opt_life", "value": [e1.id, e2.id], "label": "Life Science"}
+                ],
             },
         )
         db.commit()
@@ -2642,32 +3914,54 @@ class TestWriteThroughOnSubmit:
         assert res.status_code == 200, res.json()
 
         membership_id = self._membership_id(db, td_user, td_tournament)
-        rows = db.query(TournamentMembershipEventPreference).filter(
-            TournamentMembershipEventPreference.membership_id == membership_id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipEventPreference)
+            .filter(TournamentMembershipEventPreference.membership_id == membership_id)
+            .all()
+        )
         assert {row.tournament_event_id for row in rows} == {e1.id, e2.id}
         assert all(row.rank is None for row in rows)
 
-    def test_event_preference_patch_clears_selection_and_preserves_other_key(self, client, db, td_user, td_tournament):
+    def test_event_preference_patch_clears_selection_and_preserves_other_key(
+        self, client, db, td_user, td_tournament
+    ):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         morning = _make_field(
-            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"}]},
+            db,
+            form,
+            field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"}],
+            },
         )
         afternoon = _make_field(
-            db, form, order=2, field_key=f"event_preference_{_second_track(db, td_tournament).id}", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"}]},
+            db,
+            form,
+            order=2,
+            field_key=f"event_preference_{_second_track(db, td_tournament).id}",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"}],
+            },
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
-            {"field_id": morning.id, "value": ["opt_e1"]},
-            {"field_id": afternoon.id, "value": ["opt_e2"]},
-        ]})
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={
+                "answers": [
+                    {"field_id": morning.id, "value": ["opt_e1"]},
+                    {"field_id": afternoon.id, "value": ["opt_e2"]},
+                ]
+            },
+        )
         assert res.status_code == 200, res.json()
         membership_id = self._membership_id(db, td_user, td_tournament)
 
@@ -2678,16 +3972,28 @@ class TestWriteThroughOnSubmit:
         )
         assert res.status_code == 200, res.json()
 
-        rows = db.query(TournamentMembershipEventPreference).filter(
-            TournamentMembershipEventPreference.membership_id == membership_id
-        ).all()
+        rows = (
+            db.query(TournamentMembershipEventPreference)
+            .filter(TournamentMembershipEventPreference.membership_id == membership_id)
+            .all()
+        )
         assert {row.tournament_event_id for row in rows} == {e2.id}
 
-    def test_event_preference_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+    def test_event_preference_answer_on_chapter_form_saves_but_does_not_write_through(
+        self, client, db, td_user, chapter
+    ):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="event_preference_1", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_1", "value": ["not_a_real_event_id"], "label": "Whenever"}]},
+            db,
+            form,
+            field_key="event_preference_1",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_1", "value": ["not_a_real_event_id"], "label": "Whenever"}
+                ],
+            },
         )
         db.commit()
         _chapter_lead(db, chapter)
@@ -2700,11 +4006,21 @@ class TestWriteThroughOnSubmit:
         assert res.status_code == 200
         assert db.query(TournamentMembershipEventPreference).count() == 0
 
-    def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+    def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(
+        self, client, db, td_user, chapter
+    ):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="availability_1", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}]},
+            db,
+            form,
+            field_key="availability_1",
+            question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}
+                ],
+            },
         )
         db.commit()
         _chapter_lead(db, chapter)
@@ -2718,11 +4034,19 @@ class TestWriteThroughOnSubmit:
         assert res.json()["answers"][0]["value"] == ["not_a_real_shift_id"]
         assert db.query(TournamentMembershipAvailability).count() == 0
 
-    def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+    def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(
+        self, client, db, td_user, chapter
+    ):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="lunch_1_protein", question_type="single_select_radio",
-            config={"required": False, "options": [{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}]},
+            db,
+            form,
+            field_key="lunch_1_protein",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}],
+            },
         )
         db.commit()
         _chapter_lead(db, chapter)
@@ -2740,6 +4064,7 @@ class TestWriteThroughOnSubmit:
 # GET /forms/{form_id}/responses/ and /responses/me/
 # ---------------------------------------------------------------------------
 
+
 class TestListAndMyResponses:
     def test_manager_can_list_responses(self, client, db, td_user, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")
@@ -2751,7 +4076,9 @@ class TestListAndMyResponses:
         assert res.status_code == 200
         assert len(res.json()) == 1
 
-    def test_plain_member_cannot_list_responses(self, client, db, td_user, td_tournament, other_user):
+    def test_plain_member_cannot_list_responses(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament)
         db.commit()
@@ -2801,20 +4128,29 @@ class TestListResponsesRespondent:
 # DELETE /forms/{form_id}/responses/{response_id}/
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteResponse:
     def _response(self, db, td_user, td_tournament, other_user, **form_overrides):
         grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament, **form_overrides)
-        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False})
+        field = _make_field(
+            db, form, field_key="color", question_type="short_text", config={"required": False}
+        )
         response = FormResponse(form_id=form.id, user_id=other_user.id)
         db.add(response)
         db.flush()
         db.add(FormAnswer(response_id=response.id, field_id=field.id, value="blue"))
-        db.add(FormResponsePendingUpdate(response_id=response.id, field_id=field.id, reasons=["text_changed"]))
+        db.add(
+            FormResponsePendingUpdate(
+                response_id=response.id, field_id=field.id, reasons=["text_changed"]
+            )
+        )
         db.commit()
         return form, response
 
-    def test_manager_deletes_response_and_answers(self, client, db, td_user, td_tournament, other_user):
+    def test_manager_deletes_response_and_answers(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         form, response = self._response(db, td_user, td_tournament, other_user, status="published")
         login(client, "td@test.com", "tdpass")
 
@@ -2822,7 +4158,12 @@ class TestDeleteResponse:
         db.expire_all()
         assert db.query(FormResponse).filter(FormResponse.id == response.id).first() is None
         assert db.query(FormAnswer).filter(FormAnswer.response_id == response.id).count() == 0
-        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response.id).count() == 0
+        assert (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response.id)
+            .count()
+            == 0
+        )
 
     def test_draft_form_allowed(self, client, db, td_user, td_tournament, other_user):
         form, response = self._response(db, td_user, td_tournament, other_user, status="draft")
@@ -2849,63 +4190,121 @@ class TestDeleteResponse:
 
     def test_audited(self, client, db, td_user, td_tournament, other_user):
         from app.models.models import AuditLogEntry
+
         form, response = self._response(db, td_user, td_tournament, other_user, status="published")
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
-        ).one()
+        membership = (
+            db.query(TournamentMembership)
+            .filter(
+                TournamentMembership.tournament_id == td_tournament.id,
+                TournamentMembership.user_id == other_user.id,
+            )
+            .one()
+        )
         login(client, "td@test.com", "tdpass")
         client.delete(f"/forms/{form.id}/responses/{response.id}/")
 
-        entry = db.query(AuditLogEntry).filter(AuditLogEntry.action == "form_response_deleted").one()
+        entry = (
+            db.query(AuditLogEntry).filter(AuditLogEntry.action == "form_response_deleted").one()
+        )
         assert entry.actor_id == td_user.id
         assert entry.target_type == "membership"
         assert entry.target_id == membership.id
-        expected_name = f"{other_user.first_name or ''} {other_user.last_name or ''}".strip() or other_user.email
-        assert entry.extra_data == {"form_id": form.id, "form_name": form.name, "respondent_name": expected_name}
+        expected_name = (
+            f"{other_user.first_name or ''} {other_user.last_name or ''}".strip()
+            or other_user.email
+        )
+        assert entry.extra_data == {
+            "form_id": form.id,
+            "form_name": form.name,
+            "respondent_name": expected_name,
+        }
 
     def test_write_through_kept(self, client, db, td_user, td_tournament, other_user):
         form, response = self._response(db, td_user, td_tournament, other_user, status="published")
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
-        ).one()
+        membership = (
+            db.query(TournamentMembership)
+            .filter(
+                TournamentMembership.tournament_id == td_tournament.id,
+                TournamentMembership.user_id == other_user.id,
+            )
+            .one()
+        )
         now = datetime.now(UTC)
-        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id),
-                                label="Morning", start=now, end=now + timedelta(hours=2))
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            label="Morning",
+            start=now,
+            end=now + timedelta(hours=2),
+        )
         db.add(shift)
         db.flush()
-        db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
+        db.add(
+            TournamentMembershipAvailability(
+                membership_id=membership.id, tournament_shift_id=shift.id
+            )
+        )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
-        assert db.query(TournamentMembershipAvailability).filter(
-            TournamentMembershipAvailability.membership_id == membership.id,
-        ).count() == 1
+        assert (
+            db.query(TournamentMembershipAvailability)
+            .filter(
+                TournamentMembershipAvailability.membership_id == membership.id,
+            )
+            .count()
+            == 1
+        )
 
-    def test_onboarding_step_unonboards_member(self, client, db, td_user, td_tournament, other_user):
+    def test_onboarding_step_unonboards_member(
+        self, client, db, td_user, td_tournament, other_user
+    ):
         form, response = self._response(db, td_user, td_tournament, other_user, status="published")
-        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1))
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.tournament_id == td_tournament.id, TournamentMembership.user_id == other_user.id,
-        ).one()
+        db.add(
+            TournamentForm(
+                form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=1
+            )
+        )
+        membership = (
+            db.query(TournamentMembership)
+            .filter(
+                TournamentMembership.tournament_id == td_tournament.id,
+                TournamentMembership.user_id == other_user.id,
+            )
+            .one()
+        )
         membership.onboarded_at = utcnow()
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         assert client.delete(f"/forms/{form.id}/responses/{response.id}/").status_code == 204
         db.expire_all()
-        assert db.query(TournamentMembership).filter(TournamentMembership.id == membership.id).one().onboarded_at is None
+        assert (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.id == membership.id)
+            .one()
+            .onboarded_at
+            is None
+        )
 
 
 # ---------------------------------------------------------------------------
 # Submission-time required enforcement via branching reachability replay
 # ---------------------------------------------------------------------------
 
+
 class TestSubmissionReachabilityEnforcement:
-    def test_submission_rejected_when_reachable_required_field_missing(self, client, db, td_user, td_tournament):
+    def test_submission_rejected_when_reachable_required_field_missing(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
         required_field = _make_field(
-            db, form, order=1, field_key="required_field", question_type="short_text",
+            db,
+            form,
+            order=1,
+            field_key="required_field",
+            question_type="short_text",
             config={"required": True, "max_length": 100},
         )
         db.commit()
@@ -2914,20 +4313,41 @@ class TestSubmissionReachabilityEnforcement:
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert res.status_code == 400
 
-    def test_submission_accepted_when_branch_skips_required_field(self, client, db, td_user, td_tournament):
+    def test_submission_accepted_when_branch_skips_required_field(
+        self, client, db, td_user, td_tournament
+    ):
         form = _make_form(db, td_user, td_tournament, status="published")
         skipped = _make_field(
-            db, form, order=2, field_key="skipped", question_type="short_text",
+            db,
+            form,
+            order=2,
+            field_key="skipped",
+            question_type="short_text",
             config={"required": True, "max_length": 100},
         )
-        target = _make_field(db, form, order=3, field_key="target", question_type="short_text",
-                              config={"required": False, "max_length": 100})
+        target = _make_field(
+            db,
+            form,
+            order=3,
+            field_key="target",
+            question_type="short_text",
+            config={"required": False, "max_length": 100},
+        )
         branch_field = _make_field(
-            db, form, order=1, field_key="branch", question_type="single_select_radio",
+            db,
+            form,
+            order=1,
+            field_key="branch",
+            question_type="single_select_radio",
             config={
                 "required": True,
                 "options": [
-                    {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": target.id},
+                    {
+                        "option_id": "opt_yes",
+                        "value": "yes",
+                        "label": "Yes",
+                        "next_field_id": target.id,
+                    },
                     {"option_id": "opt_no", "value": "no", "label": "No"},
                 ],
             },

@@ -14,6 +14,7 @@ Changes:
       the constraint would fire on tournaments that had both. Removed
       entirely — duplicate sheet types are already guarded at the UX level.
 """
+
 from collections.abc import Sequence
 
 from alembic import op

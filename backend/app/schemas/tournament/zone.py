@@ -92,9 +92,7 @@ class ZoneMemberRead(ZoneMember):
             building_name=row.building.name if row.building else None,
             floor=row.floor,
             tournament_event_id=row.tournament_event_id,
-            event_name=(
-                row.tournament_event.display_name if row.tournament_event else None
-            ),
+            event_name=(row.tournament_event.display_name if row.tournament_event else None),
         )
 
 

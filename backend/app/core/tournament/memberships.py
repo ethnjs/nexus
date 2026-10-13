@@ -44,7 +44,9 @@ def is_declined(membership: TournamentMembership) -> bool:
     return membership.age_disclosure == "declined"
 
 
-def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
+def get_membership_by_user(
+    db: Session, tournament_id: int, user_id: int, *options
+) -> TournamentMembership | None:
     """
     Fetch a membership by (tournament_id, user_id) rather than by membership
     id — the .../members/me/ routes' lookup shape. Nullable, not a 404
@@ -60,8 +62,11 @@ def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *optio
         query = query.options(*options)
     return query.first()
 
+
 def resolve_person_refs(
-    db: Session, tournament_id: int, user_ids: set[int | None],
+    db: Session,
+    tournament_id: int,
+    user_ids: set[int | None],
 ) -> dict[int | None, PersonRefResponse]:
     """
     Resolve a batch of user ids to name-and-roles references, for any response
@@ -101,10 +106,14 @@ def resolve_person_refs(
     missing_ids = user_ids - resolved.keys()
     if missing_ids:
         users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({
-            u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
-            for u in users
-        })
+        resolved.update(
+            {
+                u.id: PersonRefResponse(
+                    user_id=u.id, first_name=u.first_name, last_name=u.last_name
+                )
+                for u in users
+            }
+        )
     # A null credit FK — the account was deleted. Keyed on None so callers
     # can index by the raw column value without special-casing it.
     if None in user_ids:
@@ -176,13 +185,13 @@ def delete_tournament_form_responses(db: Session, tournament_id: int, user_id: i
         .scalar_subquery()
     )
     return (
-        db.query(FormResponse)
-        .filter(FormResponse.id.in_(doomed))
-        .delete(synchronize_session=False)
+        db.query(FormResponse).filter(FormResponse.id.in_(doomed)).delete(synchronize_session=False)
     )
 
 
-def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list[MembershipCustomAnswerRead]:
+def get_custom_form_answers(
+    db: Session, tournament_id: int, user_id: int
+) -> list[MembershipCustomAnswerRead]:
     """This user's answers to non-reserved fields on published,
     tournament-owned forms in `tournament_id`. 'Custom' = field_key matches
     none of the availability_/event_preference_/lunch_/track_status_
@@ -218,11 +227,15 @@ def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> li
             field_id=field.id,
         )
         for answer, field, form in rows
-        if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
+        if not any(
+            pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+        )
     ]
 
 
-def build_event_preferences(db: Session, membership: TournamentMembership) -> list[MembershipEventPreferenceRead]:
+def build_event_preferences(
+    db: Session, membership: TournamentMembership
+) -> list[MembershipEventPreferenceRead]:
     """This membership's event preferences, grouped by the *form option* they
     picked rather than the flat per-event rows the DB stores.
 
@@ -270,18 +283,21 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
     for field in fields:
         if not EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
             continue
-        key = int(field.field_key[len("event_preference_"):])
+        key = int(field.field_key[len("event_preference_") :])
         for order, option in enumerate((field.config or {}).get("options", [])):
             value = option.get("value")
             if not isinstance(value, list):
                 continue
             for event_id in value:
-                option_by_event.setdefault((key, event_id), {
-                    "option_id": option.get("option_id"),
-                    "label": option.get("label") or "",
-                    "order": order,
-                    "is_archived": bool(option.get("is_archived") or field.is_archived),
-                })
+                option_by_event.setdefault(
+                    (key, event_id),
+                    {
+                        "option_id": option.get("option_id"),
+                        "label": option.get("label") or "",
+                        "order": order,
+                        "is_archived": bool(option.get("is_archived") or field.is_archived),
+                    },
+                )
 
     track_names = {row.track_id: row.track.name for row in rows}
 
@@ -314,23 +330,29 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
                 "option_id": match["option_id"] if match else None,
                 # An orphan has no option to name it, so it labels itself.
                 "label": match["label"] if match else (event.name or "Unknown event"),
-                "order": match["order"] if match else len(option_by_event) + row.tournament_event_id,
+                "order": match["order"]
+                if match
+                else len(option_by_event) + row.tournament_event_id,
                 "is_archived": match["is_archived"] if match else True,
                 "rank": row.rank,
                 "events": [event],
             }
 
-        groups.append(MembershipEventPreferenceRead(
-            track_id=key,
-            track_name=track_names[key],
-            options=[
-                MembershipEventPreferenceOptionRead(**{k: v for k, v in bucket.items() if k != "order"})
-                for bucket in sorted(
-                    buckets.values(),
-                    key=lambda b: (b["rank"] is None, b["rank"] or 0, b["order"]),
-                )
-            ],
-        ))
+        groups.append(
+            MembershipEventPreferenceRead(
+                track_id=key,
+                track_name=track_names[key],
+                options=[
+                    MembershipEventPreferenceOptionRead(
+                        **{k: v for k, v in bucket.items() if k != "order"}
+                    )
+                    for bucket in sorted(
+                        buckets.values(),
+                        key=lambda b: (b["rank"] is None, b["rank"] or 0, b["order"]),
+                    )
+                ],
+            )
+        )
     return groups
 
 
@@ -401,7 +423,9 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list[Membershi
     if not rows:
         return []
     types = lunch_question_types(
-        db, membership.tournament_id, {lunch_field_key(row) for row in rows},
+        db,
+        membership.tournament_id,
+        {lunch_field_key(row) for row in rows},
     )
     return build_lunch_rows(rows, types)
 
@@ -409,7 +433,9 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list[Membershi
 PENDING_TRACK_STATUS = "pending"
 
 
-def build_track_statuses(db: Session, membership: TournamentMembership) -> list[MembershipTrackStatusRead]:
+def build_track_statuses(
+    db: Session, membership: TournamentMembership
+) -> list[MembershipTrackStatusRead]:
     """Every track this member could hold a status on, not just the ones they
     do — a track with no row reads as "pending" rather than being absent.
 
@@ -439,13 +465,9 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
         .all()
     )
     live_ids = {track.id for track in live_tracks}
-    existing = {
-        row.track_id: row for row in membership.track_statuses if row.track_id in live_ids
-    }
+    existing = {row.track_id: row for row in membership.track_statuses if row.track_id in live_ids}
 
-    entries = [
-        MembershipTrackStatusRead.from_row(row) for row in existing.values()
-    ] + [
+    entries = [MembershipTrackStatusRead.from_row(row) for row in existing.values()] + [
         MembershipTrackStatusRead(
             track_id=track.id,
             name=track.name,
@@ -461,7 +483,9 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
 
 
 def get_custom_form_answers_bulk(
-    db: Session, tournament_id: int, user_ids: list[int],
+    db: Session,
+    tournament_id: int,
+    user_ids: list[int],
 ) -> dict[int, list[MembershipCustomAnswerRead]]:
     """get_custom_form_answers for many users in one query.
 
@@ -494,14 +518,16 @@ def get_custom_form_answers_bulk(
     for answer, field, form, user_id in rows:
         if any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
             continue
-        by_user.setdefault(user_id, []).append(MembershipCustomAnswerRead(
-            form_title=form.title or form.name,
-            field_label=field.label,
-            field_key=field.field_key,
-            question_type=field.question_type,
-            value=answer.value,
-            field_id=field.id,
-        ))
+        by_user.setdefault(user_id, []).append(
+            MembershipCustomAnswerRead(
+                form_title=form.title or form.name,
+                field_label=field.label,
+                field_key=field.field_key,
+                question_type=field.question_type,
+                value=answer.value,
+                field_id=field.id,
+            )
+        )
     return by_user
 
 
@@ -520,7 +546,9 @@ def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list
     ]
 
 
-def enrich_built_groups(db: Session, tournament, requested, memberships: list, responses: list) -> None:
+def enrich_built_groups(
+    db: Session, tournament, requested, memberships: list, responses: list
+) -> None:
     """Fills the roster's *built* field groups — the ones whose final value
     can't come off the ORM rows alone (see field_groups.FieldGroup.built).
 
@@ -558,7 +586,9 @@ def enrich_built_groups(db: Session, tournament, requested, memberships: list, r
 
     if wants(requested, CUSTOM):
         by_user = get_custom_form_answers_bulk(
-            db, tournament.id, [m.user_id for m in memberships],
+            db,
+            tournament.id,
+            [m.user_id for m in memberships],
         )
         for membership, response in zip(memberships, responses):
             response.custom_responses = by_user.get(membership.user_id, [])

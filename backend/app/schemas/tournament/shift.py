@@ -45,6 +45,7 @@ class TournamentShiftBase(BaseModel):
     assignment, and reading it costs a join per shift to count events nobody
     asked about.
     """
+
     id: int
     tournament_id: int
     track_id: int

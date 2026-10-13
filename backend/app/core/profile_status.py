@@ -1,4 +1,3 @@
-
 from sqlalchemy.orm import Session
 
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience
@@ -28,7 +27,14 @@ def _has_volunteer_rows(user: User, db: Session | None) -> bool:
 
 
 def compute_missing_profile_fields(user: User, *, db: Session | None = None) -> list[str]:
-    always_required = ["first_name", "last_name", "phone", "date_of_birth", "shirt_size", "dietary_restriction"]
+    always_required = [
+        "first_name",
+        "last_name",
+        "phone",
+        "date_of_birth",
+        "shirt_size",
+        "dietary_restriction",
+    ]
     missing = [f for f in always_required if not getattr(user, f)]
 
     if not user.student_status:

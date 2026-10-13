@@ -95,7 +95,7 @@ def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin can only update a user's role and status.
@@ -137,6 +137,7 @@ def admin_update_user(
     db.refresh(user)
     return user
 
+
 # ---------------------------------------------------------------------------
 # DELETE /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
@@ -175,7 +176,9 @@ def admin_delete_user(
 # ---------------------------------------------------------------------------
 # POST /admin/users/{user_id}/password-reset/ — admin only
 # ---------------------------------------------------------------------------
-@router.post("/admin/users/{user_id}/password-reset/", status_code=status.HTTP_200_OK,
+@router.post(
+    "/admin/users/{user_id}/password-reset/",
+    status_code=status.HTTP_200_OK,
     response_model=MessageResponse,
     responses={
         400: {"description": "User has no password to reset"},
@@ -231,8 +234,12 @@ def get_me(
         user = (
             db.query(User)
             .options(
-                selectinload(User.competition_experience).selectinload(UserCompetitionExperience.event).selectinload(Event.category),
-                selectinload(User.volunteer_experience).selectinload(UserVolunteerExperience.event).selectinload(Event.category),
+                selectinload(User.competition_experience)
+                .selectinload(UserCompetitionExperience.event)
+                .selectinload(Event.category),
+                selectinload(User.volunteer_experience)
+                .selectinload(UserVolunteerExperience.event)
+                .selectinload(Event.category),
             )
             .filter(User.id == current_user.id)
             .first()
@@ -252,9 +259,7 @@ def get_me(
 # ---------------------------------------------------------------------------
 @router.patch("/users/me/", response_model=UserMeFullResponse)
 def update_user_me(
-    body: UserUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    body: UserUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     """
     Update the current user's own profile.
@@ -275,7 +280,10 @@ def update_user_me(
 # ---------------------------------------------------------------------------
 # POST /users/me/deactivate/ — authenticated self-service deactivation
 # ---------------------------------------------------------------------------
-@router.post("/users/me/deactivate/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.post(
+    "/users/me/deactivate/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={401: {"description": "Current password is incorrect"}},
 )
 def deactivate_me(
@@ -305,7 +313,10 @@ def deactivate_me(
 # ---------------------------------------------------------------------------
 # DELETE /users/me/ — authenticated self-service hard delete
 # ---------------------------------------------------------------------------
-@router.delete("/users/me/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.delete(
+    "/users/me/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={401: {"description": "Current password is incorrect"}},
 )
 def delete_me(
@@ -369,7 +380,11 @@ def list_my_sessions(
 # ---------------------------------------------------------------------------
 # POST /users/me/sessions/logout-others/ — "log out everywhere" except here
 # ---------------------------------------------------------------------------
-@router.post("/users/me/sessions/logout-others/", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+@router.post(
+    "/users/me/sessions/logout-others/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+)
 def logout_other_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),

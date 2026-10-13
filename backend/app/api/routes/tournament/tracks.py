@@ -35,7 +35,9 @@ from app.schemas.tournament.track import (
 router = APIRouter(prefix="/tournaments/{tournament_id}/tracks", tags=["tournaments"])
 
 
-def _name_taken(db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None) -> bool:
+def _name_taken(
+    db: Session, tournament_id: int, name: str, *, excluding_id: int | None = None
+) -> bool:
     query = db.query(TournamentTrack).filter(
         TournamentTrack.tournament_id == tournament_id,
         TournamentTrack.name == name,
@@ -100,7 +102,9 @@ def create_track(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     if _name_taken(db, tournament_id, payload.name):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
+        )
     _check_default_role(db, tournament_id, payload.default_role_id)
 
     track = TournamentTrack(tournament_id=tournament_id, **payload.model_dump())
@@ -110,7 +114,9 @@ def create_track(
         db.refresh(track)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
+        )
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
@@ -138,7 +144,9 @@ def update_track(
 
     updates = payload.model_dump(exclude_unset=True)
     if "name" in updates and _name_taken(db, tournament_id, updates["name"], excluding_id=track.id):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
+        )
     if "default_role_id" in updates:
         _check_default_role(db, tournament_id, updates["default_role_id"])
 
@@ -181,7 +189,9 @@ def update_track(
         db.refresh(track)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
+        )
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
@@ -225,20 +235,30 @@ def delete_track(
         if not track.is_archived:
             track.is_archived = True
             log_action(
-                db, tournament_id, current_user.id, TRACK_DELETE_PENDING,
-                target_type="track", target_id=track.id,
+                db,
+                tournament_id,
+                current_user.id,
+                TRACK_DELETE_PENDING,
+                target_type="track",
+                target_id=track.id,
                 extra_data={"name": track.name, "blocked_by": blockers},
             )
         # Down to one live track: it now carries the tournament's name.
         sync_sole_track_name(db, tournament)
         db.commit()
         return TournamentTrackDeleteResult(
-            purged=False, blocked_by=blockers, member_rows_deleted=member_rows,
+            purged=False,
+            blocked_by=blockers,
+            member_rows_deleted=member_rows,
         )
 
     log_action(
-        db, tournament_id, current_user.id, TRACK_DELETE_PENDING,
-        target_type="track", target_id=track.id,
+        db,
+        tournament_id,
+        current_user.id,
+        TRACK_DELETE_PENDING,
+        target_type="track",
+        target_id=track.id,
         extra_data={"name": track.name, "blocked_by": [], "purged_immediately": True},
     )
     db.delete(track)
@@ -265,13 +285,19 @@ def restore_track(
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     if not track.is_archived:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="This track is not pending deletion",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This track is not pending deletion",
         )
 
     track.is_archived = False
     log_action(
-        db, tournament_id, current_user.id, TRACK_DELETE_CANCELLED,
-        target_type="track", target_id=track.id, extra_data={"name": track.name},
+        db,
+        tournament_id,
+        current_user.id,
+        TRACK_DELETE_CANCELLED,
+        target_type="track",
+        target_id=track.id,
+        extra_data={"name": track.name},
     )
     db.commit()
     db.refresh(track)

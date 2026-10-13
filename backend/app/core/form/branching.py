@@ -68,11 +68,15 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
     return [
         field.field_key
         for field in fields
-        if field.id in reachable and (field.config or {}).get("required") and _is_blank(answers.get(field.id))
+        if field.id in reachable
+        and (field.config or {}).get("required")
+        and _is_blank(answers.get(field.id))
     ]
 
 
-def duplicate_ranked_choice_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
+def duplicate_ranked_choice_field_keys(
+    fields: list[FormField], answers: dict[str, Any]
+) -> list[str]:
     """field_keys of ranked_choice fields whose answer repeats the same
     option_id at more than one rank, for a field whose config doesn't allow
     it. `allow_duplicates` is a required RankedChoiceConfig field, but until

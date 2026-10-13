@@ -1,4 +1,5 @@
 """Tests for /users/me/competition-experience/ and /users/me/volunteer-experience/."""
+
 from app.models.models import UserCompetitionExperience, UserVolunteerExperience
 from tests.conftest import login
 
@@ -6,13 +7,17 @@ from tests.conftest import login
 # POST /users/me/competition-experience/
 # ---------------------------------------------------------------------------
 
+
 class TestCreateCompetitionExperience:
     def test_valid_event_and_school(self, client, td_user, event):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/competition-experience/", json={
-            "event_id": event.id,
-            "school": "MIT",
-        })
+        res = client.post(
+            "/users/me/competition-experience/",
+            json={
+                "event_id": event.id,
+                "school": "MIT",
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["event"]["id"] == event.id
@@ -20,17 +25,23 @@ class TestCreateCompetitionExperience:
 
     def test_invalid_event_id_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/competition-experience/", json={
-            "event_id": 9999,
-            "school": "MIT",
-        })
+        res = client.post(
+            "/users/me/competition-experience/",
+            json={
+                "event_id": 9999,
+                "school": "MIT",
+            },
+        )
         assert res.status_code == 404
 
     def test_unauthenticated_forbidden(self, client, event):
-        res = client.post("/users/me/competition-experience/", json={
-            "event_id": event.id,
-            "school": "MIT",
-        })
+        res = client.post(
+            "/users/me/competition-experience/",
+            json={
+                "event_id": event.id,
+                "school": "MIT",
+            },
+        )
         assert res.status_code == 401
 
 
@@ -38,13 +49,16 @@ class TestCreateCompetitionExperience:
 # PATCH /users/me/competition-experience/{id}/
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateCompetitionExperience:
     def test_partial_update(self, client, db, td_user, event):
         entry = UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT")
         db.add(entry)
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.patch(f"/users/me/competition-experience/{entry.id}/", json={"school": "Caltech"})
+        res = client.patch(
+            f"/users/me/competition-experience/{entry.id}/", json={"school": "Caltech"}
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["school"] == "Caltech"
@@ -60,7 +74,9 @@ class TestUpdateCompetitionExperience:
         db.add(entry)
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.patch(f"/users/me/competition-experience/{entry.id}/", json={"school": "Caltech"})
+        res = client.patch(
+            f"/users/me/competition-experience/{entry.id}/", json={"school": "Caltech"}
+        )
         assert res.status_code == 404
 
     def test_invalid_event_id_404(self, client, db, td_user, event):
@@ -75,6 +91,7 @@ class TestUpdateCompetitionExperience:
 # ---------------------------------------------------------------------------
 # DELETE /users/me/competition-experience/{id}/
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteCompetitionExperience:
     def test_delete_own_entry(self, client, db, td_user, event):
@@ -102,14 +119,18 @@ class TestDeleteCompetitionExperience:
 # POST /users/me/volunteer-experience/
 # ---------------------------------------------------------------------------
 
+
 class TestCreateVolunteerExperience:
     def test_minimal_fields(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["tournament_name"] == "Regionals"
@@ -120,23 +141,29 @@ class TestCreateVolunteerExperience:
 
     def test_with_event_id_no_notes_event(self, client, td_user, event):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "event_id": event.id,
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "event_id": event.id,
+            },
+        )
         assert res.status_code == 201
         assert res.json()["event"]["id"] == event.id
 
     def test_with_notes_event_no_event_id(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "notes": {"event": "Custom Event Name"},
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "notes": {"event": "Custom Event Name"},
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["event"] is None
@@ -144,35 +171,44 @@ class TestCreateVolunteerExperience:
 
     def test_event_id_and_notes_event_mutually_exclusive(self, client, td_user, event):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "event_id": event.id,
-            "notes": {"event": "Custom Event Name"},
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "event_id": event.id,
+                "notes": {"event": "Custom Event Name"},
+            },
+        )
         assert res.status_code == 422
 
     def test_notes_other_coexists_with_event_id(self, client, td_user, event):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "event_id": event.id,
-            "notes": {"other": "Great experience"},
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "event_id": event.id,
+                "notes": {"other": "Great experience"},
+            },
+        )
         assert res.status_code == 201
         assert res.json()["notes"]["other"] == "Great experience"
 
     def test_notes_other_coexists_with_notes_event(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "notes": {"event": "Custom Event Name", "other": "Great experience"},
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "notes": {"event": "Custom Event Name", "other": "Great experience"},
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["notes"]["event"] == "Custom Event Name"
@@ -180,20 +216,26 @@ class TestCreateVolunteerExperience:
 
     def test_invalid_event_id_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-            "event_id": 9999,
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+                "event_id": 9999,
+            },
+        )
         assert res.status_code == 404
 
     def test_unauthenticated_forbidden(self, client):
-        res = client.post("/users/me/volunteer-experience/", json={
-            "tournament_name": "Regionals",
-            "year": 2025,
-            "role": "Event Supervisor",
-        })
+        res = client.post(
+            "/users/me/volunteer-experience/",
+            json={
+                "tournament_name": "Regionals",
+                "year": 2025,
+                "role": "Event Supervisor",
+            },
+        )
         assert res.status_code == 401
 
 
@@ -201,10 +243,14 @@ class TestCreateVolunteerExperience:
 # PATCH /users/me/volunteer-experience/{id}/
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateVolunteerExperience:
     def test_partial_update(self, client, db, td_user):
         entry = UserVolunteerExperience(
-            user_id=td_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=td_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
         )
         db.add(entry)
         db.commit()
@@ -217,7 +263,10 @@ class TestUpdateVolunteerExperience:
 
     def test_other_users_entry_404(self, client, db, td_user, other_user):
         entry = UserVolunteerExperience(
-            user_id=other_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=other_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
         )
         db.add(entry)
         db.commit()
@@ -234,19 +283,27 @@ class TestUpdateVolunteerExperience:
         # Entry starts with notes.event set (no event_id) — PATCH only touches
         # event_id, but the merged post-update state would violate exclusivity.
         entry = UserVolunteerExperience(
-            user_id=td_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=td_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
             notes={"event": "Custom Event Name"},
         )
         db.add(entry)
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.patch(f"/users/me/volunteer-experience/{entry.id}/", json={"event_id": event.id})
+        res = client.patch(
+            f"/users/me/volunteer-experience/{entry.id}/", json={"event_id": event.id}
+        )
         assert res.status_code == 422
 
     def test_adding_notes_event_to_entry_with_event_id_rejected(self, client, db, td_user, event):
         # Reverse case — entry has event_id set, PATCH only touches notes.
         entry = UserVolunteerExperience(
-            user_id=td_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=td_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
             event_id=event.id,
         )
         db.add(entry)
@@ -263,10 +320,14 @@ class TestUpdateVolunteerExperience:
 # DELETE /users/me/volunteer-experience/{id}/
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteVolunteerExperience:
     def test_delete_own_entry(self, client, db, td_user):
         entry = UserVolunteerExperience(
-            user_id=td_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=td_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
         )
         db.add(entry)
         db.commit()
@@ -276,7 +337,10 @@ class TestDeleteVolunteerExperience:
 
     def test_other_users_entry_404(self, client, db, td_user, other_user):
         entry = UserVolunteerExperience(
-            user_id=other_user.id, tournament_name="Regionals", year=2025, role="Event Supervisor",
+            user_id=other_user.id,
+            tournament_name="Regionals",
+            year=2025,
+            role="Event Supervisor",
         )
         db.add(entry)
         db.commit()
