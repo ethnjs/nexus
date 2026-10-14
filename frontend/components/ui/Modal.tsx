@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useExitAnimation } from "@/lib/useExitAnimation";
+import { useIsClient } from "@/lib/useIsClient";
 
 type ModalVariant = "normal" | "danger";
 
@@ -40,8 +41,7 @@ export function Modal({
 
   const exitRef = useExitAnimation<HTMLDivElement>();
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
 
   // Only close if both mousedown and mouseup landed on the overlay itself —
   // otherwise dragging a text selection from an input out past the modal

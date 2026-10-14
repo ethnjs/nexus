@@ -63,24 +63,24 @@ export default function MemberPage() {
   // Bumped after the assignments section writes, so the page re-reads.
   const [reloadKey, setReloadKey] = useState(0);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
-  const [error, setError] = useState<ApiError | null>(null);
+  const [loadError, setLoadError] = useState<ApiError | null>(null);
 
   // Which route answers depends on who is asking, not on which page this is.
   // Wait for the provider before deciding: guessing wrong means a 403 the
   // member would see as "no access" to their own page.
   const isSelf = me?.id === membershipId;
+  // A non-manager gets their own row and nobody else's, so anything but
+  // their own id is refused here rather than fetched — otherwise /me would
+  // happily render the caller's own record under someone else's URL.
+  const forbidden = !membershipLoading && !canManageMembers && !isSelf;
+  const error = forbidden
+    ? new ApiError(403, "You can only view your own member page.")
+    : loadError;
 
   useEffect(() => {
     if (!Number.isFinite(tournamentId) || !Number.isFinite(membershipId)) return;
     if (membershipLoading) return;
-
-    // A non-manager gets their own row and nobody else's, so anything but
-    // their own id is refused here rather than fetched — otherwise /me would
-    // happily render the caller's own record under someone else's URL.
-    if (!canManageMembers && !isSelf) {
-      setError(new ApiError(403, "You can only view your own member page."));
-      return;
-    }
+    if (forbidden) return;
 
     const load = canManageMembers
       ? membersApi.get(tournamentId, membershipId)
@@ -91,10 +91,10 @@ export default function MemberPage() {
         if (view) return setFull(view);
         // getMe answered with no membership row — the caller is not a member
         // of this tournament, so there is nothing of theirs to show.
-        setError(new ApiError(403, "Not a member of this tournament."));
+        setLoadError(new ApiError(403, "Not a member of this tournament."));
       })
       .catch((e) =>
-        setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")),
+        setLoadError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")),
       );
     // Reading the shift catalog only needs a membership now (the member edit
     // page needs it too), and all this sets is the availability timeline's
@@ -107,7 +107,15 @@ export default function MemberPage() {
       .list(tournamentId)
       .then(setTracks)
       .catch(() => setTracks([]));
-  }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf, reloadKey]);
+  }, [
+    tournamentId,
+    membershipId,
+    canManageMembers,
+    membershipLoading,
+    isSelf,
+    forbidden,
+    reloadKey,
+  ]);
 
   // The catalog is only the *pickable* roles — the ones a member already
   // holds ride on the membership itself. So it's needed only for the edit

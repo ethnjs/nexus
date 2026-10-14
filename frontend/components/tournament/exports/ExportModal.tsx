@@ -79,6 +79,7 @@ import {
 import type { SortRule } from "@/lib/sorting";
 import { useActionToast } from "@/lib/useActionToast";
 import { useExitAnimation } from "@/lib/useExitAnimation";
+import { useIsClient } from "@/lib/useIsClient";
 import { useToast } from "@/lib/useToast";
 
 type Selection =
@@ -435,8 +436,7 @@ export function ExportModal({
   }
 
   // ---- Render ------------------------------------------------------------
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
   const mouseDownOnOverlay = useRef(false);
   const exitRef = useExitAnimation<HTMLDivElement>();
   if (!mounted) return null;

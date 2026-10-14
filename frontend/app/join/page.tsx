@@ -181,7 +181,8 @@ function JoinPageContent() {
   const { user, loading: authLoading } = useAuth();
 
   const [preview, setPreview] = useState<JoinPreviewTournament | "chapter" | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const previewError = !code || previewFailed;
 
   const [membershipChecked, setMembershipChecked] = useState(false);
   const [alreadyMember, setAlreadyMember] = useState(false);
@@ -194,14 +195,11 @@ function JoinPageContent() {
   const [ageConsent, setAgeConsent] = useState(false);
 
   useEffect(() => {
-    if (!code) {
-      setPreviewError(true);
-      return;
-    }
+    if (!code) return;
     joinApi
       .preview(code)
       .then((res) => setPreview(res.type === "tournament" ? res : "chapter"))
-      .catch(() => setPreviewError(true));
+      .catch(() => setPreviewFailed(true));
   }, [code]);
 
   useEffect(() => {

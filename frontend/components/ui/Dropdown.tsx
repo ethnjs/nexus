@@ -177,13 +177,21 @@ export function Dropdown({
   );
   const displayLabel = selected?.label ?? placeholder;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the menu opens or closes
-  useEffect(() => {
-    if (!open) {
+  // Opening starts on the current value; closing clears the search.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      const idx = flat.findIndex((o) => o.value === value);
+      setActiveIdx(idx >= 0 ? idx : 0);
+    } else {
       setSearchQuery("");
-      return;
     }
-    if (searchable) searchRef.current?.focus();
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focuses only when the menu opens
+  useEffect(() => {
+    if (open && searchable) searchRef.current?.focus();
   }, [open]);
 
   // ── Close on outside click ────────────────────────────────────────────────
@@ -198,16 +206,6 @@ export function Dropdown({
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // ── Set active index to current value when opening ────────────────────────
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: syncs the active row only when the menu opens
-  useEffect(() => {
-    if (open) {
-      const idx = flat.findIndex((o) => o.value === value);
-      setActiveIdx(idx >= 0 ? idx : 0);
-    }
   }, [open]);
 
   // ── Keyboard handling ─────────────────────────────────────────────────────

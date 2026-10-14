@@ -305,9 +305,11 @@ export function TracksSection({
 
   // Only on a *change* of key, so a row the TD then collapses stays collapsed
   // — re-expanding on every render would make it impossible to close.
-  useEffect(() => {
+  const [prevAutoExpandKey, setPrevAutoExpandKey] = useState(autoExpandKey);
+  if (autoExpandKey !== prevAutoExpandKey) {
+    setPrevAutoExpandKey(autoExpandKey);
     if (autoExpandKey != null) setExpandedKey(autoExpandKey);
-  }, [autoExpandKey]);
+  }
 
   function handleAdd() {
     const key = editor.addRow();

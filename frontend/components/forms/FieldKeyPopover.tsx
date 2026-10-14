@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconInfo, IconKey } from "@/components/ui/Icons";
@@ -44,29 +44,28 @@ export function FieldKeyPopover({
   // Owns its own error state rather than deriving straight from `errors`
   // every render, specifically so it can clear the instant field_key
   // changes for *any* reason (typing here, or a preset param edited in
-  // PresetPopover) — see the effect below — rather than staying stuck until
-  // the next blur or Save.
+  // PresetPopover) — see below — rather than staying stuck until the next
+  // blur or Save.
   const [localError, setLocalError] = useState<string | undefined>(undefined);
-  const prevFieldKeyRef = useRef(field.field_key);
+  const [prevFieldKey, setPrevFieldKey] = useState(field.field_key);
+  if (field.field_key !== prevFieldKey) {
+    setPrevFieldKey(field.field_key);
+    setLocalError(undefined);
+  }
 
-  useEffect(() => {
-    if (field.field_key !== prevFieldKeyRef.current) {
-      prevFieldKeyRef.current = field.field_key;
-      setLocalError(undefined);
-    }
-  }, [field.field_key]);
-
+  // A preset field's key isn't editable here (see the locked-input branch
+  // below) — a key error on it is PresetPopover's to show and open, not
+  // this popover's.
+  const attemptError = saveAttempt === 0 || presetKind ? undefined : errors.find(isFieldKeyError);
+  // Starts at 0, not saveAttempt: a popover mounted after a failed Save still shows its error.
+  const [seenAttempt, setSeenAttempt] = useState(0);
+  if (saveAttempt !== seenAttempt) {
+    setSeenAttempt(saveAttempt);
+    if (attemptError) setLocalError(attemptError);
+  }
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each save attempt, not on every input change
   useEffect(() => {
-    // A preset field's key isn't editable here (see the locked-input branch
-    // below) — a key error on it is PresetPopover's to show and open, not
-    // this popover's.
-    if (saveAttempt === 0 || presetKind) return;
-    const keyError = errors.find(isFieldKeyError);
-    if (keyError) {
-      onOpenChange(true);
-      setLocalError(keyError);
-    }
+    if (attemptError) onOpenChange(true);
   }, [saveAttempt]);
 
   function handleBlur() {

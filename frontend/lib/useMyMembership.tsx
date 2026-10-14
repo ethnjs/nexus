@@ -22,15 +22,17 @@ export function MyMembershipProvider({
   children: ReactNode;
 }) {
   const [membership, setMembership] = useState<MembershipMe | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Loading until the fetch for the current tournament settles, so switching
+  // tournaments reads as loading on the very first render.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const loading = loadedFor !== tournamentId;
 
   useEffect(() => {
-    setLoading(true);
     membersApi
       .getMe(Number(tournamentId), ["roles"])
       .then(setMembership)
       .catch(() => setMembership(null))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadedFor(tournamentId));
   }, [tournamentId]);
 
   const hasPermission = useCallback(

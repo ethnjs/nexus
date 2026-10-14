@@ -99,12 +99,6 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
     const [hovering, setHovering] = useState(false);
     const [expanded, setExpanded] = useState(false);
 
-    useEffect(() => {
-      if (!expandable) return;
-      if (focused) setExpanded(true);
-      else if (!hovering) setExpanded(false);
-    }, [expandable, focused, hovering]);
-
     // Grows the box with content instead of scrolling internally — reset to
     // 'auto' first so shrinking (e.g. deleting a wrapped line) isn't stuck at
     // the previous scrollHeight. scrollHeight excludes the 1px top/bottom
@@ -231,11 +225,14 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
               ? "var(--color-danger)"
               : "var(--color-border-strong)";
             setFocused(true);
+            if (expandable) setExpanded(true);
             onFocus?.(e);
           }}
           onBlur={(e) => {
             e.target.style.borderColor = error ? "var(--color-danger)" : "var(--color-border)";
             setFocused(false);
+            // Stays open while the pointer is still over it.
+            if (expandable && !hovering) setExpanded(false);
             onBlur?.(e);
           }}
           onMouseEnter={(e) => {
@@ -244,6 +241,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
           }}
           onMouseLeave={(e) => {
             setHovering(false);
+            if (expandable && !focused) setExpanded(false);
             onMouseLeave?.(e);
           }}
           className={className}

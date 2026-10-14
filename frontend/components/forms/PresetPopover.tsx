@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
@@ -146,22 +146,24 @@ export function PresetPopover({
   // dismissed the same way FieldKeyPopover clears its own localError: on the
   // next field_key change, not on the next validate() pass.
   const [dupDismissed, setDupDismissed] = useState(false);
-  const prevFieldKeyRef = useRef(field.field_key);
-  useEffect(() => {
-    if (field.field_key !== prevFieldKeyRef.current) {
-      prevFieldKeyRef.current = field.field_key;
-      setDupDismissed(true);
-    }
-  }, [field.field_key]);
+  const [prevFieldKey, setPrevFieldKey] = useState(field.field_key);
+  if (field.field_key !== prevFieldKey) {
+    setPrevFieldKey(field.field_key);
+    setDupDismissed(true);
+  }
   const duplicateError = dupDismissed ? undefined : rawDuplicateError;
   const keyError = incompleteError ?? duplicateError;
 
+  const attemptFailed = saveAttempt > 0 && !!(incompleteError || rawDuplicateError);
+  // Starts at 0, not saveAttempt: a popover mounted after a failed Save still shows its error.
+  const [seenAttempt, setSeenAttempt] = useState(0);
+  if (saveAttempt !== seenAttempt) {
+    setSeenAttempt(saveAttempt);
+    if (attemptFailed) setDupDismissed(false);
+  }
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each save attempt, not on every input change
   useEffect(() => {
-    if (saveAttempt > 0 && (incompleteError || rawDuplicateError)) {
-      onOpenChange(true);
-      setDupDismissed(false);
-    }
+    if (attemptFailed) onOpenChange(true);
   }, [saveAttempt]);
 
   function applyPresetKind(kind: PresetKind | null) {

@@ -383,8 +383,24 @@ export default function AssignmentsPage() {
   }, [tournamentId, canView]);
 
   // Re-derived per tab, so switching tabs swaps the whole view with it.
-  useEffect(() => {
-    if (savedConfig === null) return;
+  const appliedInputs = {
+    savedConfig,
+    eventsSurface,
+    cardSurface,
+    memberFilterDefaults,
+    memberDisplayDefaults,
+  };
+  const [appliedFrom, setAppliedFrom] = useState<typeof appliedInputs | null>(null);
+  if (
+    savedConfig !== null &&
+    (appliedFrom === null ||
+      appliedFrom.savedConfig !== savedConfig ||
+      appliedFrom.eventsSurface !== eventsSurface ||
+      appliedFrom.cardSurface !== cardSurface ||
+      appliedFrom.memberFilterDefaults !== memberFilterDefaults ||
+      appliedFrom.memberDisplayDefaults !== memberDisplayDefaults)
+  ) {
+    setAppliedFrom(appliedInputs);
     const events = savedConfig[eventsSurface];
     setEventFilters(eventsFilterFromStored(events?.filters));
     // Absent means "never saved", which is the default chain — an empty
@@ -404,7 +420,7 @@ export default function AssignmentsPage() {
     setMemberSort(
       card?.sorts ? sortRulesFromStored(card.sorts, isMemberSortField) : DEFAULT_BELT_SORT,
     );
-  }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults]);
+  }
 
   /** Persists one surface and keeps the local copy in step, so switching away
    *  and back shows what was just set rather than what was last fetched. */
@@ -688,13 +704,13 @@ export default function AssignmentsPage() {
   // Members matching the filters, from the same server filter the members
   // page uses — a client copy drifted. Re-read after writes so the assigned
   // filter follows a drag. null = no filters set, so everyone passes.
+  const filtersActive = canView && Object.keys(membersFilterParams(memberFilters)).length > 0;
   const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null);
+  // Dropped as filters clear, so setting new ones doesn't briefly show the old matches.
+  if (!filtersActive && filterMatchIds !== null) setFilterMatchIds(null);
   useEffect(() => {
     const filters = membersFilterParams(memberFilters);
-    if (!canView || Object.keys(filters).length === 0) {
-      setFilterMatchIds(null);
-      return;
-    }
+    if (!canView || Object.keys(filters).length === 0) return;
     let current = true;
     membersApi
       .list(tournamentId, { fields: [], filters })

@@ -28,6 +28,12 @@ interface BannerRule extends Omit<BannerProps, "onDismiss"> {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function snoozedUntil(days: number): string {
+  return new Date(Date.now() + days * DAY_MS).toISOString();
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [tournaments, setTournaments] = useState<TournamentSummary[]>([]);
@@ -106,11 +112,11 @@ export default function DashboardPage() {
     },
   ];
 
+  // Snoozes are measured against when the page loaded; they last days, not minutes.
+  const [loadedAt] = useState(() => new Date().toISOString());
   const activeBanners = bannerRules.filter((e) => {
     if (!user) return false;
-    return (
-      e.condition(user) && new Date(Date.now()).toISOString() >= (dismissedBanners[e.id] ?? "")
-    );
+    return e.condition(user) && loadedAt >= (dismissedBanners[e.id] ?? "");
   });
 
   useEffect(() => {
@@ -130,7 +136,7 @@ export default function DashboardPage() {
   function dismissBanner(id: number, snoozeDays: number) {
     const dismissed = {
       ...dismissedBanners,
-      [id]: new Date(Date.now() + snoozeDays * 24 * 60 * 60 * 1000).toISOString(),
+      [id]: snoozedUntil(snoozeDays),
     };
     setDismissedBanners(dismissed);
     localStorage.setItem("dismissedBanners", JSON.stringify(dismissed));

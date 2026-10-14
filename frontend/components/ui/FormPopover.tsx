@@ -137,12 +137,17 @@ export function FormPopover({
   // real height and writes the real position immediately — otherwise that
   // first frame would flash at the fallback spot and get corrected visibly
   // a moment later.
+  // Closing forgets the position, so the next opening measures afresh.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (!open) setPositioned(false);
+  }
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: positioned once per opening
   useLayoutEffect(() => {
-    if (!open) {
-      setPositioned(false);
-      return;
-    }
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- marks the panel measured, from the DOM, before paint
     updatePanelPos();
     let raf: number;
     function loop() {

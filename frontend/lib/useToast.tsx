@@ -1,16 +1,9 @@
 "use client";
 
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconCheckCircle, IconX, IconXCircle } from "@/components/ui/Icons";
+import { useIsClient } from "@/lib/useIsClient";
 
 export type ToastVariant = "success" | "error";
 
@@ -45,10 +38,8 @@ const VARIANT_STYLES: Record<ToastVariant, { background: string; color: string; 
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const nextId = useRef(0);
-
-  useEffect(() => setMounted(true), []);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

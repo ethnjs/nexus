@@ -57,16 +57,21 @@ export function Tooltip({
   style,
 }: TooltipProps) {
   const [hovered, setHovered] = useState(false);
-  const [autoShow, setAutoShow] = useState(false);
+  // A status tooltip shows itself for 3s on mount and on every status change.
+  const [autoShow, setAutoShow] = useState(!variant);
+  const [prevStatus, setPrevStatus] = useState(status);
+  if (status !== prevStatus) {
+    setPrevStatus(status);
+    if (!variant) setAutoShow(true);
+  }
 
   const visible =
     (autoShow || (hovered && !!variant) || (hovered && !!status)) &&
     (typeof message === "string" ? !!message : !!message[status!]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-shows when the status changes, not the variant
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restarts the timer when the status changes, not the variant
   useEffect(() => {
     if (variant) return;
-    setAutoShow(true);
     const timerId = setTimeout(() => {
       setAutoShow(false);
     }, 3000);
@@ -79,17 +84,21 @@ export function Tooltip({
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const [shift, setShift] = useState(0);
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (visible !== prevVisible) {
+    setPrevVisible(visible);
+    if (!visible) {
+      setAnchor(null);
+      setShift(0);
+    }
+  }
 
   // position:fixed off the trigger's own rect rather than absolute inside the
   // wrapper: an absolute bubble is clipped by any ancestor with overflow:hidden
   // (the roster table's roles cell, Popover's scrolling list), which showed up
   // as an arrow with no bubble under it.
   useLayoutEffect(() => {
-    if (!visible) {
-      setAnchor(null);
-      setShift(0);
-      return;
-    }
+    if (!visible) return;
     function measure() {
       const wrap = wrapperRef.current;
       if (!wrap) return;
@@ -122,6 +131,7 @@ export function Tooltip({
     else if (rect.right > window.innerWidth - margin) dx = window.innerWidth - margin - rect.right;
     // Setting shift re-renders but doesn't change `anchor`, so this doesn't
     // re-fire — no measure/adjust loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a DOM measurement, applied before paint
     setShift(dx);
   }, [anchor]);
 

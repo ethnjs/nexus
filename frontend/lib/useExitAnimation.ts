@@ -24,7 +24,9 @@ export function useExitAnimation<T extends HTMLElement>() {
   useEffect(
     () => () => {
       const element = node.current;
-      if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      // Still in the page: StrictMode's simulated unmount in development, not a real close.
+      if (!element || element.isConnected) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const ghost = element.cloneNode(true) as HTMLElement;
       ghost.setAttribute("aria-hidden", "true");
       ghost.removeAttribute("role");
