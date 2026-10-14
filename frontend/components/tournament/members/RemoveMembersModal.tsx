@@ -33,7 +33,7 @@ export function RemoveMembersModal({
       verb="Remove"
       verbPast="removed"
       // Always typed: a batch is easy to over-select, and there's no undo.
-      confirmPhrase="remove"
+      confirmPhrase="REMOVE"
       onDelete={(m) => membersApi.delete(tournamentId, m.id)}
       onClose={onClose}
       onDeleted={onRemoved}
