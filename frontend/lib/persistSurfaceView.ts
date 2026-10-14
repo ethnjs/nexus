@@ -1,4 +1,4 @@
-import { displayConfigApi, type DisplayConfigSurface } from "@/lib/api";
+import { type DisplayConfigSurface, displayConfigApi } from "@/lib/api";
 
 /**
  * Write-back for a table's own view state (filters, sort) into one surface of
@@ -12,14 +12,22 @@ import { displayConfigApi, type DisplayConfigSurface } from "@/lib/api";
  * a caller whose next fetch depends on the saved view (the members roster).
  */
 export function persistSurfaceView(
-  tournamentId: number, surface: string, patch: Partial<DisplayConfigSurface>,
+  tournamentId: number,
+  surface: string,
+  patch: Partial<DisplayConfigSurface>,
 ): Promise<boolean> {
-  return displayConfigApi.get(tournamentId)
-    .then((fresh) => displayConfigApi.set(tournamentId, {
-      ...fresh,
-      // A surface that has never been saved still needs its required
-      // `hidden` key, hence the spread order.
-      [surface]: { ...{ hidden: [] }, ...fresh[surface], ...patch },
-    }))
-    .then(() => true, () => false);
+  return displayConfigApi
+    .get(tournamentId)
+    .then((fresh) =>
+      displayConfigApi.set(tournamentId, {
+        ...fresh,
+        // A surface that has never been saved still needs its required
+        // `hidden` key, hence the spread order.
+        [surface]: { ...{ hidden: [] }, ...fresh[surface], ...patch },
+      }),
+    )
+    .then(
+      () => true,
+      () => false,
+    );
 }

@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { formsApi, Form, ApiError } from "@/lib/api";
-import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
-import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
+import { SplitButton, type SplitButtonOption } from "@/components/ui/SplitButton";
+import { ApiError, type Form, formsApi } from "@/lib/api";
+import { type FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 
-export function StatusControl({ form, onUpdated, onDeleted, lockedReason }: {
+export function StatusControl({
+  form,
+  onUpdated,
+  onDeleted,
+  lockedReason,
+}: {
   form: Form;
   onUpdated: (form: Form) => void;
   onDeleted: () => void;
@@ -52,7 +57,10 @@ export function StatusControl({ form, onUpdated, onDeleted, lockedReason }: {
   }));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }} title={lockedReason}>
+    <div
+      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}
+      title={lockedReason}
+    >
       <SplitButton
         label={primary.label}
         variant="primary"
@@ -63,7 +71,9 @@ export function StatusControl({ form, onUpdated, onDeleted, lockedReason }: {
         options={options}
       />
       {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}
+        >
           {error}
         </p>
       )}

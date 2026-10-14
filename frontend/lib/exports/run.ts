@@ -1,17 +1,33 @@
 import {
-  Assignment, DisplayConfigCatalog, DuosmiumRole, ExportPresetInput, MembershipField, MembershipFull,
-  TorusRole, Tournament, TournamentEvent, assignmentsApi, displayConfigApi, membersApi, tournamentEventsApi,
+  type EventsFilterState,
+  eventPassesFilters,
+  isEventsFilterActive,
+} from "@/components/tournament/events/EventsFilterModal";
+import {
+  type MembersFilterState,
+  membersFilterParams,
+} from "@/components/tournament/members/MembersFilterModal";
+import {
+  type Assignment,
+  assignmentsApi,
+  type DisplayConfigCatalog,
+  type DuosmiumRole,
+  displayConfigApi,
+  type ExportPresetInput,
+  type MembershipField,
+  type MembershipFull,
+  membersApi,
+  type TorusRole,
+  type Tournament,
+  type TournamentEvent,
+  tournamentEventsApi,
 } from "@/lib/api";
 import { buildExportTable, fieldsForColumns } from "@/lib/exports/build";
 import { BUILTINS, buildDuosmium, buildEmailList, buildTorus } from "@/lib/exports/builtins";
-import { ExportContext, exportContext, resolveExportColumn } from "@/lib/exports/columns";
+import { type ExportContext, exportContext, resolveExportColumn } from "@/lib/exports/columns";
 import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { exportFilename, toCsv } from "@/lib/exports/output";
 import { tournamentDisplayName } from "@/lib/tournamentDisplay";
-import {
-  EventsFilterState, eventPassesFilters, isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
-import { MembersFilterState, membersFilterParams } from "@/components/tournament/members/MembersFilterModal";
 
 // One export, fully decided: which preset and every choice it needs. Both the
 // one-click button and the export screen resolve to this, so they can't
@@ -24,9 +40,9 @@ export type ExportChoice =
   | { kind: "custom"; presetId: number | null; shape: ExportPresetInput; trackId: number | null };
 
 export interface ExportResult {
-  header:   string[] | null;
-  rows:     string[][];
-  text:     string;
+  header: string[] | null;
+  rows: string[][];
+  text: string;
   warnings: string[];
 }
 
@@ -38,7 +54,10 @@ export function usesEventFilters(choice: ExportChoice): boolean {
 }
 
 /** The roster field groups this export reads. */
-export function fieldsForChoice(choice: ExportChoice, ctx: ExportContext | null): MembershipField[] {
+export function fieldsForChoice(
+  choice: ExportChoice,
+  ctx: ExportContext | null,
+): MembershipField[] {
   if (choice.kind !== "custom") return BUILTINS.find((b) => b.id === choice.kind)!.fields;
   const groups = new Set(ctx ? fieldsForColumns(choice.shape.columns, ctx) : []);
   // Event and assignment rows are built from assignments.
@@ -58,9 +77,16 @@ export function eventIdsFor(
   const byEvent = new Map<number, Assignment[]>();
   for (const a of assignments) byEvent.set(a.event.id, [...(byEvent.get(a.event.id) ?? []), a]);
   const showsTrack = (id: number) => trackId === null || id === trackId;
-  return new Set(events
-    .filter((event) => eventPassesFilters(event, eventFilters, { assignmentsFor: (id) => byEvent.get(id) ?? [], showsTrack }))
-    .map((event) => event.id));
+  return new Set(
+    events
+      .filter((event) =>
+        eventPassesFilters(event, eventFilters, {
+          assignmentsFor: (id) => byEvent.get(id) ?? [],
+          showsTrack,
+        }),
+      )
+      .map((event) => event.id),
+  );
 }
 
 export function computeExport(
@@ -71,38 +97,64 @@ export function computeExport(
   eventIds: Set<number> | null,
   ctx: ExportContext | null,
 ): ExportResult {
-  if (choice.kind === "torus") return { header: null, ...buildTorus(members, choice.role, { trackId: choice.trackId, eventIds }) };
+  if (choice.kind === "torus")
+    return {
+      header: null,
+      ...buildTorus(members, choice.role, { trackId: choice.trackId, eventIds }),
+    };
   if (choice.kind === "duosmium") {
-    return { header: null, ...buildDuosmium(members, choice.roles, { trackId: choice.trackId, eventIds, division: choice.division }) };
+    return {
+      header: null,
+      ...buildDuosmium(members, choice.roles, {
+        trackId: choice.trackId,
+        eventIds,
+        division: choice.division,
+      }),
+    };
   }
   if (choice.kind === "email_list") return { header: null, ...buildEmailList(members) };
   if (!ctx) throw new Error("A custom export needs the column catalog");
 
   const { shape } = choice;
-  const table = buildExportTable(members, events, {
-    rowType: shape.row_type, columns: shape.columns, sorts: shape.sorts,
-    includeHeader: shape.include_header, trackId: choice.trackId, eventIds,
-  }, ctx);
+  const table = buildExportTable(
+    members,
+    events,
+    {
+      rowType: shape.row_type,
+      columns: shape.columns,
+      sorts: shape.sorts,
+      includeHeader: shape.include_header,
+      trackId: choice.trackId,
+      eventIds,
+    },
+    ctx,
+  );
   const stale = shape.columns.filter((c) => !resolveExportColumn(c.key, ctx)).length;
   return {
     header: table.header,
     rows: table.rows,
     text: toCsv(table.header ? [table.header, ...table.rows] : table.rows),
-    warnings: stale > 0
-      ? [`${stale} column${stale === 1 ? "" : "s"} no longer available (a deleted track or form field) — skipped.`]
-      : [],
+    warnings:
+      stale > 0
+        ? [
+            `${stale} column${stale === 1 ? "" : "s"} no longer available (a deleted track or form field) — skipped.`,
+          ]
+        : [],
   };
 }
 
 /** What the choice is beyond its preset: "Test Writers, Day 1". */
 function scopeParts(choice: ExportChoice, trackNames: Map<number, string>): string[] {
   if (choice.kind === "torus") {
-    return [`${TORUS_ROLES[choice.role].label}s`, trackNames.get(choice.trackId) ?? ""].filter(Boolean);
+    return [`${TORUS_ROLES[choice.role].label}s`, trackNames.get(choice.trackId) ?? ""].filter(
+      Boolean,
+    );
   }
   if (choice.kind === "duosmium") {
     return [trackNames.get(choice.trackId) ?? "", `Division ${choice.division}`].filter(Boolean);
   }
-  if (choice.kind === "custom" && choice.trackId !== null) return [trackNames.get(choice.trackId) ?? ""].filter(Boolean);
+  if (choice.kind === "custom" && choice.trackId !== null)
+    return [trackNames.get(choice.trackId) ?? ""].filter(Boolean);
   return [];
 }
 
@@ -111,8 +163,16 @@ function presetName(choice: ExportChoice): string {
   return BUILTINS.find((b) => b.id === choice.kind)!.label;
 }
 
-export function exportFilenameFor(choice: ExportChoice, tournament: Tournament, trackNames: Map<number, string>): string {
-  return exportFilename([tournamentDisplayName(tournament), presetName(choice), ...scopeParts(choice, trackNames)]);
+export function exportFilenameFor(
+  choice: ExportChoice,
+  tournament: Tournament,
+  trackNames: Map<number, string>,
+): string {
+  return exportFilename([
+    tournamentDisplayName(tournament),
+    presetName(choice),
+    ...scopeParts(choice, trackNames),
+  ]);
 }
 
 export function trackNamesOf(tournament: Tournament): Map<number, string> {
@@ -128,10 +188,13 @@ export async function runExport(
   eventFilters: EventsFilterState,
 ): Promise<ExportResult> {
   // Event filters judge events; per-event rows are built from them.
-  const needsEvents = (usesEventFilters(choice) && isEventsFilterActive(eventFilters))
-    || (choice.kind === "custom" && choice.shape.row_type === "event");
+  const needsEvents =
+    (usesEventFilters(choice) && isEventsFilterActive(eventFilters)) ||
+    (choice.kind === "custom" && choice.shape.row_type === "event");
   const [catalog, events, assignments] = await Promise.all([
-    choice.kind === "custom" ? displayConfigApi.getCatalog(tournament.id) : Promise.resolve<DisplayConfigCatalog | null>(null),
+    choice.kind === "custom"
+      ? displayConfigApi.getCatalog(tournament.id)
+      : Promise.resolve<DisplayConfigCatalog | null>(null),
     needsEvents ? tournamentEventsApi.list(tournament.id) : Promise.resolve<TournamentEvent[]>([]),
     needsEvents ? assignmentsApi.list(tournament.id) : Promise.resolve<Assignment[]>([]),
   ]);
@@ -140,5 +203,11 @@ export async function runExport(
     fields: fieldsForChoice(choice, ctx),
     filters: membersFilterParams(memberFilters),
   });
-  return computeExport(choice, members, events, eventIdsFor(choice, eventFilters, events, assignments), ctx);
+  return computeExport(
+    choice,
+    members,
+    events,
+    eventIdsFor(choice, eventFilters, events, assignments),
+    ctx,
+  );
 }

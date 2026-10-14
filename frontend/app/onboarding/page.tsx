@@ -1,37 +1,60 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import {
-  usersApi, canonicalEventsApi, CanonicalEvent,
-  universitiesApi, University,
-  STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
-} from "@/lib/api";
-import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER, safeRedirectPath } from "@/lib/auth";
-import { todayLocalDateString } from "@/lib/date";
-import { useFormattedInputChange } from "@/lib/useFormattedInput";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
+import { Suspense, useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { IconInfo } from "@/components/ui/Icons";
-import { ProfileCard } from "@/components/profile/ProfileCard";
-import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
-import styles from "./Onboarding.module.css";
 import {
-  PronounsField, StudentStatusField,
-  UniversityField, MajorField, YearLevelField, GraduationYearField,
-  EmployerField, YesNoField, ShirtSizeField, DietaryRestrictionField,
-} from "@/components/profile/ProfileFields";
-import {
-  CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, isCompetitionRowValid,
+  type CompetitionExperienceDraft,
+  CompetitionExperienceSpreadsheet,
   competitionExperienceToDraft,
-  VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, isVolunteerRowValid,
+  isCompetitionRowValid,
+  isVolunteerRowValid,
+  type VolunteerExperienceDraft,
+  VolunteerExperienceSpreadsheet,
   volunteerExperienceToDraft,
 } from "@/components/profile/ExperienceTables";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+import {
+  DietaryRestrictionField,
+  EmployerField,
+  GraduationYearField,
+  MajorField,
+  PronounsField,
+  ShirtSizeField,
+  StudentStatusField,
+  UniversityField,
+  YearLevelField,
+  YesNoField,
+} from "@/components/profile/ProfileFields";
+import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import { Button } from "@/components/ui/Button";
+import { IconInfo } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
+import {
+  ApiError,
+  type CanonicalEvent,
+  canonicalEventsApi,
+  type SHIRT_SIZE,
+  type STUDENT_STATUS,
+  type University,
+  type UserMeFull,
+  universitiesApi,
+  usersApi,
+} from "@/lib/api";
+import {
+  DATE_OF_BIRTH_DISCLAIMER,
+  formatPhone,
+  safeRedirectPath,
+  validateDateOfBirth,
+  validatePhone,
+} from "@/lib/auth";
+import { todayLocalDateString } from "@/lib/date";
+import { useAuth } from "@/lib/useAuth";
+import { useFormattedInputChange } from "@/lib/useFormattedInput";
+import styles from "./Onboarding.module.css";
 
 const STATE = {
   NAME: 1,
@@ -69,7 +92,13 @@ interface ProfileDraft {
 
 export default function OnboardingPage() {
   return (
-    <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>}>
+    <Suspense
+      fallback={
+        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+          <Spinner size="lg" />
+        </div>
+      }
+    >
       <OnboardingContent />
     </Suspense>
   );
@@ -89,8 +118,8 @@ function OnboardingContent() {
 
   const [name, setName] = useState<{ first: string; last: string }>({ first: "", last: "" });
   const [phone, setPhone] = useState("");
-  const handlePhoneChange = useFormattedInputChange(
-    phone, setPhone, formatPhone, (v) => v.replace(/\D/g, "").slice(0, 10),
+  const handlePhoneChange = useFormattedInputChange(phone, setPhone, formatPhone, (v) =>
+    v.replace(/\D/g, "").slice(0, 10),
   );
 
   const [profileData, setProfileData] = useState<ProfileDraft>({});
@@ -103,8 +132,10 @@ function OnboardingContent() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
   // ── Effective flags — derived from actual row presence, not just the stored flag ──
-  const effectiveHasCompetitionExp = !!profileData.has_competition_experience || competitionRows.length > 0;
-  const effectiveHasVolunteerExp = !!profileData.has_volunteer_experience || volunteerRows.length > 0;
+  const effectiveHasCompetitionExp =
+    !!profileData.has_competition_experience || competitionRows.length > 0;
+  const effectiveHasVolunteerExp =
+    !!profileData.has_volunteer_experience || volunteerRows.length > 0;
   const competitionLocked = effectiveHasCompetitionExp && competitionRows.length > 0;
   const volunteerLocked = effectiveHasVolunteerExp && volunteerRows.length > 0;
 
@@ -121,7 +152,8 @@ function OnboardingContent() {
       return;
     }
 
-    usersApi.meFull()
+    usersApi
+      .meFull()
       .then((user) => {
         setOriginal(user);
         setName({ first: user.first_name ?? "", last: user.last_name ?? "" });
@@ -141,25 +173,33 @@ function OnboardingContent() {
           shirt_size: user.shirt_size ?? undefined,
           dietary_restriction: user.dietary_restriction ?? undefined,
         });
-        setHasDietary(user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null);
+        setHasDietary(
+          user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
+        );
         setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
         setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
       })
       .catch(() => setLoadError("Failed to load your account."));
 
-    canonicalEventsApi.list().then(setEvents).catch(() => {});
-    universitiesApi.list().then(setUniversities).catch(() => {});
+    canonicalEventsApi
+      .list()
+      .then(setEvents)
+      .catch(() => {});
+    universitiesApi
+      .list()
+      .then(setUniversities)
+      .catch(() => {});
   }, [authLoading, currentUser, router, redirect]);
 
   function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
-    const originalIds = new Set(originalRows.filter(r => r.id !== undefined).map(r => r.id));
-    const currentIds = new Set(currentRows.filter(r => r.id !== undefined).map(r => r.id));
+    const originalIds = new Set(originalRows.filter((r) => r.id !== undefined).map((r) => r.id));
+    const currentIds = new Set(currentRows.filter((r) => r.id !== undefined).map((r) => r.id));
 
-    const toAdd = currentRows.filter(r => r.id === undefined);
-    const toDelete = originalRows.filter(r => r.id !== undefined && !currentIds.has(r.id));
-    const toUpdate = currentRows.filter(r => {
+    const toAdd = currentRows.filter((r) => r.id === undefined);
+    const toDelete = originalRows.filter((r) => r.id !== undefined && !currentIds.has(r.id));
+    const toUpdate = currentRows.filter((r) => {
       if (r.id === undefined || !originalIds.has(r.id)) return false;
-      const orig = originalRows.find(o => o.id === r.id);
+      const orig = originalRows.find((o) => o.id === r.id);
       return JSON.stringify(orig) !== JSON.stringify(r);
     });
 
@@ -178,7 +218,8 @@ function OnboardingContent() {
     const dobErr = validateDateOfBirth(profileData.date_of_birth ?? "");
     if (dobErr) ers.date_of_birth = dobErr;
 
-    const isStudent = profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate";
+    const isStudent =
+      profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate";
     if (isStudent && profileData.university_name?.trim() && !profileData.university_id) {
       ers.university = "Select a university from the list.";
     }
@@ -202,16 +243,28 @@ function OnboardingContent() {
       last_name: name.last,
       phone,
       ...restProfileData,
-      has_competition_experience: competitionRows.length > 0 ? true : profileData.has_competition_experience,
-      has_volunteer_experience: volunteerRows.length > 0 ? true : profileData.has_volunteer_experience,
+      has_competition_experience:
+        competitionRows.length > 0 ? true : profileData.has_competition_experience,
+      has_volunteer_experience:
+        volunteerRows.length > 0 ? true : profileData.has_volunteer_experience,
     };
 
     if (cleaned.student_status === "Undergraduate" || cleaned.student_status === "Graduate") {
       cleaned.employer = undefined;
     } else if (cleaned.student_status === "Non-Student") {
-      cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+      cleaned.university_id =
+        cleaned.major =
+        cleaned.year_level =
+        cleaned.graduation_year =
+          undefined;
     } else {
-      cleaned.student_status = cleaned.employer = cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+      cleaned.student_status =
+        cleaned.employer =
+        cleaned.university_id =
+        cleaned.major =
+        cleaned.year_level =
+        cleaned.graduation_year =
+          undefined;
     }
 
     for (const key of Object.keys(cleaned)) {
@@ -225,15 +278,26 @@ function OnboardingContent() {
       await usersApi.updateMe(cleaned);
 
       if (effectiveHasCompetitionExp) {
-        const compDiff = diffRows(original.competition_experience.map(competitionExperienceToDraft), competitionRows);
+        const compDiff = diffRows(
+          original.competition_experience.map(competitionExperienceToDraft),
+          competitionRows,
+        );
         await Promise.all([
-          ...compDiff.toAdd.map(row => usersApi.addCompetitionExperience({
-            event_id: row.event_id as number, school: row.school, notes: row.notes || null,
-          })),
-          ...compDiff.toUpdate.map(row => usersApi.updateCompetitionExperience(row.id as number, {
-            event_id: row.event_id as number, school: row.school, notes: row.notes || null,
-          })),
-          ...compDiff.toDelete.map(row => usersApi.deleteCompetitionExperience(row.id as number)),
+          ...compDiff.toAdd.map((row) =>
+            usersApi.addCompetitionExperience({
+              event_id: row.event_id as number,
+              school: row.school,
+              notes: row.notes || null,
+            }),
+          ),
+          ...compDiff.toUpdate.map((row) =>
+            usersApi.updateCompetitionExperience(row.id as number, {
+              event_id: row.event_id as number,
+              school: row.school,
+              notes: row.notes || null,
+            }),
+          ),
+          ...compDiff.toDelete.map((row) => usersApi.deleteCompetitionExperience(row.id as number)),
         ]);
       }
 
@@ -246,25 +310,33 @@ function OnboardingContent() {
             year: Number(row.year),
             role: row.role,
             event_id: row.event_id ?? undefined,
-            notes: hasCustomEvent || hasNotesOther
-              ? {
-                  ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
-                  ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
-                }
-              : undefined,
+            notes:
+              hasCustomEvent || hasNotesOther
+                ? {
+                    ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
+                    ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
+                  }
+                : undefined,
           };
         }
-        const volDiff = diffRows(original.volunteer_experience.map(volunteerExperienceToDraft), volunteerRows);
+        const volDiff = diffRows(
+          original.volunteer_experience.map(volunteerExperienceToDraft),
+          volunteerRows,
+        );
         await Promise.all([
-          ...volDiff.toAdd.map(row => usersApi.addVolunteerExperience(volunteerBody(row))),
-          ...volDiff.toUpdate.map(row => usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row))),
-          ...volDiff.toDelete.map(row => usersApi.deleteVolunteerExperience(row.id as number)),
+          ...volDiff.toAdd.map((row) => usersApi.addVolunteerExperience(volunteerBody(row))),
+          ...volDiff.toUpdate.map((row) =>
+            usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row)),
+          ),
+          ...volDiff.toDelete.map((row) => usersApi.deleteVolunteerExperience(row.id as number)),
         ]);
       }
 
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
-      setErrors({ form: error instanceof ApiError ? error.message : "Something went wrong. Try again." });
+      setErrors({
+        form: error instanceof ApiError ? error.message : "Something went wrong. Try again.",
+      });
     } finally {
       setLoading(false);
     }
@@ -280,7 +352,13 @@ function OnboardingContent() {
 
   if (loadError || !original) {
     return (
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         {loadError ?? "Something went wrong."}
       </p>
     );
@@ -314,7 +392,10 @@ function OnboardingContent() {
                   label="First Name"
                   type="text"
                   value={name.first}
-                  onChange={(e) => { setName((n) => ({ ...n, first: e.target.value })); setErrors((er) => ({ ...er, first_name: undefined })); }}
+                  onChange={(e) => {
+                    setName((n) => ({ ...n, first: e.target.value }));
+                    setErrors((er) => ({ ...er, first_name: undefined }));
+                  }}
                   autoComplete="given-name"
                   error={errors.first_name}
                   fullWidth
@@ -323,7 +404,10 @@ function OnboardingContent() {
                   label="Last Name"
                   type="text"
                   value={name.last}
-                  onChange={(e) => { setName((n) => ({ ...n, last: e.target.value })); setErrors((er) => ({ ...er, last_name: undefined })); }}
+                  onChange={(e) => {
+                    setName((n) => ({ ...n, last: e.target.value }));
+                    setErrors((er) => ({ ...er, last_name: undefined }));
+                  }}
                   autoComplete="family-name"
                   error={errors.last_name}
                   fullWidth
@@ -350,7 +434,10 @@ function OnboardingContent() {
                 <Input
                   type="tel"
                   value={formatPhone(phone)}
-                  onChange={(e) => { handlePhoneChange(e); setErrors((er) => ({ ...er, phone: undefined })); }}
+                  onChange={(e) => {
+                    handlePhoneChange(e);
+                    setErrors((er) => ({ ...er, phone: undefined }));
+                  }}
                   autoComplete="tel"
                   error={errors.phone}
                   fullWidth
@@ -365,7 +452,12 @@ function OnboardingContent() {
                 question={
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                     What is your date of birth?
-                    <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+                    <Tooltip
+                      variant="info"
+                      message={DATE_OF_BIRTH_DISCLAIMER}
+                      showIcon={false}
+                      maxWidth={400}
+                    >
                       <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
                         <IconInfo size={13} />
                       </span>
@@ -444,74 +536,87 @@ function OnboardingContent() {
                   }}
                 />
               </ProfileQuestion>
-              
-              {state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
-                <>
-                  <ProfileQuestion question="What university do you attend?" required>
-                    <UniversityField
-                      universities={universities}
-                      value={profileData.university_name ?? ''}
-                      error={errors.university}
-                      onChange={(text, universityId) => {
-                        setProfileData((d) => ({ ...d, university_name: text, university_id: universityId ?? undefined }));
-                        setErrors((er) => ({ ...er, university: undefined }));
-                      }}
-                    />
-                  </ProfileQuestion>
-                  <ProfileQuestion question="What is your major?" required>
-                    <MajorField
-                      value={profileData.major}
-                      error={errors.major}
-                      onChange={(v) => {
-                        setProfileData((d) => ({ ...d, major: v }));
-                        setErrors((er) => ({ ...er, major: undefined }));
-                      }}
-                    />
-                  </ProfileQuestion>
-                  <ProfileQuestion question="What is your grade level?" required>
-                    <YearLevelField
-                      value={profileData.year_level}
-                      error={errors.year_level}
-                      onChange={(v) => {
-                        setProfileData((d) => ({ ...d, year_level: v }));
-                        setErrors((er) => ({ ...er, year_level: undefined }));
-                      }}
-                    />
-                  </ProfileQuestion>
-                  <ProfileQuestion
-                    question="What is your projected graduation year?"
-                    required
-                    onNext={() => {
-                      const ers: typeof errors = {};
 
-                      if (!profileData.university_id) ers.university = "Cannot be empty.";
-                      if (!profileData.major) ers.major = "Cannot be empty.";
-                      if (!profileData.year_level) ers.year_level = "Cannot be empty.";
+              {state >= STATE.UNIVERSITY &&
+                (profileData.student_status === "Undergraduate" ||
+                  profileData.student_status === "Graduate") && (
+                  <>
+                    <ProfileQuestion question="What university do you attend?" required>
+                      <UniversityField
+                        universities={universities}
+                        value={profileData.university_name ?? ""}
+                        error={errors.university}
+                        onChange={(text, universityId) => {
+                          setProfileData((d) => ({
+                            ...d,
+                            university_name: text,
+                            university_id: universityId ?? undefined,
+                          }));
+                          setErrors((er) => ({ ...er, university: undefined }));
+                        }}
+                      />
+                    </ProfileQuestion>
+                    <ProfileQuestion question="What is your major?" required>
+                      <MajorField
+                        value={profileData.major}
+                        error={errors.major}
+                        onChange={(v) => {
+                          setProfileData((d) => ({ ...d, major: v }));
+                          setErrors((er) => ({ ...er, major: undefined }));
+                        }}
+                      />
+                    </ProfileQuestion>
+                    <ProfileQuestion question="What is your grade level?" required>
+                      <YearLevelField
+                        value={profileData.year_level}
+                        error={errors.year_level}
+                        onChange={(v) => {
+                          setProfileData((d) => ({ ...d, year_level: v }));
+                          setErrors((er) => ({ ...er, year_level: undefined }));
+                        }}
+                      />
+                    </ProfileQuestion>
+                    <ProfileQuestion
+                      question="What is your projected graduation year?"
+                      required
+                      onNext={() => {
+                        const ers: typeof errors = {};
 
-                      if (!profileData.graduation_year) ers.graduation_year = "Cannot be empty.";
-                      else if (profileData.graduation_year < 1000 || profileData.graduation_year > 9999)
-                        ers.graduation_year = "Must be a valid year.";
+                        if (!profileData.university_id) ers.university = "Cannot be empty.";
+                        if (!profileData.major) ers.major = "Cannot be empty.";
+                        if (!profileData.year_level) ers.year_level = "Cannot be empty.";
 
-                      Object.keys(ers).length > 0 ? setErrors((er) => ({ ...er, ...ers })) : setState(STATE.UNIVERSITY + 2);
-                    }}
-                    isActive={state === STATE.UNIVERSITY}
-                  >
-                    <GraduationYearField
-                      value={profileData.graduation_year}
-                      error={errors.graduation_year}
-                      onValidate={(err) => setErrors((er) => ({ ...er, graduation_year: err }))}
-                      onChange={(v) => setProfileData((d) => ({ ...d, graduation_year: v }))}
-                    />
-                  </ProfileQuestion>
-                </>
-              )}
-              
+                        if (!profileData.graduation_year) ers.graduation_year = "Cannot be empty.";
+                        else if (
+                          profileData.graduation_year < 1000 ||
+                          profileData.graduation_year > 9999
+                        )
+                          ers.graduation_year = "Must be a valid year.";
+
+                        Object.keys(ers).length > 0
+                          ? setErrors((er) => ({ ...er, ...ers }))
+                          : setState(STATE.UNIVERSITY + 2);
+                      }}
+                      isActive={state === STATE.UNIVERSITY}
+                    >
+                      <GraduationYearField
+                        value={profileData.graduation_year}
+                        error={errors.graduation_year}
+                        onValidate={(err) => setErrors((er) => ({ ...er, graduation_year: err }))}
+                        onChange={(v) => setProfileData((d) => ({ ...d, graduation_year: v }))}
+                      />
+                    </ProfileQuestion>
+                  </>
+                )}
+
               {state >= STATE.EMPLOYER && profileData.student_status === "Non-Student" && (
                 <ProfileQuestion
                   question="Who is your employer?"
                   required
                   onNext={() => {
-                    !profileData.employer ? setErrors((er) => ({ ...er, employer: "Cannot be empty." })) : setState(STATE.COMPETED_BEFORE);
+                    !profileData.employer
+                      ? setErrors((er) => ({ ...er, employer: "Cannot be empty." }))
+                      : setState(STATE.COMPETED_BEFORE);
                   }}
                   isActive={state === STATE.EMPLOYER}
                 >
@@ -538,7 +643,11 @@ function OnboardingContent() {
               >
                 <div>
                   <YesNoField
-                    value={effectiveHasCompetitionExp ? true : (profileData.has_competition_experience ?? null)}
+                    value={
+                      effectiveHasCompetitionExp
+                        ? true
+                        : (profileData.has_competition_experience ?? null)
+                    }
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_competition_experience: val }));
                       if (state >= STATE.COMPETED_BEFORE + 2) return;
@@ -547,14 +656,22 @@ function OnboardingContent() {
                     locked={competitionLocked}
                   />
                   {competitionLocked && (
-                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "12px",
+                        color: "var(--color-text-tertiary)",
+                        marginTop: "6px",
+                      }}
+                    >
                       Remove all competition experience entries below to change this.
                     </p>
                   )}
                 </div>
               </ProfileQuestion>
 
-              {(competitionLocked || (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
+              {(competitionLocked ||
+                (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
                 <ProfileQuestion
                   question="Add your competition experience."
                   onSkip={() => {
@@ -563,17 +680,35 @@ function OnboardingContent() {
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
                   onNext={() => {
-                    if (competitionRows.length === 0 || !competitionRows.every(isCompetitionRowValid)) {
-                      setErrors((er) => ({ ...er, competition_exp: "Each entry needs a school and a matched event." }));
+                    if (
+                      competitionRows.length === 0 ||
+                      !competitionRows.every(isCompetitionRowValid)
+                    ) {
+                      setErrors((er) => ({
+                        ...er,
+                        competition_exp: "Each entry needs a school and a matched event.",
+                      }));
                       return;
                     }
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
                   isActive={state === STATE.COMPETITION_EXP}
                 >
-                  <CompetitionExperienceSpreadsheet mode="edit" rows={competitionRows} onChange={setCompetitionRows} events={events} />
+                  <CompetitionExperienceSpreadsheet
+                    mode="edit"
+                    rows={competitionRows}
+                    onChange={setCompetitionRows}
+                    events={events}
+                  />
                   {errors.competition_exp && (
-                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        color: "var(--color-danger)",
+                        marginTop: "6px",
+                      }}
+                    >
                       {errors.competition_exp}
                     </p>
                   )}
@@ -592,7 +727,11 @@ function OnboardingContent() {
               >
                 <div>
                   <YesNoField
-                    value={effectiveHasVolunteerExp ? true : (profileData.has_volunteer_experience ?? null)}
+                    value={
+                      effectiveHasVolunteerExp
+                        ? true
+                        : (profileData.has_volunteer_experience ?? null)
+                    }
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
                       if (state >= STATE.SHIRT_SIZE) return;
@@ -601,14 +740,22 @@ function OnboardingContent() {
                     locked={volunteerLocked}
                   />
                   {volunteerLocked && (
-                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "12px",
+                        color: "var(--color-text-tertiary)",
+                        marginTop: "6px",
+                      }}
+                    >
                       Remove all volunteer experience entries below to change this.
                     </p>
                   )}
                 </div>
               </ProfileQuestion>
 
-              {(volunteerLocked || (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
+              {(volunteerLocked ||
+                (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
                 <ProfileQuestion
                   question="Add your volunteer experience."
                   onSkip={() => {
@@ -618,16 +765,32 @@ function OnboardingContent() {
                   }}
                   onNext={() => {
                     if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
-                      setErrors((er) => ({ ...er, volunteering_exp: "Each entry needs a tournament name, a 4-digit year, and a role." }));
+                      setErrors((er) => ({
+                        ...er,
+                        volunteering_exp:
+                          "Each entry needs a tournament name, a 4-digit year, and a role.",
+                      }));
                       return;
                     }
                     setState(STATE.SHIRT_SIZE);
                   }}
                   isActive={state === STATE.VOLUNTEERING_EXP}
                 >
-                  <VolunteerExperienceSpreadsheet mode="edit" rows={volunteerRows} onChange={setVolunteerRows} events={events} />
+                  <VolunteerExperienceSpreadsheet
+                    mode="edit"
+                    rows={volunteerRows}
+                    onChange={setVolunteerRows}
+                    events={events}
+                  />
                   {errors.volunteering_exp && (
-                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        color: "var(--color-danger)",
+                        marginTop: "6px",
+                      }}
+                    >
                       {errors.volunteering_exp}
                     </p>
                   )}
@@ -675,7 +838,8 @@ function OnboardingContent() {
                   question="List your dietary restrictions."
                   required
                   onNext={() => {
-                    !profileData.dietary_restriction ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
+                    !profileData.dietary_restriction
+                      ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
                       : setState(STATE.COMPLETE);
                   }}
                   isActive={state === STATE.DIETARY_TEXT}
@@ -708,7 +872,13 @@ function OnboardingContent() {
 
           <div>
             {errors.form && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-danger)" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "14px",
+                  color: "var(--color-danger)",
+                }}
+              >
                 {errors.form}
               </p>
             )}

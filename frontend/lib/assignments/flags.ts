@@ -19,11 +19,7 @@
 import type { Assignment, MembershipFull, TournamentShiftBase } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 
-export type FlagCode =
-  | "unavailable"
-  | "track_unconfirmed"
-  | "double_booked"
-  | "over_staffed";
+export type FlagCode = "unavailable" | "track_unconfirmed" | "double_booked" | "over_staffed";
 
 export interface Flag {
   code: FlagCode;
@@ -119,9 +115,7 @@ export function assignmentFlags(
     : (options.eventTrackIds?.get(assignment.event.id) ?? []);
 
   if (facts.trackStatus) {
-    const unconfirmed = trackIds.filter(
-      (id) => facts.trackStatus?.get(id) !== "confirmed",
-    );
+    const unconfirmed = trackIds.filter((id) => facts.trackStatus?.get(id) !== "confirmed");
     if (unconfirmed.length > 0) {
       flags.push({
         code: "track_unconfirmed",
@@ -182,9 +176,7 @@ export function eventFlags(
 
 /** Group a flat assignments response by event id — what the board needs to
  *  hang chips off event rows, now that events don't carry them. */
-export function assignmentsByEvent(
-  assignments: readonly Assignment[],
-): Map<number, Assignment[]> {
+export function assignmentsByEvent(assignments: readonly Assignment[]): Map<number, Assignment[]> {
   const byEvent = new Map<number, Assignment[]>();
   for (const assignment of assignments) {
     const list = byEvent.get(assignment.event.id);

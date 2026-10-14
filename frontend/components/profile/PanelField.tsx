@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import styles from "@/components/profile/Profile.module.css";
 
 // Read-only display primitives shared by MemberPanel's tournament sections
@@ -12,11 +12,17 @@ import styles from "@/components/profile/Profile.module.css";
 export function PanelField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        textTransform: "uppercase", letterSpacing: "0.06em",
-        color: "var(--color-text-tertiary)", marginBottom: "5px",
-      }}>
+      <div
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "11px",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--color-text-tertiary)",
+          marginBottom: "5px",
+        }}
+      >
         {label}
       </div>
       {children}
@@ -28,17 +34,25 @@ export function PanelField({ label, children }: { label: string; children: React
 // file) rather than a real value.
 export function FieldValue({ children, muted }: { children: ReactNode; muted?: boolean }) {
   return (
-    <div style={{
-      fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500,
-      color: muted ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-    }}>
+    <div
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "14px",
+        fontWeight: 500,
+        color: muted ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
+      }}
+    >
       {children}
     </div>
   );
 }
 
 // The common case: one label, one string, a placeholder when it's absent.
-export function TextField({ label, value, placeholder = "No info yet" }: {
+export function TextField({
+  label,
+  value,
+  placeholder = "No info yet",
+}: {
   label: string;
   value: string | null;
   placeholder?: string;

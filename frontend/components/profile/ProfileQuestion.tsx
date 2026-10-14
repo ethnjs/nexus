@@ -1,14 +1,14 @@
-'use client'
+"use client";
 
-import { Button } from "@/components/ui/Button"
+import { Button } from "@/components/ui/Button";
 
 interface ProfileQuestionProps {
-  question: React.ReactNode
-  required?: boolean
-  children: React.ReactNode
-  onSkip?: () => void
-  onNext?: () => void
-  isActive?: boolean
+  question: React.ReactNode;
+  required?: boolean;
+  children: React.ReactNode;
+  onSkip?: () => void;
+  onNext?: () => void;
+  isActive?: boolean;
 }
 
 export function ProfileQuestion({
@@ -17,38 +17,51 @@ export function ProfileQuestion({
   children,
   onSkip = undefined,
   onNext = undefined,
-  isActive = false
+  isActive = false,
 }: ProfileQuestionProps) {
-  const showSkip = !!onSkip
-  const showNext = !!onNext
-  const showActions = isActive && (showSkip || showNext)
+  const showSkip = !!onSkip;
+  const showNext = !!onNext;
+  const showActions = isActive && (showSkip || showNext);
 
   return (
     <div>
-      <label style={{
-        display: 'block', marginBottom: '10px',
-        fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600,
-        color: 'var(--color-text-secondary)',
-      }}>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "10px",
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          fontWeight: 600,
+          color: "var(--color-text-secondary)",
+        }}
+      >
         {question}
-        {required && <span style={{ color: 'var(--color-danger)', marginLeft: '3px' }}>*</span>}
+        {required && <span style={{ color: "var(--color-danger)", marginLeft: "3px" }}>*</span>}
       </label>
 
       {children}
 
       {showActions && (
-        <div style={{
-          marginTop: '14px',
-          display: 'flex', justifyContent: 'flex-end', gap: '8px',
-        }}>
+        <div
+          style={{
+            marginTop: "14px",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "8px",
+          }}
+        >
           {showSkip && (
-            <Button type="button" variant="secondary" onClick={onSkip}>Skip</Button>
+            <Button type="button" variant="secondary" onClick={onSkip}>
+              Skip
+            </Button>
           )}
           {showNext && (
-            <Button type="button" variant="primary" onClick={onNext}>Next</Button>
+            <Button type="button" variant="primary" onClick={onNext}>
+              Next
+            </Button>
           )}
         </div>
       )}
     </div>
-  )
+  );
 }

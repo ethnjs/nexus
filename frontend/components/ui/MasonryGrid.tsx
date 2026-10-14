@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 
 interface MasonryGridProps {
   children: ReactNode;

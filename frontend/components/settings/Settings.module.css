@@ -68,7 +68,9 @@
   color: var(--color-text-secondary);
   background: transparent;
   text-decoration: none;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .navItem.active {

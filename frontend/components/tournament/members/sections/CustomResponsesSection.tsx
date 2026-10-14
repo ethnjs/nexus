@@ -1,10 +1,10 @@
 "use client";
 
-import { MembershipCustomAnswer } from "@/lib/api";
-import { unslug } from "@/lib/textFormat";
+import { FieldGrid, FieldValue, PanelField } from "@/components/profile/PanelField";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField, FieldValue, FieldGrid } from "@/components/profile/PanelField";
+import type { MembershipCustomAnswer } from "@/lib/api";
+import { unslug } from "@/lib/textFormat";
 
 interface CustomResponsesSectionProps {
   customResponses: MembershipCustomAnswer[];
@@ -44,8 +44,10 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-export function CustomResponsesSection({ customResponses, title = "Custom Responses" }: CustomResponsesSectionProps) {
-
+export function CustomResponsesSection({
+  customResponses,
+  title = "Custom Responses",
+}: CustomResponsesSectionProps) {
   return (
     <ProfileCard>
       <SectionHeading title={title}>

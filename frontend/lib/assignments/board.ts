@@ -7,8 +7,9 @@
  * bar: a handler rebuilding a lane and the chip drawing it must key it the
  * same way or the write lands on a different bar than the one you dragged.
  */
-import { buildLanes as buildAssignmentLanes, type AssignmentRole } from "@/lib/assignments/lanes";
+
 import type { Assignment, Role, TournamentEvent, TournamentTrack } from "@/lib/api";
+import { type AssignmentRole, buildLanes as buildAssignmentLanes } from "@/lib/assignments/lanes";
 
 /**
  * What a chip can do to the bar it draws.

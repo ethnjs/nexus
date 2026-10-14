@@ -1,13 +1,13 @@
 "use client";
 
-import { TournamentTrack } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { IconPlus, IconDescription, IconButton, IconBranch, IconSwap } from "@/components/ui/Icons";
-import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
+import type { EditableOption } from "@/components/forms/OptionsEditor";
 import { PresetPopover } from "@/components/forms/PresetPopover";
-import { EditableField } from "@/lib/forms/editableField";
-import { EditableOption } from "@/components/forms/OptionsEditor";
+import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+import { Button } from "@/components/ui/Button";
+import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
+import type { TournamentTrack } from "@/lib/api";
+import type { EditableField } from "@/lib/forms/editableField";
 import { activePresetKind, allowsCustomValues } from "@/lib/forms/fieldKeyPresets";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
@@ -21,9 +21,24 @@ export type ActivePopover = "key" | "preset" | null;
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tracks, onOpenPresets, presetsEnabled,
-  activePopover, onActivePopoverChange, demandPresetComplete,
-  showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
+  boxRef,
+  field,
+  onFieldChange,
+  usedFieldKeys,
+  allFields,
+  errors,
+  saveAttempt,
+  tracks,
+  onOpenPresets,
+  presetsEnabled,
+  activePopover,
+  onActivePopoverChange,
+  demandPresetComplete,
+  showDescription,
+  onAddFieldBelow,
+  onToggleDescription,
+  displayStyle,
+  onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
   field: EditableField;
@@ -56,7 +71,6 @@ export function FieldToolbar({
   // Only one of the key/preset popovers can be open at a time — setting one
   // implicitly closes the other, since both read from this single slot.
 
-
   // Turning a toggle off doesn't just hide the extra UI — it resets the data
   // those rows were carrying back to the "off" default, so a TD who turns
   // branching/custom values back on later starts from a clean slate instead
@@ -69,7 +83,10 @@ export function FieldToolbar({
     const options = (field.config?.options as EditableOption[] | undefined) ?? [];
     onFieldChange({
       branchingEnabled: false,
-      config: { ...field.config, options: options.map((o) => ({ ...o, next_field_id: null, action: null })) },
+      config: {
+        ...field.config,
+        options: options.map((o) => ({ ...o, next_field_id: null, action: null })),
+      },
     });
   }
 
@@ -86,19 +103,41 @@ export function FieldToolbar({
   }
 
   return (
-    <div ref={boxRef} style={{
-      position: "absolute", left: "100%", marginLeft: "10px",
-      visibility: "hidden", pointerEvents: "none",
-    }}>
-      <div style={{
-        position: "sticky", top: `${TOPBAR_HEIGHT + 12}px`,
-        display: "flex", flexDirection: "column", gap: "6px", pointerEvents: "auto",
-      }}>
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
+    <div
+      ref={boxRef}
+      style={{
+        position: "absolute",
+        left: "100%",
+        marginLeft: "10px",
+        visibility: "hidden",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          position: "sticky",
+          top: `${TOPBAR_HEIGHT + 12}px`,
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+          pointerEvents: "auto",
+        }}
+      >
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title="Add field below"
+          onClick={onAddFieldBelow}
+        >
           <IconPlus size={14} />
         </Button>
         <Button
-          type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
+          type="button"
+          variant={showDescription ? "primary" : "secondary"}
+          size="sm"
+          iconOnly
           title="Toggle description"
           onClick={onToggleDescription}
         >
@@ -114,20 +153,25 @@ export function FieldToolbar({
           open={activePopover === "key"}
           onOpenChange={(open) => onActivePopoverChange(open ? "key" : null)}
         />
-        {presetsEnabled && <PresetPopover
-          field={field}
-          onFieldChange={onFieldChange}
-          tracks={tracks}
-          onOpen={onOpenPresets}
-          errors={errors}
-          saveAttempt={saveAttempt}
-          demandComplete={demandPresetComplete}
-          open={activePopover === "preset"}
-          onOpenChange={(open) => onActivePopoverChange(open ? "preset" : null)}
-        />}
+        {presetsEnabled && (
+          <PresetPopover
+            field={field}
+            onFieldChange={onFieldChange}
+            tracks={tracks}
+            onOpen={onOpenPresets}
+            errors={errors}
+            saveAttempt={saveAttempt}
+            demandComplete={demandPresetComplete}
+            open={activePopover === "preset"}
+            onOpenChange={(open) => onActivePopoverChange(open ? "preset" : null)}
+          />
+        )}
         {displayStyle && (
           <Button
-            type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly
+            type="button"
+            variant={displayStyle === "buttons" ? "primary" : "secondary"}
+            size="sm"
+            iconOnly
             title={displayStyle === "buttons" ? "Show as list" : "Show as buttons"}
             onClick={onToggleDisplayStyle}
           >
@@ -136,22 +180,29 @@ export function FieldToolbar({
         )}
         {BRANCHING_TYPES.includes(field.question_type) && (
           <Button
-            type="button" variant={field.branchingEnabled ? "primary" : "secondary"} size="sm" iconOnly
+            type="button"
+            variant={field.branchingEnabled ? "primary" : "secondary"}
+            size="sm"
+            iconOnly
             title={field.branchingEnabled ? "Disable branching" : "Enable branching"}
             onClick={toggleBranching}
           >
             <IconBranch size={14} />
           </Button>
         )}
-        {OPTION_BEARING_TYPES.includes(field.question_type) && allowsCustomValues(activePresetKind(field.field_key)) && (
-          <Button
-            type="button" variant={field.customValuesEnabled ? "primary" : "secondary"} size="sm" iconOnly
-            title={field.customValuesEnabled ? "Hide custom values" : "Set custom values"}
-            onClick={toggleCustomValues}
-          >
-            <IconSwap size={14} />
-          </Button>
-        )}
+        {OPTION_BEARING_TYPES.includes(field.question_type) &&
+          allowsCustomValues(activePresetKind(field.field_key)) && (
+            <Button
+              type="button"
+              variant={field.customValuesEnabled ? "primary" : "secondary"}
+              size="sm"
+              iconOnly
+              title={field.customValuesEnabled ? "Hide custom values" : "Set custom values"}
+              onClick={toggleCustomValues}
+            >
+              <IconSwap size={14} />
+            </Button>
+          )}
       </div>
     </div>
   );

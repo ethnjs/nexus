@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { formsApi, ApiError } from "@/lib/api";
-import { useToast } from "@/lib/useToast";
 import { Button } from "@/components/ui/Button";
+import { IconCopy, IconDotsVertical, IconEdit, IconEye, IconMembers } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import { Switch } from "@/components/ui/Switch";
-import { IconCopy, IconDotsVertical, IconEdit, IconEye, IconMembers } from "@/components/ui/Icons";
+import { ApiError, formsApi } from "@/lib/api";
+import { useToast } from "@/lib/useToast";
 
 export type FormMenuKey = "edit" | "preview" | "responses" | "allow-edits" | "copy-json";
 
 const LABELS: Record<FormMenuKey, string> = {
-  "edit": "Edit",
-  "preview": "Preview",
-  "responses": "View responses",
+  edit: "Edit",
+  preview: "Preview",
+  responses: "View responses",
   "allow-edits": "Allow response edits",
   "copy-json": "Copy JSON",
 };
@@ -26,7 +26,13 @@ function openInNewTab(path: string) {
 // which pass different `items`. "Copy JSON" is a debug/support escape hatch,
 // not a TD feature: it copies the form as a respondent's renderer sees it
 // (formsApi.get, hydrated options included), not getForEdit's raw shape.
-export function FormActionsMenu({ form, items, onAllowEditsChange, lockedReason, size = "md" }: {
+export function FormActionsMenu({
+  form,
+  items,
+  onAllowEditsChange,
+  lockedReason,
+  size = "md",
+}: {
   form: { id: string; allow_response_edits: boolean };
   items: FormMenuKey[];
   /** Called with the saved value once the toggle's PATCH succeeds. */
@@ -46,9 +52,15 @@ export function FormActionsMenu({ form, items, onAllowEditsChange, lockedReason,
   }
 
   async function toggleEdits() {
-    const updated = await formsApi.update(form.id, { allow_response_edits: !form.allow_response_edits });
+    const updated = await formsApi.update(form.id, {
+      allow_response_edits: !form.allow_response_edits,
+    });
     onAllowEditsChange(updated.allow_response_edits);
-    show(updated.allow_response_edits ? "Members can now edit their responses" : "Response edits locked");
+    show(
+      updated.allow_response_edits
+        ? "Members can now edit their responses"
+        : "Response edits locked",
+    );
   }
 
   async function handleSelect(key: FormMenuKey) {
@@ -70,7 +82,14 @@ export function FormActionsMenu({ form, items, onAllowEditsChange, lockedReason,
     <div onClick={(e) => e.stopPropagation()}>
       <Popover
         trigger={
-          <Button type="button" variant={size === "sm" ? "secondary" : "ghost"} size={size} iconOnly title="More options" disabled={busy}>
+          <Button
+            type="button"
+            variant={size === "sm" ? "secondary" : "ghost"}
+            size={size}
+            iconOnly
+            title="More options"
+            disabled={busy}
+          >
             <IconDotsVertical size={16} />
           </Button>
         }

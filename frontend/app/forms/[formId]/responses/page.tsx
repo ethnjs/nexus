@@ -1,16 +1,16 @@
 "use client";
 
-import { CSSProperties, use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formsApi, Form, FormField, FormResponseManager, ApiError } from "@/lib/api";
-import { useActionToast } from "@/lib/useActionToast";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { Spinner } from "@/components/ui/Spinner";
+import { type CSSProperties, use, useEffect, useState } from "react";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
+import { ResponsesView, respondentName } from "@/components/forms/ResponsesView";
+import { FORM_TABS_HEIGHT, SubHeader } from "@/components/forms/SubHeader";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { SubHeader, FORM_TABS_HEIGHT } from "@/components/forms/SubHeader";
-import { ResponsesView, respondentName } from "@/components/forms/ResponsesView";
-import { NoFormAccess } from "@/components/forms/NoFormAccess";
+import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, type Form, type FormField, type FormResponseManager, formsApi } from "@/lib/api";
+import { useActionToast } from "@/lib/useActionToast";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // Two panes need more room than the builder's 800px column.
 const RESPONSES_MAX_WIDTH = 1100;
@@ -55,7 +55,9 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
 
   function removeResponse(id: string) {
     setResponses((prev) => (prev ?? []).filter((r) => r.id !== id));
-    setForm((prev) => (prev ? { ...prev, response_count: Math.max(0, prev.response_count - 1) } : prev));
+    setForm((prev) =>
+      prev ? { ...prev, response_count: Math.max(0, prev.response_count - 1) } : prev,
+    );
   }
 
   if (noAccess) return <NoFormAccess />;
@@ -63,7 +65,9 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
   if (loadError) {
     return (
       <div style={{ padding: "22px 24px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
           {loadError}
         </p>
       </div>
@@ -81,19 +85,32 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
   const tournamentArchived = !!form.tournament_is_archived;
   const deleteLockedReason = tournamentArchived
     ? ARCHIVED_REASON
-    : form.status === "archived" ? FORM_ARCHIVED_REASON : undefined;
+    : form.status === "archived"
+      ? FORM_ARCHIVED_REASON
+      : undefined;
 
   return (
     <div>
       <SubHeader
-        form={form} onUpdated={setForm} onDeleted={handleDeleted} locked={tournamentArchived}
-        activeTab="responses" maxWidth={RESPONSES_MAX_WIDTH} stickyTabs
+        form={form}
+        onUpdated={setForm}
+        onDeleted={handleDeleted}
+        locked={tournamentArchived}
+        activeTab="responses"
+        maxWidth={RESPONSES_MAX_WIDTH}
+        stickyTabs
       />
-      <div style={{
-        maxWidth: `${RESPONSES_MAX_WIDTH}px`, margin: "0 auto", padding: "0 24px 22px",
-        // The respondent list pins itself just under the sticky tab row.
-        "--list-top": `${TOPBAR_HEIGHT + FORM_TABS_HEIGHT}px`,
-      } as CSSProperties}>
+      <div
+        style={
+          {
+            maxWidth: `${RESPONSES_MAX_WIDTH}px`,
+            margin: "0 auto",
+            padding: "0 24px 22px",
+            // The respondent list pins itself just under the sticky tab row.
+            "--list-top": `${TOPBAR_HEIGHT + FORM_TABS_HEIGHT}px`,
+          } as CSSProperties
+        }
+      >
         <ResponsesView
           fields={fields}
           responses={responses}
@@ -108,15 +125,16 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
           noun="response"
           description={
             <>
-              Delete <strong>{respondentName(pendingDelete.respondent)}</strong>&rsquo;s response? Their
-              answers are removed; roster data like availability stays. If this is an onboarding
-              form, they&rsquo;ll need to complete it again.
+              Delete <strong>{respondentName(pendingDelete.respondent)}</strong>&rsquo;s response?
+              Their answers are removed; roster data like availability stays. If this is an
+              onboarding form, they&rsquo;ll need to complete it again.
             </>
           }
-          onDelete={(r) => run(
-            `${respondentName(r.respondent)}'s response deleted`,
-            () => formsApi.deleteResponse(formId, r.id),
-          )}
+          onDelete={(r) =>
+            run(`${respondentName(r.respondent)}'s response deleted`, () =>
+              formsApi.deleteResponse(formId, r.id),
+            )
+          }
           onClose={() => setPendingDelete(null)}
           onDeleted={(ids) => ids.forEach((id) => removeResponse(String(id)))}
         />

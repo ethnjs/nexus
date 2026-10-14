@@ -47,9 +47,7 @@ export function withTrackDetail(
     : { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] };
 
   return [
-    ...event.track_details
-      .filter((d) => d.track_id !== trackId)
-      .map(toTrackDetailInput),
+    ...event.track_details.filter((d) => d.track_id !== trackId).map(toTrackDetailInput),
     { ...base, ...updates },
   ];
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { type DragEndEvent, useDraggable, useDroppable } from "@dnd-kit/core";
 /**
  * One member's staffing, laid out the way the assignments board lays out one
  * event's — but read the other way round. There, a row is an event and the
@@ -10,34 +11,42 @@
  * Writing) has no shifts by construction, so it gets a column in the no-shift
  * area instead of a timeline of its own.
  */
-import {
-  useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent,
-} from "react";
-import { useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
-
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } from "react";
+import { FieldValue } from "@/components/profile/PanelField";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+import { SectionHeading } from "@/components/profile/SectionHeading";
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
 import {
-  AVAILABILITY_GREEN, AVAILABILITY_RED,
+  AVAILABILITY_GREEN,
+  AVAILABILITY_RED,
 } from "@/components/tournament/members/AvailabilityTimeline";
-import { ProfileCard } from "@/components/profile/ProfileCard";
-import { SectionHeading } from "@/components/profile/SectionHeading";
-import { FieldValue } from "@/components/profile/PanelField";
 import { Button } from "@/components/ui/Button";
-import { IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
-  ApiError, assignmentsApi, tournamentEventsApi,
-  type Assignment, type MembershipView, type Role, type TournamentEvent,
-  type TournamentShift, type TournamentTrack,
+  ApiError,
+  type Assignment,
+  assignmentsApi,
+  type MembershipView,
+  type Role,
+  type TournamentEvent,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentEventsApi,
 } from "@/lib/api";
+import { assignmentFlags, type Flag, memberFacts } from "@/lib/assignments/flags";
 import {
-  buildLanes, laneFlags, roleKey, rolesOf, sameRole,
-  type AssignmentRole, type Lane,
+  type AssignmentRole,
+  buildLanes,
+  type Lane,
+  laneFlags,
+  roleKey,
+  rolesOf,
+  sameRole,
 } from "@/lib/assignments/lanes";
-import { assignmentFlags, memberFacts, type Flag } from "@/lib/assignments/flags";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { useToast } from "@/lib/useToast";
@@ -68,8 +77,16 @@ function laneKeyOf(assignment: Assignment) {
 }
 
 export function AssignmentsSection({
-  tournamentId, membershipId, member, allShifts, tracks,
-  roleCatalog, hiddenTrackIds, showAvailability, locked, onChanged,
+  tournamentId,
+  membershipId,
+  member,
+  allShifts,
+  tracks,
+  roleCatalog,
+  hiddenTrackIds,
+  showAvailability,
+  locked,
+  onChanged,
 }: AssignmentsSectionProps) {
   const { show } = useToast();
   // Seeded from the payload and edited locally, so a drag lands instantly
@@ -77,7 +94,9 @@ export function AssignmentsSection({
   // re-seeds this.
   const assignments = useMemo(() => member.assignments ?? [], [member.assignments]);
   const [rows, setRows] = useState<Assignment[]>(assignments);
-  useEffect(() => { setRows(assignments) }, [assignments]);
+  useEffect(() => {
+    setRows(assignments);
+  }, [assignments]);
 
   // The event catalog behind the Add button. Fetched here rather than passed:
   // it is this section's own picker, and no other part of the panel wants it.
@@ -87,10 +106,17 @@ export function AssignmentsSection({
   useEffect(() => {
     if (locked) return;
     let current = true;
-    tournamentEventsApi.list(tournamentId)
-      .then((data) => { if (current) setCatalog(data) })
-      .catch(() => { if (current) setCatalog([]) });
-    return () => { current = false };
+    tournamentEventsApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setCatalog(data);
+      })
+      .catch(() => {
+        if (current) setCatalog([]);
+      });
+    return () => {
+      current = false;
+    };
   }, [tournamentId, locked]);
 
   const visibleTracks = useMemo(
@@ -101,15 +127,19 @@ export function AssignmentsSection({
   // Only competition days have shifts to lay a timeline over, and only the
   // ones that actually hold some — a primary track with an empty schedule
   // would draw an axis with no columns under it.
-  const dayTracks = useMemo(() => visibleTracks
-    .filter((track) => track.is_primary)
-    .map((track) => ({
-      track,
-      shifts: allShifts
-        .filter((shift) => shift.track_id === track.id)
-        .sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id),
-    }))
-    .filter((day) => day.shifts.length > 0), [visibleTracks, allShifts]);
+  const dayTracks = useMemo(
+    () =>
+      visibleTracks
+        .filter((track) => track.is_primary)
+        .map((track) => ({
+          track,
+          shifts: allShifts
+            .filter((shift) => shift.track_id === track.id)
+            .sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id),
+        }))
+        .filter((day) => day.shifts.length > 0),
+    [visibleTracks, allShifts],
+  );
 
   const workstreams = useMemo(
     () => visibleTracks.filter((track) => !track.is_primary),
@@ -162,8 +192,10 @@ export function AssignmentsSection({
    * shift nobody asked to remove.
    */
   function syncLane(
-    eventId: number, track: TournamentTrack,
-    shifts: TournamentShift[], roles: AssignmentRole[],
+    eventId: number,
+    track: TournamentTrack,
+    shifts: TournamentShift[],
+    roles: AssignmentRole[],
   ) {
     if (roles.length === 0) return;
     const previous = rows;
@@ -260,22 +292,27 @@ export function AssignmentsSection({
 
     const track = tracks.find((t) => t.id === target.trackId);
     if (!track) return;
-    const shifts = target.kind === "panel-shift"
-      ? [allShifts.find((s) => s.id === target.shiftId)!]
-      : [];
+    const shifts =
+      target.kind === "panel-shift" ? [allShifts.find((s) => s.id === target.shiftId)!] : [];
 
     const eventId = source.eventId as number;
     // Dragging a chip off one track and onto another is a move, not a second
     // placement — the source's rows go with it. Its roles come along too:
     // whoever placed it there chose them, and a drop is about *where*.
     const fromTrackId = source.fromTrackId as number | undefined;
-    const carried = rows.filter((row) => row.event.id === eventId
-      && (fromTrackId === undefined || row.track.id === fromTrackId));
-    const roles = carried.length > 0
-      ? rolesOf(carried)
-      : [defaultRoleFor(track)].filter((role): role is AssignmentRole => role !== null);
+    const carried = rows.filter(
+      (row) =>
+        row.event.id === eventId && (fromTrackId === undefined || row.track.id === fromTrackId),
+    );
+    const roles =
+      carried.length > 0
+        ? rolesOf(carried)
+        : [defaultRoleFor(track)].filter((role): role is AssignmentRole => role !== null);
     if (roles.length === 0) {
-      show(`No default role set for ${track.name} — set one in tournament settings first.`, "error");
+      show(
+        `No default role set for ${track.name} — set one in tournament settings first.`,
+        "error",
+      );
       return;
     }
 
@@ -296,9 +333,10 @@ export function AssignmentsSection({
     renderOverlay: (activeId) => {
       if (!activeId.startsWith("panel-")) return null;
       const eventId = Number(activeId.split(":")[1]);
-      const event = rows.find((row) => row.event.id === eventId)?.event
-        ?? (catalog ?? []).find((e) => e.id === eventId)
-        ?? pending.find((e) => e.id === eventId);
+      const event =
+        rows.find((row) => row.event.id === eventId)?.event ??
+        (catalog ?? []).find((e) => e.id === eventId) ??
+        pending.find((e) => e.id === eventId);
       return event ? <DragLabel label={eventNameWithDivision(event)} /> : null;
     },
   });
@@ -313,25 +351,29 @@ export function AssignmentsSection({
     <ProfileCard>
       <SectionHeading
         title="Assignments"
-        action={!locked && (
-          <Popover
-            trigger={
-              <Button type="button" variant="secondary" size="sm">
-                <IconPlus size={12} /> Add event
-              </Button>
-            }
-            items={pickable}
-            getKey={(event) => event.id}
-            renderLabel={(event) => eventNameWithDivision(event)}
-            getSearchText={(event) => eventNameWithDivision(event)}
-            searchable
-            onSelect={(event) => setPending((current) => (
-              current.some((e) => e.id === event.id) ? current : [...current, event]
-            ))}
-            emptyMessage={catalog === null ? "Loading…" : "No events yet"}
-            width={280}
-          />
-        )}
+        action={
+          !locked && (
+            <Popover
+              trigger={
+                <Button type="button" variant="secondary" size="sm">
+                  <IconPlus size={12} /> Add event
+                </Button>
+              }
+              items={pickable}
+              getKey={(event) => event.id}
+              renderLabel={(event) => eventNameWithDivision(event)}
+              getSearchText={(event) => eventNameWithDivision(event)}
+              searchable
+              onSelect={(event) =>
+                setPending((current) =>
+                  current.some((e) => e.id === event.id) ? current : [...current, event],
+                )
+              }
+              emptyMessage={catalog === null ? "Loading…" : "No events yet"}
+              width={280}
+            />
+          )
+        }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {/* Picked but not placed. The row exists only while something is
@@ -346,10 +388,13 @@ export function AssignmentsSection({
                   onCancel={() => setPending((current) => current.filter((e) => e.id !== event.id))}
                 />
               ))}
-              <span style={{
-                fontFamily: "var(--font-sans)", fontSize: "11px",
-                color: "var(--color-text-tertiary)",
-              }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
                 Drag onto a shift or a workstream
               </span>
             </div>
@@ -401,8 +446,18 @@ export function AssignmentsSection({
 // One competition day
 // ---------------------------------------------------------------------------
 function DayTimeline({
-  track, shifts, rows, availableShiftIds, showAvailability, roleCatalog, flagsFor,
-  locked, onPickRole, onToggleRole, onRemove, onResize,
+  track,
+  shifts,
+  rows,
+  availableShiftIds,
+  showAvailability,
+  roleCatalog,
+  flagsFor,
+  locked,
+  onPickRole,
+  onToggleRole,
+  onRemove,
+  onResize,
 }: {
   track: TournamentTrack;
   shifts: TournamentShift[];
@@ -428,10 +483,15 @@ function DayTimeline({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.04em", color: "var(--color-text-secondary)",
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "11px",
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          color: "var(--color-text-secondary)",
+        }}
+      >
         {track.name}
         <span style={{ color: "var(--color-text-tertiary)", fontWeight: 400 }}>
           {track.start_date ? ` · ${formatDayLabel(toDateInput(shifts[0].start))}` : ""}
@@ -444,100 +504,139 @@ function DayTimeline({
           divider that started below the header would leave the names
           floating over a row they are supposed to label. */}
       <div style={{ position: "relative" }}>
-      <div style={{
-        position: "absolute", inset: 0, display: "grid",
-        gridTemplateColumns: gridColumns, pointerEvents: "none",
-      }}>
-        {shifts.map((shift, i) => (
-          <div key={shift.id} style={{
-            borderLeft: i === 0 ? "none" : "1px solid var(--color-border)",
-          }} />
-        ))}
-      </div>
-
-      {/* Times and shift names share one line — they name the same axis, and a
-          name is centred in its column while a time sits on the divider
-          between two, so each falls in the other's gap. */}
-      <div style={{
-        position: "relative", display: "grid", gridTemplateColumns: gridColumns,
-        borderBottom: "1px solid var(--color-border)", paddingBottom: "3px",
-      }}>
-        {boundaries.map((moment, i) => (
-          <span
-            key={i}
-            style={{
-              position: "absolute", left: `${(i / columns) * 100}%`, top: "50%",
-              transform: i === columns ? "translate(-100%, -50%)" : "translateY(-50%)",
-              paddingLeft: i === columns ? 0 : "3px",
-              paddingRight: i === columns ? "3px" : 0,
-              fontFamily: "var(--font-sans)", fontSize: "9px",
-              color: "var(--color-text-tertiary)", whiteSpace: "nowrap",
-            }}
-          >
-            {formatTime(moment)}
-          </span>
-        ))}
-        {shifts.map((shift) => (
-          <span key={shift.id} style={{
-            fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 500,
-            color: "var(--color-text-secondary)", textAlign: "center",
-            padding: "0 4px", minWidth: 0,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {shift.label}
-          </span>
-        ))}
-      </div>
-
-      <div style={{
-        position: "relative", display: "flex", flexDirection: "column",
-        gap: "2px", padding: "3px 0", minHeight: "34px",
-      }}>
-        {/* Drop targets and availability shading, over the bars' area only —
-            the dividers are their own layer above, since those run through
-            the header too and this must not tint it. */}
-        <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: gridColumns }}>
-          {shifts.map((shift) => (
-            <ShiftCell
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            gridTemplateColumns: gridColumns,
+            pointerEvents: "none",
+          }}
+        >
+          {shifts.map((shift, i) => (
+            <div
               key={shift.id}
-              shift={shift}
-              trackId={track.id}
-              available={availableShiftIds.has(shift.id)}
-              shade={showAvailability}
-              locked={locked}
+              style={{
+                borderLeft: i === 0 ? "none" : "1px solid var(--color-border)",
+              }}
             />
           ))}
         </div>
 
-        {lanes.length === 0 && (
-          // Sits above the column layer rather than replacing it, so the
-          // availability shading still reads across an empty day — which is
-          // the day you most want to see it on.
-          <div style={{ position: "relative", pointerEvents: "none" }}>
-            <EmptyState size="sm" transparent title="Nothing this day" />
-          </div>
-        )}
+        {/* Times and shift names share one line — they name the same axis, and a
+          name is centred in its column while a time sits on the divider
+          between two, so each falls in the other's gap. */}
+        <div
+          style={{
+            position: "relative",
+            display: "grid",
+            gridTemplateColumns: gridColumns,
+            borderBottom: "1px solid var(--color-border)",
+            paddingBottom: "3px",
+          }}
+        >
+          {boundaries.map((moment, i) => (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                left: `${(i / columns) * 100}%`,
+                top: "50%",
+                transform: i === columns ? "translate(-100%, -50%)" : "translateY(-50%)",
+                paddingLeft: i === columns ? 0 : "3px",
+                paddingRight: i === columns ? "3px" : 0,
+                fontFamily: "var(--font-sans)",
+                fontSize: "9px",
+                color: "var(--color-text-tertiary)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {formatTime(moment)}
+            </span>
+          ))}
+          {shifts.map((shift) => (
+            <span
+              key={shift.id}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "10px",
+                fontWeight: 500,
+                color: "var(--color-text-secondary)",
+                textAlign: "center",
+                padding: "0 4px",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {shift.label}
+            </span>
+          ))}
+        </div>
 
-        {lanes.map((lane) => (
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            padding: "3px 0",
+            minHeight: "34px",
+          }}
+        >
+          {/* Drop targets and availability shading, over the bars' area only —
+            the dividers are their own layer above, since those run through
+            the header too and this must not tint it. */}
           <div
-            key={lane.key}
-            data-panel-lane
-            style={{ position: "relative", display: "grid", gridTemplateColumns: gridColumns }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              gridTemplateColumns: gridColumns,
+            }}
           >
-            <EventBar
-              lane={lane}
-              columns={columns}
-              roleCatalog={roleCatalog}
-              flagsFor={flagsFor}
-              locked={locked}
-              onPickRole={onPickRole}
-              onToggleRole={onToggleRole}
-              onRemove={onRemove}
-              onResize={onResize}
-            />
+            {shifts.map((shift) => (
+              <ShiftCell
+                key={shift.id}
+                shift={shift}
+                trackId={track.id}
+                available={availableShiftIds.has(shift.id)}
+                shade={showAvailability}
+                locked={locked}
+              />
+            ))}
           </div>
-        ))}
-      </div>
+
+          {lanes.length === 0 && (
+            // Sits above the column layer rather than replacing it, so the
+            // availability shading still reads across an empty day — which is
+            // the day you most want to see it on.
+            <div style={{ position: "relative", pointerEvents: "none" }}>
+              <EmptyState size="sm" transparent title="Nothing this day" />
+            </div>
+          )}
+
+          {lanes.map((lane) => (
+            <div
+              key={lane.key}
+              data-panel-lane
+              style={{ position: "relative", display: "grid", gridTemplateColumns: gridColumns }}
+            >
+              <EventBar
+                lane={lane}
+                columns={columns}
+                roleCatalog={roleCatalog}
+                flagsFor={flagsFor}
+                locked={locked}
+                onPickRole={onPickRole}
+                onToggleRole={onToggleRole}
+                onRemove={onRemove}
+                onResize={onResize}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -547,7 +646,13 @@ function DayTimeline({
  *  turned on. Green and red rather than green and nothing — "didn't say" and
  *  "said no" are the same answer here, which is that staffing them is an
  *  override the flags already warn about. */
-function ShiftCell({ shift, trackId, available, shade, locked }: {
+function ShiftCell({
+  shift,
+  trackId,
+  available,
+  shade,
+  locked,
+}: {
   shift: TournamentShift;
   trackId: number;
   available: boolean;
@@ -577,7 +682,14 @@ function ShiftCell({ shift, trackId, available, shade, locked }: {
 // The no-shift area: one column per workstream
 // ---------------------------------------------------------------------------
 function WorkstreamRow({
-  tracks, rows, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove,
+  tracks,
+  rows,
+  roleCatalog,
+  flagsFor,
+  locked,
+  onPickRole,
+  onToggleRole,
+  onRemove,
 }: {
   tracks: TournamentTrack[];
   rows: Assignment[];
@@ -590,24 +702,36 @@ function WorkstreamRow({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-        letterSpacing: "0.05em", textTransform: "uppercase",
-        color: "var(--color-text-tertiary)",
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "10px",
+          fontWeight: 600,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         No shift
       </span>
-      <div style={{
-        display: "grid", gap: "6px",
-        gridTemplateColumns: `repeat(${tracks.length}, minmax(0, 1fr))`,
-      }}>
+      <div
+        style={{
+          display: "grid",
+          gap: "6px",
+          gridTemplateColumns: `repeat(${tracks.length}, minmax(0, 1fr))`,
+        }}
+      >
         {tracks.map((track) => (
           <WorkstreamColumn
             key={track.id}
             track={track}
-            lanes={buildLanes(
-              rows.filter((row) => row.shift === null && row.track.id === track.id), [], laneKeyOf,
-            ).unpinned}
+            lanes={
+              buildLanes(
+                rows.filter((row) => row.shift === null && row.track.id === track.id),
+                [],
+                laneKeyOf,
+              ).unpinned
+            }
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             locked={locked}
@@ -622,7 +746,14 @@ function WorkstreamRow({
 }
 
 function WorkstreamColumn({
-  track, lanes, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove,
+  track,
+  lanes,
+  roleCatalog,
+  flagsFor,
+  locked,
+  onPickRole,
+  onToggleRole,
+  onRemove,
 }: {
   track: TournamentTrack;
   lanes: Lane[];
@@ -642,18 +773,30 @@ function WorkstreamColumn({
     <div
       ref={setNodeRef}
       style={{
-        display: "flex", flexDirection: "column", gap: "5px", minWidth: 0,
-        padding: "5px 6px", borderRadius: "var(--radius-sm)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "5px",
+        minWidth: 0,
+        padding: "5px 6px",
+        borderRadius: "var(--radius-sm)",
         border: "1px solid var(--color-border)",
         background: isOver ? "var(--color-accent-subtle)" : "transparent",
-        minHeight: "48px", transition: "background 120ms ease",
+        minHeight: "48px",
+        transition: "background 120ms ease",
       }}
     >
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-        letterSpacing: "0.04em", color: "var(--color-text-tertiary)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "10px",
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          color: "var(--color-text-tertiary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {track.name}
       </span>
       {lanes.map((lane) => (
@@ -678,7 +821,15 @@ function WorkstreamColumn({
 
 /** A bar on a day's timeline: the chip plus the span it covers. */
 function EventBar({
-  lane, columns, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove, onResize,
+  lane,
+  columns,
+  roleCatalog,
+  flagsFor,
+  locked,
+  onPickRole,
+  onToggleRole,
+  onRemove,
+  onResize,
 }: {
   lane: Lane;
   columns: number;
@@ -754,7 +905,15 @@ function EventBar({
 }
 
 function EventChip({
-  lane, roleCatalog, flags, locked, onPickRole, onToggleRole, onRemove, onResizeStart, resizingEdge,
+  lane,
+  roleCatalog,
+  flags,
+  locked,
+  onPickRole,
+  onToggleRole,
+  onRemove,
+  onResizeStart,
+  resizingEdge,
 }: {
   lane: Lane;
   roleCatalog: Role[];
@@ -785,21 +944,34 @@ function EventChip({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       style={{
-        position: "relative", display: "flex", alignItems: "center", gap: "5px",
-        padding: "3px 10px", borderRadius: "var(--radius-md)",
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "3px 10px",
+        borderRadius: "var(--radius-md)",
         border: `1px solid ${flags.length ? "var(--color-warning)" : "var(--color-border)"}`,
         background: flags.length ? "var(--color-warning-subtle)" : "var(--color-surface)",
-        fontSize: "11px", opacity: isDragging ? 0.4 : 1,
-        cursor: locked ? "default" : "grab", outline: "none", minWidth: 0,
+        fontSize: "11px",
+        opacity: isDragging ? 0.4 : 1,
+        cursor: locked ? "default" : "grab",
+        outline: "none",
+        minWidth: 0,
       }}
     >
       {onResizeStart && !locked && (
         <ResizeGrip edge="start" active={resizingEdge === "start"} onStart={onResizeStart} />
       )}
-      <span style={{
-        fontFamily: "var(--font-sans)", fontWeight: 500, whiteSpace: "nowrap",
-        overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          minWidth: 0,
+        }}
+      >
         {eventNameWithDivision(lane.assignments[0].event)}
       </span>
       {/* stopPropagation so pressing the pill doesn't start a drag of the
@@ -830,11 +1002,20 @@ function EventChip({
           title="Remove from this event"
           aria-label={`Remove ${eventNameWithDivision(lane.assignments[0].event)}`}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0, padding: 0, width: "13px", height: "13px",
-            border: "none", background: "transparent", borderRadius: "3px",
-            color: "var(--color-text-tertiary)", cursor: "pointer",
-            opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            padding: 0,
+            width: "13px",
+            height: "13px",
+            border: "none",
+            background: "transparent",
+            borderRadius: "3px",
+            color: "var(--color-text-tertiary)",
+            cursor: "pointer",
+            opacity: hovered ? 1 : 0,
+            pointerEvents: hovered ? "auto" : "none",
             transition: "opacity 120ms ease",
           }}
         >
@@ -850,7 +1031,11 @@ function EventChip({
 
 /** The chip's own edge, not a separate handle beside it — the thing you reach
  *  for is the end of the bar. */
-function ResizeGrip({ edge, active, onStart }: {
+function ResizeGrip({
+  edge,
+  active,
+  onStart,
+}: {
   edge: "start" | "end";
   active: boolean;
   onStart: (edge: "start" | "end", e: ReactPointerEvent) => void;
@@ -862,16 +1047,27 @@ function ResizeGrip({ edge, active, onStart }: {
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       style={{
-        position: "absolute", top: 0, bottom: 0, [edge === "start" ? "left" : "right"]: 0,
-        width: "8px", cursor: "ew-resize", display: "flex", alignItems: "center",
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        [edge === "start" ? "left" : "right"]: 0,
+        width: "8px",
+        cursor: "ew-resize",
+        display: "flex",
+        alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <div style={{
-        width: "2px", height: "9px", borderRadius: "1px",
-        background: "var(--color-border-strong)",
-        opacity: active || hovered ? 1 : 0, transition: "opacity 120ms ease",
-      }} />
+      <div
+        style={{
+          width: "2px",
+          height: "9px",
+          borderRadius: "1px",
+          background: "var(--color-border-strong)",
+          opacity: active || hovered ? 1 : 0,
+          transition: "opacity 120ms ease",
+        }}
+      />
     </div>
   );
 }
@@ -890,15 +1086,22 @@ function PendingChip({ event, onCancel }: { event: TournamentEvent; onCancel: ()
       {...listeners}
       {...attributes}
       style={{
-        display: "flex", alignItems: "center", gap: "6px",
-        padding: "3px 10px", borderRadius: "var(--radius-md)",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "3px 10px",
+        borderRadius: "var(--radius-md)",
         // Dashed to read as "not placed yet", in the ordinary border colour:
         // --color-accent is near-black and drew a hard box around the one
         // thing on screen that is only half-real.
         border: "1px dashed var(--color-border-strong)",
         background: "var(--color-accent-subtle)",
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
-        cursor: "grab", opacity: isDragging ? 0.4 : 1, outline: "none",
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 500,
+        cursor: "grab",
+        opacity: isDragging ? 0.4 : 1,
+        outline: "none",
       }}
     >
       {eventNameWithDivision(event)}
@@ -909,8 +1112,12 @@ function PendingChip({ event, onCancel }: { event: TournamentEvent; onCancel: ()
         title="Cancel"
         aria-label="Cancel adding this event"
         style={{
-          display: "flex", padding: 0, border: "none", background: "transparent",
-          color: "var(--color-text-tertiary)", cursor: "pointer",
+          display: "flex",
+          padding: 0,
+          border: "none",
+          background: "transparent",
+          color: "var(--color-text-tertiary)",
+          cursor: "pointer",
         }}
       >
         <IconX size={9} />
@@ -921,12 +1128,18 @@ function PendingChip({ event, onCancel }: { event: TournamentEvent; onCancel: ()
 
 function DragLabel({ label }: { label: string }) {
   return (
-    <div style={{
-      padding: "5px 10px", borderRadius: "var(--radius-md)",
-      border: "1px solid var(--color-border)", background: "var(--color-surface)",
-      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
-      boxShadow: "var(--shadow-lg)",
-    }}>
+    <div
+      style={{
+        padding: "5px 10px",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--color-border)",
+        background: "var(--color-surface)",
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 500,
+        boxShadow: "var(--shadow-lg)",
+      }}
+    >
       {label}
     </div>
   );

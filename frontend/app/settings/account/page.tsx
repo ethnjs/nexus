@@ -1,36 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { usersApi, authApi, UserMeFull, EmailPendingChange, ApiError } from "@/lib/api";
-import { Banner } from "@/components/ui/Banner";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { IconInfo } from "@/components/ui/Icons";
-import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER } from "@/lib/auth";
-import { useFormattedInputChange } from "@/lib/useFormattedInput";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { useEffect, useMemo, useState } from "react";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 import { DeactivateAccountModal } from "@/components/settings/DeactivateAccountModal";
 import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { IconInfo } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { ApiError, authApi, type EmailPendingChange, type UserMeFull, usersApi } from "@/lib/api";
+import {
+  DATE_OF_BIRTH_DISCLAIMER,
+  formatPhone,
+  validateDateOfBirth,
+  validatePhone,
+} from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
+import { useFormattedInputChange } from "@/lib/useFormattedInput";
 
 interface ProfileDraft {
-  first_name:    string;
-  last_name:     string;
-  phone:         string;
+  first_name: string;
+  last_name: string;
+  phone: string;
   date_of_birth: string;
 }
 
 function toDraft(user: UserMeFull): ProfileDraft {
   return {
-    first_name:    user.first_name ?? "",
-    last_name:     user.last_name ?? "",
-    phone:         user.phone ?? "",
+    first_name: user.first_name ?? "",
+    last_name: user.last_name ?? "",
+    phone: user.phone ?? "",
     date_of_birth: user.date_of_birth ?? "",
   };
 }
@@ -56,7 +61,9 @@ export default function AccountSettingsPage() {
   const [resendError, setResendError] = useState<string | undefined>(undefined);
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  const [emailChangeResendError, setEmailChangeResendError] = useState<string | undefined>(undefined);
+  const [emailChangeResendError, setEmailChangeResendError] = useState<string | undefined>(
+    undefined,
+  );
   const [emailChangeResending, setEmailChangeResending] = useState(false);
   const [now, setNow] = useState(Date.now());
 
@@ -67,14 +74,16 @@ export default function AccountSettingsPage() {
       return;
     }
 
-    usersApi.meFull()
+    usersApi
+      .meFull()
       .then((user) => {
         setOriginal(user);
         setDraft(toDraft(user));
       })
       .catch(() => setLoadError("Failed to load account settings."));
 
-    authApi.getPendingEmailChange()
+    authApi
+      .getPendingEmailChange()
       .then(setPendingEmailChange)
       .catch(() => {});
   }, [authLoading, currentUser, router]);
@@ -124,9 +133,9 @@ export default function AccountSettingsPage() {
 
     try {
       const updated = await usersApi.updateMe({
-        first_name:    draft.first_name,
-        last_name:     draft.last_name,
-        phone:         draft.phone,
+        first_name: draft.first_name,
+        last_name: draft.last_name,
+        phone: draft.phone,
         date_of_birth: draft.date_of_birth || null,
       });
       setOriginal(updated);
@@ -146,7 +155,9 @@ export default function AccountSettingsPage() {
       const result = await authApi.requestEmailChange(pendingEmailChange.new_email);
       setPendingEmailChange(result);
     } catch (error: unknown) {
-      setEmailChangeResendError(error instanceof ApiError ? error.message : "Failed to resend confirmation email.");
+      setEmailChangeResendError(
+        error instanceof ApiError ? error.message : "Failed to resend confirmation email.",
+      );
     } finally {
       setEmailChangeResending(false);
     }
@@ -160,7 +171,9 @@ export default function AccountSettingsPage() {
       await authApi.sendEmailVerification();
       setResendSuccess(true);
     } catch (error: unknown) {
-      setResendError(error instanceof ApiError ? error.message : "Failed to send verification email.");
+      setResendError(
+        error instanceof ApiError ? error.message : "Failed to send verification email.",
+      );
     } finally {
       setResending(false);
     }
@@ -176,7 +189,13 @@ export default function AccountSettingsPage() {
 
   if (loadError || !original || !draft) {
     return (
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         {loadError ?? "Account not found."}
       </p>
     );
@@ -201,13 +220,34 @@ export default function AccountSettingsPage() {
             onChange={(e) => setDraft((d) => (d ? { ...d, last_name: e.target.value } : d))}
           />
         </SettingsRow>
-        <SettingsRow label="Email" helper="Changing your email requires confirming the new address.">
+        <SettingsRow
+          label="Email"
+          helper="Changing your email requires confirming the new address."
+        >
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "14px",
+                  color: "var(--color-text-primary)",
+                }}
+              >
                 {original.email}
               </span>
-              <Button type="button" variant="secondary" size="sm" onClick={() => setShowEmailModal(true)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowEmailModal(true)}
+              >
                 Change email
               </Button>
             </div>
@@ -217,34 +257,55 @@ export default function AccountSettingsPage() {
                 variant="info"
                 message={`Email change pending confirmation for ${pendingEmailChange.new_email}.`}
                 action={
-                  <Tooltip status={emailChangeResendError ? "error" : "idle"} message={{ error: emailChangeResendError }}>
+                  <Tooltip
+                    status={emailChangeResendError ? "error" : "idle"}
+                    message={{ error: emailChangeResendError }}
+                  >
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
                       onClick={handleResendEmailChange}
                       loading={emailChangeResending}
-                      disabled={!!pendingEmailChange.can_resend_at && now < new Date(pendingEmailChange.can_resend_at).getTime()}
+                      disabled={
+                        !!pendingEmailChange.can_resend_at &&
+                        now < new Date(pendingEmailChange.can_resend_at).getTime()
+                      }
                     >
                       Resend
                     </Button>
                   </Tooltip>
                 }
               />
-            ) : !original.email_verified && (
-              <Banner
-                variant="warning"
-                message={resendSuccess ? "Verification email sent — check your inbox." : "Your email isn't verified yet."}
-                action={
-                  !resendSuccess && (
-                    <Tooltip status={resendError ? "error" : "idle"} message={{ error: resendError }}>
-                      <Button type="button" variant="secondary" size="sm" onClick={handleResendVerification} loading={resending}>
-                        Resend
-                      </Button>
-                    </Tooltip>
-                  )
-                }
-              />
+            ) : (
+              !original.email_verified && (
+                <Banner
+                  variant="warning"
+                  message={
+                    resendSuccess
+                      ? "Verification email sent — check your inbox."
+                      : "Your email isn't verified yet."
+                  }
+                  action={
+                    !resendSuccess && (
+                      <Tooltip
+                        status={resendError ? "error" : "idle"}
+                        message={{ error: resendError }}
+                      >
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleResendVerification}
+                          loading={resending}
+                        >
+                          Resend
+                        </Button>
+                      </Tooltip>
+                    )
+                  }
+                />
+              )
             )}
           </div>
         </SettingsRow>
@@ -265,7 +326,12 @@ export default function AccountSettingsPage() {
           label={
             <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
               Date of birth
-              <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+              <Tooltip
+                variant="info"
+                message={DATE_OF_BIRTH_DISCLAIMER}
+                showIcon={false}
+                maxWidth={400}
+              >
                 <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
                   <IconInfo size={13} />
                 </span>
@@ -293,7 +359,12 @@ export default function AccountSettingsPage() {
           helper="Temporarily disable your account. Contact support to reactivate."
           contentStyle={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}
         >
-          <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
+          <Button
+            type="button"
+            variant="danger"
+            size="md"
+            onClick={() => setShowDeactivateModal(true)}
+          >
             Deactivate
           </Button>
         </SettingsRow>
@@ -318,7 +389,9 @@ export default function AccountSettingsPage() {
         />
       )}
 
-      {showDeactivateModal && <DeactivateAccountModal onClose={() => setShowDeactivateModal(false)} />}
+      {showDeactivateModal && (
+        <DeactivateAccountModal onClose={() => setShowDeactivateModal(false)} />
+      )}
       {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} />}
 
       <FloatingSaveBar

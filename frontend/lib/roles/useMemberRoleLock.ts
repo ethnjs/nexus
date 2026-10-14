@@ -1,23 +1,25 @@
 "use client";
 
 import { useMemo } from "react";
-import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { MembershipView, Role } from "@/lib/api";
+import type { MembershipView, Role } from "@/lib/api";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { useTournament } from "@/lib/useTournament";
 
 /** Why `canTouchRole` said no. One string for every caller: the rule is the
  *  same whoever the target is — including yourself, so don't special-case
  *  self with a "your own highest-ranked role" message. That reads as "only
  *  this one role of yours is protected" when in fact every role at or above
  *  your rank is, on anyone. */
-export const RANK_LOCK_REASON = "You can't touch a role that ties or outranks your own highest role.";
+export const RANK_LOCK_REASON =
+  "You can't touch a role that ties or outranks your own highest role.";
 
 /** Why `canEditMember` said no, for a control that stays visible and locked
  *  rather than disappearing — a missing button says nothing about why. */
 export const OWNER_LOCK_REASON = "Only the tournament owner can change the owner's roles.";
-export const MEMBER_RANK_LOCK_REASON = "This member's roles tie or outrank your own, so you can't change them.";
+export const MEMBER_RANK_LOCK_REASON =
+  "This member's roles tie or outrank your own, so you can't change them.";
 export const NO_RANK_LOCK_REASON = "You hold no ranked role, so you can't change anyone's roles.";
 
 export interface MemberRoleLock {
@@ -86,13 +88,20 @@ export function useMemberRoleLock(): MemberRoleLock {
   function memberLockReason(target: MembershipView): string | undefined {
     if (canEditMember(target)) return undefined;
     if (isArchived) return ARCHIVED_REASON;
-    if (selectedTournament && target.user.id === selectedTournament.owner_id) return OWNER_LOCK_REASON;
+    if (selectedTournament && target.user.id === selectedTournament.owner_id)
+      return OWNER_LOCK_REASON;
     if (ownRank === null) return NO_RANK_LOCK_REASON;
     return MEMBER_RANK_LOCK_REASON;
   }
 
   return {
-    canManageMembers, isArchived, membershipLoading, ownRank, bypassRankBound,
-    canTouchRole, canEditMember, memberLockReason,
+    canManageMembers,
+    isArchived,
+    membershipLoading,
+    ownRank,
+    bypassRankBound,
+    canTouchRole,
+    canEditMember,
+    memberLockReason,
   };
 }

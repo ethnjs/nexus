@@ -1,5 +1,20 @@
 "use client";
 
+import {
+  type CollisionDetection,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  type Modifier,
+  PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useDndMonitor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { getEventCoordinates } from "@dnd-kit/utilities";
 /**
  * The assignments board's drag context, hoisted above the tournament shell
  * (see app/dashboard/tournaments/[id]/layout.tsx) rather than living in the
@@ -15,15 +30,14 @@
  * only supplies the context and the overlay.
  */
 import {
-  createContext, useCallback, useContext, useEffect, useRef, useState,
+  createContext,
   type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
-import {
-  DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection,
-  useDndMonitor, useSensor, useSensors,
-  type CollisionDetection, type DragEndEvent, type DragStartEvent, type Modifier,
-} from "@dnd-kit/core";
-import { getEventCoordinates } from "@dnd-kit/utilities";
 
 /**
  * Whatever is under the cursor, falling back to rectangles.
@@ -115,7 +129,7 @@ function edgeSpeed(y: number, top: number, bottom: number): number {
     return Math.min(1, (y - (bottom - SCROLL_EDGE)) / SCROLL_EDGE) * SCROLL_MAX_SPEED;
   }
   if (y < top + SCROLL_EDGE) {
-    return -Math.min(1, ((top + SCROLL_EDGE) - y) / SCROLL_EDGE) * SCROLL_MAX_SPEED;
+    return -Math.min(1, (top + SCROLL_EDGE - y) / SCROLL_EDGE) * SCROLL_MAX_SPEED;
   }
   return 0;
 }
@@ -181,18 +195,25 @@ interface DropTargetData {
 function AssigningTo() {
   const [label, setLabel] = useState<string | null>(null);
   useDndMonitor({
-    onDragOver: ({ over }) => setLabel((over?.data.current as DropTargetData | undefined)?.label ?? null),
+    onDragOver: ({ over }) =>
+      setLabel((over?.data.current as DropTargetData | undefined)?.label ?? null),
     onDragEnd: () => setLabel(null),
     onDragCancel: () => setLabel(null),
   });
   if (!label) return null;
   return (
-    <div style={{
-      padding: "3px 7px", borderRadius: "var(--radius-sm)",
-      background: "var(--color-text-primary)", color: "var(--color-surface)",
-      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
-      whiteSpace: "nowrap",
-    }}>
+    <div
+      style={{
+        padding: "3px 7px",
+        borderRadius: "var(--radius-sm)",
+        background: "var(--color-text-primary)",
+        color: "var(--color-surface)",
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+      }}
+    >
       Assigning to {label}
     </div>
   );
@@ -209,7 +230,9 @@ interface BoardDndHandlers {
   labelFor?: (activeId: string) => string | null;
 }
 
-const RegisterContext = createContext<((id: string, handlers: BoardDndHandlers) => void) | null>(null);
+const RegisterContext = createContext<((id: string, handlers: BoardDndHandlers) => void) | null>(
+  null,
+);
 
 /**
  * "Is a drag in flight" as its own one-boolean context.
@@ -245,7 +268,9 @@ export function useBoardDragLabel() {
  */
 export function useRegisterBoardDnd(id: string, handlers: BoardDndHandlers) {
   const register = useContext(RegisterContext);
-  useEffect(() => { register?.(id, handlers) });
+  useEffect(() => {
+    register?.(id, handlers);
+  });
 }
 
 export function BoardDndProvider({ children }: { children: ReactNode }) {
@@ -311,7 +336,11 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
           setDragLabel(null);
           for (const entry of handlers.current.values()) entry.onDragEnd?.(event);
         }}
-        onDragCancel={() => { setDragging(false); setOverlay(null); setDragLabel(null) }}
+        onDragCancel={() => {
+          setDragging(false);
+          setOverlay(null);
+          setDragLabel(null);
+        }}
       >
         <DraggingContext.Provider value={dragging}>
           <DragLabelContext.Provider value={dragLabel}>{children}</DragLabelContext.Provider>
@@ -336,18 +365,30 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
               {/* max-content, or the name wraps to one word per line: an
                   absolutely positioned box shrinks to fit its containing
                   block, and this one's is the zero-width anchor. */}
-              <div style={{
-                position: "absolute", top: 0, left: 0, transform: "translate(-50%, -50%)",
-                width: "max-content",
-              }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  transform: "translate(-50%, -50%)",
+                  width: "max-content",
+                }}
+              >
                 {overlay}
               </div>
               {/* Below the chip, clear of the cursor: a label under the
                   pointer is the one thing you cannot read while aiming. */}
-              <div style={{
-                position: "absolute", top: "22px", left: 0, transform: "translateX(-50%)",
-                width: "max-content", display: "flex", justifyContent: "center",
-              }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: "22px",
+                  left: 0,
+                  transform: "translateX(-50%)",
+                  width: "max-content",
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
                 <AssigningTo />
               </div>
             </div>

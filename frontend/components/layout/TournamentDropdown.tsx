@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTournament } from "@/lib/useTournament";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { Tournament } from "@/lib/api";
-import { tournamentDisplayName } from "@/lib/tournamentDisplay";
+import { useState } from "react";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconPlus } from "@/components/ui/Icons";
+import type { Tournament } from "@/lib/api";
+import { tournamentDisplayName } from "@/lib/tournamentDisplay";
+import { useTournament } from "@/lib/useTournament";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 interface TournamentDropdownProps {
   tournamentId?: string | number;

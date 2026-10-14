@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LayoutPanel, useLayoutPanelContent } from "@/lib/useLayoutPanel";
+import { type LayoutPanel, useLayoutPanelContent } from "@/lib/useLayoutPanel";
 
 // Renders whatever a descendant registered via useSetLayoutPanel as a sibling
 // of the Topbar+main column, so it consumes layout width instead of covering
@@ -50,27 +50,32 @@ export function LayoutPanelSlot() {
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => setArmed(true));
     });
-    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [isOpen]);
 
   if (!mounted) return null;
 
   return (
     <div
-      onTransitionEnd={() => { if (!expanded) setMounted(null); }}
+      onTransitionEnd={() => {
+        if (!expanded) setMounted(null);
+      }}
       style={{
         width: expanded ? mounted.width : 0,
         opacity: expanded ? 1 : 0,
-        flexShrink: 0, overflow: "hidden", height: "100%",
+        flexShrink: 0,
+        overflow: "hidden",
+        height: "100%",
         // Same 220ms/ease as the members table's grid-template-columns
         // transition, so the table's Roles column collapses in lockstep with
         // this sliding open rather than finishing 20ms early.
         transition: "width 220ms ease, opacity 220ms ease",
       }}
     >
-      <div style={{ width: mounted.width, height: "100%" }}>
-        {mounted.content}
-      </div>
+      <div style={{ width: mounted.width, height: "100%" }}>{mounted.content}</div>
     </div>
   );
 }

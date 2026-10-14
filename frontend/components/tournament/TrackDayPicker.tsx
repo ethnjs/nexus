@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import { Dropdown } from "@/components/ui/Dropdown";
 import type { TournamentTrack } from "@/lib/api";
 import { enumerateDays } from "@/lib/date";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { formatDayLabel } from "@/lib/timeFormat";
 
 interface TrackDayPickerProps {
@@ -34,10 +34,20 @@ interface TrackDayPickerProps {
  * day the shift lands on.
  */
 export function TrackDayPicker({
-  label, value, onChange, track, placeholder = "Select a day", locked, required, size = "md", fullWidth, error,
+  label,
+  value,
+  onChange,
+  track,
+  placeholder = "Select a day",
+  locked,
+  required,
+  size = "md",
+  fullWidth,
+  error,
 }: TrackDayPickerProps) {
   const days = useMemo(
-    () => (track?.start_date && track.end_date ? enumerateDays(track.start_date, track.end_date) : []),
+    () =>
+      track?.start_date && track.end_date ? enumerateDays(track.start_date, track.end_date) : [],
     [track],
   );
 

@@ -1,25 +1,37 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { rolesApi, ApiError, Permission, Role, RoleWithMemberCount } from "@/lib/api";
-import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
-import { defaultNewRoleLabel, isTempRole, isTempRoleId, nextBottomRank, rankChanges } from "@/lib/roles/roleReorder";
-import { useRoleLock } from "@/lib/roles/useRoleLock";
-import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { TabStrip } from "@/components/ui/TabStrip";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
+import { type RoleDraft, RoleEditorForm } from "@/components/tournament/settings/RoleEditorForm";
 import { RoleMembersTab } from "@/components/tournament/settings/RoleMembersTab";
-import { RoleDraft, RoleEditorForm } from "@/components/tournament/settings/RoleEditorForm";
-import { EXTERNAL_ROLE_FIELDS } from "@/lib/exports/externalSystems";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import { TabStrip } from "@/components/ui/TabStrip";
+import { Tooltip } from "@/components/ui/Tooltip";
+import {
+  ApiError,
+  type Permission,
+  type Role,
+  type RoleWithMemberCount,
+  rolesApi,
+} from "@/lib/api";
+import { EXTERNAL_ROLE_FIELDS } from "@/lib/exports/externalSystems";
+import {
+  defaultNewRoleLabel,
+  isTempRole,
+  isTempRoleId,
+  nextBottomRank,
+  rankChanges,
+} from "@/lib/roles/roleReorder";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
+import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 function draftFromRole(role: Role): RoleDraft {
   return {
@@ -31,9 +43,12 @@ function draftFromRole(role: Role): RoleDraft {
 }
 
 function draftDiffers(draft: RoleDraft, role: Role): boolean {
-  return draft.label.trim() !== role.label
-    || JSON.stringify([...draft.permissions].sort()) !== JSON.stringify([...role.permissions].sort())
-    || EXTERNAL_ROLE_FIELDS.some((field) => draft[field] !== role[field]);
+  return (
+    draft.label.trim() !== role.label ||
+    JSON.stringify([...draft.permissions].sort()) !==
+      JSON.stringify([...role.permissions].sort()) ||
+    EXTERNAL_ROLE_FIELDS.some((field) => draft[field] !== role[field])
+  );
 }
 
 export default function RoleEditorPage() {
@@ -65,13 +80,16 @@ export default function RoleEditorPage() {
   // The server list is authoritative for real roles, but unsaved temp drafts
   // have to survive a refetch — except the ones whose create just landed, which
   // the caller identifies by temp id.
-  const refreshRoles = useCallback(async (createdTempIds?: Set<number>) => {
-    const next = await rolesApi.list(tournamentId).catch(() => []);
-    setRoles((cur) => {
-      const temps = (cur ?? []).filter((r) => isTempRole(r) && !createdTempIds?.has(r.id));
-      return temps.length > 0 ? [...next, ...temps] : next;
-    });
-  }, [tournamentId]);
+  const refreshRoles = useCallback(
+    async (createdTempIds?: Set<number>) => {
+      const next = await rolesApi.list(tournamentId).catch(() => []);
+      setRoles((cur) => {
+        const temps = (cur ?? []).filter((r) => isTempRole(r) && !createdTempIds?.has(r.id));
+        return temps.length > 0 ? [...next, ...temps] : next;
+      });
+    },
+    [tournamentId],
+  );
 
   // Fetched once — switching the active role never re-triggers this.
   useEffect(() => {
@@ -98,7 +116,9 @@ export default function RoleEditorPage() {
   // spreads the RoleWithMemberCount objects we passed in, so member_count
   // survives at runtime — the cast just corrects the narrowed type.
   const reorder = useRoleReorder({
-    tournamentId, roles, isLocked,
+    tournamentId,
+    roles,
+    isLocked,
     onSaved: (updated) => setRoles(updated as RoleWithMemberCount[]),
   });
 
@@ -118,11 +138,11 @@ export default function RoleEditorPage() {
 
   // A temp role has no server baseline to diff against — the whole thing is
   // unsaved — so its fields live in `roles` itself rather than in `drafts`.
-  const draftFor = useCallback((role: Role): RoleDraft => (
-    isTempRole(role)
-      ? draftFromRole(role)
-      : drafts[role.id] ?? draftFromRole(role)
-  ), [drafts]);
+  const draftFor = useCallback(
+    (role: Role): RoleDraft =>
+      isTempRole(role) ? draftFromRole(role) : (drafts[role.id] ?? draftFromRole(role)),
+    [drafts],
+  );
 
   const setDraft = useCallback((roleId: number, patch: Partial<RoleDraft>) => {
     if (isTempRoleId(roleId)) {
@@ -179,13 +199,20 @@ export default function RoleEditorPage() {
     // Temp id -> real id, filled as each create resolves rather than from the
     // batch's result, so a partial failure still knows exactly which landed.
     const landed = new Map<number, number>();
-    const creates = temps.map((t) => rolesApi.create(tournamentId, {
-      label: t.label.trim(),
-      permissions: t.permissions as Permission[],
-      rank: draftRanks.get(t.id) ?? t.rank,
-      torus_role: t.torus_role,
-      duosmium_role: t.duosmium_role,
-    }).then((role) => { landed.set(t.id, role.id); return role; }));
+    const creates = temps.map((t) =>
+      rolesApi
+        .create(tournamentId, {
+          label: t.label.trim(),
+          permissions: t.permissions as Permission[],
+          rank: draftRanks.get(t.id) ?? t.rank,
+          torus_role: t.torus_role,
+          duosmium_role: t.duosmium_role,
+        })
+        .then((role) => {
+          landed.set(t.id, role.id);
+          return role;
+        }),
+    );
 
     try {
       // Creates are awaited *before* the reorder rather than racing it in one
@@ -201,12 +228,14 @@ export default function RoleEditorPage() {
         // Skipped entirely when nothing else moved — otherwise a new role
         // slotted into an existing gap would log a pointless reorder.
         changes.length > 0 ? rolesApi.reorderBulk(tournamentId, changes) : Promise.resolve(),
-        ...edits.map((r) => rolesApi.update(tournamentId, r.id, {
-          label: drafts[r.id].label.trim(),
-          permissions: drafts[r.id].permissions,
-          torus_role: drafts[r.id].torus_role,
-          duosmium_role: drafts[r.id].duosmium_role,
-        })),
+        ...edits.map((r) =>
+          rolesApi.update(tournamentId, r.id, {
+            label: drafts[r.id].label.trim(),
+            permissions: drafts[r.id].permissions,
+            torus_role: drafts[r.id].torus_role,
+            duosmium_role: drafts[r.id].duosmium_role,
+          }),
+        ),
       ]);
       setDrafts({});
       saved = true;
@@ -224,7 +253,7 @@ export default function RoleEditorPage() {
       await refreshRoles(new Set(landed.keys()));
       // Swap the open role's temp id for the id the backend just assigned, so
       // no negative id survives into the next render or request.
-      setActiveRoleId((cur) => (cur !== null ? landed.get(cur) ?? cur : cur));
+      setActiveRoleId((cur) => (cur !== null ? (landed.get(cur) ?? cur) : cur));
       setFieldSaving(false);
     }
   }
@@ -259,18 +288,21 @@ export default function RoleEditorPage() {
     const id = nextTempIdRef.current--;
     setRoles((cur) => {
       const list = cur ?? [];
-      return [...list, {
-        id,
-        tournament_id: tournamentId,
-        label: defaultNewRoleLabel(list.map((r) => r.label)),
-        torus_role: null,
-        duosmium_role: null,
-        permissions: [],
-        rank: nextBottomRank(list),
-        member_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }];
+      return [
+        ...list,
+        {
+          id,
+          tournament_id: tournamentId,
+          label: defaultNewRoleLabel(list.map((r) => r.label)),
+          torus_role: null,
+          duosmium_role: null,
+          permissions: [],
+          rank: nextBottomRank(list),
+          member_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ];
     });
     setActiveRoleId(id);
     setActiveTab("details");
@@ -304,19 +336,30 @@ export default function RoleEditorPage() {
 
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
         <Card radius="lg" style={{ width: "260px", flexShrink: 0, padding: "8px" }}>
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "4px 4px 8px", marginBottom: "4px", borderBottom: "1px solid var(--color-border)",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 4px 8px",
+              marginBottom: "4px",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => guard(() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`))}
+              onClick={() =>
+                guard(() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`))
+              }
               style={{
                 padding: "4px 6px",
-                fontSize: "11px", fontWeight: 700,
-                letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-secondary)",
+                fontSize: "11px",
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--color-text-secondary)",
               }}
             >
               <IconArrowLeft size={12} /> Back
@@ -338,15 +381,23 @@ export default function RoleEditorPage() {
           </div>
 
           <DndContext {...reorder.dndProps}>
-            <RoleDropDivider state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)} />
+            <RoleDropDivider
+              state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)}
+            />
             {reorder.groups.map((group, gi) => (
               <Fragment key={group[0].id}>
-                <div style={{
-                  display: "flex", flexDirection: "column",
-                  padding: "4px",
-                  border: group.length > 1 ? "1px dashed var(--color-border-strong)" : "1px solid transparent",
-                  borderRadius: "var(--radius-md)",
-                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    padding: "4px",
+                    border:
+                      group.length > 1
+                        ? "1px dashed var(--color-border-strong)"
+                        : "1px solid transparent",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
                   {group.map((role, ri) => (
                     <Fragment key={role.id}>
                       <RoleNavRow
@@ -363,7 +414,12 @@ export default function RoleEditorPage() {
                     </Fragment>
                   ))}
                 </div>
-                <RoleDropDivider state={reorder.dividerStateFor(group[group.length - 1], reorder.groups[gi + 1]?.[0] ?? null)} />
+                <RoleDropDivider
+                  state={reorder.dividerStateFor(
+                    group[group.length - 1],
+                    reorder.groups[gi + 1]?.[0] ?? null,
+                  )}
+                />
               </Fragment>
             ))}
           </DndContext>
@@ -375,7 +431,8 @@ export default function RoleEditorPage() {
               <TabStrip
                 tabs={tabs.map((tab) => ({
                   key: tab,
-                  label: tab === "details" ? "Details" : `Members — ${memberCounts[activeRole.id] ?? 0}`,
+                  label:
+                    tab === "details" ? "Details" : `Members — ${memberCounts[activeRole.id] ?? 0}`,
                 }))}
                 activeKey={activeTab}
                 onChange={setActiveTab}
@@ -394,11 +451,15 @@ export default function RoleEditorPage() {
                     setActiveRoleId(null);
                   }}
                   // Never persisted, so discarding is just dropping it locally.
-                  onDiscard={activeIsTemp ? () => {
-                    const id = activeRole.id;
-                    setRoles((cur) => (cur ?? []).filter((r) => r.id !== id));
-                    setActiveRoleId(null);
-                  } : undefined}
+                  onDiscard={
+                    activeIsTemp
+                      ? () => {
+                          const id = activeRole.id;
+                          setRoles((cur) => (cur ?? []).filter((r) => r.id !== id));
+                          setActiveRoleId(null);
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <RoleMembersTab
@@ -410,7 +471,14 @@ export default function RoleEditorPage() {
               )}
             </>
           ) : (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", padding: "12px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-tertiary)",
+                padding: "12px",
+              }}
+            >
               Select a role from the list to edit it.
             </p>
           )}
@@ -430,54 +498,89 @@ export default function RoleEditorPage() {
 }
 
 interface RoleNavRowProps {
-  role:          Role;
-  displayLabel:  string;
-  active:        boolean;
-  lockReason:    string | null;
+  role: Role;
+  displayLabel: string;
+  active: boolean;
+  lockReason: string | null;
   dropIndicator: { noop: boolean } | null;
-  onSelect:      (roleId: number) => void;
+  onSelect: (roleId: number) => void;
 }
 
 // Memoized: the page re-renders on every draft keystroke now that drafts
 // live here, and only the edited role's row actually changes.
-const RoleNavRow = memo(function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onSelect }: RoleNavRowProps) {
+const RoleNavRow = memo(function RoleNavRow({
+  role,
+  displayLabel,
+  active,
+  lockReason,
+  dropIndicator,
+  onSelect,
+}: RoleNavRowProps) {
   const locked = lockReason !== null;
   const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
 
   const indicatorStyle: React.CSSProperties = dropIndicator
-    ? { background: dropIndicator.noop ? "var(--color-accent-subtle)" : "var(--color-success-subtle)" }
+    ? {
+        background: dropIndicator.noop
+          ? "var(--color-accent-subtle)"
+          : "var(--color-success-subtle)",
+      }
     : {};
 
   // No separate grip handle — the whole row is the drag handle, so both
   // useDraggable's and useDroppable's refs/props land on this one button.
   return (
     <button
-      ref={(node) => { setGripRef(node); setDropRef(node); }}
+      ref={(node) => {
+        setGripRef(node);
+        setDropRef(node);
+      }}
       {...(locked ? {} : gripProps)}
       type="button"
       onClick={() => onSelect(role.id)}
       style={{
         ...dragStyle,
-        display: "flex", alignItems: "center", gap: "8px", width: "100%",
-        padding: "7px 8px", border: "none", cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        width: "100%",
+        padding: "7px 8px",
+        border: "none",
+        cursor: "pointer",
         borderRadius: "var(--radius-md)",
         background: active ? "var(--color-accent-subtle)" : "transparent",
         ...indicatorStyle,
       }}
     >
-      <span style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: "20px", height: "20px", borderRadius: "50%",
-        background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
-        flexShrink: 0,
-      }}>
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "20px",
+          height: "20px",
+          borderRadius: "50%",
+          background: "var(--color-accent-subtle)",
+          color: "var(--color-text-secondary)",
+          flexShrink: 0,
+        }}
+      >
         <IconUserShield size={10} />
       </span>
 
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: active ? 600 : 500,
-        color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left",
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          fontWeight: active ? 600 : 500,
+          color: "var(--color-text-primary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          flex: 1,
+          textAlign: "left",
+        }}
+      >
         {displayLabel}
       </span>
 

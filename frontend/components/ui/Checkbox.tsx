@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 // appearance: none + manual styling rather than the native OS checkbox —
 // needed to control border thickness and the unchecked background (a
@@ -6,21 +6,21 @@
 // <input type="checkbox">, just repainted, so click/keyboard/label
 // semantics are unchanged for every existing caller.
 interface CheckboxProps {
-  checked:  boolean
-  onChange: (checked: boolean) => void
-  locked?:  boolean
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  locked?: boolean;
   /** Width/height in px. */
-  size?: number
+  size?: number;
 }
 
 // Checkmark is hardcoded white rather than var(--color-text-inverse) —
 // CSS custom properties don't resolve inside a data: URI.
 // Vertices sit half a unit above the viewBox's midline: with the round caps
 // and 2.25 stroke, that puts the drawn ink's centre on 6,6, not the path's.
-const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 5.5l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`
+const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 5.5l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`;
 
 export function Checkbox({ checked, onChange, locked = false, size = 16 }: CheckboxProps) {
-  const color = locked ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)'
+  const color = locked ? "var(--color-text-tertiary)" : "var(--color-text-secondary)";
 
   return (
     <input
@@ -29,10 +29,10 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
       disabled={locked}
       onChange={(e) => onChange(e.target.checked)}
       style={{
-        appearance: 'none',
-        WebkitAppearance: 'none',
+        appearance: "none",
+        WebkitAppearance: "none",
         margin: 0,
-        boxSizing: 'border-box',
+        boxSizing: "border-box",
         width: `${size}px`,
         height: `${size}px`,
         // Same pinning as RadioCircle: a flex parent must not grow, shrink,
@@ -41,22 +41,24 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         minHeight: `${size}px`,
         maxWidth: `${size}px`,
         maxHeight: `${size}px`,
-        aspectRatio: '1 / 1',
-        alignSelf: 'center',
-        borderRadius: '4px',
+        aspectRatio: "1 / 1",
+        alignSelf: "center",
+        borderRadius: "4px",
         border: `2px solid ${color}`,
-        backgroundColor: checked ? color : 'var(--color-surface)',
-        backgroundImage: checked ? `url("data:image/svg+xml,${encodeURIComponent(CHECK_SVG)}")` : 'none',
+        backgroundColor: checked ? color : "var(--color-surface)",
+        backgroundImage: checked
+          ? `url("data:image/svg+xml,${encodeURIComponent(CHECK_SVG)}")`
+          : "none",
         // Whole px, not 85%: a fractional image inside a fractional-height
         // row rasterises at a different subpixel phase per row, which reads
         // as the tick sitting higher on some rows than others.
         backgroundSize: `${Math.round((size - 4) * 0.85)}px`,
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        cursor: locked ? 'not-allowed' : 'pointer',
-        flex: '0 0 auto',
-        transition: 'background 120ms ease, border-color 120ms ease',
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        cursor: locked ? "not-allowed" : "pointer",
+        flex: "0 0 auto",
+        transition: "background 120ms ease, border-color 120ms ease",
       }}
     />
-  )
+  );
 }

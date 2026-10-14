@@ -1,28 +1,30 @@
 "use client";
 
-import type { DuosmiumRole, TorusRole } from "@/lib/api";
-import type { BuiltinInfo } from "@/lib/exports/builtins";
-import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { PanelField } from "@/components/tournament/exports/PanelField";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
+import type { DuosmiumRole, TorusRole } from "@/lib/api";
+import type { BuiltinInfo } from "@/lib/exports/builtins";
+import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 
-const roleOptions = (field: "torus_role" | "duosmium_role") => Object.entries(
-  EXTERNAL_SYSTEMS.find((s) => s.field === field)!.roles,
-).map(([value, info]) => ({ value, label: info.label }));
+const roleOptions = (field: "torus_role" | "duosmium_role") =>
+  Object.entries(EXTERNAL_SYSTEMS.find((s) => s.field === field)!.roles).map(([value, info]) => ({
+    value,
+    label: info.label,
+  }));
 
 const TORUS_OPTIONS = roleOptions("torus_role");
 const DUOSMIUM_OPTIONS = roleOptions("duosmium_role");
 
 interface BuiltinOptionsProps {
-  builtin:       BuiltinInfo;
-  tracks:        { id: number; name: string }[];
-  trackId:       number | null;
+  builtin: BuiltinInfo;
+  tracks: { id: number; name: string }[];
+  trackId: number | null;
   onTrackChange: (trackId: number) => void;
-  divisions:     string[];
-  division:      string;
+  divisions: string[];
+  division: string;
   onDivisionChange: (division: string) => void;
-  torusRole:     TorusRole;
+  torusRole: TorusRole;
   onTorusRoleChange: (role: TorusRole) => void;
   duosmiumRoles: DuosmiumRole[];
   onDuosmiumRolesChange: (roles: DuosmiumRole[]) => void;
@@ -30,8 +32,17 @@ interface BuiltinOptionsProps {
 
 /** The few choices a built-in preset takes. Only the ones it uses render. */
 export function BuiltinOptions({
-  builtin, tracks, trackId, onTrackChange, divisions, division, onDivisionChange,
-  torusRole, onTorusRoleChange, duosmiumRoles, onDuosmiumRolesChange,
+  builtin,
+  tracks,
+  trackId,
+  onTrackChange,
+  divisions,
+  division,
+  onDivisionChange,
+  torusRole,
+  onTorusRoleChange,
+  duosmiumRoles,
+  onDuosmiumRolesChange,
 }: BuiltinOptionsProps) {
   const rows: { label: string; control: React.ReactNode }[] = [];
 
@@ -53,7 +64,12 @@ export function BuiltinOptions({
     rows.push({
       label: "TORUS role",
       control: (
-        <Dropdown fullWidth value={torusRole} onChange={(v) => onTorusRoleChange(v as TorusRole)} options={TORUS_OPTIONS} />
+        <Dropdown
+          fullWidth
+          value={torusRole}
+          onChange={(v) => onTorusRoleChange(v as TorusRole)}
+          options={TORUS_OPTIONS}
+        />
       ),
     });
   }
@@ -66,9 +82,11 @@ export function BuiltinOptions({
           value={duosmiumRoles}
           onChange={(value) => {
             const role = value as DuosmiumRole;
-            onDuosmiumRolesChange(duosmiumRoles.includes(role)
-              ? duosmiumRoles.filter((r) => r !== role)
-              : [...duosmiumRoles, role]);
+            onDuosmiumRolesChange(
+              duosmiumRoles.includes(role)
+                ? duosmiumRoles.filter((r) => r !== role)
+                : [...duosmiumRoles, role],
+            );
           }}
         />
       ),
@@ -91,7 +109,11 @@ export function BuiltinOptions({
   if (rows.length === 0) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {rows.map((row) => <PanelField key={row.label} label={row.label}>{row.control}</PanelField>)}
+      {rows.map((row) => (
+        <PanelField key={row.label} label={row.label}>
+          {row.control}
+        </PanelField>
+      ))}
     </div>
   );
 }

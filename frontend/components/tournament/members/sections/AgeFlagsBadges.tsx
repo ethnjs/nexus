@@ -1,7 +1,7 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge";
 import { FieldValue } from "@/components/profile/PanelField";
+import { Badge } from "@/components/ui/Badge";
 
 interface AgeFlagsBadgesProps {
   // `undefined` covers the field being omitted from the API response
@@ -23,13 +23,24 @@ interface AgeFlagsBadgesProps {
   compact?: boolean;
 }
 
-function AgeBadge({ value, label, compact }: { value: boolean | null | undefined; label: "18+" | "21+"; compact?: boolean }) {
+function AgeBadge({
+  value,
+  label,
+  compact,
+}: {
+  value: boolean | null | undefined;
+  label: "18+" | "21+";
+  compact?: boolean;
+}) {
   // Compact drops the word "Unknown" and leans on the grey variant to say the
   // same thing — a table cell has no room for it, and the badge is already
   // colour-coded three ways.
   const unknown = compact ? label : `${label} Unknown`;
   return (
-    <Badge variant={value == null ? "default" : value ? "confirmed" : "declined"} title={value == null ? `${label} unknown` : undefined}>
+    <Badge
+      variant={value == null ? "default" : value ? "confirmed" : "declined"}
+      title={value == null ? `${label} unknown` : undefined}
+    >
       {value == null ? unknown : value ? label : `Under ${label.replace("+", "")}`}
     </Badge>
   );
@@ -38,7 +49,13 @@ function AgeBadge({ value, label, compact }: { value: boolean | null | undefined
 // Content only, no PanelField wrapper — callers decide the label/layout
 // around it (MemberPanel embeds this inside its "Membership" card's grid;
 // the profile page may want its own placement).
-export function AgeFlagsBadges({ isOver18, isOver21, collectIsOver18, collectIsOver21, compact }: AgeFlagsBadgesProps) {
+export function AgeFlagsBadges({
+  isOver18,
+  isOver21,
+  collectIsOver18,
+  collectIsOver21,
+  compact,
+}: AgeFlagsBadgesProps) {
   if (!collectIsOver18 && !collectIsOver21) {
     return <FieldValue muted>Unknown</FieldValue>;
   }

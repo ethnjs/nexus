@@ -1,4 +1,4 @@
-import { FormQuestionType } from "@/lib/api";
+import type { FormQuestionType } from "@/lib/api";
 
 // Reserved field_key patterns — mirrors backend/app/core/form/validation.py
 // exactly (AVAILABILITY_FIELD_KEY_PATTERN / EVENT_PREFERENCE_FIELD_KEY_PATTERN
@@ -20,7 +20,9 @@ export type PresetKind = "availability" | "event_preference" | "lunch" | "track_
 // an id array, not freeform text. lunch looks like a preset (a reserved
 // field_key) but its options are TD-typed food choices just like a plain
 // question's, so it shares OptionsEditor's freeform path instead.
-export function isEntityBackedPreset(kind: PresetKind | null): kind is "availability" | "event_preference" {
+export function isEntityBackedPreset(
+  kind: PresetKind | null,
+): kind is "availability" | "event_preference" {
   return kind === "availability" || kind === "event_preference";
 }
 
@@ -41,27 +43,36 @@ interface PresetMeta {
 
 export const PRESETS: Record<PresetKind, PresetMeta> = {
   availability: {
-    kind: "availability", label: "Availability",
+    kind: "availability",
+    label: "Availability",
     allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
     defaultQuestionType: "single_select_radio",
   },
   event_preference: {
-    kind: "event_preference", label: "Event Preference",
+    kind: "event_preference",
+    label: "Event Preference",
     allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"],
     defaultQuestionType: "ranked_choice",
   },
   lunch: {
-    kind: "lunch", label: "Lunch",
+    kind: "lunch",
+    label: "Lunch",
     // The only preset that allows free text: a lunch question like "any
     // special requests?" belongs in the panel's Lunch section, and without
     // the reserved key it would be filtered out of custom responses (which
     // exclude reserved keys) and land nowhere. Mirrors the backend's
     // LUNCH_QUESTION_TYPES.
-    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox", "short_text", "long_text"],
+    allowedQuestionTypes: [
+      "single_select_radio",
+      "multi_select_checkbox",
+      "short_text",
+      "long_text",
+    ],
     defaultQuestionType: "single_select_radio",
   },
   track_status: {
-    kind: "track_status", label: "Track Status",
+    kind: "track_status",
+    label: "Track Status",
     allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
     defaultQuestionType: "single_select_radio",
   },
@@ -95,7 +106,10 @@ export function activePresetKind(fieldKey: string): PresetKind | null {
 // different forms (a general form and a judges-only one both asking about
 // Day 1) without colliding on field_key. The track is what actually scopes
 // the question: it pins which shifts this field's write-through may touch.
-export function parseAvailabilityFieldKey(fieldKey: string): { trackId: number | null; suffix: string } {
+export function parseAvailabilityFieldKey(fieldKey: string): {
+  trackId: number | null;
+  suffix: string;
+} {
   const match = AVAILABILITY_FIELD_KEY_PATTERN.exec(fieldKey);
   if (!match) return { trackId: null, suffix: "" };
   const [, trackId, suffix] = match;
@@ -184,7 +198,11 @@ export function isPresetError(message: string): boolean {
 // preset's suffix/category, or (via slugifyFieldKey below) the whole
 // auto-derived key for a plain custom question.
 function slugifyFieldKeyPart(text: string): string {
-  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 // Auto-fills field_key from the question label until the TD types into the

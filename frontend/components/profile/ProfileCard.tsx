@@ -1,6 +1,6 @@
-import { ReactNode } from "react";
-import { Card } from "@/components/ui/Card";
+import type { ReactNode } from "react";
 import styles from "@/components/profile/Profile.module.css";
+import { Card } from "@/components/ui/Card";
 
 export function ProfileCard({ children }: { children: ReactNode }) {
   return (

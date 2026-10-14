@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { MembershipAvailability, TournamentShift } from "@/lib/api";
-import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
-import { Badge } from "@/components/ui/Badge";
+import { FieldValue, PanelField } from "@/components/profile/PanelField";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField, FieldValue } from "@/components/profile/PanelField";
-import { AvailabilityTimeline, TimelineShift } from "@/components/tournament/members/AvailabilityTimeline";
+import {
+  AvailabilityTimeline,
+  type TimelineShift,
+} from "@/components/tournament/members/AvailabilityTimeline";
+import { Badge } from "@/components/ui/Badge";
+import type { MembershipAvailability, TournamentShift } from "@/lib/api";
+import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 interface AvailabilitySectionProps {
   availability: MembershipAvailability[];
@@ -61,7 +64,12 @@ function toTimelineShifts(slots: MembershipAvailability[]): TimelineShift[] {
 
 // One day's row: badges on the left, timeline on the right, sharing a single
 // hovered-shift state so pointing at either one highlights the other.
-function AvailabilityDay({ day, slots, offered, stacked }: {
+function AvailabilityDay({
+  day,
+  slots,
+  offered,
+  stacked,
+}: {
   day: string;
   slots: MembershipAvailability[];
   offered: TournamentShift[] | undefined;
@@ -73,9 +81,18 @@ function AvailabilityDay({ day, slots, offered, stacked }: {
   const lastEnd = slots.reduce((latest, s) => (s.end > latest ? s.end : latest), slots[0].end);
 
   return (
-    <div style={{ display: "flex", flexDirection: stacked ? "column" : "row", alignItems: "stretch", gap: stacked ? "8px" : "16px" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: stacked ? "column" : "row",
+        alignItems: "stretch",
+        gap: stacked ? "8px" : "16px",
+      }}
+    >
       <div style={{ flex: stacked ? undefined : 1, minWidth: 0 }}>
-        <PanelField label={`${formatDayLabel(day)}, ${formatTime(slots[0].start)}–${formatTime(lastEnd)}`}>
+        <PanelField
+          label={`${formatDayLabel(day)}, ${formatTime(slots[0].start)}–${formatTime(lastEnd)}`}
+        >
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {slots.map((slot) => (
               <Badge
@@ -111,7 +128,11 @@ function AvailabilityDay({ day, slots, offered, stacked }: {
  * `stacked` puts the timeline under the badges, for cards too narrow to fit
  * both side by side.
  */
-export function AvailabilityDays({ availability, allShifts, stacked }: AvailabilitySectionProps & { stacked?: boolean }) {
+export function AvailabilityDays({
+  availability,
+  allShifts,
+  stacked,
+}: AvailabilitySectionProps & { stacked?: boolean }) {
   const offeredByDay = groupByDay(allShifts ?? []);
 
   return (
@@ -119,7 +140,13 @@ export function AvailabilityDays({ availability, allShifts, stacked }: Availabil
       {Array.from(groupByDay(availability).entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([day, slots]) => (
-          <AvailabilityDay key={day} day={day} slots={slots} offered={offeredByDay.get(day)} stacked={stacked} />
+          <AvailabilityDay
+            key={day}
+            day={day}
+            slots={slots}
+            offered={offeredByDay.get(day)}
+            stacked={stacked}
+          />
         ))}
     </div>
   );
@@ -132,9 +159,11 @@ export function AvailabilitySection({ availability, allShifts }: AvailabilitySec
   return (
     <ProfileCard>
       <SectionHeading title="Availability">
-        {availability.length === 0
-          ? <FieldValue muted>No info yet</FieldValue>
-          : <AvailabilityDays availability={availability} allShifts={allShifts} />}
+        {availability.length === 0 ? (
+          <FieldValue muted>No info yet</FieldValue>
+        ) : (
+          <AvailabilityDays availability={availability} allShifts={allShifts} />
+        )}
       </SectionHeading>
     </ProfileCard>
   );

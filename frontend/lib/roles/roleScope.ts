@@ -1,4 +1,4 @@
-import { membersApi, type MembershipFull, type MemberRole } from "@/lib/api";
+import { type MemberRole, type MembershipFull, membersApi } from "@/lib/api";
 
 /** Where a role is held: the whole tournament, or a set of tracks. Never both —
  *  a tournament-wide grant already covers every track. */
@@ -48,7 +48,8 @@ export async function changeRoleScope(
   }
   if (from.wide && !to.wide) await send({ remove: [roleId], is_tournament_wide: true });
   for (const trackId of from.trackIds) {
-    if (to.wide || !to.trackIds.includes(trackId)) await send({ remove: [roleId], track_id: trackId });
+    if (to.wide || !to.trackIds.includes(trackId))
+      await send({ remove: [roleId], track_id: trackId });
   }
   return latest;
 }

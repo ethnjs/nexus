@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import type { TournamentTrack } from "@/lib/api";
 import { Dropdown } from "@/components/ui/Dropdown";
+import type { TournamentTrack } from "@/lib/api";
 
 /**
  * Picks one of a tournament's tracks.
@@ -18,8 +18,17 @@ import { Dropdown } from "@/components/ui/Dropdown";
  * narrowed list of one is just as unchoosable.
  */
 export function TrackPicker({
-  label, value, onChange, tracks, placeholder = "Select a track",
-  emptyPlaceholder = "No tracks yet", locked, required, size = "md", fullWidth, error,
+  label,
+  value,
+  onChange,
+  tracks,
+  placeholder = "Select a track",
+  emptyPlaceholder = "No tracks yet",
+  locked,
+  required,
+  size = "md",
+  fullWidth,
+  error,
 }: {
   label?: string;
   /** null = nothing picked yet. */

@@ -1,68 +1,68 @@
-'use client'
+"use client";
 
-import { ReactNode, useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Popover } from '@/components/ui/Popover'
-import { FormPopover } from '@/components/ui/FormPopover'
-import { IconChevronDown } from '@/components/ui/Icons'
+import { type ReactNode, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { FormPopover } from "@/components/ui/FormPopover";
+import { IconChevronDown } from "@/components/ui/Icons";
+import { Popover } from "@/components/ui/Popover";
 
 export interface SplitButtonOption {
-  label: string
-  subtitle?: string
-  icon?: ReactNode
+  label: string;
+  subtitle?: string;
+  icon?: ReactNode;
   /** Fires immediately on click — may throw/reject, which the menu shows inline and stays open for. */
-  action: () => void | Promise<void>
+  action: () => void | Promise<void>;
   /** Visually distinct destructive style — e.g. Delete next to a plain Archive. */
-  danger?: boolean
+  danger?: boolean;
   /** Renders inert with a tooltip instead of attempted-then-rejected — e.g. Delete when responses already exist. */
-  disabled?: boolean
-  disabledReason?: string
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 /** A chevron menu with its own content, for when a flat option list isn't
  *  enough (sections, a footer, nested panels). */
 export interface SplitButtonMenu {
   /** Receives close() so a choice can dismiss the menu itself. */
-  render: (close: () => void) => ReactNode
-  width?: number
-  onOpenChange?: (open: boolean) => void
+  render: (close: () => void) => ReactNode;
+  width?: number;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /** A right segment that acts on click rather than opening a menu — e.g. the
  *  × that clears an applied filter. */
 export interface SplitButtonAction {
-  icon: ReactNode
+  icon: ReactNode;
   /** Tooltip and accessible name; the segment itself is icon-only. */
-  label: string
-  onClick: () => void
+  label: string;
+  onClick: () => void;
 }
 
 interface SplitButtonProps {
   /** Label shown on the primary left segment */
-  label: string
+  label: string;
   /** Rendered before the label on the primary segment. */
-  icon?: ReactNode
+  icon?: ReactNode;
   /** Primary segment shows only `icon`; `label` becomes its tooltip and
    *  accessible name. For a compact spot like a panel header. */
-  iconOnly?: boolean
+  iconOnly?: boolean;
   /** Called when the primary left segment is clicked */
-  onClick: () => void
+  onClick: () => void;
   /** Dropdown options shown when the chevron is clicked — each fires its own action immediately. */
-  options?: SplitButtonOption[]
+  options?: SplitButtonOption[];
   /** Replaces the chevron and its menu with one direct action. Takes
    *  precedence over `options` — a segment can't be both. */
-  action?: SplitButtonAction
+  action?: SplitButtonAction;
   /** A custom menu instead of `options`. `action` still wins over both. */
-  menu?: SplitButtonMenu
+  menu?: SplitButtonMenu;
   /** Tooltip and accessible name for the primary segment. */
-  title?: string
-  variant?: 'primary' | 'secondary' | 'ghost'
-  size?: 'sm' | 'md'
-  loading?: boolean
+  title?: string;
+  variant?: "primary" | "secondary" | "ghost";
+  size?: "sm" | "md";
+  loading?: boolean;
   /** Disables both segments — the whole control is unusable. */
-  disabled?: boolean
+  disabled?: boolean;
   /** Disables just the primary segment (e.g. it has no forward action right now) while the chevron menu stays usable. */
-  primaryDisabled?: boolean
+  primaryDisabled?: boolean;
 }
 
 // A primary action segment plus a chevron that opens a menu of one-off
@@ -78,14 +78,14 @@ export function SplitButton({
   action,
   menu,
   title,
-  variant = 'secondary',
-  size = 'sm',
+  variant = "secondary",
+  size = "sm",
   loading = false,
   disabled = false,
   primaryDisabled = false,
 }: SplitButtonProps) {
-  const [open, setOpen] = useState(false)
-  const dividerColor = variant === 'primary' ? 'rgba(255,255,255,0.24)' : 'var(--color-border)'
+  const [open, setOpen] = useState(false);
+  const dividerColor = variant === "primary" ? "rgba(255,255,255,0.24)" : "var(--color-border)";
   const chevron = (
     <Button
       variant={variant}
@@ -95,12 +95,18 @@ export function SplitButton({
       aria-label="More options"
       style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
     >
-      <IconChevronDown size={12} style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      <IconChevronDown
+        size={12}
+        style={{
+          transition: "transform 150ms ease",
+          transform: open ? "rotate(180deg)" : "rotate(0deg)",
+        }}
+      />
     </Button>
-  )
+  );
 
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+    <div style={{ display: "inline-flex", alignItems: "stretch" }}>
       <Button
         variant={variant}
         size={size}
@@ -112,7 +118,15 @@ export function SplitButton({
         aria-label={iconOnly ? label : undefined}
         style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 }}
       >
-        {iconOnly ? icon : <>{icon}{icon ? ' ' : null}{label}</>}
+        {iconOnly ? (
+          icon
+        ) : (
+          <>
+            {icon}
+            {icon ? " " : null}
+            {label}
+          </>
+        )}
       </Button>
 
       {/* A border, not a 1px-wide fill: borders snap to whole device pixels,
@@ -137,43 +151,63 @@ export function SplitButton({
           trigger={chevron}
           width={menu.width ?? 260}
           align="right"
-          onOpenChange={(next) => { setOpen(next); menu.onOpenChange?.(next) }}
-          panelStyle={{ padding: 0, maxHeight: 'none', overflow: 'hidden' }}
+          onOpenChange={(next) => {
+            setOpen(next);
+            menu.onOpenChange?.(next);
+          }}
+          panelStyle={{ padding: 0, maxHeight: "none", overflow: "hidden" }}
         >
           {menu.render}
         </FormPopover>
       ) : (
-      <Popover
-        trigger={chevron}
-        items={options}
-        getKey={(opt) => opt.label}
-        align="right"
-        width={240}
-        onOpenChange={setOpen}
-        onSelect={(opt) => opt.action()}
-        isDisabled={(opt) => opt.disabled ?? false}
-        disabledReason={(opt) => opt.disabledReason}
-        renderLabel={(opt) => (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-            {opt.icon && (
-              <span style={{ flexShrink: 0, marginTop: '1px', color: opt.danger ? 'var(--color-danger)' : 'var(--color-text-secondary)' }}>
-                {opt.icon}
-              </span>
-            )}
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontWeight: 600, color: opt.danger ? 'var(--color-danger)' : 'var(--color-text-primary)' }}>
-                {opt.label}
-              </div>
-              {opt.subtitle && (
-                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                  {opt.subtitle}
-                </div>
+        <Popover
+          trigger={chevron}
+          items={options}
+          getKey={(opt) => opt.label}
+          align="right"
+          width={240}
+          onOpenChange={setOpen}
+          onSelect={(opt) => opt.action()}
+          isDisabled={(opt) => opt.disabled ?? false}
+          disabledReason={(opt) => opt.disabledReason}
+          renderLabel={(opt) => (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+              {opt.icon && (
+                <span
+                  style={{
+                    flexShrink: 0,
+                    marginTop: "1px",
+                    color: opt.danger ? "var(--color-danger)" : "var(--color-text-secondary)",
+                  }}
+                >
+                  {opt.icon}
+                </span>
               )}
+              <div style={{ overflow: "hidden" }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: opt.danger ? "var(--color-danger)" : "var(--color-text-primary)",
+                  }}
+                >
+                  {opt.label}
+                </div>
+                {opt.subtitle && (
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--color-text-tertiary)",
+                      marginTop: "2px",
+                    }}
+                  >
+                    {opt.subtitle}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      />
+          )}
+        />
       )}
     </div>
-  )
+  );
 }

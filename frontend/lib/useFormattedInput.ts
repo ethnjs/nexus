@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback } from "react";
 
 /**
  * Handles the classic controlled-input-with-formatting bug: when a format
@@ -11,16 +11,18 @@ export function useFormattedInputChange(
   raw: string,
   setRaw: (next: string) => void,
   format: (raw: string) => string,
-  stripAndLimit: (input: string) => string = (v) => v.replace(/\D/g, ''),
+  stripAndLimit: (input: string) => string = (v) => v.replace(/\D/g, ""),
 ) {
-  return useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const inputVal = e.target.value
-    const newRaw = stripAndLimit(inputVal)
+  return useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const inputVal = e.target.value;
+      const newRaw = stripAndLimit(inputVal);
 
-    const nextRaw = newRaw === raw && inputVal.length < format(raw).length
-      ? raw.slice(0, -1)
-      : newRaw
+      const nextRaw =
+        newRaw === raw && inputVal.length < format(raw).length ? raw.slice(0, -1) : newRaw;
 
-    setRaw(nextRaw)
-  }, [raw, setRaw, format, stripAndLimit])
+      setRaw(nextRaw);
+    },
+    [raw, setRaw, format, stripAndLimit],
+  );
 }

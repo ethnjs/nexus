@@ -1,12 +1,12 @@
-import type { Metadata } from 'next'
-import { Analytics } from '@vercel/analytics/next';
-import { AuthProvider } from '@/lib/useAuth'
-import { ToastProvider } from '@/lib/useToast'
-import './globals.css'
+import { Analytics } from "@vercel/analytics/next";
+import type { Metadata } from "next";
+import { AuthProvider } from "@/lib/useAuth";
+import { ToastProvider } from "@/lib/useToast";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'NEXUS',
-  description: 'Tournament Logistics Dashboard for Science Olympiad',
+  title: "NEXUS",
+  description: "Tournament Logistics Dashboard for Science Olympiad",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -16,19 +16,17 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-touch-icon.png",
   },
-}
+};
 
-export default function RootLayout({children,}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
         <AuthProvider>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
+          <ToastProvider>{children}</ToastProvider>
         </AuthProvider>
         <Analytics />
       </body>
     </html>
-  )
+  );
 }

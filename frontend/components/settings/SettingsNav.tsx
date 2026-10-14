@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconUser, IconShield } from "@/components/ui/Icons";
+import { IconShield, IconUser } from "@/components/ui/Icons";
 import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Settings.module.css";
 
 const NAV_ITEMS = [
-  { href: "/settings/account",  icon: <IconUser size={15} />,   label: "Account" },
+  { href: "/settings/account", icon: <IconUser size={15} />, label: "Account" },
   { href: "/settings/security", icon: <IconShield size={15} />, label: "Security" },
 ];
 
@@ -31,10 +31,7 @@ export function SettingsNav() {
 
   return (
     <>
-      <div
-        onClick={() => setOpen(false)}
-        className={cx(styles.scrim, open && styles.open)}
-      />
+      <div onClick={() => setOpen(false)} className={cx(styles.scrim, open && styles.open)} />
 
       <aside className={cx(styles.nav, open && styles.open)}>
         <div className={styles.navTitle}>Settings</div>

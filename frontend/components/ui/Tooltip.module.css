@@ -4,7 +4,7 @@
 }
 
 .wrapper::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 100%;
   left: 0;
@@ -33,7 +33,7 @@
 /* Triangle pointing up. Shifts opposite to the bubble's edge correction so it
    keeps pointing at the trigger rather than drifting with the bubble. */
 .bubble::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 100%;
   left: calc(50% - var(--tooltip-arrow-shift, 0px));
@@ -55,22 +55,30 @@
   background: var(--color-surface);
   color: var(--color-text-primary);
 }
-.info::after { border-bottom-color: var(--color-surface); }
+.info::after {
+  border-bottom-color: var(--color-surface);
+}
 
 .success {
   background: var(--color-success-subtle);
   color: var(--color-text-primary);
 }
-.success::after { border-bottom-color: var(--color-success-subtle); }
+.success::after {
+  border-bottom-color: var(--color-success-subtle);
+}
 
 .warning {
   background: var(--color-warning-subtle);
   color: var(--color-text-primary);
 }
-.warning::after { border-bottom-color: var(--color-warning-subtle); }
+.warning::after {
+  border-bottom-color: var(--color-warning-subtle);
+}
 
 .error {
   background: var(--color-danger-subtle);
   color: var(--color-text-primary);
 }
-.error::after { border-bottom-color: var(--color-danger-subtle); }
+.error::after {
+  border-bottom-color: var(--color-danger-subtle);
+}

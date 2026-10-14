@@ -23,10 +23,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { CheckboxRow } from "@/components/ui/CheckboxRow";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
-import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { Switch } from "@/components/ui/Switch";
 
 export type MemberFieldId =
@@ -77,10 +77,16 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
   // a question you ask about one person, not about the row you are staffing.
   hiddenFields: [
     "availability",
-    "competition_school", "competition_event",
-    "volunteer_tournament", "volunteer_event", "volunteer_role",
+    "competition_school",
+    "competition_event",
+    "volunteer_tournament",
+    "volunteer_event",
+    "volunteer_role",
     // Off until asked for, same reasoning: background, not staffing.
-    "onboarding", "dietary_restriction", "lunch", "custom_fields",
+    "onboarding",
+    "dietary_restriction",
+    "lunch",
+    "custom_fields",
   ],
   hiddenTracks: [],
   hiddenCustom: [],
@@ -95,14 +101,18 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
  * three per-track fields are on — they are what a day is staffed from.
  */
 export function defaultMemberDisplayForTab(
-  trackIds: number[], activeTrackId: number | null,
+  trackIds: number[],
+  activeTrackId: number | null,
 ): MemberDisplayState {
   const perTrack = new Set<MemberFieldId>(TAB_DEFAULT_FIELDS);
   return {
     hiddenFields: DEFAULT_MEMBER_DISPLAY.hiddenFields.filter((id) => !perTrack.has(id)),
-    hiddenTracks: activeTrackId === null ? [] : trackIds
-      .filter((id) => id !== activeTrackId)
-      .flatMap((id) => TRACK_SCOPED_FIELDS.map((field) => `${field.id}:${id}`)),
+    hiddenTracks:
+      activeTrackId === null
+        ? []
+        : trackIds
+            .filter((id) => id !== activeTrackId)
+            .flatMap((id) => TRACK_SCOPED_FIELDS.map((field) => `${field.id}:${id}`)),
     hiddenCustom: [],
   };
 }
@@ -120,9 +130,7 @@ const CARD_CUSTOM_PREFIX = "card_custom:";
     the two arrays are split back apart here. Unknown prefixes are dropped:
     a field removed in a later release must not sit in the list hiding
     nothing. */
-export function memberDisplayFromHidden(
-  hidden: string[] | null | undefined,
-): MemberDisplayState {
+export function memberDisplayFromHidden(hidden: string[] | null | undefined): MemberDisplayState {
   // Never saved — not "nothing hidden". An empty saved list is a real state
   // (everything shown), and it must not spring back to the default.
   if (!Array.isArray(hidden)) return DEFAULT_MEMBER_DISPLAY;
@@ -153,9 +161,11 @@ export function memberDisplayToHidden(display: MemberDisplayState): string[] {
  *  state — the lists are built by toggling, so the same view reached two
  *  ways can hold its entries in either order. */
 export function sameMemberDisplay(a: MemberDisplayState, b: MemberDisplayState): boolean {
-  return sameEntries(a.hiddenFields, b.hiddenFields)
-    && sameEntries(a.hiddenTracks, b.hiddenTracks)
-    && sameEntries(a.hiddenCustom, b.hiddenCustom);
+  return (
+    sameEntries(a.hiddenFields, b.hiddenFields) &&
+    sameEntries(a.hiddenTracks, b.hiddenTracks) &&
+    sameEntries(a.hiddenCustom, b.hiddenCustom)
+  );
 }
 
 function sameEntries(a: string[], b: string[]): boolean {
@@ -168,7 +178,11 @@ export function fieldShown(display: MemberDisplayState, id: MemberFieldId): bool
   return !display.hiddenFields.includes(id);
 }
 
-export function trackShown(display: MemberDisplayState, id: MemberFieldId, trackId: number): boolean {
+export function trackShown(
+  display: MemberDisplayState,
+  id: MemberFieldId,
+  trackId: number,
+): boolean {
   return !display.hiddenTracks.includes(`${id}:${trackId}`);
 }
 
@@ -185,17 +199,26 @@ function withToggled<T extends string>(list: T[], key: T): T[] {
  *  thing as the field label it configures. */
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{
-      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-      textTransform: "uppercase", letterSpacing: "0.07em",
-      color: "var(--color-text-tertiary)",
-    }}>
+    <span
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.07em",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {children}
     </span>
   );
 }
 
-function FieldGroup({ label, action, children }: {
+function FieldGroup({
+  label,
+  action,
+  children,
+}: {
   label: string;
   /** Sits on the heading's right edge — the group's own show/hide, for the
    *  three groups whose entire content is one thing. */
@@ -204,7 +227,14 @@ function FieldGroup({ label, action, children }: {
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+        }}
+      >
         <FieldLabel>{label}</FieldLabel>
         {action}
       </div>
@@ -213,7 +243,11 @@ function FieldGroup({ label, action, children }: {
   );
 }
 
-function FieldCheck({ label, checked, onChange }: {
+function FieldCheck({
+  label,
+  checked,
+  onChange,
+}: {
   label: string;
   checked: boolean;
   onChange: () => void;
@@ -266,8 +300,12 @@ export function MemberDisplayModal({
    * Hidden-by-exception, like the rest: a new track or question shows.
    */
   const chipGroup = <T extends string | number>(
-    id: MemberFieldId, label: string, items: { id: T; label: string }[],
-    shown: (item: T) => boolean, toggle: (item: T) => void, hideAll: () => void,
+    id: MemberFieldId,
+    label: string,
+    items: { id: T; label: string }[],
+    shown: (item: T) => boolean,
+    toggle: (item: T) => void,
+    hideAll: () => void,
     addTitle: string,
   ) => (
     <FieldGroup
@@ -294,8 +332,12 @@ export function MemberDisplayModal({
             <ChecklistPopover
               trigger={
                 <Button
-                  type="button" variant="secondary" size="sm" iconOnly
-                  title={addTitle} style={{ padding: 0, flexShrink: 0 }}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  iconOnly
+                  title={addTitle}
+                  style={{ padding: 0, flexShrink: 0 }}
                 >
                   <IconPlus size={13} />
                 </Button>
@@ -322,26 +364,36 @@ export function MemberDisplayModal({
    * the same subject, so they sit together: the toggle names the group, and
    * the chips are what it contains.
    */
-  const trackGroup = (id: MemberFieldId, label: string) => chipGroup(
-    id, label, tracks,
-    (trackId) => trackShown(draft, id, trackId),
-    (trackId) => toggleTrack(`${id}:${trackId}`),
-    () => setDraft((d) => ({
-      ...d,
-      hiddenTracks: [
-        ...d.hiddenTracks.filter((key) => !key.startsWith(`${id}:`)),
-        ...tracks.map((t) => `${id}:${t.id}`),
-      ],
-    })),
-    "Edit visible tracks",
-  );
+  const trackGroup = (id: MemberFieldId, label: string) =>
+    chipGroup(
+      id,
+      label,
+      tracks,
+      (trackId) => trackShown(draft, id, trackId),
+      (trackId) => toggleTrack(`${id}:${trackId}`),
+      () =>
+        setDraft((d) => ({
+          ...d,
+          hiddenTracks: [
+            ...d.hiddenTracks.filter((key) => !key.startsWith(`${id}:`)),
+            ...tracks.map((t) => `${id}:${t.id}`),
+          ],
+        })),
+      "Edit visible tracks",
+    );
 
   return (
     <Modal title="Configure member cards" onClose={onClose} width={640}>
-      <div style={{
-        maxHeight: "60vh", overflowY: "auto", paddingRight: "4px",
-        display: "flex", flexDirection: "column", gap: "20px",
-      }}>
+      <div
+        style={{
+          maxHeight: "60vh",
+          overflowY: "auto",
+          paddingRight: "4px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
+        }}
+      >
         <FieldGroup label="Membership">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
             {check("roles", "Roles")}
@@ -369,21 +421,39 @@ export function MemberDisplayModal({
         </FieldGroup>
 
         {chipGroup(
-          "custom_fields", "Custom fields", customFields,
+          "custom_fields",
+          "Custom fields",
+          customFields,
           (fieldId) => customShown(draft, fieldId),
-          (fieldId) => setDraft((d) => ({ ...d, hiddenCustom: withToggled(d.hiddenCustom, fieldId) })),
+          (fieldId) =>
+            setDraft((d) => ({ ...d, hiddenCustom: withToggled(d.hiddenCustom, fieldId) })),
           () => setDraft((d) => ({ ...d, hiddenCustom: customFields.map((f) => f.id) })),
           "Edit visible questions",
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "16px" }}>
-        <Button type="button" variant="ghost" onClick={() => setDraft(defaults ?? DEFAULT_MEMBER_DISPLAY)}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "16px" }}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setDraft(defaults ?? DEFAULT_MEMBER_DISPLAY)}
+        >
           Reset
         </Button>
         <div style={{ display: "flex", gap: "8px" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={() => { onApply(draft); onClose(); }}>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              onApply(draft);
+              onClose();
+            }}
+          >
             Apply
           </Button>
         </div>

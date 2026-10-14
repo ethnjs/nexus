@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { tournamentShiftsApi, ApiError, TournamentShift, TournamentTrack } from "@/lib/api";
-import { fromDayAndTime, toDateInput, toTimeInput } from "@/lib/timeFormat";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { DockedPanel } from "@/components/layout/DockedPanel";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { Card } from "@/components/ui/Card";
-import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { MassResultsCard, MassResult } from "@/components/ui/MassResultsCard";
+import { Input } from "@/components/ui/Input";
+import { type MassResult, MassResultsCard } from "@/components/ui/MassResultsCard";
+import {
+  ApiError,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentShiftsApi,
+} from "@/lib/api";
+import { fromDayAndTime, toDateInput, toTimeInput } from "@/lib/timeFormat";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -40,7 +45,11 @@ function applyDraft(shift: TournamentShift, draft: MassShiftDraft, tracks: Tourn
   const startTime = draft.startTime || toTimeInput(shift.start);
   const endTime = draft.endTime || toTimeInput(shift.end);
   if (endTime <= startTime) throw new Error("End must be after the start.");
-  return { track_id: trackId, start: fromDayAndTime(day, startTime)!, end: fromDayAndTime(day, endTime)! };
+  return {
+    track_id: trackId,
+    start: fromDayAndTime(day, startTime)!,
+    end: fromDayAndTime(day, endTime)!,
+  };
 }
 
 interface MassShiftEditorProps {
@@ -55,7 +64,14 @@ interface MassShiftEditorProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved, onDirtyChange }: MassShiftEditorProps) {
+export function MassShiftEditor({
+  tournamentId,
+  shifts,
+  tracks,
+  onClose,
+  onSaved,
+  onDirtyChange,
+}: MassShiftEditorProps) {
   const { guard } = useUnsavedChanges();
   const [draft, setDraft] = useState<MassShiftDraft>(EMPTY_DRAFT);
   // A pending-delete track can't take a new shift — the backend 409s.
@@ -64,13 +80,18 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
   const [results, setResults] = useState<MassResult[] | null>(null);
 
   const isDirty = draft.trackId !== null || draft.startTime !== "" || draft.endTime !== "";
-  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
     setResults(null);
-    const outcomes = await Promise.allSettled(shifts.map((shift) =>
-      tournamentShiftsApi.update(tournamentId, shift.id, applyDraft(shift, draft, tracks))));
+    const outcomes = await Promise.allSettled(
+      shifts.map((shift) =>
+        tournamentShiftsApi.update(tournamentId, shift.id, applyDraft(shift, draft, tracks)),
+      ),
+    );
 
     const saved: TournamentShift[] = [];
     const nextResults: MassResult[] = outcomes.map((outcome, i) => {
@@ -81,7 +102,8 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
       }
       const err = outcome.reason;
       return {
-        key: shift.id, label: shift.label,
+        key: shift.id,
+        label: shift.label,
         error: err instanceof ApiError || err instanceof Error ? err.message : "Failed to save.",
       };
     });
@@ -109,7 +131,14 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
           <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "22px" }}>
             Edit {shifts.length} shifts
           </h2>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+              marginTop: "4px",
+            }}
+          >
             Only fields you set below are applied — the rest stay as-is on every selected shift.
           </p>
         </Card>
@@ -120,7 +149,10 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
               destination every shift is already there, so there is no state
               for a locked control to report. */}
           {moveTargets.length > 1 && (
-            <SettingsRow label="Track" helper="A shift keeps its day if the new track runs it, otherwise it moves to the track's first day.">
+            <SettingsRow
+              label="Track"
+              helper="A shift keeps its day if the new track runs it, otherwise it moves to the track's first day."
+            >
               <Dropdown
                 fullWidth
                 value={draft.trackId !== null ? String(draft.trackId) : ""}
@@ -135,14 +167,18 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
 
           <SettingsRow label="Start" helper="Blank keeps each shift's own start.">
             <Input
-              type="time" fullWidth value={draft.startTime}
+              type="time"
+              fullWidth
+              value={draft.startTime}
               onChange={(e) => setDraft((d) => ({ ...d, startTime: e.target.value }))}
             />
           </SettingsRow>
 
           <SettingsRow label="End" helper="Blank keeps each shift's own end." last>
             <Input
-              type="time" fullWidth value={draft.endTime}
+              type="time"
+              fullWidth
+              value={draft.endTime}
               onChange={(e) => setDraft((d) => ({ ...d, endTime: e.target.value }))}
             />
           </SettingsRow>

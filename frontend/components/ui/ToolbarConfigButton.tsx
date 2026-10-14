@@ -1,27 +1,27 @@
-'use client'
+"use client";
 
-import { ReactNode } from 'react'
+import type { ReactNode } from "react";
 
-import { Button } from '@/components/ui/Button'
-import { SplitButton } from '@/components/ui/SplitButton'
-import { IconX } from '@/components/ui/Icons'
+import { Button } from "@/components/ui/Button";
+import { IconX } from "@/components/ui/Icons";
+import { SplitButton } from "@/components/ui/SplitButton";
 
 interface ToolbarConfigButtonProps {
   /** Whether the thing this configures is currently off its default. */
-  active: boolean
+  active: boolean;
   /** The primary segment's icon. */
-  icon: ReactNode
+  icon: ReactNode;
   /** Primary label — the tooltip when `iconOnly`. */
-  label: string
+  label: string;
   /** Tooltip on the right segment, e.g. "Clear filters" / "Reset cards". */
-  actionLabel: string
+  actionLabel: string;
   /** Opens the modal behind the button. */
-  onOpen: () => void
+  onOpen: () => void;
   /** Puts the surface back to its default in one press. */
-  onClear: () => void
-  size?: 'sm' | 'md'
+  onClear: () => void;
+  size?: "sm" | "md";
   /** Icon only, no label — for a panel header. */
-  iconOnly?: boolean
+  iconOnly?: boolean;
 }
 
 /**
@@ -39,27 +39,42 @@ interface ToolbarConfigButtonProps {
  * it back.
  */
 export function ToolbarConfigButton({
-  active, icon, label, actionLabel, onOpen, onClear, size = 'md', iconOnly = false,
+  active,
+  icon,
+  label,
+  actionLabel,
+  onOpen,
+  onClear,
+  size = "md",
+  iconOnly = false,
 }: ToolbarConfigButtonProps) {
   if (!active) {
     return iconOnly ? (
       <Button
-        type="button" variant="secondary" size={size} iconOnly
-        title={label} aria-label={label} onClick={onOpen}
+        type="button"
+        variant="secondary"
+        size={size}
+        iconOnly
+        title={label}
+        aria-label={label}
+        onClick={onOpen}
       >
         {icon}
       </Button>
     ) : (
       <Button
-        type="button" variant="secondary" size={size}
-        onClick={onOpen} style={{ flexShrink: 0 }}
+        type="button"
+        variant="secondary"
+        size={size}
+        onClick={onOpen}
+        style={{ flexShrink: 0 }}
       >
         {icon} {label}
       </Button>
-    )
+    );
   }
   return (
-    <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+    <span style={{ display: "inline-flex", flexShrink: 0 }}>
       <SplitButton
         variant="primary"
         size={size}
@@ -68,11 +83,11 @@ export function ToolbarConfigButton({
         iconOnly={iconOnly}
         onClick={onOpen}
         action={{
-          icon: <IconX size={size === 'sm' ? 12 : 14} />,
+          icon: <IconX size={size === "sm" ? 12 : 14} />,
           label: actionLabel,
           onClick: onClear,
         }}
       />
     </span>
-  )
+  );
 }

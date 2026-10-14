@@ -1,6 +1,13 @@
 "use client";
 
-import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState, useCallback } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CheckboxRow } from "@/components/ui/CheckboxRow";
 import { IconLock } from "@/components/ui/Icons";
 
@@ -40,7 +47,10 @@ export interface PopoverProps<T> {
 // maxHeight is the room on whichever side it opened: the rows cap at
 // PANEL_MAX_HEIGHT, but a search box and header sit on top of them, so the
 // whole panel could otherwise run past the viewport edge.
-type PanelPos = { left: number; maxHeight: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
+type PanelPos = { left: number; maxHeight: number } & (
+  | { top: number; bottom?: undefined }
+  | { bottom: number; top?: undefined }
+);
 type HoverTip = { text: string; top: number; left: number };
 
 const PANEL_GAP = 6;
@@ -61,8 +71,22 @@ const VIEWPORT_MARGIN = 8;
 // scrollable/overflow:hidden ancestor between it and the viewport (e.g. a
 // side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
-  trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
-  checklist = false, isSelected, isDisabled, disabledReason, onOpenChange, searchable = false, getSearchText, header,
+  trigger,
+  items,
+  getKey,
+  renderLabel,
+  onSelect,
+  emptyMessage = "Nothing to show",
+  width = 180,
+  align = "right",
+  checklist = false,
+  isSelected,
+  isDisabled,
+  disabledReason,
+  onOpenChange,
+  searchable = false,
+  getSearchText,
+  header,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -70,7 +94,7 @@ export function Popover<T>({
 
   useEffect(() => {
     onOpenChange?.(open);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -87,9 +111,12 @@ export function Popover<T>({
   const [hovered, setHovered] = useState<number | null>(null);
   // Stable, so it runs when the panel mounts and not on every render — an
   // inline ref would pull focus back each time anything re-rendered.
-  const focusPanelOnMount = useCallback((el: HTMLDivElement | null) => {
-    if (el && !searchable) el.focus({ preventScroll: true });
-  }, [searchable]);
+  const focusPanelOnMount = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (el && !searchable) el.focus({ preventScroll: true });
+    },
+    [searchable],
+  );
 
   // Fixed-position, computed from the row's own bounding rect on hover —
   // a Tooltip anchored via position:absolute to a wrapper nested inside
@@ -116,22 +143,36 @@ export function Popover<T>({
     // Rounded: an unrounded rect puts the whole panel on a subpixel, and
     // every row's checkbox then rasterises at that same offset phase.
     const maxHeight = Math.round((flip ? spaceAbove : spaceBelow) - PANEL_GAP - VIEWPORT_MARGIN);
-    setPanelPos(flip
-      ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left: Math.round(left), maxHeight }
-      : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left), maxHeight });
+    setPanelPos(
+      flip
+        ? {
+            bottom: Math.round(window.innerHeight - r.top + PANEL_GAP),
+            left: Math.round(left),
+            maxHeight,
+          }
+        : { top: Math.round(r.bottom + PANEL_GAP), left: Math.round(left), maxHeight },
+    );
   }
 
   // Positioned once per opening, not on scroll: a chip input's add button
   // moves as chips are added, and a panel chasing it pulls the rows out from
   // under the cursor mid-selection. Resize still repositions to stay on screen.
   useEffect(() => {
-    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); setActive(0); setUsingKeys(false); setHovered(null); return; }
+    if (!open) {
+      setPanelPos(null);
+      setHoverTip(null);
+      setQuery("");
+      setActive(0);
+      setUsingKeys(false);
+      setHovered(null);
+      return;
+    }
     updatePanelPos();
     window.addEventListener("resize", updatePanelPos);
     return () => {
       window.removeEventListener("resize", updatePanelPos);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -169,9 +210,10 @@ export function Popover<T>({
 
   const busy = pendingKey !== null;
   const needle = query.trim().toLowerCase();
-  const visibleItems = searchable && needle
-    ? items.filter((item) => (getSearchText?.(item) ?? "").toLowerCase().includes(needle))
-    : items;
+  const visibleItems =
+    searchable && needle
+      ? items.filter((item) => (getSearchText?.(item) ?? "").toLowerCase().includes(needle))
+      : items;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -200,12 +242,21 @@ export function Popover<T>({
             const step = (dir: 1 | -1) => {
               for (let n = 1; n <= visibleItems.length; n++) {
                 const i = (active + dir * n + visibleItems.length) % visibleItems.length;
-                if (enabled(i)) { setActive(i); return; }
+                if (enabled(i)) {
+                  setActive(i);
+                  return;
+                }
               }
             };
-            if (e.key === "ArrowDown" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(1); }
-            else if (e.key === "ArrowUp" && visibleItems.length > 0) { e.preventDefault(); setUsingKeys(true); step(-1); }
-            else if (e.key === "Enter" && visibleItems[active] && enabled(active) && !busy) {
+            if (e.key === "ArrowDown" && visibleItems.length > 0) {
+              e.preventDefault();
+              setUsingKeys(true);
+              step(1);
+            } else if (e.key === "ArrowUp" && visibleItems.length > 0) {
+              e.preventDefault();
+              setUsingKeys(true);
+              step(-1);
+            } else if (e.key === "Enter" && visibleItems[active] && enabled(active) && !busy) {
               e.preventDefault();
               void handleSelect(visibleItems[active], true);
             } else if (e.key === "Escape") {
@@ -223,11 +274,19 @@ export function Popover<T>({
             outline: "none",
             position: "fixed",
             ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
-            left: panelPos.left, zIndex: 300, maxHeight: `${panelPos.maxHeight}px`,
-            width: `${width}px`, padding: "6px", boxSizing: "border-box",
-            display: "flex", flexDirection: "column", overflow: "hidden",
-            background: "var(--color-surface)", border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
+            left: panelPos.left,
+            zIndex: 300,
+            maxHeight: `${panelPos.maxHeight}px`,
+            width: `${width}px`,
+            padding: "6px",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
           }}
         >
           {searchable && (
@@ -235,7 +294,10 @@ export function Popover<T>({
               ref={searchRef}
               type="text"
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
               placeholder="Search..."
               // Focused on mount rather than through an effect: the panel
               // only renders once its position is measured, so a focus()
@@ -243,11 +305,17 @@ export function Popover<T>({
               autoFocus
               style={{
                 flexShrink: 0,
-                width: "100%", height: "26px", marginBottom: "6px",
-                padding: "0 8px", boxSizing: "border-box",
-                fontFamily: "var(--font-sans)", fontSize: "12px",
-                color: "var(--color-text-primary)", background: "var(--color-bg)",
-                border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
+                width: "100%",
+                height: "26px",
+                marginBottom: "6px",
+                padding: "0 8px",
+                boxSizing: "border-box",
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-primary)",
+                background: "var(--color-bg)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-sm)",
                 outline: "none",
               }}
             />
@@ -257,78 +325,134 @@ export function Popover<T>({
               box inside the scroller leaves rows sliding through the gap
               between it and the panel's padded edge. */}
           {/* Shrinks below its cap when the panel is clamped to the viewport. */}
-          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, minHeight: 0, flex: "0 1 auto", overflowY: "auto" }}>
-          {visibleItems.length === 0 ? (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "6px 10px" }}>
-              {needle ? "No matches" : emptyMessage}
-            </p>
-          ) : checklist ? (
-            visibleItems.map((item, index) => {
-              const key = getKey(item);
-              const checked = isSelected?.(item) ?? false;
-              const disabled = isDisabled?.(item) ?? false;
-              const reason = disabled ? disabledReason?.(item) : undefined;
-              return (
-                <CheckboxRow
-                  key={key}
-                  checked={checked}
-                  locked={busy}
-                  onChange={() => handleSelect(item)}
-                  label={renderLabel(item)}
-                  labelColor="var(--color-text-primary)"
-                  control={disabled
-                    ? <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
-                    : undefined}
-                  // The mouse takes over from the keyboard: its row becomes the
-                  // one Enter would pick, and the keyboard outline steps aside.
-                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
-                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
-                  style={{
-                    padding: "6px 8px", borderRadius: "var(--radius-sm)",
-                    cursor: disabled || busy ? "not-allowed" : "pointer",
-                    background: checked
-                      ? "var(--color-accent-subtle)"
-                      : hovered === index && !disabled ? "var(--color-bg)" : "transparent",
-                    // The keyboard's row, distinct from ticked.
-                    boxShadow: usingKeys && index === active ? "inset 0 0 0 1px var(--color-border-strong)" : undefined,
-                    opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
-                  }}
-                />
-              );
-            })
-          ) : (
-            visibleItems.map((item, index) => {
-              const key = getKey(item);
-              const disabled = isDisabled?.(item) ?? false;
-              const reason = disabled ? disabledReason?.(item) : undefined;
-              return (
-                <button
-                  // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
-                  tabIndex={-1}
-                  key={key}
-                  type="button"
-                  disabled={busy || disabled}
-                  onClick={() => handleSelect(item)}
-                  onMouseEnter={(e) => { setHovered(index); setActive(index); setUsingKeys(false); if (reason) showHoverTip(e, reason); }}
-                  onMouseLeave={() => { setHovered(null); if (reason) setHoverTip(null); }}
-                  style={{
-                    display: "block", width: "100%", textAlign: "left",
-                    padding: "7px 10px", border: "none",
-                    background: !disabled && (hovered === index || (usingKeys && index === active)) ? "var(--color-bg)" : "transparent",
-                    fontFamily: "var(--font-sans)", fontSize: "13px",
-                    color: "var(--color-text-primary)", borderRadius: "var(--radius-sm)",
-                    cursor: busy || disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
-                  }}
-                >
-                  {renderLabel(item)}
-                </button>
-              );
-            })
-          )}
+          <div
+            style={{
+              maxHeight: `${PANEL_MAX_HEIGHT}px`,
+              minHeight: 0,
+              flex: "0 1 auto",
+              overflowY: "auto",
+            }}
+          >
+            {visibleItems.length === 0 ? (
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-text-tertiary)",
+                  padding: "6px 10px",
+                }}
+              >
+                {needle ? "No matches" : emptyMessage}
+              </p>
+            ) : checklist ? (
+              visibleItems.map((item, index) => {
+                const key = getKey(item);
+                const checked = isSelected?.(item) ?? false;
+                const disabled = isDisabled?.(item) ?? false;
+                const reason = disabled ? disabledReason?.(item) : undefined;
+                return (
+                  <CheckboxRow
+                    key={key}
+                    checked={checked}
+                    locked={busy}
+                    onChange={() => handleSelect(item)}
+                    label={renderLabel(item)}
+                    labelColor="var(--color-text-primary)"
+                    control={
+                      disabled ? (
+                        <IconLock
+                          size={13}
+                          style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }}
+                        />
+                      ) : undefined
+                    }
+                    // The mouse takes over from the keyboard: its row becomes the
+                    // one Enter would pick, and the keyboard outline steps aside.
+                    onMouseEnter={(e) => {
+                      setHovered(index);
+                      setActive(index);
+                      setUsingKeys(false);
+                      if (reason) showHoverTip(e, reason);
+                    }}
+                    onMouseLeave={() => {
+                      setHovered(null);
+                      if (reason) setHoverTip(null);
+                    }}
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: "var(--radius-sm)",
+                      cursor: disabled || busy ? "not-allowed" : "pointer",
+                      background: checked
+                        ? "var(--color-accent-subtle)"
+                        : hovered === index && !disabled
+                          ? "var(--color-bg)"
+                          : "transparent",
+                      // The keyboard's row, distinct from ticked.
+                      boxShadow:
+                        usingKeys && index === active
+                          ? "inset 0 0 0 1px var(--color-border-strong)"
+                          : undefined,
+                      opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
+                    }}
+                  />
+                );
+              })
+            ) : (
+              visibleItems.map((item, index) => {
+                const key = getKey(item);
+                const disabled = isDisabled?.(item) ?? false;
+                const reason = disabled ? disabledReason?.(item) : undefined;
+                return (
+                  <button
+                    // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
+                    tabIndex={-1}
+                    key={key}
+                    type="button"
+                    disabled={busy || disabled}
+                    onClick={() => handleSelect(item)}
+                    onMouseEnter={(e) => {
+                      setHovered(index);
+                      setActive(index);
+                      setUsingKeys(false);
+                      if (reason) showHoverTip(e, reason);
+                    }}
+                    onMouseLeave={() => {
+                      setHovered(null);
+                      if (reason) setHoverTip(null);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "7px 10px",
+                      border: "none",
+                      background:
+                        !disabled && (hovered === index || (usingKeys && index === active))
+                          ? "var(--color-bg)"
+                          : "transparent",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      color: "var(--color-text-primary)",
+                      borderRadius: "var(--radius-sm)",
+                      cursor: busy || disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
+                    }}
+                  >
+                    {renderLabel(item)}
+                  </button>
+                );
+              })
+            )}
           </div>
           {error && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", padding: "4px 10px 2px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-danger)",
+                padding: "4px 10px 2px",
+              }}
+            >
               {error}
             </p>
           )}
@@ -336,14 +460,24 @@ export function Popover<T>({
       )}
 
       {hoverTip && (
-        <div style={{
-          position: "fixed", top: hoverTip.top, left: hoverTip.left, zIndex: 400,
-          transform: "translate(-50%, -100%)", maxWidth: "220px",
-          padding: "7px 11px", borderRadius: "var(--radius-md)",
-          background: "var(--color-surface)", boxShadow: "var(--shadow-lg)",
-          fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)",
-          pointerEvents: "none",
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            top: hoverTip.top,
+            left: hoverTip.left,
+            zIndex: 400,
+            transform: "translate(-50%, -100%)",
+            maxWidth: "220px",
+            padding: "7px 11px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--color-surface)",
+            boxShadow: "var(--shadow-lg)",
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-primary)",
+            pointerEvents: "none",
+          }}
+        >
           {hoverTip.text}
         </div>
       )}

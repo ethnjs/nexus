@@ -1,24 +1,24 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { type ReactNode, useEffect, useState } from "react";
 import { IconChevronDown } from "@/components/ui/Icons";
 import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Sidebar.module.css";
 
 export const COLLAPSED_W = 52;
-export const EXPANDED_W  = 192;
+export const EXPANDED_W = 192;
 
 export interface SidebarSubitem {
-  href:  string;
+  href: string;
   label: string;
 }
 
 export interface SidebarItem {
   /** Stable identity for the row — the href isn't one for a group, which has none. */
-  key:   string;
-  icon:  ReactNode;
+  key: string;
+  icon: ReactNode;
   label: string;
   /** Where the row navigates. Omitted on a group, which only opens its subitems. */
   href?: string;
@@ -69,7 +69,12 @@ function cx(...names: (string | false | undefined)[]): string {
  * only state here is interaction state (hover, open drawer, open group), which
  * can't exist before hydration anyway.
  */
-export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard", navHeader }: SidebarProps) {
+export function Sidebar({
+  items,
+  onExpandedChange,
+  homeHref = "/dashboard",
+  navHeader,
+}: SidebarProps) {
   const [hovered, setHovered] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const pathname = usePathname();

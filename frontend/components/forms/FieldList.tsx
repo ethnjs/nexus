@@ -1,33 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent, MeasuringStrategy, PointerSensor, closestCenter,
-  useSensor, useSensors,
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  MeasuringStrategy,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
-import {
-  SortableContext, verticalListSortingStrategy, arrayMove,
-} from "@dnd-kit/sortable";
-import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, FieldChange, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
-import { useFormValidation } from "@/lib/forms/useFormValidation";
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
+import { FieldCard, FieldCardDragPreview, type FocusIntent } from "@/components/forms/FieldCard";
+import { type ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
+import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
+import type { EditableOption } from "@/components/forms/OptionsEditor";
+import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
-import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
-import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
-import { ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
-import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
-import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
-import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
-  EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
+  ApiError,
+  type FieldChange,
+  type Form,
+  type FormField,
+  formsApi,
+  type Tournament,
+  type TournamentShift,
+  tournamentShiftsApi,
+  tournamentsApi,
+} from "@/lib/api";
+import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
+import {
+  deriveBranchingEnabled,
+  deriveCustomValuesEnabled,
+  type EditableField,
+  newField,
+  toFieldInput,
+  withOptionClientKeys,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
-import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
-
+import { useFormValidation } from "@/lib/forms/useFormValidation";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
@@ -58,10 +77,13 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       .filter((f) => !f.is_archived)
       .sort((a, b) => a.order - b.order)
       .map((f) => ({
-        ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
-        branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+        ...withOptionClientKeys(f),
+        clientKey: String(f.id),
+        showDescription: !!f.description,
+        branchingEnabled: deriveBranchingEnabled(f),
+        customValuesEnabled: deriveCustomValuesEnabled(f),
         originalFieldKey: f.field_key,
-      }))
+      })),
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
@@ -77,9 +99,11 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // picker can set this to "preset" — using one before the question has a
   // track sends the TD to the Track field, which is where that error is
   // reported and fixed.
-  const [popoverFor, setPopoverFor] = useState<
-    { key: string; popover: ActivePopover; demandComplete?: boolean } | null
-  >(null);
+  const [popoverFor, setPopoverFor] = useState<{
+    key: string;
+    popover: ActivePopover;
+    demandComplete?: boolean;
+  } | null>(null);
   const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
@@ -100,11 +124,17 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // defaults.
   const notifyRef = useRef<Record<string, boolean>>({});
   useEffect(() => {
-    formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
+    formsApi
+      .listArchivedFields(form.id)
+      .then(setArchivedFields)
+      .catch(() => {});
   }, [form.id]);
   useEffect(() => {
     if (form.tournament_id == null) return;
-    tournamentShiftsApi.list(form.tournament_id).then(setShifts).catch(() => {});
+    tournamentShiftsApi
+      .list(form.tournament_id)
+      .then(setShifts)
+      .catch(() => {});
   }, [form.tournament_id]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
@@ -112,7 +142,11 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // Which input the click that opened a card was aimed at (see FocusIntent).
   // The nonce starts at 1 so 0 can mean "no request for this card" — expanding
   // the same card twice in a row still has to re-fire the focus.
-  const [focusRequest, setFocusRequest] = useState<{ key: string; intent: FocusIntent; nonce: number } | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{
+    key: string;
+    intent: FocusIntent;
+    nonce: number;
+  } | null>(null);
   const focusNonceRef = useRef(1);
   const listRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -215,7 +249,9 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     // "target is above the viewport" and yanks the page to the top.
     const focusedInCard = () => {
       const focused = document.activeElement;
-      return focused instanceof HTMLElement && focused.isConnected && card.contains(focused) ? focused : null;
+      return focused instanceof HTMLElement && focused.isConnected && card.contains(focused)
+        ? focused
+        : null;
     };
 
     let frame = 0;
@@ -241,7 +277,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       // an edit near its bottom; with nothing focused (e.g. after Cancel)
       // there's no better answer than the card, and the guard below then
       // leaves the scroll alone entirely.
-      const target = cardRect.height <= band ? card : focusedInCard() ?? card;
+      const target = cardRect.height <= band ? card : (focusedInCard() ?? card);
       const rect = target === card ? cardRect : target.getBoundingClientRect();
       if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
       if (rect.height > band && rect.bottom > safeTop && rect.top < safeBottom) return;
@@ -250,9 +286,12 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       // minimum nudge would park it, so the next control down is covered
       // again the moment you tab to it. The middle of the band gives room in
       // both directions and survives the card growing around it.
-      const delta = target === card
-        ? rect.top < safeTop ? rect.top - safeTop - 8 : rect.bottom - safeBottom + 8
-        : rect.top + rect.height / 2 - (safeTop + band / 2);
+      const delta =
+        target === card
+          ? rect.top < safeTop
+            ? rect.top - safeTop - 8
+            : rect.bottom - safeBottom + 8
+          : rect.top + rect.height / 2 - (safeTop + band / 2);
       window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
     };
 
@@ -267,7 +306,8 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       settleRef.current = null;
     };
     const timer = setTimeout(stop, SETTLE_MS);
-    for (const e of ["wheel", "touchmove", "keydown"]) window.addEventListener(e, stop, { passive: true });
+    for (const e of ["wheel", "touchmove", "keydown"])
+      window.addEventListener(e, stop, { passive: true });
     settleRef.current = stop;
   }
 
@@ -298,9 +338,10 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     if (!list) return;
     const onFocusIn = (e: FocusEvent) => {
       if (saveBarHeightRef.current === 0) return;
-      const key = e.target instanceof HTMLElement
-        ? e.target.closest<HTMLElement>("[data-field-card]")?.dataset.fieldCard
-        : undefined;
+      const key =
+        e.target instanceof HTMLElement
+          ? e.target.closest<HTMLElement>("[data-field-card]")?.dataset.fieldCard
+          : undefined;
       if (key) scrollCardIntoView(key);
     };
     list.addEventListener("focusin", onFocusIn);
@@ -312,7 +353,10 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // field's FieldKeyPopover shares this list to flag already-used keys.
   useEffect(() => {
     if (form.tournament_id == null) return;
-    formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
+    formsApi
+      .listFieldKeysForTournament(form.tournament_id)
+      .then(setUsedFieldKeys)
+      .catch(() => {});
   }, [form.tournament_id]);
 
   // Loaded eagerly on mount (not deferred until something that needs it —
@@ -322,7 +366,10 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // page-load-stale tournament if its dates changed since.
   function loadTournament() {
     if (form.tournament_id == null) return;
-    tournamentsApi.get(form.tournament_id).then(setTournament).catch(() => {});
+    tournamentsApi
+      .get(form.tournament_id)
+      .then(setTournament)
+      .catch(() => {});
   }
   useEffect(loadTournament, [form.tournament_id]);
 
@@ -331,7 +378,9 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   }
 
   function addField(afterClientKey?: string) {
-    const insertIndex = afterClientKey ? fields.findIndex((f) => f.clientKey === afterClientKey) + 1 : fields.length;
+    const insertIndex = afterClientKey
+      ? fields.findIndex((f) => f.clientKey === afterClientKey) + 1
+      : fields.length;
     const field = newField(insertIndex + 1);
     setFields((prev) => {
       const next = [...prev];
@@ -375,7 +424,14 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       field_key: "",
       originalFieldKey: "",
       config: source.config?.options
-        ? { ...source.config, options: (source.config.options as EditableOption[]).map((o) => ({ ...o, clientKey: crypto.randomUUID(), option_id: "" })) }
+        ? {
+            ...source.config,
+            options: (source.config.options as EditableOption[]).map((o) => ({
+              ...o,
+              clientKey: crypto.randomUUID(),
+              option_id: "",
+            })),
+          }
         : source.config,
     };
     setFields((prev) => {
@@ -404,8 +460,17 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     // archived state to go to — it just goes. The staged version is kept, not
     // the server's, so edits made before archiving survive an unarchive.
     if (target?.id) {
-      const { clientKey: _c, showDescription: _s, branchingEnabled: _b, customValuesEnabled: _v, ...stored } = target;
-      setArchivedFields((prev) => [{ ...stored, id: target.id as string, is_archived: true }, ...prev]);
+      const {
+        clientKey: _c,
+        showDescription: _s,
+        branchingEnabled: _b,
+        customValuesEnabled: _v,
+        ...stored
+      } = target;
+      setArchivedFields((prev) => [
+        { ...stored, id: target.id as string, is_archived: true },
+        ...prev,
+      ]);
     }
   }
 
@@ -441,7 +506,10 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       setSaving(true);
       validation.setSaveError("");
       try {
-        const changes = await formsApi.classifyFieldChanges(form.id, fields.map((f) => toFieldInput(f)));
+        const changes = await formsApi.classifyFieldChanges(
+          form.id,
+          fields.map((f) => toFieldInput(f)),
+        );
         if (changes.length > 0) {
           setNotifyByKey(Object.fromEntries(changes.map((c) => [c.field_id, c.notify_default])));
           setPendingChanges(changes);
@@ -452,7 +520,9 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         // default, which is exactly the decision this step exists to give the
         // TD — saving past a failed check would quietly take it away. Nothing
         // has been written, so pressing Save again just retries.
-        validation.setSaveError("Couldn't check which questions changed, so nothing was saved. Try saving again.");
+        validation.setSaveError(
+          "Couldn't check which questions changed, so nothing was saved. Try saving again.",
+        );
         return;
       } finally {
         setSaving(false);
@@ -478,8 +548,11 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         .filter((f) => !f.is_archived)
         .sort((a, b) => a.order - b.order)
         .map((f) => ({
-          ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
-          branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+          ...withOptionClientKeys(f),
+          clientKey: String(f.id),
+          showDescription: !!f.description,
+          branchingEnabled: deriveBranchingEnabled(f),
+          customValuesEnabled: deriveCustomValuesEnabled(f),
           originalFieldKey: f.field_key,
         }));
       setFields(next);
@@ -488,7 +561,10 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       validation.clearAll();
       // The response only carries live fields, so anything this save archived
       // (or unarchived) has to be re-read rather than derived from it.
-      formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
+      formsApi
+        .listArchivedFields(form.id)
+        .then(setArchivedFields)
+        .catch(() => {});
     } catch (err) {
       // A staged field the server has never heard of can't be fixed by
       // retrying — it was hard-deleted (here, in another tab, or as a draft
@@ -500,7 +576,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         const lost = fields.filter((f) => f.id && orphanIds.includes(f.id));
         setFields((prev) => prev.filter((f) => !(f.id && orphanIds.includes(f.id))));
         validation.setSaveError(
-          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`
+          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`,
         );
       } else {
         const issues = validation.handle422(err, fields);
@@ -531,9 +607,9 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     const above = droppedIndex < 0 ? [] : fields.slice(0, droppedIndex).reverse();
     const key = restored.some((f) => f.clientKey === expandedKey)
       ? expandedKey
-      : above.find((f) => restored.some((r) => r.clientKey === f.clientKey))?.clientKey
-        ?? restored[0]?.clientKey
-        ?? null;
+      : (above.find((f) => restored.some((r) => r.clientKey === f.clientKey))?.clientKey ??
+        restored[0]?.clientKey ??
+        null);
     setExpandedKey(key);
     if (key) setPendingScrollKey(key);
     validation.clearAll();
@@ -562,7 +638,8 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     if (over && active.id !== over.id) {
       const oldIndex = fields.findIndex((f) => f.clientKey === active.id);
       const newIndex = fields.findIndex((f) => f.clientKey === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) setFields((prev) => arrayMove(prev, oldIndex, newIndex));
+      if (oldIndex !== -1 && newIndex !== -1)
+        setFields((prev) => arrayMove(prev, oldIndex, newIndex));
     }
     // Same accordion rule as add/duplicate — the card you just acted on
     // becomes the open one. Already-expanded cards need no action (moving
@@ -572,156 +649,193 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
 
   return (
     <SuspendCardScrollContext.Provider value={suspendCardScroll}>
-    <div
-      ref={listRef}
-      style={{
-        position: "relative", display: "flex", flexDirection: "column", gap: "12px",
-        // Applied instantly in both directions, deliberately: this padding is
-        // the scroll room scrollCardIntoView depends on, and the browser
-        // clamps scrollTo against the document height *at call time*.
-        // Animating the grow would clamp the scroll short (card stays under
-        // the bar); animating the shrink would let the document keep
-        // collapsing underneath a scroll already in flight. The cost is that
-        // the page's bottom edge snaps rather than glides when the bar
-        // appears/leaves, which is only visible if you're scrolled to the end.
-        paddingBottom: `${saveBarHeight}px`,
-      }}
-    >
-      {fields.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconForms size={28} />}
-            title="No fields yet"
-            description="Add a field to start building this form."
-            action={
-              <Button
-                type="button" variant="primary" size="sm" onClick={() => addField()}
-                disabled={locked} title={locked ? ARCHIVED_REASON : undefined}
-              >
-                <IconPlus size={14} /> Add field
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setDraggingKey(null)}
-          // The dragged card collapses to a one-line slot on pickup, which
-          // moves every card below it. Without continuous measuring dnd-kit
-          // would keep collision-testing against the rects it captured at
-          // drag start, so drops would land against stale positions.
-          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-        >
-          <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
-            {fields.map((field) => (
-              <FieldCard
-                key={field.clientKey}
-                field={field}
-                expanded={expandedKey === field.clientKey}
-                // Expanding grows the card downward from where it sat, so a
-                // click near the bottom of the viewport leaves most of the
-                // question you just opened below the fold.
-                onExpand={(intent) => {
-                  setExpandedKey(field.clientKey);
-                  setPendingScrollKey(field.clientKey);
-                  setFocusRequest({ key: field.clientKey, intent, nonce: focusNonceRef.current++ });
-                }}
-                focusIntent={focusRequest?.key === field.clientKey ? focusRequest.intent : null}
-                focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
-                onFieldChange={(updates) => updateField(field.clientKey, updates)}
-                onDuplicate={() => duplicateField(field.clientKey)}
-                onDelete={() => archiveField(field.clientKey)}
-                tournament={tournament}
-                shifts={shifts}
-                allFields={fields}
-                usedFieldKeys={usedFieldKeys}
-                onRequireTrack={() => setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })}
-                errors={validation.errorsFor(field.clientKey)}
-                allowArchive={hasResponses}
-                locked={locked}
-              />
-            ))}
-          </SortableContext>
-          {/* dropAnimation off: the default animates the overlay into the
+      <div
+        ref={listRef}
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          // Applied instantly in both directions, deliberately: this padding is
+          // the scroll room scrollCardIntoView depends on, and the browser
+          // clamps scrollTo against the document height *at call time*.
+          // Animating the grow would clamp the scroll short (card stays under
+          // the bar); animating the shrink would let the document keep
+          // collapsing underneath a scroll already in flight. The cost is that
+          // the page's bottom edge snaps rather than glides when the bar
+          // appears/leaves, which is only visible if you're scrolled to the end.
+          paddingBottom: `${saveBarHeight}px`,
+        }}
+      >
+        {fields.length === 0 ? (
+          <Card radius="lg" style={{ padding: "8px" }}>
+            <EmptyState
+              icon={<IconForms size={28} />}
+              title="No fields yet"
+              description="Add a field to start building this form."
+              action={
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => addField()}
+                  disabled={locked}
+                  title={locked ? ARCHIVED_REASON : undefined}
+                >
+                  <IconPlus size={14} /> Add field
+                </Button>
+              }
+            />
+          </Card>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setDraggingKey(null)}
+            // The dragged card collapses to a one-line slot on pickup, which
+            // moves every card below it. Without continuous measuring dnd-kit
+            // would keep collision-testing against the rects it captured at
+            // drag start, so drops would land against stale positions.
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+          >
+            <SortableContext
+              items={fields.map((f) => f.clientKey)}
+              strategy={verticalListSortingStrategy}
+            >
+              {fields.map((field) => (
+                <FieldCard
+                  key={field.clientKey}
+                  field={field}
+                  expanded={expandedKey === field.clientKey}
+                  // Expanding grows the card downward from where it sat, so a
+                  // click near the bottom of the viewport leaves most of the
+                  // question you just opened below the fold.
+                  onExpand={(intent) => {
+                    setExpandedKey(field.clientKey);
+                    setPendingScrollKey(field.clientKey);
+                    setFocusRequest({
+                      key: field.clientKey,
+                      intent,
+                      nonce: focusNonceRef.current++,
+                    });
+                  }}
+                  focusIntent={focusRequest?.key === field.clientKey ? focusRequest.intent : null}
+                  focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
+                  onFieldChange={(updates) => updateField(field.clientKey, updates)}
+                  onDuplicate={() => duplicateField(field.clientKey)}
+                  onDelete={() => archiveField(field.clientKey)}
+                  tournament={tournament}
+                  shifts={shifts}
+                  allFields={fields}
+                  usedFieldKeys={usedFieldKeys}
+                  onRequireTrack={() =>
+                    setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })
+                  }
+                  errors={validation.errorsFor(field.clientKey)}
+                  allowArchive={hasResponses}
+                  locked={locked}
+                />
+              ))}
+            </SortableContext>
+            {/* dropAnimation off: the default animates the overlay into the
               drop slot's rect, which would stretch this compact preview back
               out to the full card height on release. */}
-          <DragOverlay dropAnimation={null}>
-            {draggingField ? <FieldCardDragPreview field={draggingField} /> : null}
-          </DragOverlay>
-        </DndContext>
-      )}
-      {pendingChanges && (
-        <NotifyRespondersModal
-          changes={pendingChanges}
-          notify={notifyByKey}
-          onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
-          onCancel={() => setPendingChanges(null)}
-          onConfirm={() => { notifyRef.current = notifyByKey; commitSave(); }}
-          saving={saving}
+            <DragOverlay dropAnimation={null}>
+              {draggingField ? <FieldCardDragPreview field={draggingField} /> : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+        {pendingChanges && (
+          <NotifyRespondersModal
+            changes={pendingChanges}
+            notify={notifyByKey}
+            onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
+            onCancel={() => setPendingChanges(null)}
+            onConfirm={() => {
+              notifyRef.current = notifyByKey;
+              commitSave();
+            }}
+            saving={saving}
+          />
+        )}
+        <ArchivedFieldsSection
+          formId={form.id}
+          fields={archivedFields}
+          locked={locked}
+          onUnarchive={unarchiveField}
+          onDeleted={(fieldId) => {
+            setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
+            // Also drop it from the staged list. A restored-then-deleted field
+            // can sit in both, and a staged id the server no longer has makes
+            // every subsequent save fail on an id the TD can't act on.
+            setFields((prev) => prev.filter((f) => f.id !== fieldId));
+          }}
         />
-      )}
-      <ArchivedFieldsSection
-        formId={form.id}
-        fields={archivedFields}
-        locked={locked}
-        onUnarchive={unarchiveField}
-        onDeleted={(fieldId) => {
-          setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
-          // Also drop it from the staged list. A restored-then-deleted field
-          // can sit in both, and a staged id the server no longer has makes
-          // every subsequent save fail on an id the TD can't act on.
-          setFields((prev) => prev.filter((f) => f.id !== fieldId));
-        }}
-      />
-      <FloatingSaveBar
-        visible={isDirty}
-        saving={saving}
-        error={validation.hasErrors ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.` : validation.saveError || undefined}
-        onSave={handleSave}
-        onCancel={handleDiscard}
-        onHeightChange={handleSaveBarHeight}
-        stayWithin={`/forms/${form.id}`}
-      />
-      {/* Hidden mid-drag: it's absolutely positioned over the expanded card's
+        <FloatingSaveBar
+          visible={isDirty}
+          saving={saving}
+          error={
+            validation.hasErrors
+              ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.`
+              : validation.saveError || undefined
+          }
+          onSave={handleSave}
+          onCancel={handleDiscard}
+          onHeightChange={handleSaveBarHeight}
+          stayWithin={`/forms/${form.id}`}
+        />
+        {/* Hidden mid-drag: it's absolutely positioned over the expanded card's
           box, which is now a one-line slot — a full-height toolbar of buttons
           floating beside it would just be in the way of the drop. */}
-      {expandedField && !draggingKey && (
-        <FieldToolbar
-          // Remounts whenever the expanded field changes. The open popover
-          // is keyed to its field (see popoverFor), so one left open doesn't
-          // silently follow you to whatever field you switch to next.
-          key={expandedField.clientKey}
-          boxRef={toolbarRef}
-          field={expandedField}
-          onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
-          usedFieldKeys={usedFieldKeys}
-          allFields={fields}
-          tracks={tracks}
-          presetsEnabled={form.tournament_id != null}
-          onOpenPresets={loadTournament}
-          activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
-          demandPresetComplete={popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete}
-          onActivePopoverChange={(popover) => setPopoverFor({ key: expandedField.clientKey, popover })}
-          errors={validation.errorsFor(expandedField.clientKey)}
-          saveAttempt={saveAttempt}
-          showDescription={expandedField.showDescription}
-          onAddFieldBelow={() => addField(expandedField.clientKey)}
-          onToggleDescription={() =>
-            updateField(expandedField.clientKey, { showDescription: !expandedField.showDescription })
-          }
-          displayStyle={DISPLAY_STYLE_TYPES.includes(expandedField.question_type) ? expandedField.config?.display_style ?? "list" : undefined}
-          onToggleDisplayStyle={() =>
-            updateField(expandedField.clientKey, {
-              config: { ...expandedField.config, display_style: expandedField.config?.display_style === "buttons" ? "list" : "buttons" },
-            })
-          }
-        />
-      )}
-    </div>
+        {expandedField && !draggingKey && (
+          <FieldToolbar
+            // Remounts whenever the expanded field changes. The open popover
+            // is keyed to its field (see popoverFor), so one left open doesn't
+            // silently follow you to whatever field you switch to next.
+            key={expandedField.clientKey}
+            boxRef={toolbarRef}
+            field={expandedField}
+            onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
+            usedFieldKeys={usedFieldKeys}
+            allFields={fields}
+            tracks={tracks}
+            presetsEnabled={form.tournament_id != null}
+            onOpenPresets={loadTournament}
+            activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
+            demandPresetComplete={
+              popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete
+            }
+            onActivePopoverChange={(popover) =>
+              setPopoverFor({ key: expandedField.clientKey, popover })
+            }
+            errors={validation.errorsFor(expandedField.clientKey)}
+            saveAttempt={saveAttempt}
+            showDescription={expandedField.showDescription}
+            onAddFieldBelow={() => addField(expandedField.clientKey)}
+            onToggleDescription={() =>
+              updateField(expandedField.clientKey, {
+                showDescription: !expandedField.showDescription,
+              })
+            }
+            displayStyle={
+              DISPLAY_STYLE_TYPES.includes(expandedField.question_type)
+                ? (expandedField.config?.display_style ?? "list")
+                : undefined
+            }
+            onToggleDisplayStyle={() =>
+              updateField(expandedField.clientKey, {
+                config: {
+                  ...expandedField.config,
+                  display_style:
+                    expandedField.config?.display_style === "buttons" ? "list" : "buttons",
+                },
+              })
+            }
+          />
+        )}
+      </div>
     </SuspendCardScrollContext.Provider>
   );
 }

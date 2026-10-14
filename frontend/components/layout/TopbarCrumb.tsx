@@ -24,9 +24,14 @@ export function TopbarCrumb() {
     // floating inside the bar.
     <div
       style={{
-        position: "relative", alignSelf: "stretch",
-        display: "flex", alignItems: "center", gap: "8px", minWidth: 0,
-        fontFamily: "var(--font-sans)", fontSize: "13px",
+        position: "relative",
+        alignSelf: "stretch",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        minWidth: 0,
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
         // Opacity only. A keyframe that animates `transform` leaves this
         // element an animated-transform ancestor for as long as the effect is
         // in force - and `fill-mode: both` means forever - which makes it the

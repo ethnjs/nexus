@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 const REST_OFFSET = 24;
 const FOOTPRINT_BUFFER = 16;
@@ -49,18 +49,25 @@ export function FloatingBar({ visible, children, onHeightChange }: FloatingBarPr
   }, [visible]);
 
   return (
-    <div ref={barRef} style={{
-      position: "fixed", left: "50%", bottom: visible && prepared ? `${REST_OFFSET}px` : "-160px",
-      transform: "translateX(-50%)",
-      // A fixed-position containing block (such as DockedPanel) scopes this
-      // percentage width automatically, without a caller-specific width prop.
-      width: "min(560px, calc(100% - 40px))",
-      background: "var(--color-surface)", border: "1px solid var(--color-border)",
-      borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-      padding: "14px 18px",
-      transition: "bottom 0.25s ease",
-      zIndex: 60,
-    }}>
+    <div
+      ref={barRef}
+      style={{
+        position: "fixed",
+        left: "50%",
+        bottom: visible && prepared ? `${REST_OFFSET}px` : "-160px",
+        transform: "translateX(-50%)",
+        // A fixed-position containing block (such as DockedPanel) scopes this
+        // percentage width automatically, without a caller-specific width prop.
+        width: "min(560px, calc(100% - 40px))",
+        background: "var(--color-surface)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        boxShadow: "var(--shadow-lg)",
+        padding: "14px 18px",
+        transition: "bottom 0.25s ease",
+        zIndex: 60,
+      }}
+    >
       {children}
     </div>
   );

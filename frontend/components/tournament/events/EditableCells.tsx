@@ -1,18 +1,33 @@
 "use client";
 
-import { KeyboardEvent, ReactNode, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
+import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { FormPopover } from "@/components/ui/FormPopover";
-import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
-import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { IconPlus } from "@/components/ui/Icons";
-import { PillInput } from "@/components/ui/PillInput";
 import { enterChoice, OptionList, stepActive, suggestionRows } from "@/components/ui/OptionList";
+import { PillInput } from "@/components/ui/PillInput";
+import type {
+  Role,
+  TournamentBuilding,
+  TournamentDivision,
+  TournamentEvent,
+  TournamentEventInput,
+  TournamentShift,
+} from "@/lib/api";
 import { focusAdjacentCell } from "@/lib/gridNav";
 import { useToast } from "@/lib/useToast";
-import { Role, TournamentBuilding, TournamentDivision, TournamentEvent, TournamentEventInput, TournamentShift } from "@/lib/api";
 
 /** What an editable cell needs from the page. Absent = the table is read-only. */
 export interface EventEditContext {
@@ -52,15 +67,24 @@ const stop = (e: SyntheticEvent) => e.stopPropagation();
 /** Wraps an editable cell's control so its clicks stay in the cell, at the
  *  height its editor needs. `editing` marks it for the table's arrow keys
  *  (see gridNav), which leave an open editor alone. */
-export function CellGuard({ children, align = "center", editing = false }: {
-  children: ReactNode; align?: "start" | "center"; editing?: boolean;
+export function CellGuard({
+  children,
+  align = "center",
+  editing = false,
+}: {
+  children: ReactNode;
+  align?: "start" | "center";
+  editing?: boolean;
 }) {
   return (
     <span
       onClick={stop}
       data-editing={editing || undefined}
       style={{
-        display: "flex", alignItems: "center", justifyContent: align === "start" ? "flex-start" : "center", minWidth: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: align === "start" ? "flex-start" : "center",
+        minWidth: 0,
         // The tallest editor (a sm chip field). Reserved at rest too, so
         // opening an editor never grows the row and shifts its text.
         minHeight: "28px",
@@ -74,15 +98,24 @@ export function CellGuard({ children, align = "center", editing = false }: {
 /** A locked cell's box: CellGuard's layout, so locking a row never changes
  *  its height, but without stopping clicks — a locked cell belongs to the row
  *  (Select mode toggles through it). */
-export function LockedCell({ title, align = "center", children }: {
-  title?: string; align?: "start" | "center"; children: ReactNode;
+export function LockedCell({
+  title,
+  align = "center",
+  children,
+}: {
+  title?: string;
+  align?: "start" | "center";
+  children: ReactNode;
 }) {
   return (
     <span
       title={title}
       style={{
-        display: "flex", alignItems: "center", justifyContent: align === "start" ? "flex-start" : "center",
-        minWidth: 0, minHeight: "28px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: align === "start" ? "flex-start" : "center",
+        minWidth: 0,
+        minHeight: "28px",
       }}
     >
       {children}
@@ -117,7 +150,9 @@ function useCellEditor() {
   const refocus = useRef(false);
   // Stable: a fresh ref callback per render makes React detach and re-attach
   // it on every render of every cell.
-  const setRestRef = useCallback((el: HTMLElement | null) => { restRef.current = el; }, []);
+  const setRestRef = useCallback((el: HTMLElement | null) => {
+    restRef.current = el;
+  }, []);
 
   useEffect(() => {
     if (!editing) {
@@ -174,7 +209,13 @@ function useCellEditor() {
 /** The resting face of an editable cell: plain content that is a Tab stop and
  *  opens the editor on click or Enter. It fills the whole cell, so a click on
  *  the empty space beside short text still opens it. */
-function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
+function RestControl({
+  restRef,
+  onOpen,
+  title,
+  cursor = "pointer",
+  children,
+}: {
   restRef: (el: HTMLElement | null) => void;
   onOpen: () => void;
   title: string;
@@ -187,9 +228,21 @@ function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onOpen(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       title={title}
-      style={{ cursor, minWidth: 0, flex: 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}
+      style={{
+        cursor,
+        minWidth: 0,
+        flex: 1,
+        alignSelf: "stretch",
+        display: "flex",
+        alignItems: "center",
+      }}
     >
       {children}
     </span>
@@ -203,7 +256,13 @@ function RestControl({ restRef, onOpen, title, cursor = "pointer", children }: {
  * display with the reason on hover.
  */
 export function SelectCell({
-  display, value, options, lockReason, onPick, divisions = false, align = "center",
+  display,
+  value,
+  options,
+  lockReason,
+  onPick,
+  divisions = false,
+  align = "center",
 }: {
   display: ReactNode;
   /** "" stands for "none" (e.g. no division) — ButtonGroup values are strings. */
@@ -222,13 +281,20 @@ export function SelectCell({
   const Group = divisions ? DivisionButtonGroup : ButtonGroup;
   // On open, focus lands on the current choice, so Enter keeps it and ←/→
   // move to the others. Stable so it runs once per opening, not per render.
-  const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  );
   const focusSelected = useCallback((el: HTMLDivElement | null) => {
     el?.querySelectorAll<HTMLButtonElement>("button")[selectedIndex]?.focus();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (lockReason) {
-    return <LockedCell title={lockReason} align={align}>{display}</LockedCell>;
+    return (
+      <LockedCell title={lockReason} align={align}>
+        {display}
+      </LockedCell>
+    );
   }
   // Focus was on a button inside the popover, which is about to unmount.
   const closeAndRefocus = (close: () => void) => {
@@ -242,7 +308,10 @@ export function SelectCell({
           // A Button, so Tab reaches it and Enter/Space open the popover.
           <Button
             ref={triggerRef}
-            type="button" variant="ghost" interactive={false} title="Click to change"
+            type="button"
+            variant="ghost"
+            interactive={false}
+            title="Click to change"
             style={{ height: "auto", padding: 0, border: "none", minWidth: 0 }}
           >
             {display}
@@ -251,7 +320,9 @@ export function SelectCell({
         onOpenChange={setOpen}
         // Wide enough for every button on one row: roughly a label's text
         // plus a small button's padding and border, the gaps, and the panel's own padding.
-        width={options.reduce((w, o) => w + o.label.length * 7 + 32, 0) + (options.length - 1) * 8 + 30}
+        width={
+          options.reduce((w, o) => w + o.label.length * 7 + 32, 0) + (options.length - 1) * 8 + 30
+        }
         align="left"
       >
         {(close) => (
@@ -259,7 +330,11 @@ export function SelectCell({
             ref={focusSelected}
             style={{ display: "flex", flexDirection: "column", gap: "6px" }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") { e.preventDefault(); closeAndRefocus(close); return; }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                closeAndRefocus(close);
+                return;
+              }
               // Tab leaves for the next cell; ←/→ move between the choices.
               if (e.key === "Tab") {
                 e.preventDefault();
@@ -270,8 +345,12 @@ export function SelectCell({
               if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
               const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
               const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-              const next = buttons[(at + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length];
-              if (next) { e.preventDefault(); next.focus(); }
+              const next =
+                buttons[(at + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length];
+              if (next) {
+                e.preventDefault();
+                next.focus();
+              }
             }}
           >
             <Group
@@ -279,7 +358,10 @@ export function SelectCell({
               value={value}
               locked={saving}
               onChange={async (next) => {
-                if (next === value) { closeAndRefocus(close); return; }
+                if (next === value) {
+                  closeAndRefocus(close);
+                  return;
+                }
                 setSaving(true);
                 try {
                   await onPick(next);
@@ -305,7 +387,18 @@ export function SelectCell({
  * own. Locked, it's just the `display`.
  */
 export function ChipsCell<T>({
-  display, selected, all, getKey, getLabel, getTooltip, getStatus, lockReason, onAdd, onRemove, addTitle, emptyMessage,
+  display,
+  selected,
+  all,
+  getKey,
+  getLabel,
+  getTooltip,
+  getStatus,
+  lockReason,
+  onAdd,
+  onRemove,
+  addTitle,
+  emptyMessage,
 }: {
   display: ReactNode;
   selected: T[];
@@ -332,7 +425,11 @@ export function ChipsCell<T>({
     if (editor.editing) addRef.current?.click();
   }, [editor.editing]);
   if (lockReason) {
-    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
+    return (
+      <LockedCell title={lockReason} align="start">
+        {display}
+      </LockedCell>
+    );
   }
 
   const byLabel = (label: string) => selected.find((item) => getLabel(item) === label);
@@ -361,8 +458,22 @@ export function ChipsCell<T>({
               const removed = selected.find((item) => !labels.includes(getLabel(item)));
               if (removed) void run(() => onRemove(removed));
             }}
-            getChipTooltip={getTooltip ? (label) => { const item = byLabel(label); return item ? getTooltip(item) : undefined; } : undefined}
-            getChipStatus={getStatus ? (label) => { const item = byLabel(label); return item ? getStatus(item) : "default"; } : undefined}
+            getChipTooltip={
+              getTooltip
+                ? (label) => {
+                    const item = byLabel(label);
+                    return item ? getTooltip(item) : undefined;
+                  }
+                : undefined
+            }
+            getChipStatus={
+              getStatus
+                ? (label) => {
+                    const item = byLabel(label);
+                    return item ? getStatus(item) : "default";
+                  }
+                : undefined
+            }
             variant="transparent"
             size="sm"
             disableInput
@@ -371,7 +482,16 @@ export function ChipsCell<T>({
               <ChecklistPopover
                 trigger={
                   // Same as the roster's Roles cell add button.
-                  <Button ref={addRef} type="button" variant="secondary" size="sm" iconOnly title={addTitle} disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                  <Button
+                    ref={addRef}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    iconOnly
+                    title={addTitle}
+                    disabled={saving}
+                    style={{ padding: 0, flexShrink: 0 }}
+                  >
                     <IconPlus size={14} />
                   </Button>
                 }
@@ -381,7 +501,12 @@ export function ChipsCell<T>({
                 isSelected={(item) => selected.some((s) => getKey(s) === getKey(item))}
                 // Caught here, so the toast is the only report — the popover
                 // would otherwise print it inline too. It stays open either way.
-                onToggle={(item) => (selected.some((s) => getKey(s) === getKey(item)) ? onRemove(item) : onAdd(item)).catch(toastError)}
+                onToggle={(item) =>
+                  (selected.some((s) => getKey(s) === getKey(item))
+                    ? onRemove(item)
+                    : onAdd(item)
+                  ).catch(toastError)
+                }
                 emptyMessage={emptyMessage}
                 width={220}
                 align="left"
@@ -389,7 +514,11 @@ export function ChipsCell<T>({
             }
           />
         ) : (
-          <RestControl restRef={editor.restRef} onOpen={editor.open} title={`Click to edit — ${addTitle.toLowerCase()}`}>
+          <RestControl
+            restRef={editor.restRef}
+            onOpen={editor.open}
+            title={`Click to edit — ${addTitle.toLowerCase()}`}
+          >
             {display}
           </RestControl>
         )}
@@ -409,7 +538,13 @@ export function ChipsCell<T>({
  * Locked, it's just the `display`.
  */
 export function LocationCell({
-  display, detail, trackId, buildings, lockReason, onSave, ensureBuilding,
+  display,
+  detail,
+  trackId,
+  buildings,
+  lockReason,
+  onSave,
+  ensureBuilding,
 }: {
   display: ReactNode;
   /** This event's entry for the track, if it has one. */
@@ -418,11 +553,22 @@ export function LocationCell({
   buildings: TournamentBuilding[];
   lockReason?: string;
   /** Saves this track's location fields; the caller resends every other track. */
-  onSave: (updates: { building_id?: number | null; floor?: null; rooms?: string[] }) => Promise<void>;
+  onSave: (updates: {
+    building_id?: number | null;
+    floor?: null;
+    rooms?: string[];
+  }) => Promise<void>;
   /** Finds or creates the named building on this track. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
 }) {
-  const { editing, open: openEditor, close: closeEditor, wrapRef, restRef, onKeyDown: editorKeys } = useCellEditor();
+  const {
+    editing,
+    open: openEditor,
+    close: closeEditor,
+    wrapRef,
+    restRef,
+    onKeyDown: editorKeys,
+  } = useCellEditor();
   const [text, setText] = useState("");
   // The saved building, pulled back into the box by Backspace. Not unset on
   // the server until Enter/Tab commits whatever the box then says.
@@ -437,7 +583,11 @@ export function LocationCell({
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (lockReason) {
-    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
+    return (
+      <LockedCell title={lockReason} align="start">
+        {display}
+      </LockedCell>
+    );
   }
 
   const buildingId = detail?.building_id ?? null;
@@ -446,9 +596,13 @@ export function LocationCell({
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
   const rooms = detail?.rooms ?? [];
   const typingBuilding = buildingId === null || buildingInBox;
-  const rows = editing && typingBuilding
-    ? suggestionRows(onTrack.map((b) => b.name), text)
-    : { names: [], options: [] };
+  const rows =
+    editing && typingBuilding
+      ? suggestionRows(
+          onTrack.map((b) => b.name),
+          text,
+        )
+      : { names: [], options: [] };
 
   function open() {
     setText("");
@@ -509,7 +663,9 @@ export function LocationCell({
 
   return (
     <CellGuard align="start" editing>
-      <span style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}>
+      <span
+        style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, width: "100%" }}
+      >
         <span
           ref={wrapRef}
           onKeyDown={editorKeys}
@@ -519,36 +675,66 @@ export function LocationCell({
             if (to && !e.currentTarget.contains(to)) closeEditor();
           }}
           style={{
-            display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 6px", minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "4px 6px",
+            minWidth: 0,
             // A shadow, not a border: a border adds a pixel of height, and
             // the text would shift the moment the box opened.
             boxShadow: `inset 0 -1px 0 ${failed ? "var(--color-danger)" : "var(--color-border-strong)"}`,
-            fontFamily: "var(--font-sans)", fontSize: "13px",
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
           }}
         >
-          {!typingBuilding && <span style={{ color: "var(--color-text-primary)", whiteSpace: "nowrap" }}>{buildingName}</span>}
-          {!typingBuilding && rooms.map((room) => (
-            <span key={room} style={{
-              padding: "0 5px", borderRadius: "var(--radius-sm)", whiteSpace: "nowrap",
-              background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)", fontSize: "12px",
-            }}>
-              {room}
+          {!typingBuilding && (
+            <span style={{ color: "var(--color-text-primary)", whiteSpace: "nowrap" }}>
+              {buildingName}
             </span>
-          ))}
+          )}
+          {!typingBuilding &&
+            rooms.map((room) => (
+              <span
+                key={room}
+                style={{
+                  padding: "0 5px",
+                  borderRadius: "var(--radius-sm)",
+                  whiteSpace: "nowrap",
+                  background: "var(--color-accent-subtle)",
+                  color: "var(--color-text-secondary)",
+                  fontSize: "12px",
+                }}
+              >
+                {room}
+              </span>
+            ))}
           <input
             ref={inputRef}
             value={text}
             aria-label={typingBuilding ? "Building" : "Room"}
             readOnly={savingBuilding}
             placeholder={typingBuilding ? "Building" : "Room"}
-            onChange={(e) => { setText(e.target.value); setHighlight(-1); }}
+            onChange={(e) => {
+              setText(e.target.value);
+              setHighlight(-1);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "ArrowDown" && rows.options.length > 0) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, 1)); return; }
-              if (e.key === "ArrowUp" && rows.options.length > 0) { e.preventDefault(); setHighlight((h) => stepActive(rows.options, h, -1)); return; }
+              if (e.key === "ArrowDown" && rows.options.length > 0) {
+                e.preventDefault();
+                setHighlight((h) => stepActive(rows.options, h, 1));
+                return;
+              }
+              if (e.key === "ArrowUp" && rows.options.length > 0) {
+                e.preventDefault();
+                setHighlight((h) => stepActive(rows.options, h, -1));
+                return;
+              }
               if (e.key === "Enter" || e.key === "Tab") {
                 // A building: the highlighted row, else the exact/first match
                 // for typed text; an empty box picks nothing (clears it).
-                const picked = typingBuilding ? enterChoice(rows.names, highlight, text) : undefined;
+                const picked = typingBuilding
+                  ? enterChoice(rows.names, highlight, text)
+                  : undefined;
                 // Tab with nothing to commit is a plain Tab: focus moves on.
                 if (commit(picked) || e.key === "Enter") e.preventDefault();
                 return;
@@ -558,15 +744,26 @@ export function LocationCell({
                 if (rooms.length > 0) void run(() => onSave({ rooms: rooms.slice(0, -1) }));
                 // No rooms left: the building comes back into the box, minus
                 // the character this Backspace was for.
-                else { setBuildingInBox(true); setText(buildingName.slice(0, -1)); }
+                else {
+                  setBuildingInBox(true);
+                  setText(buildingName.slice(0, -1));
+                }
               }
             }}
             style={{
-              flex: 1, minWidth: "60px", padding: 0, margin: 0, border: "none", outline: "none",
-              background: "transparent", color: "var(--color-text-primary)",
+              flex: 1,
+              minWidth: "60px",
+              padding: 0,
+              margin: 0,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              color: "var(--color-text-primary)",
               // Inherited, so the typed text sits on the same line box as the
               // resting text it replaced.
-              fontFamily: "var(--font-sans)", fontSize: "13px", lineHeight: "inherit",
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              lineHeight: "inherit",
             }}
           />
           {rows.options.length > 0 && (
@@ -575,7 +772,10 @@ export function LocationCell({
               options={rows.options}
               active={highlight}
               onActiveChange={setHighlight}
-              onPick={(i) => { commit(rows.names[i] ?? text); inputRef.current?.focus(); }}
+              onPick={(i) => {
+                commit(rows.names[i] ?? text);
+                inputRef.current?.focus();
+              }}
             />
           )}
         </span>
@@ -591,7 +791,11 @@ export function LocationCell({
  * track's whole needs list. Locked, it's the read-only `display`.
  */
 export function StaffingCell({
-  display, needs, roles, lockReason, onSave,
+  display,
+  needs,
+  roles,
+  lockReason,
+  onSave,
 }: {
   display: ReactNode;
   needs: { role_id: number; role_label: string; count: number }[];
@@ -615,7 +819,11 @@ export function StaffingCell({
   }, [editor.editing]);
 
   if (lockReason) {
-    return <LockedCell title={lockReason} align="start">{display}</LockedCell>;
+    return (
+      <LockedCell title={lockReason} align="start">
+        {display}
+      </LockedCell>
+    );
   }
 
   async function save(next: { role_id: number; count: number }[]) {
@@ -645,9 +853,13 @@ export function StaffingCell({
           <ChipInput
             value={needs.map((n) => n.role_label)}
             // Only removal reaches here (disableInput): keep the needs whose chip is left.
-            onChange={(labels) => void save(
-              needs.filter((n) => labels.includes(n.role_label)).map((n) => ({ role_id: n.role_id, count: n.count })),
-            )}
+            onChange={(labels) =>
+              void save(
+                needs
+                  .filter((n) => labels.includes(n.role_label))
+                  .map((n) => ({ role_id: n.role_id, count: n.count })),
+              )
+            }
             renderChipTrailing={(label) => {
               const need = byLabel(label);
               return need ? (
@@ -657,7 +869,11 @@ export function StaffingCell({
                   // Set before the save, so the pill mounts already focused.
                   autoFocus={need.role_id === focusRoleId}
                   disabled={saving}
-                  onCommit={(count) => void save(current.map((n) => (n.role_id === need.role_id ? { ...n, count } : n)))}
+                  onCommit={(count) =>
+                    void save(
+                      current.map((n) => (n.role_id === need.role_id ? { ...n, count } : n)),
+                    )
+                  }
                 />
               ) : null;
             }}
@@ -668,7 +884,16 @@ export function StaffingCell({
             addButton={
               <ChecklistPopover
                 trigger={
-                  <Button ref={addRef} type="button" variant="secondary" size="sm" iconOnly title="Add role" disabled={saving} style={{ padding: 0, flexShrink: 0 }}>
+                  <Button
+                    ref={addRef}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    iconOnly
+                    title="Add role"
+                    disabled={saving}
+                    style={{ padding: 0, flexShrink: 0 }}
+                  >
                     <IconPlus size={14} />
                   </Button>
                 }
@@ -677,7 +902,8 @@ export function StaffingCell({
                 renderLabel={(r) => r.label}
                 isSelected={(r) => needs.some((n) => n.role_id === r.id)}
                 onToggle={async (r) => {
-                  if (needs.some((n) => n.role_id === r.id)) return save(current.filter((n) => n.role_id !== r.id));
+                  if (needs.some((n) => n.role_id === r.id))
+                    return save(current.filter((n) => n.role_id !== r.id));
                   setFocusRoleId(r.id);
                   await save([...current, { role_id: r.id, count: 1 }]);
                   addRef.current?.click(); // closes the picker
@@ -692,19 +918,34 @@ export function StaffingCell({
           />
         ) : (
           <RestControl restRef={editor.restRef} onOpen={editor.open} title="Click to edit staffing">
-            {needs.length > 0 ? display : (
+            {needs.length > 0 ? (
+              display
+            ) : (
               // Muted, like the location cell's "No location". The add button
               // only appears on hover, so a resting table reads normally.
               <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    color: "var(--color-text-tertiary)",
+                  }}
+                >
                   No staffing
                 </span>
                 {hovered && (
                   <Button
-                    type="button" variant="secondary" size="sm" iconOnly title="Add role"
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    iconOnly
+                    title="Add role"
                     // Not a Tab stop: the cell itself is one, and Enter on it opens the editor.
                     tabIndex={-1}
-                    onClick={(e) => { e.stopPropagation(); editor.open(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      editor.open();
+                    }}
                     style={{ padding: 0, flexShrink: 0 }}
                   >
                     <IconPlus size={14} />

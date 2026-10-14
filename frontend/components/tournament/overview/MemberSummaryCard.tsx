@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MemberSummary, MemberSummaryAvailabilityOption, MemberSummaryTrack, membersApi } from "@/lib/api";
-import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { useEffect, useState } from "react";
+import styles from "@/components/tournament/overview/Overview.module.css";
+import { OVERVIEW_CARD_PADDING, OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { Button } from "@/components/ui/Button";
-import { OverviewCard, OVERVIEW_CARD_PADDING } from "@/components/tournament/overview/OverviewCard";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Tooltip } from "@/components/ui/Tooltip";
-import styles from "@/components/tournament/overview/Overview.module.css";
+import {
+  type MemberSummary,
+  type MemberSummaryAvailabilityOption,
+  type MemberSummaryTrack,
+  membersApi,
+} from "@/lib/api";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 
 // Narrowest a track's column gets — what four status tiles need side by side.
 const TRACK_MIN_WIDTH = 420;
@@ -36,7 +41,10 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
 
   useEffect(() => {
     if (!canManageMembers) return;
-    membersApi.summary(tournamentId).then(setSummary).catch(() => setSummary(null));
+    membersApi
+      .summary(tournamentId)
+      .then(setSummary)
+      .catch(() => setSummary(null));
   }, [tournamentId, canManageMembers]);
 
   if (!canManageMembers || !summary) return null;
@@ -53,7 +61,9 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
       meta={memberCount}
       action={
         <Button
-          type="button" variant="ghost" size="sm"
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
         >
           View roster
@@ -61,17 +71,29 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
       }
       data-min-width={across > 0 ? minWidth : undefined}
     >
-
       {onboarding && (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <SectionLabel>Onboarding</SectionLabel>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <ProgressRing
-              completed={onboarding.completed} total={memberCount} size={28} strokeWidth={14}
-              color={onboarding.completed >= memberCount ? "var(--color-success)" : "var(--color-accent)"}
+              completed={onboarding.completed}
+              total={memberCount}
+              size={28}
+              strokeWidth={14}
+              color={
+                onboarding.completed >= memberCount ? "var(--color-success)" : "var(--color-accent)"
+              }
             />
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-              <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{onboarding.completed}</span>
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
+                {onboarding.completed}
+              </span>
               {` of ${memberCount} onboarded`}
               {onboarding.started > 0 && ` · ${onboarding.started} partway through`}
             </span>
@@ -79,12 +101,16 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
         </div>
       )}
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${TRACK_MIN_WIDTH}px), 1fr))`,
-        gap: `20px ${TRACK_GAP}px`,
-      }}>
-        {summary.tracks.map((track) => <TrackColumn key={track.track_id} track={track} />)}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${TRACK_MIN_WIDTH}px), 1fr))`,
+          gap: `20px ${TRACK_GAP}px`,
+        }}
+      >
+        {summary.tracks.map((track) => (
+          <TrackColumn key={track.track_id} track={track} />
+        ))}
       </div>
     </OverviewCard>
   );
@@ -92,10 +118,16 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <span style={{
-      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase",
-      letterSpacing: "0.06em", color: "var(--color-text-tertiary)",
-    }}>
+    <span
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {children}
     </span>
   );
@@ -104,10 +136,17 @@ function SectionLabel({ children }: { children: string }) {
 function TrackColumn({ track }: { track: MemberSummaryTrack }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}>{track.name}</span>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}>
+        {track.name}
+      </span>
       <div className={styles.statusTiles}>
         {STATUS_TILES.map((tile) => (
-          <StatusTile key={tile.key} label={tile.label} value={track[tile.key]} background={tile.background} />
+          <StatusTile
+            key={tile.key}
+            label={tile.label}
+            value={track[tile.key]}
+            background={tile.background}
+          />
         ))}
       </div>
       {track.availability.length > 0 && <AvailabilityBars options={track.availability} />}
@@ -117,13 +156,44 @@ function TrackColumn({ track }: { track: MemberSummaryTrack }) {
 
 // The tint is a hint, not the message: the label names the status, and the
 // number stays in ink so it reads the same without colour.
-function StatusTile({ label, value, background }: { label: string; value: number; background: string }) {
+function StatusTile({
+  label,
+  value,
+  background,
+}: {
+  label: string;
+  value: number;
+  background: string;
+}) {
   return (
-    <div style={{ minWidth: 0, padding: "10px", borderRadius: "var(--radius-md)", background, border: "1px solid var(--color-border)" }}>
-      <div style={{ fontFamily: "var(--font-sans)", fontSize: "28px", fontWeight: 600, lineHeight: 1, color: "var(--color-text-primary)" }}>
+    <div
+      style={{
+        minWidth: 0,
+        padding: "10px",
+        borderRadius: "var(--radius-md)",
+        background,
+        border: "1px solid var(--color-border)",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "28px",
+          fontWeight: 600,
+          lineHeight: 1,
+          color: "var(--color-text-primary)",
+        }}
+      >
         {value}
       </div>
-      <div style={{ marginTop: "6px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+      <div
+        style={{
+          marginTop: "6px",
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+        }}
+      >
         {label}
       </div>
     </div>
@@ -156,7 +226,13 @@ function AvailabilityBars({ options }: { options: MemberSummaryAvailabilityOptio
   );
 }
 
-function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOption; max: number }) {
+function AvailabilityBar({
+  option,
+  max,
+}: {
+  option: MemberSummaryAvailabilityOption;
+  max: number;
+}) {
   const [hovered, setHovered] = useState<string | null>(null);
   const total = option.confirmed + option.interested;
   // Zero-width segments are skipped, so the 2px gap only ever sits between two real ones.
@@ -167,21 +243,32 @@ function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOpt
       <span
         title={option.label}
         style={{
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
         }}
       >
         {option.label}
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         {total > 0 && (
-          <div style={{ display: "flex", gap: "2px", flex: `0 0 calc((100% - ${TIP_LABEL_WIDTH}px) * ${total / max})` }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "2px",
+              flex: `0 0 calc((100% - ${TIP_LABEL_WIDTH}px) * ${total / max})`,
+            }}
+          >
             {segments.map((segment, i) => (
               // Each segment is its own hover target; the wrapper's padding
               // makes it 24px tall around a 12px bar.
               <Tooltip
                 key={segment.key}
-                variant="info" showIcon={false}
+                variant="info"
+                showIcon={false}
                 message={`${option[segment.key]} ${segment.label}`}
                 style={{ flex: `${option[segment.key]} 0 0`, minWidth: 0, padding: "6px 0" }}
               >
@@ -189,7 +276,9 @@ function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOpt
                   onMouseEnter={() => setHovered(segment.key)}
                   onMouseLeave={() => setHovered(null)}
                   style={{
-                    width: "100%", height: "12px", background: segment.color,
+                    width: "100%",
+                    height: "12px",
+                    background: segment.color,
                     // Rounded at the data end only; square where the bar starts.
                     borderRadius: i === segments.length - 1 ? "0 4px 4px 0" : 0,
                     filter: hovered === segment.key ? "brightness(0.8)" : undefined,
@@ -200,7 +289,14 @@ function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOpt
             ))}
           </div>
         )}
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--color-text-primary)",
+          }}
+        >
           {total}
         </span>
       </div>
@@ -210,10 +306,17 @@ function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOpt
 
 function LegendKey({ color, label }: { color: string; label: string }) {
   return (
-    <span style={{
-      display: "flex", alignItems: "center", gap: "6px", textTransform: "capitalize",
-      fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)",
-    }}>
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        textTransform: "capitalize",
+        fontFamily: "var(--font-sans)",
+        fontSize: "12px",
+        color: "var(--color-text-secondary)",
+      }}
+    >
       <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: color }} />
       {label}
     </span>

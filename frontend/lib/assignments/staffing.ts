@@ -1,4 +1,4 @@
-import type { Assignment, TournamentEvent } from '@/lib/api'
+import type { Assignment, TournamentEvent } from "@/lib/api";
 
 /**
  * How many distinct members hold one role on one track — never a row count.
@@ -7,14 +7,12 @@ import type { Assignment, TournamentEvent } from '@/lib/api'
  * assignment rows (one per shift) but one person, so counting rows would make
  * splitting a shift in two look like hiring somebody new.
  */
-export function staffedCount(
-  rows: readonly Assignment[], roleId: number, trackId: number,
-): number {
-  const members = new Set<number | null>()
+export function staffedCount(rows: readonly Assignment[], roleId: number, trackId: number): number {
+  const members = new Set<number | null>();
   for (const row of rows) {
-    if (row.role.id === roleId && row.track.id === trackId) members.add(row.member.membership_id)
+    if (row.role.id === roleId && row.track.id === trackId) members.add(row.member.membership_id);
   }
-  return members.size
+  return members.size;
 }
 
 /**
@@ -34,12 +32,12 @@ export function unfilledCount(
   rows: readonly Assignment[],
   showsTrack: (trackId: number) => boolean,
 ): number {
-  let unfilled = 0
+  let unfilled = 0;
   for (const detail of event.track_details) {
-    if (!showsTrack(detail.track_id)) continue
+    if (!showsTrack(detail.track_id)) continue;
     for (const need of detail.needs ?? []) {
-      unfilled += Math.max(0, need.count - staffedCount(rows, need.role_id, detail.track_id))
+      unfilled += Math.max(0, need.count - staffedCount(rows, need.role_id, detail.track_id));
     }
   }
-  return unfilled
+  return unfilled;
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { Popover } from "@/components/ui/Popover";
 import { IconPlus } from "@/components/ui/Icons";
-import { invitesApi, Invite } from "@/lib/api";
+import { Popover } from "@/components/ui/Popover";
+import { type Invite, invitesApi } from "@/lib/api";
 import { HOUR_PRESETS } from "@/lib/invitePresets";
 
 interface AddTimePopoverProps {
@@ -17,7 +17,10 @@ export function AddTimePopover({ tournamentId, invite, onUpdated }: AddTimePopov
     <Popover
       trigger={
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
           title="Add time"
           style={{ width: "28px", height: "28px", padding: 0 }}
         >
@@ -28,7 +31,9 @@ export function AddTimePopover({ tournamentId, invite, onUpdated }: AddTimePopov
       getKey={(preset) => preset.value}
       renderLabel={(preset) => `+ ${preset.label}`}
       onSelect={async (preset) => {
-        const updated = await invitesApi.update(tournamentId, invite.id, { add_hours: preset.hours });
+        const updated = await invitesApi.update(tournamentId, invite.id, {
+          add_hours: preset.hours,
+        });
         onUpdated(updated);
       }}
     />

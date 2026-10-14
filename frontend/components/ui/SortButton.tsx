@@ -1,17 +1,17 @@
-'use client'
+"use client";
 
-import { ToolbarConfigButton } from '@/components/ui/ToolbarConfigButton'
-import { IconSort } from '@/components/ui/Icons'
+import { IconSort } from "@/components/ui/Icons";
+import { ToolbarConfigButton } from "@/components/ui/ToolbarConfigButton";
 
 interface SortButtonProps {
   /** Whether the current sort differs from this surface's default. */
-  active: boolean
-  onOpen: () => void
+  active: boolean;
+  onOpen: () => void;
   /** Back to the default chain in one press. */
-  onReset: () => void
-  size?: 'sm' | 'md'
-  iconOnly?: boolean
-  label?: string
+  onReset: () => void;
+  size?: "sm" | "md";
+  iconOnly?: boolean;
+  label?: string;
 }
 
 /**
@@ -20,12 +20,17 @@ interface SortButtonProps {
  * its edge instead of a second button that appears and reflows the toolbar.
  */
 export function SortButton({
-  active, onOpen, onReset, size = 'md', iconOnly = false, label = 'Sort',
+  active,
+  onOpen,
+  onReset,
+  size = "md",
+  iconOnly = false,
+  label = "Sort",
 }: SortButtonProps) {
   return (
     <ToolbarConfigButton
       active={active}
-      icon={<IconSort size={size === 'sm' ? 14 : 16} />}
+      icon={<IconSort size={size === "sm" ? 14 : 16} />}
       label={label}
       actionLabel="Reset sort"
       onOpen={onOpen}
@@ -33,5 +38,5 @@ export function SortButton({
       size={size}
       iconOnly={iconOnly}
     />
-  )
+  );
 }

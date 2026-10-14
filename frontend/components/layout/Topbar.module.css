@@ -154,7 +154,9 @@
   /* Invisible is not absent: at opacity 0 it would still swallow clicks
      aimed at the page it is hanging over. */
   pointer-events: none;
-  transition: opacity 150ms ease, color 120ms ease;
+  transition:
+    opacity 150ms ease,
+    color 120ms ease;
 }
 
 .topbar:hover .crumbCaret,

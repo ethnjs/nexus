@@ -1,29 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { adminTournamentsApi, tournamentsApi, AdminTournament, ApiError } from "@/lib/api";
-import {
-  formatDates, formatTrackDates, placeOf, placeOfShort, placeOfTrack, primaryTracks,
-  stateAbbreviation, tournamentDisplayName,
-} from "@/lib/tournamentDisplay";
-import { formatDuration } from "@/lib/timeFormat";
-import { Card } from "@/components/ui/Card";
+import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Badge } from "@/components/ui/Badge";
+import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Card } from "@/components/ui/Card";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { HoverCard } from "@/components/ui/HoverCard";
+import { IconArchive, IconRestore, IconSearch, IconTrash, IconTrophy } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { HoverCard } from "@/components/ui/HoverCard";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { IconArchive, IconRestore, IconTrash, IconSearch, IconTrophy } from "@/components/ui/Icons";
-import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
-import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
-import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
+import { type AdminTournament, ApiError, adminTournamentsApi, tournamentsApi } from "@/lib/api";
+import { formatDuration } from "@/lib/timeFormat";
+import {
+  formatDates,
+  formatTrackDates,
+  placeOf,
+  placeOfShort,
+  placeOfTrack,
+  primaryTracks,
+  stateAbbreviation,
+  tournamentDisplayName,
+} from "@/lib/tournamentDisplay";
+import { useActionToast } from "@/lib/useActionToast";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 
 // Fixed px wherever the content has a known maximum — a formatted date range,
 // a count, a badge — and minmax() only where it is open-ended. The min half
@@ -34,15 +40,15 @@ const COLUMNS = [
   "minmax(170px, 0.9fr)", // owner — avatar + gap eat ~32px before the name
   "minmax(120px, 0.8fr)", // venue — short form, so narrower than the full name needed
   "minmax(150px, 0.7fr)", // dates — widest is a cross-year pair
-  "64px",                 // tracks
-  "104px",                // level
-  "72px",                 // state
-  "88px",                 // division
-  "76px",                 // members
-  "68px",                 // events
-  "128px",                // status
-  "88px",                 // created
-  "76px",                 // actions
+  "64px", // tracks
+  "104px", // level
+  "72px", // state
+  "88px", // division
+  "76px", // members
+  "68px", // events
+  "128px", // status
+  "88px", // created
+  "76px", // actions
 ].join(" ");
 
 // Sum of the track floors. The card scrolls horizontally rather than letting
@@ -53,21 +59,28 @@ const MIN_TABLE_WIDTH = 1370;
 type StatusFilter = "all" | "active" | "archived";
 
 const STATUS_OPTIONS = [
-  { value: "active",   label: "Active" },
+  { value: "active", label: "Active" },
   { value: "archived", label: "Archived" },
-  { value: "all",      label: "All" },
+  { value: "all", label: "All" },
 ];
 
 // Mono is for data you compare down a column — the counts. Everything that
 // reads as prose (owner, venue, dates) is sans, per the app's font split.
 const NUM_CELL: React.CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px",
-  color: "var(--color-text-secondary)", textAlign: "center",
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-text-secondary)",
+  textAlign: "center",
 };
 
 const TEXT_CELL: React.CSSProperties = {
-  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+  fontFamily: "var(--font-sans)",
+  fontSize: "13px",
+  color: "var(--color-text-secondary)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  minWidth: 0,
 };
 
 function ownerName(owner: AdminTournament["owner"]): string {
@@ -95,7 +108,11 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
     // Full name in the title — the abbreviation is for scanning the column,
     // not for hiding which university it is.
     const full = track ? placeOfTrack(track) : placeOf(tournament);
-    return <span style={TEXT_CELL} title={full ?? undefined}>{place ?? "—"}</span>;
+    return (
+      <span style={TEXT_CELL} title={full ?? undefined}>
+        {place ?? "—"}
+      </span>
+    );
   }
 
   return (
@@ -108,10 +125,22 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600 }}>
                 {track.name}
               </span>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
                 {placeOfTrack(track)}
               </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
                 {formatTrackDates(track)}
               </span>
             </div>
@@ -119,7 +148,13 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
         </div>
       }
     >
-      <span style={{ ...TEXT_CELL, borderBottom: "1px dotted var(--color-border-strong)", cursor: "help" }}>
+      <span
+        style={{
+          ...TEXT_CELL,
+          borderBottom: "1px dotted var(--color-border-strong)",
+          cursor: "help",
+        }}
+      >
         {primary.length} sites
       </span>
     </HoverCard>
@@ -129,10 +164,10 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
 // Level is a fixed four-value enum; each gets a stable colour so the column
 // can be read by shape rather than by reading every word.
 const LEVEL_VARIANT: Record<string, "admin" | "confirmed" | "assigned" | "default"> = {
-  nationals:     "admin",
-  state:         "confirmed",
-  regionals:     "assigned",
-  invitational:  "default",
+  nationals: "admin",
+  state: "confirmed",
+  regionals: "assigned",
+  invitational: "default",
 };
 
 function divisionVariant(division: string) {
@@ -141,7 +176,13 @@ function divisionVariant(division: string) {
   return "divisionC" as const;
 }
 
-function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDelete }: {
+function TournamentRow({
+  tournament,
+  onOpenOwner,
+  onArchive,
+  onUnarchive,
+  onDelete,
+}: {
   tournament: AdminTournament;
   onOpenOwner: (userId: number) => void;
   onArchive: () => void;
@@ -155,10 +196,18 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
     // which is backwards here: an archived tournament is exactly the one an
     // admin is here to unarchive or purge. The Archived badge carries the state.
     <div className={table.row}>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-      }} title={tournament.name}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          fontWeight: 500,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+        }}
+        title={tournament.name}
+      >
         {tournamentDisplayName(tournament)}
       </span>
 
@@ -168,9 +217,17 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
           onClick={() => onOpenOwner(tournament.owner!.id)}
           title={`${tournament.owner.email} — open profile`}
           style={{
-            display: "flex", alignItems: "center", gap: "8px", minWidth: 0,
-            border: "none", background: "transparent", padding: 0, cursor: "pointer",
-            font: "inherit", textAlign: "left", color: "inherit",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            minWidth: 0,
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            cursor: "pointer",
+            font: "inherit",
+            textAlign: "left",
+            color: "inherit",
           }}
         >
           {/* "sm" (28px) matches the roster table's avatar. */}
@@ -181,7 +238,9 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
         </button>
       ) : (
         // Owner deleted their account — transfer from the tournament's settings.
-        <span><Badge variant="removed">No owner</Badge></span>
+        <span>
+          <Badge variant="removed">No owner</Badge>
+        </span>
       )}
 
       <VenueCell tournament={tournament} />
@@ -189,12 +248,15 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
       <span style={TEXT_CELL}>
         {primary.length === 1
           ? formatTrackDates(primary[0])
-          : formatDates(tournament.dates) ?? "—"}
+          : (formatDates(tournament.dates) ?? "—")}
       </span>
 
       {/* Primary over total: a cosmetic track carries no dates or venue, so
           the two numbers explain an empty Venue or Dates cell. */}
-      <span style={NUM_CELL} title={`${primary.length} primary of ${tournament.tracks.length} tracks`}>
+      <span
+        style={NUM_CELL}
+        title={`${primary.length} primary of ${tournament.tracks.length} tracks`}
+      >
         {primary.length}/{tournament.tracks.length}
       </span>
 
@@ -202,15 +264,21 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
         <Badge variant={LEVEL_VARIANT[tournament.level] ?? "default"}>{tournament.level}</Badge>
       </span>
       <span style={{ display: "flex", justifyContent: "center" }}>
-        <Badge variant="default" title={tournament.state}>{stateAbbreviation(tournament.state)}</Badge>
+        <Badge variant="default" title={tournament.state}>
+          {stateAbbreviation(tournament.state)}
+        </Badge>
       </span>
 
       <span style={{ display: "flex", gap: "3px", justifyContent: "center", flexWrap: "wrap" }}>
-        {tournament.division.length === 0
-          ? <span style={NUM_CELL}>—</span>
-          : tournament.division.map((d) => (
-              <Badge key={d} variant={divisionVariant(d)}>{d}</Badge>
-            ))}
+        {tournament.division.length === 0 ? (
+          <span style={NUM_CELL}>—</span>
+        ) : (
+          tournament.division.map((d) => (
+            <Badge key={d} variant={divisionVariant(d)}>
+              {d}
+            </Badge>
+          ))
+        )}
       </span>
 
       <span style={NUM_CELL}>{tournament.volunteer_count}</span>
@@ -236,28 +304,59 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
           // weekday and month out, which wrapped to two lines.
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", whiteSpace: "nowrap" }}>
             {new Date(tournament.created_at).toLocaleString("en-US", {
-              weekday: "short", month: "short", day: "numeric", year: "numeric",
-              hour: "numeric", minute: "2-digit",
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
             })}
           </span>
         }
       >
-        <span style={{ ...NUM_CELL, borderBottom: "1px dotted var(--color-border-strong)", cursor: "help" }}>
+        <span
+          style={{
+            ...NUM_CELL,
+            borderBottom: "1px dotted var(--color-border-strong)",
+            cursor: "help",
+          }}
+        >
           {formatDuration(tournament.created_at)} ago
         </span>
       </HoverCard>
 
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
         {tournament.is_archived ? (
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Unarchive" onClick={onUnarchive}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            title="Unarchive"
+            onClick={onUnarchive}
+          >
             <IconRestore size={13} />
           </Button>
         ) : (
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Archive" onClick={onArchive}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            title="Archive"
+            onClick={onArchive}
+          >
             <IconArchive size={13} />
           </Button>
         )}
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Delete tournament" onClick={onDelete}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title="Delete tournament"
+          onClick={onDelete}
+        >
           <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
         </Button>
       </div>
@@ -280,7 +379,8 @@ export default function AdminTournamentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminTournament | null>(null);
 
   useEffect(() => {
-    adminTournamentsApi.list()
+    adminTournamentsApi
+      .list()
       .then(setTournaments)
       .catch((err: unknown) => {
         setTournaments([]);
@@ -307,7 +407,7 @@ export default function AdminTournamentsPage() {
   /** Replaces one row in place — archive and unarchive both return the row. */
   function replaceRow(updated: { id: number }) {
     setTournaments((prev) =>
-      (prev ?? []).map((t) => (t.id === updated.id ? { ...t, ...updated } : t))
+      (prev ?? []).map((t) => (t.id === updated.id ? { ...t, ...updated } : t)),
     );
   }
 
@@ -338,80 +438,99 @@ export default function AdminTournamentsPage() {
     <>
       <PageHeader heading="Tournaments" />
 
-        {loadError && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
-            {loadError}
-          </p>
-        )}
+      {loadError && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
+          {loadError}
+        </p>
+      )}
 
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
-          <Input
-            placeholder="Search name or owner"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onClear={() => setSearch("")}
-            icon={<IconSearch size={16} />}
-            size="md"
-            font="sans"
-            variant="secondary"
-            style={{ width: "420px" }}
-          />
-          <ButtonGroup
-            options={STATUS_OPTIONS}
-            value={status}
-            onChange={(v) => setStatus(v as StatusFilter)}
-            size="md"
-          />
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          alignItems: "center",
+          marginBottom: "16px",
+          flexWrap: "wrap",
+        }}
+      >
+        <Input
+          placeholder="Search name or owner"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onClear={() => setSearch("")}
+          icon={<IconSearch size={16} />}
+          size="md"
+          font="sans"
+          variant="secondary"
+          style={{ width: "420px" }}
+        />
+        <ButtonGroup
+          options={STATUS_OPTIONS}
+          value={status}
+          onChange={(v) => setStatus(v as StatusFilter)}
+          size="md"
+        />
+      </div>
+
+      {tournaments === null ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
+          <Spinner />
         </div>
-
-        {tournaments === null ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-            <Spinner />
-          </div>
-        ) : visible.length === 0 ? (
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
-            <EmptyState
-              icon={<IconTrophy size={26} />}
-              title={isFiltered ? "No matching tournaments" : "No tournaments yet"}
-              description={isFiltered ? "Try adjusting your search or filter." : "Nothing has been created on the platform."}
-            />
-          </Card>
-        ) : (
-          <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
-            {/* One grid owns the tracks; header and rows are subgrids of it. */}
-            <div
-              className={table.table}
-              style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
-            >
-              <div className={table.header}>
-                <span>Name</span>
-                <span>Owner</span>
-                <span>Venue</span>
-                <span>Dates</span>
-                <span style={{ textAlign: "center" }}>Tracks</span>
-                <span style={{ textAlign: "center" }}>Level</span>
-                <span style={{ textAlign: "center" }}>State</span>
-                <span style={{ textAlign: "center" }}>Division</span>
-                <span style={{ textAlign: "center" }}>Members</span>
-                <span style={{ textAlign: "center" }}>Events</span>
-                <span style={{ textAlign: "center" }}>Status</span>
-                <span style={{ textAlign: "center" }}>Created</span>
-                <span style={{ textAlign: "center" }}>Actions</span>
-              </div>
-
-              {visible.map((t) => (
-                <TournamentRow
-                  key={t.id}
-                  tournament={t}
-                  onOpenOwner={setOwnerUserId}
-                  onArchive={() => setArchiveTarget(t)}
-                  onUnarchive={() => setUnarchiveTarget(t)}
-                  onDelete={() => setDeleteTarget(t)}
-                />
-              ))}
+      ) : visible.length === 0 ? (
+        <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <EmptyState
+            icon={<IconTrophy size={26} />}
+            title={isFiltered ? "No matching tournaments" : "No tournaments yet"}
+            description={
+              isFiltered
+                ? "Try adjusting your search or filter."
+                : "Nothing has been created on the platform."
+            }
+          />
+        </Card>
+      ) : (
+        <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
+          {/* One grid owns the tracks; header and rows are subgrids of it. */}
+          <div
+            className={table.table}
+            style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
+          >
+            <div className={table.header}>
+              <span>Name</span>
+              <span>Owner</span>
+              <span>Venue</span>
+              <span>Dates</span>
+              <span style={{ textAlign: "center" }}>Tracks</span>
+              <span style={{ textAlign: "center" }}>Level</span>
+              <span style={{ textAlign: "center" }}>State</span>
+              <span style={{ textAlign: "center" }}>Division</span>
+              <span style={{ textAlign: "center" }}>Members</span>
+              <span style={{ textAlign: "center" }}>Events</span>
+              <span style={{ textAlign: "center" }}>Status</span>
+              <span style={{ textAlign: "center" }}>Created</span>
+              <span style={{ textAlign: "center" }}>Actions</span>
             </div>
-          </Card>
-        )}
+
+            {visible.map((t) => (
+              <TournamentRow
+                key={t.id}
+                tournament={t}
+                onOpenOwner={setOwnerUserId}
+                onArchive={() => setArchiveTarget(t)}
+                onUnarchive={() => setUnarchiveTarget(t)}
+                onDelete={() => setDeleteTarget(t)}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {archiveTarget && (
         <ConfirmModal
@@ -423,10 +542,11 @@ export default function AdminTournamentsPage() {
               its members but nothing in it can be changed while archived.
             </>
           }
-          onConfirm={() => run(
-            `${tournamentDisplayName(archiveTarget)} archived`,
-            () => tournamentsApi.archive(archiveTarget.id).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${tournamentDisplayName(archiveTarget)} archived`, () =>
+              tournamentsApi.archive(archiveTarget.id).then(replaceRow),
+            )
+          }
           onClose={() => setArchiveTarget(null)}
         />
       )}
@@ -443,10 +563,11 @@ export default function AdminTournamentsPage() {
               auto-archive job once you do this.
             </>
           }
-          onConfirm={() => run(
-            `${tournamentDisplayName(unarchiveTarget)} unarchived`,
-            () => tournamentsApi.unarchive(unarchiveTarget.id).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${tournamentDisplayName(unarchiveTarget)} unarchived`, () =>
+              tournamentsApi.unarchive(unarchiveTarget.id).then(replaceRow),
+            )
+          }
           onClose={() => setUnarchiveTarget(null)}
         />
       )}
@@ -458,12 +579,15 @@ export default function AdminTournamentsPage() {
           description={
             <>
               Delete <strong>{tournamentDisplayName(deleteTarget)}</strong>? This destroys its
-              events, shifts, roles, forms and every membership in it — {deleteTarget.volunteer_count} member
+              events, shifts, roles, forms and every membership in it —{" "}
+              {deleteTarget.volunteer_count} member
               {deleteTarget.volunteer_count === 1 ? "" : "s"} and {deleteTarget.event_count} event
               {deleteTarget.event_count === 1 ? "" : "s"}. This can&rsquo;t be undone.
             </>
           }
-          onDelete={(t) => run(`${tournamentDisplayName(t)} deleted`, () => tournamentsApi.delete(t.id))}
+          onDelete={(t) =>
+            run(`${tournamentDisplayName(t)} deleted`, () => tournamentsApi.delete(t.id))
+          }
           onClose={() => setDeleteTarget(null)}
           onDeleted={removeRows}
         />

@@ -1,31 +1,35 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { membersApi, sheetsApi, SheetConfig } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Banner } from "@/components/ui/Banner";
-import { useArchiveLock } from "@/lib/useArchiveLock";
-import { Modal } from "@/components/ui/Modal";
-import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
-  RichMappingRow,
   makeRichRow,
+  type RichMappingRow,
   SheetConfigMappingTable,
 } from "@/components/tournament/sheets/SheetConfigMappingTable";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { IconArrowLeft, IconEdit, IconExport, IconWarning } from "@/components/ui/Icons";
+import { Modal } from "@/components/ui/Modal";
+import { membersApi, type SheetConfig, sheetsApi } from "@/lib/api";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
-  interest:     "Interest Form",
+  interest: "Interest Form",
   confirmation: "Confirmation Form",
-  events:       "Events",
+  events: "Events",
 };
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
   });
 }
 
@@ -60,12 +64,24 @@ function DeleteConfigModal({
 }) {
   return (
     <Modal title="Delete sheet config?" onClose={onCancel} width={420}>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
-        <strong>{label}</strong> will be permanently deleted. Volunteer data that was synced from this sheet will not be affected.
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          marginBottom: "20px",
+        }}
+      >
+        <strong>{label}</strong> will be permanently deleted. Volunteer data that was synced from
+        this sheet will not be affected.
       </p>
       <div style={{ display: "flex", gap: "10px" }}>
-        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
-        <Button variant="danger" size="md" fullWidth onClick={onConfirm}>Delete config</Button>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="danger" size="md" fullWidth onClick={onConfirm}>
+          Delete config
+        </Button>
       </div>
     </Modal>
   );
@@ -86,22 +102,55 @@ function DeleteMembershipsModal({
   const confirmed = typed === "DELETE";
 
   const inputStyle: React.CSSProperties = {
-    height: "36px", padding: "0 10px", width: "100%",
+    height: "36px",
+    padding: "0 10px",
+    width: "100%",
     border: `1px solid ${typed && !confirmed ? "var(--color-danger)" : "var(--color-border)"}`,
     borderRadius: "var(--radius-sm)",
-    fontFamily: "var(--font-mono)", fontSize: "13px",
-    color: "var(--color-text-primary)", background: "var(--color-bg)",
+    fontFamily: "var(--font-mono)",
+    fontSize: "13px",
+    color: "var(--color-text-primary)",
+    background: "var(--color-bg)",
     outline: "none",
   };
 
   return (
     <Modal title="Delete config + memberships?" onClose={onCancel} width={480} variant="danger">
-      <div style={{ background: "var(--color-danger-subtle)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", padding: "14px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "8px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-danger)", display: "flex", alignItems: "center", gap: "6px" }}>
+      <div
+        style={{
+          background: "var(--color-danger-subtle)",
+          border: "1px solid var(--color-danger)",
+          borderRadius: "var(--radius-md)",
+          padding: "14px",
+          marginBottom: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+        }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--color-danger)",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
           <IconWarning size={14} style={{ flexShrink: 0 }} />
           Read carefully before continuing
         </p>
-        <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "5px" }}>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: "18px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "5px",
+          }}
+        >
           {[
             `The sheet config "${label}" will be permanently deleted.`,
             "All memberships in this tournament will be deleted — even if they have positions assigned. (Temp behavior: does not cross-reference live sheet rows.)",
@@ -109,17 +158,35 @@ function DeleteMembershipsModal({
             "User accounts are never deleted.",
             "This action cannot be undone.",
           ].map((w, i) => (
-            <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{w}</li>
+            <li
+              key={i}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-danger)",
+              }}
+            >
+              {w}
+            </li>
           ))}
         </ul>
       </div>
 
       <div style={{ marginBottom: "20px" }}>
-        <label style={{
-          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-          textTransform: "uppercase", letterSpacing: "0.07em",
-          color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
-        }}>Type DELETE to confirm</label>
+        <label
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "11px",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-text-tertiary)",
+            display: "block",
+            marginBottom: "6px",
+          }}
+        >
+          Type DELETE to confirm
+        </label>
         <input
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
@@ -130,7 +197,9 @@ function DeleteMembershipsModal({
       </div>
 
       <div style={{ display: "flex", gap: "10px" }}>
-        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
+          Cancel
+        </Button>
         <Button
           variant="danger"
           size="md"
@@ -152,17 +221,17 @@ export default function ViewSheetConfigPage() {
   const router = useRouter();
   const params = useParams();
   const tournamentId = Number(params.id);
-  const configId     = Number(params.configId);
+  const configId = Number(params.configId);
   const { isArchived, archivedReason } = useArchiveLock();
 
-  const [config, setConfig]       = useState<SheetConfig | null>(null);
-  const [loading, setLoading]     = useState(true);
+  const [config, setConfig] = useState<SheetConfig | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const [showDeleteConfig, setShowDeleteConfig]           = useState(false);
+  const [showDeleteConfig, setShowDeleteConfig] = useState(false);
   const [showDeleteMemberships, setShowDeleteMemberships] = useState(false);
-  const [deleteLoading, setDeleteLoading]                 = useState(false);
-  const [deleteError, setDeleteError]                     = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const [viewRows, setViewRows] = useState<RichMappingRow[]>([]);
 
@@ -178,12 +247,12 @@ export default function ViewSheetConfigPage() {
           const base = {
             column_index: mapping.column_index,
             header: mapping.header,
-            field:     mapping.field     ?? "__ignore__",
-            type:      mapping.type      ?? "ignore",
-            row_key:   mapping.row_key   ?? "",
+            field: mapping.field ?? "__ignore__",
+            type: mapping.type ?? "ignore",
+            row_key: mapping.row_key ?? "",
             extra_key: mapping.extra_key ?? "",
             delimiter: mapping.delimiter ?? "",
-            rules:     mapping.rules     ?? [],
+            rules: mapping.rules ?? [],
           };
           return makeRichRow(base, base);
         });
@@ -215,9 +284,7 @@ export default function ViewSheetConfigPage() {
     setDeleteError("");
     try {
       const memberships = await membersApi.list(tournamentId, { fields: [] });
-      await Promise.all(
-        memberships.map((m) => membersApi.delete(tournamentId, m.id))
-      );
+      await Promise.all(memberships.map((m) => membersApi.delete(tournamentId, m.id)));
       await sheetsApi.deleteConfig(tournamentId, configId);
       router.push(`/dashboard/tournaments/${tournamentId}/sheets`);
     } catch {
@@ -231,8 +298,25 @@ export default function ViewSheetConfigPage() {
 
   if (loading) {
     return (
-      <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
-        <div style={{ width: "36px", height: "36px", border: "3px solid var(--color-border)", borderTopColor: "var(--color-accent)", borderRadius: "50%", animation: "spin 700ms linear infinite" }} />
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "80px 0",
+        }}
+      >
+        <div
+          style={{
+            width: "36px",
+            height: "36px",
+            border: "3px solid var(--color-border)",
+            borderTopColor: "var(--color-accent)",
+            borderRadius: "50%",
+            animation: "spin 700ms linear infinite",
+          }}
+        />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -242,7 +326,9 @@ export default function ViewSheetConfigPage() {
     return (
       <div style={{ width: "100%" }}>
         <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)} />
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
           {loadError || "Config not found."}
         </p>
       </div>
@@ -250,28 +336,25 @@ export default function ViewSheetConfigPage() {
   }
 
   const mappingEntries = config.column_mappings;
-  const mappedCount    = mappingEntries.filter((m) => m.type !== "ignore").length;
-  const ignoredCount   = mappingEntries.filter((m) => m.type === "ignore").length;
+  const mappedCount = mappingEntries.filter((m) => m.type !== "ignore").length;
+  const ignoredCount = mappingEntries.filter((m) => m.type === "ignore").length;
 
   return (
     <div style={{ width: "100%" }}>
-
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)} />
         <div style={{ display: "flex", gap: "8px" }}>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => exportJson(config)}
-          >
+          <Button variant="secondary" size="sm" onClick={() => exportJson(config)}>
             <IconExport size={18} />
             Export JSON
           </Button>
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}/edit`)}
+            onClick={() =>
+              router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}/edit`)
+            }
             disabled={isArchived}
             title={archivedReason}
           >
@@ -282,22 +365,36 @@ export default function ViewSheetConfigPage() {
       </div>
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>{config.label}</h1>
-      <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "28px" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "11px",
+          color: "var(--color-text-tertiary)",
+          marginBottom: "28px",
+        }}
+      >
         {config.sheet_url}
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-
         {/* ── Metadata ── */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr",
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden",
-        }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr 1fr",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            overflow: "hidden",
+          }}
+        >
           {[
-            { label: "Type",        value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
-            { label: "Sheet Tab",   value: config.sheet_name },
-            { label: "Status",      value: config.is_active ? "Active" : "Inactive" },
-            { label: "Last Synced", value: config.last_synced_at ? fmtDateTime(config.last_synced_at) : "Never" },
+            { label: "Type", value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
+            { label: "Sheet Tab", value: config.sheet_name },
+            { label: "Status", value: config.is_active ? "Active" : "Inactive" },
+            {
+              label: "Last Synced",
+              value: config.last_synced_at ? fmtDateTime(config.last_synced_at) : "Never",
+            },
           ].map(({ label, value }, i, arr) => (
             <div
               key={label}
@@ -307,10 +404,29 @@ export default function ViewSheetConfigPage() {
                 background: "var(--color-surface)",
               }}
             >
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  color: "var(--color-text-tertiary)",
+                  marginBottom: "4px",
+                }}
+              >
                 {label}
               </p>
-              <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "12px",
+                  color: "var(--color-text-primary)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 {value}
               </p>
             </div>
@@ -320,21 +436,39 @@ export default function ViewSheetConfigPage() {
         {/* ── Mapping table ── */}
         <div>
           <div style={{ marginBottom: "10px" }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
               {mappedCount} mapped, {ignoredCount} ignored
             </span>
           </div>
-          <SheetConfigMappingTable
-            rows={viewRows}
-            knownFields={[]}
-            validTypes={[]}
-            viewOnly
-          />
+          <SheetConfigMappingTable rows={viewRows} knownFields={[]} validTypes={[]} viewOnly />
         </div>
 
         {/* ── Danger zone ── */}
-        <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+        <div
+          style={{
+            borderTop: "1px solid var(--color-border)",
+            paddingTop: "24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "11px",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
             Danger Zone
           </p>
 
@@ -344,8 +478,11 @@ export default function ViewSheetConfigPage() {
 
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <Button
-              variant="danger" size="sm" onClick={() => setShowDeleteConfig(true)}
-              disabled={isArchived} title={archivedReason}
+              variant="danger"
+              size="sm"
+              onClick={() => setShowDeleteConfig(true)}
+              disabled={isArchived}
+              title={archivedReason}
             >
               Delete config
             </Button>
@@ -355,18 +492,28 @@ export default function ViewSheetConfigPage() {
               disabled={isArchived}
               title={archivedReason}
               interactive={false}
-              style={{ background: "transparent", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+              style={{
+                background: "transparent",
+                color: "var(--color-danger)",
+                borderColor: "var(--color-danger)",
+              }}
               onClick={() => setShowDeleteMemberships(true)}
             >
               Delete config + memberships
             </Button>
           </div>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-            &quot;Delete config&quot; removes this configuration only — volunteer data is unaffected.
-            &quot;Delete config + memberships&quot; also removes all memberships in this tournament whose email appears in the current sheet.
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            &quot;Delete config&quot; removes this configuration only — volunteer data is
+            unaffected. &quot;Delete config + memberships&quot; also removes all memberships in this
+            tournament whose email appears in the current sheet.
           </p>
         </div>
-
       </div>
 
       {showDeleteConfig && (
@@ -398,9 +545,16 @@ function BackLink({ onClick }: { onClick: () => void }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex", alignItems: "center", gap: "6px", marginBottom: "20px",
-        background: "none", border: "none", cursor: "pointer", padding: 0,
-        fontFamily: "var(--font-sans)", fontSize: "13px",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        marginBottom: "20px",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
         color: hovered ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
         transition: "color 120ms ease",
       }}

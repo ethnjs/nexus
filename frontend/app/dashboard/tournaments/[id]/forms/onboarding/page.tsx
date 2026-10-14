@@ -1,24 +1,49 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useSensor, useSensors,
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { formsApi, tournamentOnboardingApi, FormListItem, OnboardingForm, ApiError } from "@/lib/api";
+import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import {
+  IconEdit,
+  IconForms,
+  IconGripVertical,
+  IconLock,
+  IconPlus,
+  IconTrash,
+} from "@/components/ui/Icons";
+import { Popover } from "@/components/ui/Popover";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  type FormListItem,
+  formsApi,
+  type OnboardingForm,
+  tournamentOnboardingApi,
+} from "@/lib/api";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { useArchiveLock } from "@/lib/useArchiveLock";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Popover } from "@/components/ui/Popover";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { IconEdit, IconForms, IconGripVertical, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 
 export default function OnboardingFormsPage() {
   const params = useParams();
@@ -26,7 +51,8 @@ export default function OnboardingFormsPage() {
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
+  const canManageForms =
+    currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
   const { isArchived, archivedReason } = useArchiveLock();
 
   const [allForms, setAllForms] = useState<FormListItem[] | null>(null);
@@ -42,13 +68,18 @@ export default function OnboardingFormsPage() {
 
   useEffect(() => {
     if (!canManageForms) return;
-    Promise.all([formsApi.listForTournament(tournamentId), tournamentOnboardingApi.listForms(tournamentId)])
+    Promise.all([
+      formsApi.listForTournament(tournamentId),
+      tournamentOnboardingApi.listForms(tournamentId),
+    ])
       .then(([forms, onboarding]) => {
         setAllForms(forms);
         setBaseline(onboarding);
         setDraft(onboarding);
       })
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load onboarding forms."));
+      .catch((e) =>
+        setLoadError(e instanceof ApiError ? e.message : "Failed to load onboarding forms."),
+      );
   }, [tournamentId, canManageForms]);
 
   // Only a published form not already an onboarding step can be added — the
@@ -58,7 +89,8 @@ export default function OnboardingFormsPage() {
     return (allForms ?? []).filter((f) => f.status === "published" && !onboardingIds.has(f.id));
   }, [allForms, draft]);
 
-  const isDirty = baseline !== null && draft.map((f) => f.id).join(",") !== baseline.map((f) => f.id).join(",");
+  const isDirty =
+    baseline !== null && draft.map((f) => f.id).join(",") !== baseline.map((f) => f.id).join(",");
 
   async function handleAdd(formId: string) {
     const created = await tournamentOnboardingApi.addForm(tournamentId, formId);
@@ -99,7 +131,10 @@ export default function OnboardingFormsPage() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const updated = await tournamentOnboardingApi.reorderForms(tournamentId, draft.map((f) => f.id));
+      const updated = await tournamentOnboardingApi.reorderForms(
+        tournamentId,
+        draft.map((f) => f.id),
+      );
       setBaseline(updated);
       setDraft(updated);
     } catch (e) {
@@ -144,9 +179,15 @@ export default function OnboardingFormsPage() {
 
   return (
     <div>
-
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -154,7 +195,13 @@ export default function OnboardingFormsPage() {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
         <Popover
           trigger={
-            <Button type="button" variant="primary" size="md" disabled={isArchived} title={archivedReason}>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              disabled={isArchived}
+              title={archivedReason}
+            >
               <IconPlus size={14} /> Add form
             </Button>
           }
@@ -193,7 +240,9 @@ export default function OnboardingFormsPage() {
                   step={i + 1}
                   removing={removingId === form.id}
                   lockedReason={archivedReason}
-                  onEdit={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
+                  onEdit={() =>
+                    window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")
+                  }
                   onRemove={() => handleRemove(form.id)}
                 />
               ))}
@@ -218,20 +267,31 @@ export default function OnboardingFormsPage() {
   );
 }
 
-function OnboardingFormPill({ form, dragging = false }: { form: OnboardingForm; dragging?: boolean }) {
+function OnboardingFormPill({
+  form,
+  dragging = false,
+}: {
+  form: OnboardingForm;
+  dragging?: boolean;
+}) {
   return (
     <div
       style={{
         boxSizing: "border-box",
-        display: "flex", alignItems: "center", gap: "10px",
-        height: "40px", padding: "0 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        height: "40px",
+        padding: "0 12px",
         borderRadius: "var(--radius-md)",
         background: "var(--color-surface)",
         boxShadow: dragging ? "var(--shadow-md, 0 4px 12px rgba(0,0,0,0.15))" : undefined,
         cursor: dragging ? "grabbing" : "grab",
       }}
     >
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>{form.name}</span>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>
+        {form.name}
+      </span>
     </div>
   );
 }
@@ -243,7 +303,14 @@ const SKIP_REASON: Partial<Record<OnboardingForm["status"], string>> = {
   archived: "Skipped — form is archived",
 };
 
-function OnboardingFormRow({ form, step, removing, lockedReason, onEdit, onRemove }: {
+function OnboardingFormRow({
+  form,
+  step,
+  removing,
+  lockedReason,
+  onEdit,
+  onRemove,
+}: {
   form: OnboardingForm;
   step: number;
   removing: boolean;
@@ -252,7 +319,10 @@ function OnboardingFormRow({ form, step, removing, lockedReason, onEdit, onRemov
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: form.id, disabled: !!lockedReason });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: form.id,
+    disabled: !!lockedReason,
+  });
   const skipReason = SKIP_REASON[form.status];
   const [hovered, setHovered] = useState(false);
   const style = {
@@ -266,7 +336,14 @@ function OnboardingFormRow({ form, step, removing, lockedReason, onEdit, onRemov
       ref={setNodeRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ ...style, position: "relative", display: "flex", alignItems: "center", gap: "20px", padding: "4px 10px" }}
+      style={{
+        ...style,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "20px",
+        padding: "4px 10px",
+      }}
     >
       <button
         type="button"
@@ -277,39 +354,79 @@ function OnboardingFormRow({ form, step, removing, lockedReason, onEdit, onRemov
           // The Card already owns the horizontal gutter. Keep the row's
           // left/right padding symmetric and let the hover-only grip occupy
           // that existing left gutter rather than creating a second inset.
-          position: "absolute", left: "-7px", top: "50%", transform: "translateY(-50%)",
-          display: "flex", padding: "2px", color: "var(--color-text-tertiary)",
-          border: "none", background: "transparent", cursor: "grab", touchAction: "none",
-          opacity: hovered && !lockedReason ? 1 : 0, pointerEvents: hovered && !lockedReason ? "auto" : "none", transition: "opacity 100ms ease",
+          position: "absolute",
+          left: "-7px",
+          top: "50%",
+          transform: "translateY(-50%)",
+          display: "flex",
+          padding: "2px",
+          color: "var(--color-text-tertiary)",
+          border: "none",
+          background: "transparent",
+          cursor: "grab",
+          touchAction: "none",
+          opacity: hovered && !lockedReason ? 1 : 0,
+          pointerEvents: hovered && !lockedReason ? "auto" : "none",
+          transition: "opacity 100ms ease",
         }}
       >
         <IconGripVertical size={16} />
       </button>
-      <span style={{
-        flexShrink: 0, minWidth: "22px", textAlign: "right",
-        fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-tertiary)",
-      }}>
+      <span
+        style={{
+          flexShrink: 0,
+          minWidth: "22px",
+          textAlign: "right",
+          fontFamily: "var(--font-mono)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         {step}.
       </span>
-      <div style={{
-        boxSizing: "border-box", flex: 1,
-        display: "flex", alignItems: "center", gap: "10px",
-        height: "40px", padding: "0",
-        borderRadius: "var(--radius-md)",
-        background: "var(--color-surface)",
-      }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>{form.name}</span>
+      <div
+        style={{
+          boxSizing: "border-box",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          height: "40px",
+          padding: "0",
+          borderRadius: "var(--radius-md)",
+          background: "var(--color-surface)",
+        }}
+      >
+        <span
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}
+        >
+          {form.name}
+        </span>
         {skipReason && (
-          <Badge variant="warning" title="Members skip this step until the form is published again.">
+          <Badge
+            variant="warning"
+            title="Members skip this step until the form is published again."
+          >
             {skipReason}
           </Badge>
         )}
         <div style={{ display: "flex", gap: "6px" }}>
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Edit form" onClick={onEdit}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            title="Edit form"
+            onClick={onEdit}
+          >
             <IconEdit size={13} />
           </Button>
           <Button
-            type="button" variant="secondary" size="sm" iconOnly loading={removing}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            loading={removing}
             disabled={!!lockedReason}
             title={lockedReason ?? "Remove from onboarding"}
             onClick={onRemove}

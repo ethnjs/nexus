@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
-import { Checkbox } from '@/components/ui/Checkbox'
+import { Checkbox } from "@/components/ui/Checkbox";
 
 /**
  * An even whole-px line box for a row label.
@@ -13,32 +13,32 @@ import { Checkbox } from '@/components/ui/Checkbox'
  * the row height and the centred checkbox on integers.
  */
 export function evenLineBox(fontSize: string): string {
-  const px = parseFloat(fontSize)
-  return Number.isFinite(px) ? `${Math.ceil((px * 1.5) / 2) * 2}px` : '1.5'
+  const px = parseFloat(fontSize);
+  return Number.isFinite(px) ? `${Math.ceil((px * 1.5) / 2) * 2}px` : "1.5";
 }
 
 export interface CheckboxRowProps {
-  checked: boolean
-  onChange: () => void
-  label: ReactNode
-  locked?: boolean
+  checked: boolean;
+  onChange: () => void;
+  label: ReactNode;
+  locked?: boolean;
   /** Checkbox width/height in px. Even numbers stay on the pixel grid. */
-  size?: number
-  fontSize?: string
+  size?: number;
+  fontSize?: string;
   /** Space between the box and its label. */
-  gap?: string
+  gap?: string;
   /** Replaces the checkbox — e.g. a lock icon on a row that can't be toggled. */
-  control?: ReactNode
-  labelColor?: string
+  control?: ReactNode;
+  labelColor?: string;
   /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
-  badge?: ReactNode
+  badge?: ReactNode;
   /** Merged onto the row. Padding, background and radius go here: they're
    *  per-list chrome, not the row geometry this component owns. */
-  style?: CSSProperties
+  style?: CSSProperties;
   /** Lets a read-only preview report which option was clicked. */
-  dataOptionValue?: string
-  onMouseEnter?: (e: ReactMouseEvent<HTMLLabelElement>) => void
-  onMouseLeave?: () => void
+  dataOptionValue?: string;
+  onMouseEnter?: (e: ReactMouseEvent<HTMLLabelElement>) => void;
+  onMouseLeave?: () => void;
 }
 
 /**
@@ -49,8 +49,20 @@ export interface CheckboxRowProps {
  * hand-rolling its own label markup.
  */
 export function CheckboxRow({
-  checked, onChange, label, locked = false, size = 16, fontSize = '13px',
-  gap = '8px', control, labelColor, badge, style, dataOptionValue, onMouseEnter, onMouseLeave,
+  checked,
+  onChange,
+  label,
+  locked = false,
+  size = 16,
+  fontSize = "13px",
+  gap = "8px",
+  control,
+  labelColor,
+  badge,
+  style,
+  dataOptionValue,
+  onMouseEnter,
+  onMouseLeave,
 }: CheckboxRowProps) {
   return (
     <label
@@ -58,19 +70,27 @@ export function CheckboxRow({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{
-        display: 'flex', alignItems: 'center', gap, boxSizing: 'border-box',
-        cursor: locked ? 'default' : 'pointer',
+        display: "flex",
+        alignItems: "center",
+        gap,
+        boxSizing: "border-box",
+        cursor: locked ? "default" : "pointer",
         ...style,
       }}
     >
       {control ?? <Checkbox checked={checked} locked={locked} onChange={onChange} size={size} />}
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize, lineHeight: evenLineBox(fontSize),
-        color: labelColor ?? (locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)'),
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize,
+          lineHeight: evenLineBox(fontSize),
+          color:
+            labelColor ?? (locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)"),
+        }}
+      >
         {label}
       </span>
       {badge}
     </label>
-  )
+  );
 }

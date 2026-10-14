@@ -1,22 +1,22 @@
-'use client'
+"use client";
 
-import { ToolbarConfigButton } from '@/components/ui/ToolbarConfigButton'
-import { IconFilter } from '@/components/ui/Icons'
+import { IconFilter } from "@/components/ui/Icons";
+import { ToolbarConfigButton } from "@/components/ui/ToolbarConfigButton";
 
 interface FilterButtonProps {
   /** Whether any filter is currently narrowing the list. */
-  active: boolean
+  active: boolean;
   /** Opens the page's filter modal. */
-  onOpen: () => void
+  onOpen: () => void;
   /** Drops every filter at once — or, on a surface with defaults of its own,
    *  puts them back. */
-  onClear: () => void
-  size?: 'sm' | 'md'
+  onClear: () => void;
+  size?: "sm" | "md";
   /** Funnel only, no label — for a panel header. The label becomes the
    *  tooltip, so it still says what it filters. */
-  iconOnly?: boolean
+  iconOnly?: boolean;
   /** Tooltip / accessible name when iconOnly. */
-  label?: string
+  label?: string;
 }
 
 /**
@@ -29,12 +29,17 @@ interface FilterButtonProps {
  * config button uses for the same reason.
  */
 export function FilterButton({
-  active, onOpen, onClear, size = 'md', iconOnly = false, label = 'Filter',
+  active,
+  onOpen,
+  onClear,
+  size = "md",
+  iconOnly = false,
+  label = "Filter",
 }: FilterButtonProps) {
   return (
     <ToolbarConfigButton
       active={active}
-      icon={<IconFilter size={size === 'sm' ? 14 : 16} />}
+      icon={<IconFilter size={size === "sm" ? 14 : 16} />}
       label={label}
       actionLabel="Clear filters"
       onOpen={onOpen}
@@ -42,5 +47,5 @@ export function FilterButton({
       size={size}
       iconOnly={iconOnly}
     />
-  )
+  );
 }

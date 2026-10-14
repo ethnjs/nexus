@@ -1,6 +1,13 @@
-import type { Assignment, DuosmiumRole, MemberRole, MembershipField, MembershipFull, TorusRole } from "@/lib/api";
+import type {
+  Assignment,
+  DuosmiumRole,
+  MemberRole,
+  MembershipField,
+  MembershipFull,
+  TorusRole,
+} from "@/lib/api";
 import { eventName, eventNameWithDivision } from "@/lib/eventDisplay";
-import { EXTERNAL_SYSTEMS, ExternalRoleField } from "@/lib/exports/externalSystems";
+import { EXTERNAL_SYSTEMS, type ExternalRoleField } from "@/lib/exports/externalSystems";
 import { toCsv } from "@/lib/exports/output";
 
 // The code-defined presets: TORUS, Duosmium, Email list. Never saved,
@@ -11,32 +18,53 @@ export type BuiltinId = "torus" | "duosmium" | "email_list";
 
 export interface BuiltinResult {
   // What the preview table shows.
-  rows:     string[][];
+  rows: string[][];
   // What Copy / Download write. Same as toCsv(rows) except for the email list.
-  text:     string;
+  text: string;
   warnings: string[];
 }
 
 export interface BuiltinInfo {
-  id:    BuiltinId;
+  id: BuiltinId;
   label: string;
   // Roster field groups the builder reads.
   fields: MembershipField[];
   // Which modal controls apply, so the modal hides the ones that don't.
-  usesTrack:        boolean;
-  usesDivision:     boolean;
+  usesTrack: boolean;
+  usesDivision: boolean;
   usesEventFilters: boolean;
 }
 
 export const BUILTINS: readonly BuiltinInfo[] = [
-  { id: "torus",      label: "TORUS",      fields: ["contact", "roles", "assignments"], usesTrack: true,  usesDivision: false, usesEventFilters: true },
-  { id: "duosmium",   label: "Duosmium",   fields: ["contact", "roles", "assignments"], usesTrack: true,  usesDivision: true,  usesEventFilters: true },
-  { id: "email_list", label: "Email list", fields: ["contact"],                         usesTrack: false, usesDivision: false, usesEventFilters: false },
+  {
+    id: "torus",
+    label: "TORUS",
+    fields: ["contact", "roles", "assignments"],
+    usesTrack: true,
+    usesDivision: false,
+    usesEventFilters: true,
+  },
+  {
+    id: "duosmium",
+    label: "Duosmium",
+    fields: ["contact", "roles", "assignments"],
+    usesTrack: true,
+    usesDivision: true,
+    usesEventFilters: true,
+  },
+  {
+    id: "email_list",
+    label: "Email list",
+    fields: ["contact"],
+    usesTrack: false,
+    usesDivision: false,
+    usesEventFilters: false,
+  },
 ];
 
 /** Shared scope for the two external-system builders. */
 interface SystemScope {
-  trackId:  number;
+  trackId: number;
   // Events passing the modal's event filters; null = no event filter.
   eventIds: Set<number> | null;
 }
@@ -51,19 +79,30 @@ function heldOnTrack(role: MemberRole, trackId: number): boolean {
 }
 
 /** The member's roles on `trackId` that map to `value` in `field`. */
-function mappedRoles(member: MembershipFull, field: ExternalRoleField, value: string, trackId: number): MemberRole[] {
+function mappedRoles(
+  member: MembershipFull,
+  field: ExternalRoleField,
+  value: string,
+  trackId: number,
+): MemberRole[] {
   return (member.roles ?? []).filter((role) => role[field] === value && heldOnTrack(role, trackId));
 }
 
 /** Their assignments on the track, in those roles, passing the event filter.
  *  An assignment's role is only {id, label}, so it's matched by id against
  *  roles the member holds — being assigned in a role always means holding it. */
-function mappedAssignments(member: MembershipFull, roleIds: Set<number>, scope: SystemScope): Assignment[] {
-  return (member.assignments ?? []).filter((a) => (
-    a.track.id === scope.trackId
-    && a.role.id !== null && roleIds.has(a.role.id)
-    && (scope.eventIds === null || scope.eventIds.has(a.event.id))
-  ));
+function mappedAssignments(
+  member: MembershipFull,
+  roleIds: Set<number>,
+  scope: SystemScope,
+): Assignment[] {
+  return (member.assignments ?? []).filter(
+    (a) =>
+      a.track.id === scope.trackId &&
+      a.role.id !== null &&
+      roleIds.has(a.role.id) &&
+      (scope.eventIds === null || scope.eventIds.has(a.event.id)),
+  );
 }
 
 function byText(a: string, b: string): number {
@@ -81,7 +120,11 @@ const DUOSMIUM = EXTERNAL_SYSTEMS.find((s) => s.field === "duosmium_role")!;
 // TORUS — one TORUS role per export, so every row has the same shape
 // ---------------------------------------------------------------------------
 
-export function buildTorus(members: MembershipFull[], role: TorusRole, scope: SystemScope): BuiltinResult {
+export function buildTorus(
+  members: MembershipFull[],
+  role: TorusRole,
+  scope: SystemScope,
+): BuiltinResult {
   const eventScoped = TORUS.roles[role].eventScoped;
   const rows: string[][] = [];
   let skipped = 0;
@@ -96,8 +139,10 @@ export function buildTorus(members: MembershipFull[], role: TorusRole, scope: Sy
       continue;
     }
     const events = new Map(
-      mappedAssignments(member, new Set(held.map((r) => r.id)), scope)
-        .map((a) => [a.event.id, eventNameWithDivision(a.event)]),
+      mappedAssignments(member, new Set(held.map((r) => r.id)), scope).map((a) => [
+        a.event.id,
+        eventNameWithDivision(a.event),
+      ]),
     );
     if (events.size === 0) skipped++;
     for (const name of events.values()) rows.push([name, email]);
@@ -105,9 +150,12 @@ export function buildTorus(members: MembershipFull[], role: TorusRole, scope: Sy
 
   // Event then email; a bare email list just by email.
   rows.sort((a, b) => byText(a[0], b[0]) || byText(a[1] ?? "", b[1] ?? ""));
-  const warnings = skipped > 0
-    ? [`${plural(skipped, TORUS.roles[role].label.toLowerCase())} skipped — no event assignment on this track.`]
-    : [];
+  const warnings =
+    skipped > 0
+      ? [
+          `${plural(skipped, TORUS.roles[role].label.toLowerCase())} skipped — no event assignment on this track.`,
+        ]
+      : [];
   return { rows, text: toCsv(rows), warnings };
 }
 
@@ -135,11 +183,13 @@ export function buildDuosmium(
 
       if (info.eventScoped) {
         // Names without division: a Duosmium tournament is one division.
-        const events = [...new Set(
-          mappedAssignments(member, new Set(held.map((r) => r.id)), scope)
-            .filter((a) => a.event.division === scope.division)
-            .map((a) => eventName(a.event)),
-        )].sort(byText);
+        const events = [
+          ...new Set(
+            mappedAssignments(member, new Set(held.map((r) => r.id)), scope)
+              .filter((a) => a.event.division === scope.division)
+              .map((a) => eventName(a.event)),
+          ),
+        ].sort(byText);
         if (events.length === 0) {
           leftOut++;
           continue;
@@ -151,9 +201,12 @@ export function buildDuosmium(
     rows.push(...group.sort((a, b) => byText(a[0], b[0])));
   }
 
-  const warnings = leftOut > 0
-    ? [`${plural(leftOut, "event supervisor")} left out — no Division ${scope.division} events on this track.`]
-    : [];
+  const warnings =
+    leftOut > 0
+      ? [
+          `${plural(leftOut, "event supervisor")} left out — no Division ${scope.division} events on this track.`,
+        ]
+      : [];
   return { rows, text: toCsv(rows), warnings };
 }
 

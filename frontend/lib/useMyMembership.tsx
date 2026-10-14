@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
-import { membersApi, MembershipMe, Permission } from "./api";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { type MembershipMe, membersApi, type Permission } from "./api";
 
 interface MyMembershipContextValue {
   membership: MembershipMe | null;
@@ -14,13 +14,20 @@ interface MyMembershipContextValue {
 
 const MyMembershipContext = createContext<MyMembershipContextValue | null>(null);
 
-export function MyMembershipProvider({ tournamentId, children }: { tournamentId: string; children: ReactNode }) {
+export function MyMembershipProvider({
+  tournamentId,
+  children,
+}: {
+  tournamentId: string;
+  children: ReactNode;
+}) {
   const [membership, setMembership] = useState<MembershipMe | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    membersApi.getMe(Number(tournamentId), ["roles"])
+    membersApi
+      .getMe(Number(tournamentId), ["roles"])
       .then(setMembership)
       .catch(() => setMembership(null))
       .finally(() => setLoading(false));
@@ -28,7 +35,7 @@ export function MyMembershipProvider({ tournamentId, children }: { tournamentId:
 
   const hasPermission = useCallback(
     (p: Permission) => membership?.permissions.includes(p) ?? false,
-    [membership]
+    [membership],
   );
 
   return (

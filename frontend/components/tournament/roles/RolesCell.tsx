@@ -1,22 +1,31 @@
 "use client";
 
-import {
-  ApiError, MembershipFull, MembershipView, MemberRole, Role, TournamentTrack,
-} from "@/lib/api";
-import { userName } from "@/lib/personDisplay";
-import { useToast } from "@/lib/useToast";
-import { useTournament } from "@/lib/useTournament";
-import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
-import {
-  NO_SCOPE, WIDE_SCOPE, changeRoleScope, scopeOf, type RoleScope,
-} from "@/lib/roles/roleScope";
-import { ChipInput } from "@/components/ui/ChipInput";
 import { FieldValue } from "@/components/profile/PanelField";
-import { Button } from "@/components/ui/Button";
-import { IconLock, IconPlus } from "@/components/ui/Icons";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { RolePickerPopover } from "@/components/tournament/roles/RolePickerPopover";
 import { RoleScopePill } from "@/components/tournament/roles/RoleScopePill";
+import { Button } from "@/components/ui/Button";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { IconLock, IconPlus } from "@/components/ui/Icons";
+import { Tooltip } from "@/components/ui/Tooltip";
+import {
+  ApiError,
+  type MemberRole,
+  type MembershipFull,
+  type MembershipView,
+  type Role,
+  TournamentTrack,
+} from "@/lib/api";
+import { userName } from "@/lib/personDisplay";
+import {
+  changeRoleScope,
+  NO_SCOPE,
+  type RoleScope,
+  scopeOf,
+  WIDE_SCOPE,
+} from "@/lib/roles/roleScope";
+import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
+import { useToast } from "@/lib/useToast";
+import { useTournament } from "@/lib/useTournament";
 
 interface RolesCellProps {
   tournamentId: number;
@@ -50,7 +59,15 @@ interface RolesCellProps {
 // always granting tournament-wide. With several, each chip says where it is
 // held, and a role is added in two steps: which role, then where.
 export function RolesCell({
-  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason, readOnly = false, emptyLabel, onUpdated,
+  tournamentId,
+  membership,
+  allRoles,
+  canTouchRole,
+  locked,
+  lockedReason,
+  readOnly = false,
+  emptyLabel,
+  onUpdated,
 }: RolesCellProps) {
   // Two different reasons the chips go inert; ChipInput only has the one knob.
   const inert = locked || readOnly;
@@ -99,7 +116,10 @@ export function RolesCell({
 
   const addButton = (
     <Button
-      type="button" variant="secondary" size="sm" iconOnly
+      type="button"
+      variant="secondary"
+      size="sm"
+      iconOnly
       title="Edit roles"
       style={{ padding: 0, flexShrink: 0 }}
     >
@@ -125,47 +145,61 @@ export function RolesCell({
         const role = roleByLabel.get(label);
         return role ? rankLockReason(role) : undefined;
       }}
-      renderChipTrailing={isSimple ? undefined : (label) => {
-        const role = roleByLabel.get(label);
-        if (!role) return null;
-        return (
-          <RoleScopePill
-            scope={scopeOf(role)}
-            tracks={tracks}
-            editable={!inert && canTouchRole(role)}
-            title="Where this role applies"
-            onChange={async (scope) => {
-              await changeScope(role, scopeOf(role), scope);
-              show(`Updated ${role.label} for ${memberName}`);
-            }}
-          />
-        );
-      }}
+      renderChipTrailing={
+        isSimple
+          ? undefined
+          : (label) => {
+              const role = roleByLabel.get(label);
+              if (!role) return null;
+              return (
+                <RoleScopePill
+                  scope={scopeOf(role)}
+                  tracks={tracks}
+                  editable={!inert && canTouchRole(role)}
+                  title="Where this role applies"
+                  onChange={async (scope) => {
+                    await changeScope(role, scopeOf(role), scope);
+                    show(`Updated ${role.label} for ${memberName}`);
+                  }}
+                />
+              );
+            }
+      }
       fullWidth
       // One list for both kinds of tournament: every role, the held ones
       // ticked. Ticking grants tournament-wide; on a multi-track tournament
       // the chip's scope pill narrows it afterwards. Rank locks show as a
       // lock icon in place of the checkbox, same rule either way.
-      addButton={explained ? (
-        <Tooltip variant="info" message={lockedReason!} showIcon={false}>
-          <Button type="button" variant="secondary" size="sm" iconOnly disabled title={lockedReason} style={{ padding: 0, flexShrink: 0 }}>
-            <IconLock size={12} />
-          </Button>
-        </Tooltip>
-      ) : (
-        <RolePickerPopover
-          trigger={addButton}
-          roles={allRoles}
-          isSelected={(role) => heldIds.has(role.id)}
-          isDisabled={(role) => !canTouchRole(role)}
-          disabledReason={rankLockReason}
-          onToggle={(role) => {
-            const current = held.find((r) => r.id === role.id);
-            return current ? handleRemove(current) : handleAdd(role, WIDE_SCOPE);
-          }}
-          emptyMessage="No roles yet"
-        />
-      )}
+      addButton={
+        explained ? (
+          <Tooltip variant="info" message={lockedReason!} showIcon={false}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              disabled
+              title={lockedReason}
+              style={{ padding: 0, flexShrink: 0 }}
+            >
+              <IconLock size={12} />
+            </Button>
+          </Tooltip>
+        ) : (
+          <RolePickerPopover
+            trigger={addButton}
+            roles={allRoles}
+            isSelected={(role) => heldIds.has(role.id)}
+            isDisabled={(role) => !canTouchRole(role)}
+            disabledReason={rankLockReason}
+            onToggle={(role) => {
+              const current = held.find((r) => r.id === role.id);
+              return current ? handleRemove(current) : handleAdd(role, WIDE_SCOPE);
+            }}
+            emptyMessage="No roles yet"
+          />
+        )
+      }
     />
   );
 }

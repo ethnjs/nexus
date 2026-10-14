@@ -21,5 +21,5 @@ export const EXPIRY_PRESETS = [
 // preset value -> hours, for every fixed preset. "forever" is handled
 // separately by the caller (null expires_in_hours).
 export const PRESET_HOURS: Record<string, number> = Object.fromEntries(
-  HOUR_PRESETS.map(({ value, hours }) => [value, hours])
+  HOUR_PRESETS.map(({ value, hours }) => [value, hours]),
 );

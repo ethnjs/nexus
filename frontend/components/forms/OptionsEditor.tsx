@@ -1,36 +1,44 @@
-'use client'
+"use client";
 
-import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
-} from '@dnd-kit/core'
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import {
-  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { FormFieldOption, FormQuestionType } from '@/lib/api'
-import { useSuspendCardScroll } from '@/lib/forms/cardScroll'
-import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
-import { Dropdown, DropdownOption } from '@/components/ui/Dropdown'
-import { RadioCircle } from '@/components/ui/RadioCircle'
-import { Checkbox } from '@/components/ui/Checkbox'
-import { IconGripVertical, IconRestore, IconX, IconPlus } from '@/components/ui/Icons'
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Dropdown, type DropdownOption } from "@/components/ui/Dropdown";
+import { IconGripVertical, IconPlus, IconRestore, IconX } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { RadioCircle } from "@/components/ui/RadioCircle";
+import type { FormFieldOption, FormQuestionType } from "@/lib/api";
+import { useSuspendCardScroll } from "@/lib/forms/cardScroll";
 
 // Same option shape the backend expects, plus a client-only stable id for
 // React/dnd-kit — option_id itself is blank ("") for a not-yet-saved option
 // (server-assigned on Save, never client-authored per
 // backend/docs/form-question-types-reference.md), so it can't double as the list key.
-export type EditableOption = FormFieldOption & { clientKey: string }
+export type EditableOption = FormFieldOption & { clientKey: string };
 
 export function newOption(): EditableOption {
-  return { clientKey: crypto.randomUUID(), option_id: '', value: '', label: '' }
+  return { clientKey: crypto.randomUUID(), option_id: "", value: "", label: "" };
 }
 
 // EntityOptionsEditor's option shape — value is a to-be-filled entity id
 // array, not freeform text (see isEntityBackedPreset).
 export function newEntityOption(): EditableOption {
-  return { ...newOption(), value: [] }
+  return { ...newOption(), value: [] };
 }
 
 // Which disabled "this is what a respondent sees" bullet to show per row —
@@ -40,58 +48,60 @@ export function newEntityOption(): EditableOption {
 // only shows up on the respondent side), but a numbered list reads better
 // here than nothing at all — for ranked_choice it doubles as a preview of
 // the rank order options start in before a respondent reorders them.
-export type BulletType = 'radio' | 'checkbox' | 'number' | 'none'
+export type BulletType = "radio" | "checkbox" | "number" | "none";
 
 export function bulletTypeFor(questionType: FormQuestionType): BulletType {
-  if (questionType === 'single_select_radio') return 'radio'
-  if (questionType === 'multi_select_checkbox') return 'checkbox'
-  if (questionType === 'single_select_dropdown' || questionType === 'ranked_choice') return 'number'
-  return 'none'
+  if (questionType === "single_select_radio") return "radio";
+  if (questionType === "multi_select_checkbox") return "checkbox";
+  if (questionType === "single_select_dropdown" || questionType === "ranked_choice")
+    return "number";
+  return "none";
 }
 
 // A field this option could jump to — id is only available once the target
 // field has been saved (a draft field's id is null), so unsaved fields show
 // up disabled with a reason rather than being silently excluded.
 export interface BranchTarget {
-  id: string | null
-  label: string
+  id: string | null;
+  label: string;
 }
 
-const CONTINUE_VALUE = '__continue__'
-const SUBMIT_VALUE = '__submit__'
-const JUMP_PREFIX = 'jump:'
+const CONTINUE_VALUE = "__continue__";
+const SUBMIT_VALUE = "__submit__";
+const JUMP_PREFIX = "jump:";
 
 function branchValueFor(option: FormFieldOption): string {
-  if (option.action === 'submit_form') return SUBMIT_VALUE
-  if (option.next_field_id != null) return `${JUMP_PREFIX}${option.next_field_id}`
-  return CONTINUE_VALUE
+  if (option.action === "submit_form") return SUBMIT_VALUE;
+  if (option.next_field_id != null) return `${JUMP_PREFIX}${option.next_field_id}`;
+  return CONTINUE_VALUE;
 }
 
 function applyBranchValue(option: EditableOption, value: string): EditableOption {
-  if (value === SUBMIT_VALUE) return { ...option, action: 'submit_form', next_field_id: null }
-  if (value.startsWith(JUMP_PREFIX)) return { ...option, action: null, next_field_id: value.slice(JUMP_PREFIX.length) }
-  return { ...option, action: null, next_field_id: null }
+  if (value === SUBMIT_VALUE) return { ...option, action: "submit_form", next_field_id: null };
+  if (value.startsWith(JUMP_PREFIX))
+    return { ...option, action: null, next_field_id: value.slice(JUMP_PREFIX.length) };
+  return { ...option, action: null, next_field_id: null };
 }
 
 // Width every number bullet reserves, whatever number it shows.
-const NUMBER_BULLET_WIDTH = 24
+const NUMBER_BULLET_WIDTH = 24;
 
 // The bullet's own size, and the row's flex gap before the Input — together
 // they say how far the `extra` block below has to be indented to line up with
 // the Input rather than with the bullet.
-const BULLET_SIZE = 18
-const BULLET_GAP = 8
+const BULLET_SIZE = 18;
+const BULLET_GAP = 8;
 // How much wider the buttons-style pill swatch is than a radio/checkbox at
 // the same size — shared so the swatch and the indent below can't drift.
-const BUTTONS_BULLET_EXTRA = 6
+const BUTTONS_BULLET_EXTRA = 6;
 
 // The buttons swatch is a pill, not a circle/box, so it's wider than the
 // other bullets at the same size — hardcoding 18 here is what left the chips
 // short of the Input's left edge in that style.
-function bulletWidth(type: BulletType, displayStyle?: 'list' | 'buttons'): number {
-  if (type === 'none') return 0
-  if (type === 'number') return NUMBER_BULLET_WIDTH
-  return displayStyle === 'buttons' ? BULLET_SIZE + BUTTONS_BULLET_EXTRA : BULLET_SIZE
+function bulletWidth(type: BulletType, displayStyle?: "list" | "buttons"): number {
+  if (type === "none") return 0;
+  if (type === "number") return NUMBER_BULLET_WIDTH;
+  return displayStyle === "buttons" ? BULLET_SIZE + BUTTONS_BULLET_EXTRA : BULLET_SIZE;
 }
 
 // The "this is what a respondent sees" bullet — purely decorative, so
@@ -102,98 +112,137 @@ function bulletWidth(type: BulletType, displayStyle?: 'list' | 'buttons'): numbe
 // unselected-chip swatch instead — echoing the ButtonGroup pill shape here
 // is what actually makes toggling display_style visible while you're still
 // looking at the editor, not just in a preview you've scrolled away from.
-function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: number; number?: number; displayStyle?: 'list' | 'buttons' }) {
-  if (type === 'none') return null
-  if (type === 'number') {
+function Bullet({
+  type,
+  size,
+  number,
+  displayStyle,
+}: {
+  type: BulletType;
+  size: number;
+  number?: number;
+  displayStyle?: "list" | "buttons";
+}) {
+  if (type === "none") return null;
+  if (type === "number") {
     // Fixed width (fits "99." in 13px mono), not sized to this row's own
     // number — otherwise "20." is wider than "8." and the two rows start
     // their Inputs at different x. inline-block is load-bearing: width is
     // ignored on an inline box, and OptionRow wraps this in a plain div so
     // it isn't a flex item that would get blockified for free.
     return (
-      <span style={{
-        pointerEvents: 'none', display: 'inline-block', flexShrink: 0,
-        width: `${NUMBER_BULLET_WIDTH}px`, textAlign: 'right',
-        fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--color-text-tertiary)',
-      }}>
+      <span
+        style={{
+          pointerEvents: "none",
+          display: "inline-block",
+          flexShrink: 0,
+          width: `${NUMBER_BULLET_WIDTH}px`,
+          textAlign: "right",
+          fontFamily: "var(--font-mono)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         {number}.
       </span>
-    )
+    );
   }
-  if (displayStyle === 'buttons') {
+  if (displayStyle === "buttons") {
     return (
-      <span style={{
-        pointerEvents: 'none', display: 'block', flexShrink: 0,
-        width: `${size + BUTTONS_BULLET_EXTRA}px`, height: `${size}px`,
-        border: '1px solid var(--color-border-strong)',
-        borderRadius: 'var(--radius-md)',
-        background: 'var(--color-surface)',
-      }} />
-    )
+      <span
+        style={{
+          pointerEvents: "none",
+          display: "block",
+          flexShrink: 0,
+          width: `${size + BUTTONS_BULLET_EXTRA}px`,
+          height: `${size}px`,
+          border: "1px solid var(--color-border-strong)",
+          borderRadius: "var(--radius-md)",
+          background: "var(--color-surface)",
+        }}
+      />
+    );
   }
   return (
-    <span style={{ pointerEvents: 'none', display: 'inline-flex' }}>
-      {type === 'radio'
-        ? <RadioCircle checked={false} disabled size={size} />
-        : <Checkbox checked={false} onChange={() => {}} locked size={size} />}
+    <span style={{ pointerEvents: "none", display: "inline-flex" }}>
+      {type === "radio" ? (
+        <RadioCircle checked={false} disabled size={size} />
+      ) : (
+        <Checkbox checked={false} onChange={() => {}} locked size={size} />
+      )}
     </span>
-  )
+  );
 }
 
 // Inline, right-aligned in the option's own row (Google-Forms-style — a
 // jump target reads as part of the option, not a separate settings block
 // hanging underneath it), rather than a full-width Dropdown on its own line.
-function BranchDropdown({ option, branchTargets, onChange }: {
-  option: EditableOption
-  branchTargets: BranchTarget[]
-  onChange: (value: string) => void
+function BranchDropdown({
+  option,
+  branchTargets,
+  onChange,
+}: {
+  option: EditableOption;
+  branchTargets: BranchTarget[];
+  onChange: (value: string) => void;
 }) {
   const branchOptions: DropdownOption[] = [
-    { value: CONTINUE_VALUE, label: 'Continue to next question' },
-    ...branchTargets.map((t): DropdownOption => ({
-      value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
-      label: `Jump to: ${t.label}`,
-      disabled: t.id == null,
-      subtitle: t.id == null ? 'Save the form to enable this target' : undefined,
-    })),
-    { value: SUBMIT_VALUE, label: 'Submit form' },
-  ]
+    { value: CONTINUE_VALUE, label: "Continue to next question" },
+    ...branchTargets.map(
+      (t): DropdownOption => ({
+        value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
+        label: `Jump to: ${t.label}`,
+        disabled: t.id == null,
+        subtitle: t.id == null ? "Save the form to enable this target" : undefined,
+      }),
+    ),
+    { value: SUBMIT_VALUE, label: "Submit form" },
+  ];
 
-  return <Dropdown value={branchValueFor(option)} onChange={onChange} options={branchOptions} size="md" width={190} variant="primary" />
+  return (
+    <Dropdown
+      value={branchValueFor(option)}
+      onChange={onChange}
+      options={branchOptions}
+      size="md"
+      width={190}
+      variant="primary"
+    />
+  );
 }
 
 interface OptionsEditorProps {
-  options: EditableOption[]
-  onChange: (options: EditableOption[]) => void
-  questionType: FormQuestionType
+  options: EditableOption[];
+  onChange: (options: EditableOption[]) => void;
+  questionType: FormQuestionType;
   /** single_select_radio/multi_select_checkbox only — swaps the row bullets
       to a chip swatch echoing ButtonGroup's pill shape, since the "list vs
       buttons" toggle otherwise has no visible effect while you're editing. */
-  displayStyle?: 'list' | 'buttons'
+  displayStyle?: "list" | "buttons";
   /** Only meaningful for single_select_radio/dropdown — renders a per-option
       "where does this lead" Dropdown inline at the right edge of the row
       when set. */
-  branchTargets?: BranchTarget[]
+  branchTargets?: BranchTarget[];
   /** Escape hatch for a variant that needs different below-row content than
       the branch dropdown — e.g. EntityOptionsEditor's entity picker. */
-  renderExtra?: (option: EditableOption) => ReactNode
+  renderExtra?: (option: EditableOption) => ReactNode;
   /** How a new row is seeded — plain freeform options default to `newOption()`;
       entity-backed variants start `value` as an id array instead of "". */
-  createOption?: () => EditableOption
+  createOption?: () => EditableOption;
   /** Freeform options store their respondent-facing text in both `label` and
       `value` — entity-backed variants keep `value` as the selected id array,
       so editing the label shouldn't touch it. */
-  syncValueWithLabel?: boolean
+  syncValueWithLabel?: boolean;
   /** Whether archiving an option is offered alongside removing it. Only
       meaningful once the form has responses — see QuestionRenderer. */
-  allowArchive?: boolean
+  allowArchive?: boolean;
   /** This field's validation messages (useFormValidation's per-field issues) —
       only consulted to gate the two option-shaped ones ("needs a label"/
       "must be unique") so a row's own Input.error stays blank until a Save
       attempt actually flagged it, rather than nagging mid-edit. Which row(s)
       get the message is worked out here from the option data itself, not by
       threading a matching clientKey/index through the generic message list. */
-  errors?: string[]
+  errors?: string[];
 }
 
 // Stacked, reorderable option rows for select/ranked question bodies — each
@@ -204,8 +253,16 @@ interface OptionsEditorProps {
 // doesn't conflict with the field-level drag context since a field's own
 // handle is hidden while its card is expanded.
 export function OptionsEditor({
-  options, onChange, questionType, displayStyle, branchTargets, renderExtra,
-  createOption = newOption, syncValueWithLabel = true, errors = [], allowArchive = false,
+  options,
+  onChange,
+  questionType,
+  displayStyle,
+  branchTargets,
+  renderExtra,
+  createOption = newOption,
+  syncValueWithLabel = true,
+  errors = [],
+  allowArchive = false,
 }: OptionsEditorProps) {
   // `options` carries archived entries too, but they're not part of the list
   // a respondent sees — they're listed separately below so they don't join
@@ -214,116 +271,132 @@ export function OptionsEditor({
   // a reason to reposition the viewport — which mid-cleanup of a long option
   // list just throws away your place. Every remove/archive path below says
   // "hold still" first.
-  const suspendCardScroll = useSuspendCardScroll()
-  const liveOptions = options.filter((o) => !o.is_archived)
-  const archivedOptions = options.filter((o) => o.is_archived)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
-  const bulletType = bulletTypeFor(questionType)
+  const suspendCardScroll = useSuspendCardScroll();
+  const liveOptions = options.filter((o) => !o.is_archived);
+  const archivedOptions = options.filter((o) => o.is_archived);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const bulletType = bulletTypeFor(questionType);
 
   // Gates, not the per-row verdict itself — a Save attempt found *some* row
   // missing a label / colliding with another, so it's worth checking each
   // row against its own data; before that attempt, these stay false and no
   // row shows red no matter what's typed.
-  const flagMissingLabels = errors.includes('Every option needs a label.')
-  const flagDuplicateLabels = errors.includes('Option labels must be unique.')
-  const duplicateKeys = new Set<string>()
+  const flagMissingLabels = errors.includes("Every option needs a label.");
+  const flagDuplicateLabels = errors.includes("Option labels must be unique.");
+  const duplicateKeys = new Set<string>();
   if (flagDuplicateLabels) {
-    const counts = new Map<string, number>()
+    const counts = new Map<string, number>();
     for (const o of liveOptions) {
-      const key = o.label.trim().toLowerCase()
-      if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
+      const key = o.label.trim().toLowerCase();
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
     }
-    for (const [key, count] of counts) if (count > 1) duplicateKeys.add(key)
+    for (const [key, count] of counts) if (count > 1) duplicateKeys.add(key);
   }
   function errorFor(option: EditableOption): string | undefined {
-    if (flagMissingLabels && !option.label.trim()) return 'Label is required.'
-    if (flagDuplicateLabels && duplicateKeys.has(option.label.trim().toLowerCase())) return 'This label is used by another option.'
-    return undefined
+    if (flagMissingLabels && !option.label.trim()) return "Label is required.";
+    if (flagDuplicateLabels && duplicateKeys.has(option.label.trim().toLowerCase()))
+      return "This label is used by another option.";
+    return undefined;
   }
   // Set right before inserting a row from Enter, so that row can claim focus
   // once it mounts — a plain "focus the last row" wouldn't work since Enter
   // can be pressed from a row in the middle of the list, not just the end.
-  const [focusKey, setFocusKey] = useState<string | null>(null)
+  const [focusKey, setFocusKey] = useState<string | null>(null);
 
   function handleDragEnd(e: DragEndEvent) {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    const oldIndex = liveOptions.findIndex((o) => o.clientKey === active.id)
-    const newIndex = liveOptions.findIndex((o) => o.clientKey === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    onChange([...arrayMove(liveOptions, oldIndex, newIndex), ...archivedOptions])
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = liveOptions.findIndex((o) => o.clientKey === active.id);
+    const newIndex = liveOptions.findIndex((o) => o.clientKey === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    onChange([...arrayMove(liveOptions, oldIndex, newIndex), ...archivedOptions]);
   }
 
   function updateOption(clientKey: string, label: string) {
-    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label, ...(syncValueWithLabel ? { value: label } : {}) } : o)))
+    onChange(
+      options.map((o) =>
+        o.clientKey === clientKey
+          ? { ...o, label, ...(syncValueWithLabel ? { value: label } : {}) }
+          : o,
+      ),
+    );
   }
 
   function updateOptionValue(clientKey: string, value: string) {
-    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, value } : o)))
+    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, value } : o)));
   }
 
   function updateBranch(clientKey: string, value: string) {
-    onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)))
+    onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)));
   }
 
   // A question needs at least one *offerable* option to mean anything, so the
   // last live row can't be removed — only cleared out and edited in place.
   // Archived rows don't count toward that: none of them can be picked.
   function removeOption(clientKey: string) {
-    if (liveOptions.length <= 1) return
-    suspendCardScroll()
-    onChange(options.filter((o) => o.clientKey !== clientKey))
+    if (liveOptions.length <= 1) return;
+    suspendCardScroll();
+    onChange(options.filter((o) => o.clientKey !== clientKey));
   }
 
   // Archiving keeps the option in storage so past answers still resolve, and
   // asks nobody to re-answer — "we ran out", not "this was never valid".
   // Removing it outright is the other verb, and does flag whoever picked it.
   function setArchived(clientKey: string, is_archived: boolean) {
-    suspendCardScroll()
-    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, is_archived } : o)))
+    suspendCardScroll();
+    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, is_archived } : o)));
   }
 
   function addOption() {
-    onChange([...liveOptions, createOption(), ...archivedOptions])
+    onChange([...liveOptions, createOption(), ...archivedOptions]);
   }
 
   // Enter from inside a row inserts right after it, rather than appending at
   // the end — the row you're typing into isn't necessarily the last one.
   function addOptionAfter(clientKey: string) {
-    const insertIndex = liveOptions.findIndex((o) => o.clientKey === clientKey) + 1
-    const created = createOption()
-    const next = [...liveOptions]
-    next.splice(insertIndex, 0, created)
-    onChange([...next, ...archivedOptions])
-    setFocusKey(created.clientKey)
+    const insertIndex = liveOptions.findIndex((o) => o.clientKey === clientKey) + 1;
+    const created = createOption();
+    const next = [...liveOptions];
+    next.splice(insertIndex, 0, created);
+    onChange([...next, ...archivedOptions]);
+    setFocusKey(created.clientKey);
   }
 
   const trailing = branchTargets
     ? (option: EditableOption) => (
-      <BranchDropdown option={option} branchTargets={branchTargets} onChange={(v) => updateBranch(option.clientKey, v)} />
-    )
-    : undefined
+        <BranchDropdown
+          option={option}
+          branchTargets={branchTargets}
+          onChange={(v) => updateBranch(option.clientKey, v)}
+        />
+      )
+    : undefined;
 
   // renderExtra is an override for variants with their own below-row content
   // (EntityOptionsEditor's picker) — when it's absent and label/value have
   // been un-synced (FieldToolbar's "custom values" toggle), fall back to a
   // plain value Input instead of rendering nothing.
-  const extraFor = renderExtra ?? (!syncValueWithLabel
-    ? (option: EditableOption) => (
-      <Input
-        value={typeof option.value === 'string' ? option.value : ''}
-        onChange={(e) => updateOptionValue(option.clientKey, e.target.value)}
-        placeholder="Value (shown in exports, defaults to label)"
-        size="sm"
-        fullWidth
-      />
-    )
-    : undefined)
+  const extraFor =
+    renderExtra ??
+    (!syncValueWithLabel
+      ? (option: EditableOption) => (
+          <Input
+            value={typeof option.value === "string" ? option.value : ""}
+            onChange={(e) => updateOptionValue(option.clientKey, e.target.value)}
+            placeholder="Value (shown in exports, defaults to label)"
+            size="sm"
+            fullWidth
+          />
+        )
+      : undefined);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={liveOptions.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
+        <SortableContext
+          items={liveOptions.map((o) => o.clientKey)}
+          strategy={verticalListSortingStrategy}
+        >
           {liveOptions.map((option, index) => (
             <OptionRow
               key={option.clientKey}
@@ -338,70 +411,104 @@ export function OptionsEditor({
               allowArchive={allowArchive}
               autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
-              onRemove={() => (allowArchive
-                ? setArchived(option.clientKey, true)
-                : removeOption(option.clientKey))}
+              onRemove={() =>
+                allowArchive ? setArchived(option.clientKey, true) : removeOption(option.clientKey)
+              }
               onEnter={() => addOptionAfter(option.clientKey)}
             />
           ))}
         </SortableContext>
       </DndContext>
-      <AddOptionRow bulletType={bulletType} number={liveOptions.length + 1} displayStyle={displayStyle} onClick={addOption} />
+      <AddOptionRow
+        bulletType={bulletType}
+        number={liveOptions.length + 1}
+        displayStyle={displayStyle}
+        onClick={addOption}
+      />
       <ArchivedOptions
         options={archivedOptions}
         onUnarchive={(clientKey) => setArchived(clientKey, false)}
         onRemove={(clientKey) => {
-          suspendCardScroll()
-          onChange(options.filter((o) => o.clientKey !== clientKey))
+          suspendCardScroll();
+          onChange(options.filter((o) => o.clientKey !== clientKey));
         }}
       />
     </div>
-  )
+  );
 }
 
 // Archived options, kept so past answers still resolve. Listed apart from the
 // live rows rather than dimmed in place: they don't belong in the drag order
 // or the bullet numbering, and mixing them in makes it hard to see what the
 // question actually asks now.
-function ArchivedOptions({ options, onUnarchive, onRemove }: {
-  options: EditableOption[]
-  onUnarchive: (clientKey: string) => void
-  onRemove: (clientKey: string) => void
+function ArchivedOptions({
+  options,
+  onUnarchive,
+  onRemove,
+}: {
+  options: EditableOption[];
+  onUnarchive: (clientKey: string) => void;
+  onRemove: (clientKey: string) => void;
 }) {
-  if (options.length === 0) return null
+  if (options.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '10px' }}>
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
-        textTransform: 'uppercase', letterSpacing: '0.07em',
-        color: 'var(--color-text-tertiary)', marginBottom: '2px',
-      }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "10px" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "11px",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          color: "var(--color-text-tertiary)",
+          marginBottom: "2px",
+        }}
+      >
         Archived
       </span>
       {options.map((option) => (
-        <div key={option.clientKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 0' }}>
-          <span style={{
-            flex: 1, minWidth: 0, fontFamily: 'var(--font-sans)', fontSize: '14px',
-            color: 'var(--color-text-tertiary)', textDecoration: 'line-through',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {option.label || 'Untitled option'}
+        <div
+          key={option.clientKey}
+          style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}
+        >
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-text-tertiary)",
+              textDecoration: "line-through",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {option.label || "Untitled option"}
           </span>
-          <Button type="button" variant="ghost" size="xs" onClick={() => onUnarchive(option.clientKey)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => onUnarchive(option.clientKey)}
+          >
             <IconRestore size={11} /> Unarchive
           </Button>
           <Button
-            type="button" variant="ghost" size="xs" iconOnly
+            type="button"
+            variant="ghost"
+            size="xs"
+            iconOnly
             title="Remove permanently — anyone who picked it will be asked to answer again"
             onClick={() => onRemove(option.clientKey)}
-            style={{ color: 'var(--color-danger)' }}
+            style={{ color: "var(--color-danger)" }}
           >
             <IconX size={11} />
           </Button>
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 // Radio/checkbox/dropdown/ranked_choice questions get a bullet matching the
@@ -409,25 +516,45 @@ function ArchivedOptions({ options, onUnarchive, onRemove }: {
 // not a detached toolbar button, and for dropdown/ranked_choice previews the
 // number the next option will get); other types have no per-option bullet to
 // echo, so they keep the plain "+ Add option" button.
-function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
-  bulletType: BulletType; number: number; displayStyle?: 'list' | 'buttons'; onClick: () => void
+function AddOptionRow({
+  bulletType,
+  number,
+  displayStyle,
+  onClick,
+}: {
+  bulletType: BulletType;
+  number: number;
+  displayStyle?: "list" | "buttons";
+  onClick: () => void;
 }) {
-  if (bulletType === 'none') {
+  if (bulletType === "none") {
     return (
-      <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onClick}
+        style={{ alignSelf: "flex-start", marginTop: "6px" }}
+      >
         <IconPlus size={12} /> Add option
       </Button>
-    )
+    );
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }}>
       <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
-      <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ color: 'var(--color-text-tertiary)' }}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onClick}
+        style={{ color: "var(--color-text-tertiary)" }}
+      >
         Add option
       </Button>
     </div>
-  )
+  );
 }
 
 // The shared row shell — grip, bullet, label input, delete, an optional
@@ -436,46 +563,66 @@ function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, allowArchive, autoFocus, onChange, onRemove, onEnter }: {
-  option: EditableOption
-  bulletType: BulletType
+function OptionRow({
+  option,
+  bulletType,
+  number,
+  displayStyle,
+  trailing,
+  extra,
+  error,
+  canRemove,
+  allowArchive,
+  autoFocus,
+  onChange,
+  onRemove,
+  onEnter,
+}: {
+  option: EditableOption;
+  bulletType: BulletType;
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
-  number: number
-  displayStyle?: 'list' | 'buttons'
-  trailing?: ReactNode
-  extra?: ReactNode
-  error?: string
-  canRemove: boolean
+  number: number;
+  displayStyle?: "list" | "buttons";
+  trailing?: ReactNode;
+  extra?: ReactNode;
+  error?: string;
+  canRemove: boolean;
   /** Whether archiving is on the table — only meaningful once the form has
       responses worth preserving. */
-  allowArchive: boolean
+  allowArchive: boolean;
   /** True for the row just inserted by pressing Enter in the row above it. */
-  autoFocus: boolean
-  onChange: (label: string) => void
+  autoFocus: boolean;
+  onChange: (label: string) => void;
   /** Archives or deletes depending on allowArchive — the row only knows it's
       the "take this out of the list" action. */
-  onRemove: () => void
-  onEnter: () => void
+  onRemove: () => void;
+  onEnter: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
-  const [hovered, setHovered] = useState(false)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: option.clientKey,
+  });
+  const [hovered, setHovered] = useState(false);
   // Translate, not Transform — CSS.Transform also emits the scaleX/scaleY
   // dnd-kit derives from the hovered row's rect, which squishes the dragged
   // row whenever rows differ in height (a `trailing`/`extra` slot, wrapped text).
-  const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
-  const inputRef = useRef<HTMLInputElement>(null)
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (autoFocus) inputRef.current?.focus()
+    if (autoFocus) inputRef.current?.focus();
     // Only on this row's mount — it's created already flagged autoFocus, so
     // there's nothing to react to later.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    onEnter()
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    onEnter();
   }
 
   return (
@@ -486,7 +633,7 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
       // Pairs with the read-only preview's data-option-value: clicking an
       // option on a collapsed card focuses this row's Input (see FieldCard).
       data-option-value={option.option_id}
-      style={{ ...style, display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' }}
+      style={{ ...style, display: "flex", flexDirection: "column", gap: "6px", padding: "4px 0" }}
     >
       {/* position: relative lives on this row (not the outer column) so the
           grip centers on the row's own height, not the row + extra block
@@ -495,7 +642,7 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           Input.error message growing this row taller doesn't drag the grip/
           bullet/delete down with it — everything here besides the Input is
           hand-centered against just its 36px (md) box instead. */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "8px" }}>
         {/* No padding added for this — it reaches left into the Card's own
             padding gutter, so the bullet/Input below stay flush with the
             question label Input above them instead of shifting right. */}
@@ -503,17 +650,29 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           {...attributes}
           {...listeners}
           style={{
-            position: 'absolute', left: '-16px', top: '18px', transform: 'translateY(-50%)',
-            display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
-            opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
+            position: "absolute",
+            left: "-16px",
+            top: "18px",
+            transform: "translateY(-50%)",
+            display: "flex",
+            cursor: "grab",
+            color: "var(--color-text-tertiary)",
+            opacity: hovered ? 1 : 0,
+            transition: "opacity 100ms ease",
+            touchAction: "none",
           }}
         >
           <IconGripVertical size={13} />
         </span>
         {/* 9px = (36px Input height - 18px bullet size) / 2 — centers the
             bullet against the Input's own box, same reasoning as the grip above. */}
-        <div style={{ marginTop: '9px' }}>
-          <Bullet type={bulletType} size={BULLET_SIZE} number={number} displayStyle={displayStyle} />
+        <div style={{ marginTop: "9px" }}>
+          <Bullet
+            type={bulletType}
+            size={BULLET_SIZE}
+            number={number}
+            displayStyle={displayStyle}
+          />
         </div>
         <Input
           ref={inputRef}
@@ -532,7 +691,10 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
             while tidying up the list. */}
         {canRemove && (
           <Button
-            type="button" variant="ghost" size="md" iconOnly
+            type="button"
+            variant="ghost"
+            size="md"
+            iconOnly
             title={allowArchive ? "Archive option — existing answers stay valid" : "Delete option"}
             onClick={onRemove}
             style={{ flexShrink: 0 }}
@@ -547,10 +709,15 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           the row above spends before reaching the Input). No offset when
           there's no bullet to line up past. */}
       {extra && (
-        <div style={{ marginLeft: bulletType === 'none' ? 0 : `${bulletWidth(bulletType, displayStyle) + BULLET_GAP}px` }}>
+        <div
+          style={{
+            marginLeft:
+              bulletType === "none" ? 0 : `${bulletWidth(bulletType, displayStyle) + BULLET_GAP}px`,
+          }}
+        >
           {extra}
         </div>
       )}
     </div>
-  )
+  );
 }

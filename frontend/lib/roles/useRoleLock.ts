@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import type { Role } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { Role } from "@/lib/api";
+import { useTournament } from "@/lib/useTournament";
 
 export interface RoleLock {
   canManageRoles: boolean;
@@ -35,19 +35,28 @@ export function useRoleLock(): RoleLock {
     return Math.min(...membership.roles.map((r) => r.rank));
   }, [membership]);
 
-  const lockReason = useCallback((role: Role): string | null => {
-    if (isArchived) return "This tournament is archived — roles cannot be changed anymore.";
-    if (!canManageRoles) return "You don't have permission to manage roles.";
-    if (isAdmin || isOwner) return null;
-    if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
-    if (role.rank <= ownRank) return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
-    return null;
-  }, [isArchived, canManageRoles, isAdmin, isOwner, ownRank]);
+  const lockReason = useCallback(
+    (role: Role): string | null => {
+      if (isArchived) return "This tournament is archived — roles cannot be changed anymore.";
+      if (!canManageRoles) return "You don't have permission to manage roles.";
+      if (isAdmin || isOwner) return null;
+      if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
+      if (role.rank <= ownRank)
+        return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
+      return null;
+    },
+    [isArchived, canManageRoles, isAdmin, isOwner, ownRank],
+  );
 
   const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
   return {
-    canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked,
-    ownRank, bypassRankBound: isAdmin || isOwner,
+    canManageRoles,
+    canCreateRoles,
+    membershipLoading,
+    lockReason,
+    isLocked,
+    ownRank,
+    bypassRankBound: isAdmin || isOwner,
   };
 }

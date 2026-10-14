@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { PillMenu } from "@/components/ui/PillMenu";
 import { Switch } from "@/components/ui/Switch";
-import { Role } from "@/lib/api";
-import { roleSummary, sameRole, type AssignmentRole } from "@/lib/assignments/lanes";
+import type { Role } from "@/lib/api";
+import { type AssignmentRole, roleSummary, sameRole } from "@/lib/assignments/lanes";
 
 /**
  * The role picker on an assignment chip — on the board, where a chip is a
@@ -18,7 +18,12 @@ import { roleSummary, sameRole, type AssignmentRole } from "@/lib/assignments/la
  * even the order matter. "Select multiple" brings the checkboxes back for the
  * rarer case.
  */
-export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
+export function RolePillMenu({
+  roles,
+  roleCatalog,
+  onToggleRole,
+  onPickRole,
+}: {
   /** The roles this chip currently carries. */
   roles: AssignmentRole[];
   /** Every role the tournament offers. */
@@ -34,7 +39,9 @@ export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
 
   return (
     <PillMenu
-      onOpenChange={(open) => { if (open) setMulti(roles.length > 1); }}
+      onOpenChange={(open) => {
+        if (open) setMulti(roles.length > 1);
+      }}
       label={roleSummary(roles)}
       tone={roles.length > 0 ? "default" : "muted"}
       items={roleCatalog}
@@ -43,14 +50,24 @@ export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
       searchable
       getSearchText={(role) => role.label}
       header={
-        <label style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          gap: "8px", padding: "2px 4px", cursor: "pointer",
-        }}>
-          <span style={{
-            fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
-            color: "var(--color-text-secondary)",
-          }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            padding: "2px 4px",
+            cursor: "pointer",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "11px",
+              fontWeight: 500,
+              color: "var(--color-text-secondary)",
+            }}
+          >
             Select multiple
           </span>
           <Switch checked={multi} onChange={setMulti} />

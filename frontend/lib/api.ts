@@ -2,390 +2,447 @@
 // which attaches the API key server-side) — dev, preview, and prod all use this
 // same path. NEXT_PUBLIC_API_URL is an escape hatch, not a required env var: set
 // it only if you want the browser to call a backend directly, bypassing the proxy.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api/proxy";
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 interface RequestOptions {
-  method?:  HttpMethod
-  body?:    unknown
-  headers?: Record<string, string>
+  method?: HttpMethod;
+  body?: unknown;
+  headers?: Record<string, string>;
   /** Lets the request outlive the page — for a last write fired as the tab
    *  closes, which the browser would otherwise cancel mid-flight. */
-  keepalive?: boolean
+  keepalive?: boolean;
 }
 
 export class ApiError extends Error {
   /** The raw `detail` value from the response body (may be a string or object). */
-  detail: unknown
-  constructor(public status: number, message: string, detail?: unknown) {
-    super(message)
-    this.name   = 'ApiError'
-    this.detail = detail
+  detail: unknown;
+  constructor(
+    public status: number,
+    message: string,
+    detail?: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.detail = detail;
   }
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers = {}, keepalive } = options
+  const { method = "GET", body, headers = {}, keepalive } = options;
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    credentials: 'include',
+    credentials: "include",
     keepalive,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  });
 
   if (!res.ok) {
-    let detail: unknown = `HTTP ${res.status}`
+    let detail: unknown = `HTTP ${res.status}`;
     try {
-      const data = await res.json()
-      detail = data.detail ?? detail
+      const data = await res.json();
+      detail = data.detail ?? detail;
     } catch {}
-    
-    let message: string = `HTTP ${res.status}`
 
-    if (typeof detail === 'string') {
-      message = detail
+    let message: string = `HTTP ${res.status}`;
+
+    if (typeof detail === "string") {
+      message = detail;
     } else if (Array.isArray(detail)) {
-      message = detail[0]["ctx"]?.reason ?? detail[0]["msg"]
+      message = detail[0]["ctx"]?.reason ?? detail[0]["msg"];
     }
 
-    throw new ApiError(res.status, message, detail)
+    throw new ApiError(res.status, message, detail);
   }
 
-  if (res.status === 204) return undefined as T
+  if (res.status === 204) return undefined as T;
 
-  return res.json()
+  return res.json();
 }
 
 // Convenience methods
 export const api = {
-  get:    <T>(path: string)                => request<T>(path),
-  post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
-  patch:  <T>(path: string, body: unknown, options?: Pick<RequestOptions, 'keepalive'>) =>
-    request<T>(path, { method: 'PATCH', body, ...options }),
-  put:    <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',   body }),
-  delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
-}
+  get: <T>(path: string) => request<T>(path),
+  post: <T>(path: string, body: unknown) => request<T>(path, { method: "POST", body }),
+  patch: <T>(path: string, body: unknown, options?: Pick<RequestOptions, "keepalive">) =>
+    request<T>(path, { method: "PATCH", body, ...options }),
+  put: <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", body }),
+  delete: <T>(path: string, body?: unknown) => request<T>(path, { method: "DELETE", body }),
+};
 
 // -------------------------------------------------------------------------
 // Canonical Events & Categories — global list, admin-managed
 // -------------------------------------------------------------------------
 export interface EventCategory {
-  id:   number
-  name: string
+  id: number;
+  name: string;
 }
 
 export interface CanonicalEvent {
-  id:          number
-  name:        string
-  category:    EventCategory
+  id: number;
+  name: string;
+  category: EventCategory;
 }
 
 // Writes are admin-only, under /admin/ — GET stays public/unauthenticated.
 export const eventCategoriesApi = {
-  list:   ()                                    => api.get<EventCategory[]>('/event-categories/'),
-  create: (body: { name: string })              => api.post<EventCategory>('/admin/event-categories/', body),
-  update: (id: number, body: { name: string })  => api.patch<EventCategory>(`/admin/event-categories/${id}/`, body),
-  delete: (id: number)                          => api.delete<void>(`/admin/event-categories/${id}/`),
-}
+  list: () => api.get<EventCategory[]>("/event-categories/"),
+  create: (body: { name: string }) => api.post<EventCategory>("/admin/event-categories/", body),
+  update: (id: number, body: { name: string }) =>
+    api.patch<EventCategory>(`/admin/event-categories/${id}/`, body),
+  delete: (id: number) => api.delete<void>(`/admin/event-categories/${id}/`),
+};
 
 export const canonicalEventsApi = {
-  list:   ()                                              => api.get<CanonicalEvent[]>('/events/'),
-  create: (body: { name: string; category_id: number })   => api.post<CanonicalEvent>('/admin/events/', body),
+  list: () => api.get<CanonicalEvent[]>("/events/"),
+  create: (body: { name: string; category_id: number }) =>
+    api.post<CanonicalEvent>("/admin/events/", body),
   update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
     api.patch<CanonicalEvent>(`/admin/events/${id}/`, body),
-  delete: (id: number)                                    => api.delete<void>(`/admin/events/${id}/`),
-}
+  delete: (id: number) => api.delete<void>(`/admin/events/${id}/`),
+};
 
 // -------------------------------------------------------------------------
 // Canonical Universities
 // -------------------------------------------------------------------------
 export interface University {
-  id:           number
-  name:         string
-  abbreviation: string | null
-  location:     string | null
+  id: number;
+  name: string;
+  abbreviation: string | null;
+  location: string | null;
 }
 
 interface UniversityCreate {
-  name:          string
-  abbreviation?: string | null
-  location?:     string | null
+  name: string;
+  abbreviation?: string | null;
+  location?: string | null;
 }
 
 interface UniversityUpdate {
-  name?:         string
-  abbreviation?: string | null
-  location?:     string | null
+  name?: string;
+  abbreviation?: string | null;
+  location?: string | null;
 }
 
 export const universitiesApi = {
-  list:   ()                                        => api.get<University[]>('/universities/'),
-  create: (body: UniversityCreate)                  => api.post<University>('/admin/universities/', body),
-  update: (id: number, body: UniversityUpdate)      => api.patch<University>(`/admin/universities/${id}/`, body),
-  delete: (id: number)                              => api.delete<void>(`/admin/universities/${id}/`),
-}
+  list: () => api.get<University[]>("/universities/"),
+  create: (body: UniversityCreate) => api.post<University>("/admin/universities/", body),
+  update: (id: number, body: UniversityUpdate) =>
+    api.patch<University>(`/admin/universities/${id}/`, body),
+  delete: (id: number) => api.delete<void>(`/admin/universities/${id}/`),
+};
 
 // -------------------------------------------------------------------------
 // Auth / Users
 // -------------------------------------------------------------------------
-export type ROLE = "admin" | "user"
-export type USER_STATUS = "active" | "invited" | "deactivated" | "locked"
-export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
-export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
+export type ROLE = "admin" | "user";
+export type USER_STATUS = "active" | "invited" | "deactivated" | "locked";
+export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student";
+export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
 export interface CompetitionExperience {
-  id:         number
-  event:      CanonicalEvent
-  school:     string
-  notes:      string | null
+  id: number;
+  event: CanonicalEvent;
+  school: string;
+  notes: string | null;
 }
 
 export interface VolunteerExperienceNotes {
-  event?: string
-  other?: string
+  event?: string;
+  other?: string;
 }
 
 export interface VolunteerExperience {
-  id:              number
-  tournament_name: string
-  year:            number
-  event:           CanonicalEvent | null
-  role:            string
-  notes:           VolunteerExperienceNotes | null
+  id: number;
+  tournament_name: string;
+  year: number;
+  event: CanonicalEvent | null;
+  role: string;
+  notes: VolunteerExperienceNotes | null;
 }
 
 // Matches UserSlimResponse — minimal, public-safe identity. No account-internal
 // fields (email_verified/role/status/timestamps) — those live on AdminUserSlim.
 // Shown to other users (e.g. chapter members), not just self/admin views.
 export interface UserSlim {
-  id:         number
-  first_name: string | null
-  last_name:  string | null
-  email:      string
-  phone:      string | null
-  pronouns:   string | null
-  created_at: string
-  updated_at: string
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  pronouns: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Matches AdminUserSlimResponse — slim + account-management fields. Used by
 // admin user list/patch, and as the base for self-view (login/register/me).
 export interface AdminUserSlim extends UserSlim {
-  email_verified: boolean
-  role:           ROLE
-  status:         USER_STATUS
+  email_verified: boolean;
+  role: ROLE;
+  status: USER_STATUS;
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends AdminUserSlim {
-  is_profile_complete:    boolean
-  is_onboarding_complete: boolean
+  is_profile_complete: boolean;
+  is_onboarding_complete: boolean;
 }
 
 // Matches UserFullResponse — slim + profile fields. No account-internal
 // fields — this is what chapter leads see on a member's profile.
 export interface UserFull extends UserSlim {
-  student_status:      STUDENT_STATUS | null
-  university:          University | null
-  major:               string | null
-  year_level:          number | null
-  graduation_year:     number | null
+  student_status: STUDENT_STATUS | null;
+  university: University | null;
+  major: string | null;
+  year_level: number | null;
+  graduation_year: number | null;
 
-  employer:            string | null
+  employer: string | null;
 
-  has_competition_experience: boolean | null
-  has_volunteer_experience:   boolean | null
+  has_competition_experience: boolean | null;
+  has_volunteer_experience: boolean | null;
 
-  competition_experience: CompetitionExperience[]
-  volunteer_experience:   VolunteerExperience[]
+  competition_experience: CompetitionExperience[];
+  volunteer_experience: VolunteerExperience[];
 
-  shirt_size:           SHIRT_SIZE | null
-  dietary_restriction:  string | null
+  shirt_size: SHIRT_SIZE | null;
+  dietary_restriction: string | null;
 }
 
 // GET /admin/users/{id}/ + /admin/users/by-email/{email}/ — matches AdminUserFullResponse
 // A tournament the user owns — listed in the admin delete confirmation,
 // since deleting the user leaves these without an owner.
 export interface OwnedTournamentRef {
-  id:          number
-  name:        string
-  short_name:  string | null
-  is_archived: boolean
+  id: number;
+  name: string;
+  short_name: string | null;
+  is_archived: boolean;
 }
 
 export interface AdminUserFull extends UserFull, AdminUserSlim {
-  owned_tournaments: OwnedTournamentRef[]
+  owned_tournaments: OwnedTournamentRef[];
 }
 
 // GET /users/me/?full=true — matches UserMeFullResponse
 export interface UserMeFull extends UserFull, UserMeSlim {
-  date_of_birth:          string | null
-  missing_profile_fields: string[]
+  date_of_birth: string | null;
+  missing_profile_fields: string[];
 }
 
 interface UserUpdate {
-  first_name?:          string
-  last_name?:           string
-  phone?:               string | null
-  date_of_birth?:       string | null
-  pronouns?:            string | null
-  student_status?:      STUDENT_STATUS | null
-  university_id?:       number | null
-  major?:               string | null
-  year_level?:          number | null
-  graduation_year?:     number | null
-  employer?:            string | null
-  has_competition_experience?: boolean | null
-  has_volunteer_experience?:   boolean | null
-  shirt_size?:          SHIRT_SIZE | null
-  dietary_restriction?: string | null
+  first_name?: string;
+  last_name?: string;
+  phone?: string | null;
+  date_of_birth?: string | null;
+  pronouns?: string | null;
+  student_status?: STUDENT_STATUS | null;
+  university_id?: number | null;
+  major?: string | null;
+  year_level?: number | null;
+  graduation_year?: number | null;
+  employer?: string | null;
+  has_competition_experience?: boolean | null;
+  has_volunteer_experience?: boolean | null;
+  shirt_size?: SHIRT_SIZE | null;
+  dietary_restriction?: string | null;
 }
 
 // -------------------------------------------------------------------------
 // Auth
 // -------------------------------------------------------------------------
 export interface AuthRegister {
-  email:    string
-  password: string
+  email: string;
+  password: string;
 }
 
 export interface EmailPendingChange {
-  new_email:     string | null
-  can_resend_at: string | null
+  new_email: string | null;
+  can_resend_at: string | null;
 }
 
 export const authApi = {
-  login: (email: string, password: string) => api.post<AdminUserSlim>('/auth/login/', { email, password }),
-  logout: ()                               => api.post<void>('/auth/logout/', {}),
-  register: (body: AuthRegister)           => api.post<AdminUserSlim>('/auth/register/', body),
-  verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
-  sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
+  login: (email: string, password: string) =>
+    api.post<AdminUserSlim>("/auth/login/", { email, password }),
+  logout: () => api.post<void>("/auth/logout/", {}),
+  register: (body: AuthRegister) => api.post<AdminUserSlim>("/auth/register/", body),
+  verifyEmail: (token: string) => api.get<void>(`/auth/verify-email/?token=${token}`),
+  sendEmailVerification: () => api.post<void>("/auth/send-email-verification/", {}),
 
-  getPendingEmailChange: () =>
-    api.get<EmailPendingChange>('/auth/email/pending-change/'),
+  getPendingEmailChange: () => api.get<EmailPendingChange>("/auth/email/pending-change/"),
   requestEmailChange: (newEmail: string) =>
-    api.post<EmailPendingChange>('/auth/email/request-change/', { new_email: newEmail }),
+    api.post<EmailPendingChange>("/auth/email/request-change/", { new_email: newEmail }),
   confirmEmailChange: (token: string) =>
     api.get<void>(`/auth/email/confirm-change/?token=${token}`),
 
   changePassword: (currentPassword: string, newPassword: string) =>
-    api.post<void>('/auth/password/change/', { current_password: currentPassword, new_password: newPassword }),
+    api.post<void>("/auth/password/change/", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
   requestPasswordReset: (email: string) =>
-    api.post<void>('/auth/password/reset/request/', { email }),
+    api.post<void>("/auth/password/reset/request/", { email }),
   confirmPasswordReset: (token: string, newPassword: string) =>
-    api.post<void>('/auth/password/reset/confirm/', { token, new_password: newPassword }),
+    api.post<void>("/auth/password/reset/confirm/", { token, new_password: newPassword }),
 
   confirmAccountSetup: (token: string, password: string) =>
-    api.post<AdminUserSlim>('/auth/account-setup/confirm/', { token, password }),
+    api.post<AdminUserSlim>("/auth/account-setup/confirm/", { token, password }),
 
   revertEmailChange: (token: string, newPassword: string) =>
-    api.post<void>('/auth/email/revert/', { token, new_password: newPassword }),
-}
+    api.post<void>("/auth/email/revert/", { token, new_password: newPassword }),
+};
 
 // -------------------------------------------------------------------------
 // Users
 // -------------------------------------------------------------------------
 export interface UserSession {
-  id:              number
-  user_agent:      string | null
-  ip_address:      string | null
-  created_at:      string
-  last_active_at:  string | null
-  is_current:      boolean
+  id: number;
+  user_agent: string | null;
+  ip_address: string | null;
+  created_at: string;
+  last_active_at: string | null;
+  is_current: boolean;
 }
 
 export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
-  me:       ()                          => api.get<UserMeSlim>('/users/me/'),
+  me: () => api.get<UserMeSlim>("/users/me/"),
   // GET /users/me/?full=true — matches UserMeFullResponse
-  meFull:   ()                          => api.get<UserMeFull>('/users/me/?full=true'),
+  meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
   // PATCH /users/me/ — matches UserMeFullResponse
-  updateMe: (body: Partial<UserUpdate>) => api.patch<UserMeFull>('/users/me/', body),
+  updateMe: (body: Partial<UserUpdate>) => api.patch<UserMeFull>("/users/me/", body),
 
   addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
-    api.post<CompetitionExperience>('/users/me/competition-experience/', body),
-  updateCompetitionExperience: (id: number, body: Partial<{ event_id: number; school: string; notes: string | null }>) =>
-    api.patch<CompetitionExperience>(`/users/me/competition-experience/${id}/`, body),
+    api.post<CompetitionExperience>("/users/me/competition-experience/", body),
+  updateCompetitionExperience: (
+    id: number,
+    body: Partial<{ event_id: number; school: string; notes: string | null }>,
+  ) => api.patch<CompetitionExperience>(`/users/me/competition-experience/${id}/`, body),
   deleteCompetitionExperience: (id: number) =>
     api.delete<void>(`/users/me/competition-experience/${id}/`),
 
   addVolunteerExperience: (body: {
-    tournament_name: string
-    year: number
-    role: string
-    event_id?: number | null
-    notes?: VolunteerExperienceNotes | null
-  }) => api.post<VolunteerExperience>('/users/me/volunteer-experience/', body),
-  updateVolunteerExperience: (id: number, body: Partial<{
-    tournament_name: string
-    year: number
-    role: string
-    event_id: number | null
-    notes: VolunteerExperienceNotes | null
-  }>) => api.patch<VolunteerExperience>(`/users/me/volunteer-experience/${id}/`, body),
+    tournament_name: string;
+    year: number;
+    role: string;
+    event_id?: number | null;
+    notes?: VolunteerExperienceNotes | null;
+  }) => api.post<VolunteerExperience>("/users/me/volunteer-experience/", body),
+  updateVolunteerExperience: (
+    id: number,
+    body: Partial<{
+      tournament_name: string;
+      year: number;
+      role: string;
+      event_id: number | null;
+      notes: VolunteerExperienceNotes | null;
+    }>,
+  ) => api.patch<VolunteerExperience>(`/users/me/volunteer-experience/${id}/`, body),
   deleteVolunteerExperience: (id: number) =>
     api.delete<void>(`/users/me/volunteer-experience/${id}/`),
 
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),
 
-  listSessions: ()          => api.get<UserSession[]>('/users/me/sessions/'),
-  logoutOtherSessions: ()   => api.post<void>('/users/me/sessions/logout-others/', {}),
+  listSessions: () => api.get<UserSession[]>("/users/me/sessions/"),
+  logoutOtherSessions: () => api.post<void>("/users/me/sessions/logout-others/", {}),
   deactivateAccount: (currentPassword: string) =>
-    api.post<void>('/users/me/deactivate/', { password: currentPassword }),
+    api.post<void>("/users/me/deactivate/", { password: currentPassword }),
   deleteAccount: (currentPassword: string) =>
-    api.delete<void>('/users/me/', { password: currentPassword }),
-}
+    api.delete<void>("/users/me/", { password: currentPassword }),
+};
 
 // -------------------------------------------------------------------------
 // Admin — Users
 // -------------------------------------------------------------------------
 interface AdminUserUpdate {
-  role?:   ROLE
-  status?: USER_STATUS
+  role?: ROLE;
+  status?: USER_STATUS;
 }
 
 export const adminUsersApi = {
-  list:       ()                                   => api.get<AdminUserSlim[]>('/admin/users/'),
-  get:        (id: number)                         => api.get<AdminUserFull>(`/admin/users/${id}/`),
-  getByEmail: (email: string)                      => api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
-  updateRole: (id: number, body: AdminUserUpdate)  => api.patch<AdminUserSlim>(`/admin/users/${id}/`, body),
-  delete:     (id: number)                         => api.delete<void>(`/admin/users/${id}/`),
+  list: () => api.get<AdminUserSlim[]>("/admin/users/"),
+  get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
+  getByEmail: (email: string) =>
+    api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
+  updateRole: (id: number, body: AdminUserUpdate) =>
+    api.patch<AdminUserSlim>(`/admin/users/${id}/`, body),
+  delete: (id: number) => api.delete<void>(`/admin/users/${id}/`),
   // Sends the same email the public forgot-password flow does, but reports
   // real errors (400 no password / 429 rate-limited) instead of a uniform 200
   // — enumeration isn't a concern for a user picked off the admin list.
-  sendPasswordReset: (id: number)                  => api.post<void>(`/admin/users/${id}/password-reset/`, {}),
-}
-
+  sendPasswordReset: (id: number) => api.post<void>(`/admin/users/${id}/password-reset/`, {}),
+};
 
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
-export const TOURNAMENT_LEVELS = ['invitational', 'regionals', 'state', 'nationals'] as const
-export type TournamentLevel = typeof TOURNAMENT_LEVELS[number]
+export const TOURNAMENT_LEVELS = ["invitational", "regionals", "state", "nationals"] as const;
+export type TournamentLevel = (typeof TOURNAMENT_LEVELS)[number];
 
-export const TOURNAMENT_DIVISIONS = ['A', 'B', 'C'] as const
-export type TournamentDivision = typeof TOURNAMENT_DIVISIONS[number]
+export const TOURNAMENT_DIVISIONS = ["A", "B", "C"] as const;
+export type TournamentDivision = (typeof TOURNAMENT_DIVISIONS)[number];
 
 export const TOURNAMENT_STATES = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'Colorado', 'Connecticut',
-  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana',
-  'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
-  'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
-  'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey',
-  'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
-  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
-  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia',
-  'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
-  'Southern California', 'Northern California',
-] as const
-export type TournamentState = typeof TOURNAMENT_STATES[number]
+  "Alabama",
+  "Alaska",
+  "Arizona",
+  "Arkansas",
+  "Colorado",
+  "Connecticut",
+  "Delaware",
+  "Florida",
+  "Georgia",
+  "Hawaii",
+  "Idaho",
+  "Illinois",
+  "Indiana",
+  "Iowa",
+  "Kansas",
+  "Kentucky",
+  "Louisiana",
+  "Maine",
+  "Maryland",
+  "Massachusetts",
+  "Michigan",
+  "Minnesota",
+  "Mississippi",
+  "Missouri",
+  "Montana",
+  "Nebraska",
+  "Nevada",
+  "New Hampshire",
+  "New Jersey",
+  "New Mexico",
+  "New York",
+  "North Carolina",
+  "North Dakota",
+  "Ohio",
+  "Oklahoma",
+  "Oregon",
+  "Pennsylvania",
+  "Rhode Island",
+  "South Carolina",
+  "South Dakota",
+  "Tennessee",
+  "Texas",
+  "Utah",
+  "Vermont",
+  "Virginia",
+  "Washington",
+  "West Virginia",
+  "Wisconsin",
+  "Wyoming",
+  "Southern California",
+  "Northern California",
+] as const;
+export type TournamentState = (typeof TOURNAMENT_STATES)[number];
 
 // A track is a tournament's unit of when/where/what. A *primary* track is a
 // real competition day and carries all of start_date/end_date/division plus
@@ -393,108 +450,108 @@ export type TournamentState = typeof TOURNAMENT_STATES[number]
 // carries none of them. The tournament derives its own dates/location/division
 // from its primary tracks — see Tournament below.
 export interface TournamentTrack {
-  id:            number
-  tournament_id: number
-  name:          string
-  is_primary:    boolean
-  start_date:    string | null
-  end_date:      string | null
-  university:    University | null
-  location:      string | null
-  division:      TournamentDivision[] | null
+  id: number;
+  tournament_id: number;
+  name: string;
+  is_primary: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  university: University | null;
+  location: string | null;
+  division: TournamentDivision[] | null;
   // Pending delete, NOT a TD-facing archive: set by DELETE /tracks/ when
   // something still references the track, cleared by POST .../restore/.
   // Never PATCH-able, and only ever visible in the settings listing.
-  is_archived:   boolean
+  is_archived: boolean;
   /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
-  allow_confirm: boolean
+  allow_confirm: boolean;
   /** TD-controlled: closes the track to member edits entirely, declining included. */
-  lock_responses: boolean
+  lock_responses: boolean;
   // The role the assignments board grants a member placed on this track with
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
-  default_role_id: number | null
-  created_at:    string
-  updated_at:    string
+  default_role_id: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Sent on POST /tournaments/ and POST /tracks/. The primary/cosmetic
 // invariant is enforced server-side (422), so a form that lets a user set
 // dates without is_primary will be rejected rather than silently dropped.
 export interface TournamentTrackCreate {
-  name:           string
-  is_primary?:    boolean
-  start_date?:    string | null
-  end_date?:      string | null
-  university_id?: number | null
-  location?:      string | null
-  division?:      TournamentDivision[] | null
-  allow_confirm?: boolean
-  default_role_id?: number | null
+  name: string;
+  is_primary?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+  university_id?: number | null;
+  location?: string | null;
+  division?: TournamentDivision[] | null;
+  allow_confirm?: boolean;
+  default_role_id?: number | null;
 }
 
-export type TournamentTrackUpdate = Partial<TournamentTrackCreate>
+export type TournamentTrackUpdate = Partial<TournamentTrackCreate>;
 
 // What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
 // purged: false means the track is now pending-delete and `blocked_by`
 // names the TD-authored references holding it there.
 export interface TournamentTrackDeleteResult {
-  purged:              boolean
-  blocked_by:          string[]
-  member_rows_deleted: number
+  purged: boolean;
+  blocked_by: string[];
+  member_rows_deleted: number;
 }
 
 // Shared fields — mirrors backend TournamentPublic, the base for
 // Tournament, TournamentSummary (dashboard list), and JoinPreviewTournament
 // (public join preview).
 export interface TournamentPublic {
-  name:        string
-  short_name:  string | null
+  name: string;
+  short_name: string | null;
   // Every day the tournament actually runs — a list, never a range. Day 1 on
   // Feb 13 and Day 2 on Feb 20 means those two days, not the eight between
   // them. Derived from the primary tracks; there is no start_date/end_date.
-  dates:       string[]
+  dates: string[];
   // Resolve only when there is exactly one primary track — two venues have
   // no single answer, and a caller renders `tracks` per row instead.
-  university:  University | null
-  location:    string | null
-  state:       TournamentState
-  level:       TournamentLevel
+  university: University | null;
+  location: string | null;
+  state: TournamentState;
+  level: TournamentLevel;
   // Union across the primary tracks.
-  division:    TournamentDivision[]
+  division: TournamentDivision[];
   // Live tracks only — pending-delete ones are excluded everywhere except
   // the settings listing (tournamentTracksApi.list without `public`).
-  tracks:      TournamentTrack[]
-  is_verified: boolean
+  tracks: TournamentTrack[];
+  is_verified: boolean;
   // TD opt-in to collecting each age threshold — surfaced here (not just on
   // Tournament) so the join flow can decide whether to show the consent
   // step before the visitor even signs in.
-  collect_is_over_18: boolean
-  collect_is_over_21: boolean
+  collect_is_over_18: boolean;
+  collect_is_over_21: boolean;
 }
 
 export interface Tournament extends TournamentPublic {
-  id:           number
-  timezone:     string
-  is_multi_day: boolean
-  is_public:    boolean
-  is_archived:  boolean
+  id: number;
+  timezone: string;
+  is_multi_day: boolean;
+  is_public: boolean;
+  is_archived: boolean;
   /** null once the owner deleted their account — an admin can transfer it. */
-  owner_id:     number | null
-  roles:        Role[]
-  created_at:   string
-  updated_at:   string
+  owner_id: number | null;
+  roles: Role[];
+  created_at: string;
+  updated_at: string;
 }
 
 // GET /tournaments/me/ — lightweight card view, no roles/owner
 export interface TournamentSummary extends TournamentPublic {
-  id:              number
-  is_public:       boolean
-  is_archived:     boolean
-  event_count:     number
-  volunteer_count: number
-  created_at:      string
-  updated_at:      string
+  id: number;
+  is_public: boolean;
+  is_archived: boolean;
+  event_count: number;
+  volunteer_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // GET /admin/tournaments/ — the platform-admin audience. A separate type
@@ -502,58 +559,60 @@ export interface TournamentSummary extends TournamentPublic {
 // holds no membership in and is the only reader entitled to the owner by name.
 // No track count — `tracks` is already here, so use primaryTracks() to count.
 export interface AdminTournament extends Tournament {
-  owner:           UserSlim | null
-  event_count:     number
-  volunteer_count: number
+  owner: UserSlim | null;
+  event_count: number;
+  volunteer_count: number;
 }
 
 // No dates/venue/divisions here — those belong to tracks, and at least one
 // track must be primary. Both Create and Update are extra="forbid" on the
 // backend: sending the old flat fields is a 422, not a silent drop.
 export interface TournamentCreate {
-  name:        string
-  short_name?: string | null
-  state:       TournamentState
-  level:       TournamentLevel
-  tracks:      TournamentTrackCreate[]
+  name: string;
+  short_name?: string | null;
+  state: TournamentState;
+  level: TournamentLevel;
+  tracks: TournamentTrackCreate[];
   // IANA name — set once from the creator's browser timezone, no update path.
-  timezone:    string
-  is_public?:  boolean
+  timezone: string;
+  is_public?: boolean;
 }
 
 export interface TournamentUpdate {
-  name?:          string
-  short_name?:    string | null
-  state?:         TournamentState
-  level?:         TournamentLevel
-  is_public?:     boolean
-  collect_is_over_18?: boolean
-  collect_is_over_21?: boolean
+  name?: string;
+  short_name?: string | null;
+  state?: TournamentState;
+  level?: TournamentLevel;
+  is_public?: boolean;
+  collect_is_over_18?: boolean;
+  collect_is_over_21?: boolean;
 }
 
 export const tournamentsApi = {
   // GET /tournaments/me/ — tournaments the current user has any membership in
-  list:   ()                                       => api.get<TournamentSummary[]>('/tournaments/me/'),
-  get:    (id: number)                             => api.get<Tournament>(`/tournaments/${id}/`),
-  create: (body: TournamentCreate)                 => api.post<Tournament>('/tournaments/', body),
-  update: (id: number, body: TournamentUpdate)     => api.patch<Tournament>(`/tournaments/${id}/`, body),
-  delete: (id: number)                             => api.delete<void>(`/tournaments/${id}/`),
+  list: () => api.get<TournamentSummary[]>("/tournaments/me/"),
+  get: (id: number) => api.get<Tournament>(`/tournaments/${id}/`),
+  create: (body: TournamentCreate) => api.post<Tournament>("/tournaments/", body),
+  update: (id: number, body: TournamentUpdate) =>
+    api.patch<Tournament>(`/tournaments/${id}/`, body),
+  delete: (id: number) => api.delete<void>(`/tournaments/${id}/`),
   transferOwnership: (id: number, newOwnerId: number) =>
     api.post<Tournament>(`/tournaments/${id}/transfer-ownership/`, { new_owner_id: newOwnerId }),
-  archive:   (id: number) => api.post<Tournament>(`/tournaments/${id}/archive/`, {}),
+  archive: (id: number) => api.post<Tournament>(`/tournaments/${id}/archive/`, {}),
   unarchive: (id: number) => api.post<Tournament>(`/tournaments/${id}/unarchive/`, {}),
-}
+};
 
 // -------------------------------------------------------------------------
 // Admin — Tournaments
 // -------------------------------------------------------------------------
 export const adminTournamentsApi = {
   // GET /admin/tournaments/ — every tournament, regardless of membership
-  list: () => api.get<AdminTournament[]>('/admin/tournaments/'),
+  list: () => api.get<AdminTournament[]>("/admin/tournaments/"),
   setVerified: (id: number, is_verified: boolean) =>
-    api.patch<{ id: number; is_verified: boolean }>(`/admin/tournaments/${id}/verify/`, { is_verified }),
-}
-
+    api.patch<{ id: number; is_verified: boolean }>(`/admin/tournaments/${id}/verify/`, {
+      is_verified,
+    }),
+};
 
 // -------------------------------------------------------------------------
 // Tournament Shifts — nested under /tournaments/{id}/shifts/, and attached
@@ -562,30 +621,30 @@ export const adminTournamentsApi = {
 /** A shift reduced to when and where it is — what a reader that only needs to
  *  name a shift gets (a member-facing event, an assignment). */
 export interface TournamentShiftBase {
-  id:            number
-  tournament_id: number
+  id: number;
+  tournament_id: number;
   // The primary track whose day this shift falls on. Required — a shift with
   // no track has no date range to validate against.
-  track_id:      number
-  label:         string
-  start:         string
-  end:           string
+  track_id: number;
+  label: string;
+  start: string;
+  end: string;
 }
 
 export interface TournamentShift extends TournamentShiftBase {
   // How many TournamentEvents this shift is currently attached to — drives
   // the "attached to N events" delete-confirm warning. Absent from the base:
   // it costs a join per shift and means nothing outside the shift catalog.
-  event_count:   number
-  created_at:    string
-  updated_at:    string
+  event_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TournamentShiftInput {
-  track_id: number
-  label:    string
-  start:    string
-  end:      string
+  track_id: number;
+  label: string;
+  start: string;
+  end: string;
 }
 
 // Reading the shift catalog is membership-gated, not manage_events — the
@@ -606,7 +665,7 @@ export const tournamentShiftsApi = {
   // Cascades — detaches from any events it was attached to, no confirmation guard.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Tournament Events — nested under /tournaments/{id}/events/
@@ -614,42 +673,42 @@ export const tournamentShiftsApi = {
 // name is set only for custom (event_id-less) events — a catalog-linked
 // event's display name comes from the joined `event` field instead.
 export interface TournamentEvent {
-  id:                number
-  tournament_id:     number
-  name:              string | null
-  division:          TournamentDivision | null
-  event_type:        'standard' | 'trial'
-  event_id:          number | null
+  id: number;
+  tournament_id: number;
+  name: string | null;
+  division: TournamentDivision | null;
+  event_type: "standard" | "trial";
+  event_id: number | null;
   // Joined canonical event — set only when event_id is set. Carries
   // category, since TournamentEvent has no category field of its own.
-  event:             CanonicalEvent | null
+  event: CanonicalEvent | null;
   // Where the event happens and how many of each role it needs — per track,
   // one entry per track it runs on. Replaces the old flat building/room/floor
   // and volunteers_needed, which could only describe a one-day tournament.
-  track_details:     EventTrackDetailRead[]
-  shifts:            TournamentShift[]
+  track_details: EventTrackDetailRead[];
+  shifts: TournamentShift[];
   // The tracks this event belongs to, in schedule order. Not derived from
   // shifts: a cosmetic track has none, so the link is stated outright. Full
   // objects, not ids — readers want the name and dates too. Written back as
   // track_ids (see TournamentEventInput).
-  tracks:            TournamentTrack[]
-  created_at:        string
-  updated_at:        string
+  tracks: TournamentTrack[];
+  created_at: string;
+  updated_at: string;
 }
 
 /** How many people in one role an event wants on one track. The role is
  *  required: a need with no role is a number nobody can act on, so "any
  *  volunteer" is a role the TD creates rather than a hole here. */
 export interface EventStaffingNeed {
-  role_id: number
+  role_id: number;
   /** At least 1. */
-  count: number
+  count: number;
 }
 
 /** The read shape — carries the role's label because nothing else in an event
  *  response can supply it. */
 export interface EventStaffingNeedRead extends EventStaffingNeed {
-  role_label: string
+  role_label: string;
 }
 
 /** One track an event runs on, plus where it happens there.
@@ -659,74 +718,74 @@ export interface EventStaffingNeedRead extends EventStaffingNeed {
  *  buildings on one day. A track with no location is an entry whose fields
  *  are all null. */
 export interface EventTrackDetail {
-  track_id: number
+  track_id: number;
   /** Must be a building tagged with this track — the database enforces it,
    *  not just the route. */
-  building_id?: number | null
-  floor?: string | null
-  rooms?: string[]
-  needs?: EventStaffingNeed[]
+  building_id?: number | null;
+  floor?: string | null;
+  rooms?: string[];
+  needs?: EventStaffingNeed[];
 }
 
 /** The read shape. Carries the building's name because nothing else in an
  *  event response can supply it — unlike a track, which the `tracks` group
  *  already spells out in full. */
 export interface EventTrackDetailRead extends EventTrackDetail {
-  building_id: number | null
-  building_name: string | null
-  floor: string | null
-  rooms: string[]
-  needs: EventStaffingNeedRead[]
+  building_id: number | null;
+  building_name: string | null;
+  floor: string | null;
+  rooms: string[];
+  needs: EventStaffingNeedRead[];
 }
 
 export interface TournamentEventInput {
-  name?:              string | null
-  division?:          TournamentDivision | null
-  event_type?:        'standard' | 'trial'
-  event_id?:          number | null
+  name?: string | null;
+  division?: TournamentDivision | null;
+  event_type?: "standard" | "trial";
+  event_id?: number | null;
   // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
   // rather than adding to them. Omit either to leave it alone. Setting
   // shift_ids also adds those shifts' tracks to track_details; clearing a
   // shift never removes a track.
-  shift_ids?:         number[]
+  shift_ids?: number[];
   // Replaces the old track_ids: a list of ids and a list of ids-with-location
   // are two ways to write the same thing, and the pair would have to define
   // which wins. Whole-set, and whole-set *within* each entry too — an entry
   // with no `rooms` clears the rooms, an entry with no `needs` clears the
   // needs, and a track left out is unlinked. Omit the field to leave every
   // track alone; to change one, resend all (see lib/eventTrackDetails).
-  track_details?:     EventTrackDetail[]
+  track_details?: EventTrackDetail[];
 }
 
 export interface EventLoadDefaultsSkipped {
-  event_id: number
-  division: string
-  name:     string
-  reason:   string
+  event_id: number;
+  division: string;
+  name: string;
+  reason: string;
 }
 
 export interface EventLoadDefaultsResponse {
-  created: TournamentEvent[]
-  skipped: EventLoadDefaultsSkipped[]
+  created: TournamentEvent[];
+  skipped: EventLoadDefaultsSkipped[];
 }
 
 /** Which field groups an event read returns. Omit for everything; pass [] for
  *  identity only. There is no 'assignments' group — an event nesting its
  *  assignments, each nesting that same event, is circular; fetch them from
  *  assignmentsApi and join by event id. */
-export type EventField = 'shifts' | 'tracks' | 'location';
+export type EventField = "shifts" | "tracks" | "location";
 
 export interface AssignmentInput {
-  tournament_event_id: number
-  membership_id: number
+  tournament_event_id: number;
+  membership_id: number;
   // The role to place them in. If they don't hold it, the server grants it
   // first (rank-bound) rather than making the caller do it separately.
-  role_id: number
-  tournament_shift_id?: number | null
+  role_id: number;
+  tournament_shift_id?: number | null;
   /** Required when there's no shift, ignored when there is — a shift already
    *  names its track and the server takes that as the answer. Naming one that
    *  contradicts the shift is a 422, not a silent correction. */
-  tournament_track_id?: number | null
+  tournament_track_id?: number | null;
 }
 
 export const assignmentsApi = {
@@ -749,7 +808,11 @@ export const assignmentsApi = {
   update: (
     tournamentId: number,
     id: number,
-    body: { role_id?: number; tournament_shift_id?: number | null; tournament_track_id?: number | null },
+    body: {
+      role_id?: number;
+      tournament_shift_id?: number | null;
+      tournament_track_id?: number | null;
+    },
   ) => api.patch<Assignment>(`/tournaments/${tournamentId}/assignments/${id}/`, body),
   // Since #83 a member's roles are derived from these rows, so removing the
   // last one for a (role, track) does drop the role on that track. Intended:
@@ -768,14 +831,16 @@ export const tournamentEventsApi = {
   // staffing target.
   listPublic: (tournamentId: number) =>
     api.get<TournamentEventMember[]>(`/tournaments/${tournamentId}/events/?public=true`),
-  get:    (tournamentId: number, id: number, fields?: EventField[]) => {
+  get: (tournamentId: number, id: number, fields?: EventField[]) => {
     const query = fields ? `?fields=${fields.join(",")}` : "";
     return api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/${query}`);
   },
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
     api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
   update: (
-    tournamentId: number, id: number, body: Partial<TournamentEventInput>,
+    tournamentId: number,
+    id: number,
+    body: Partial<TournamentEventInput>,
     options?: { keepalive?: boolean },
   ) => api.patch<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`, body, options),
   delete: (tournamentId: number, id: number) =>
@@ -784,45 +849,44 @@ export const tournamentEventsApi = {
   // tournament supports. Skips anything already loaded rather than erroring.
   loadDefaults: (tournamentId: number) =>
     api.post<EventLoadDefaultsResponse>(`/tournaments/${tournamentId}/events/load-defaults/`, {}),
-}
+};
 
 // -------------------------------------------------------------------------
 // Season Events — admin-curated per-year/division active event list, drives
 // tournamentEventsApi.loadDefaults(). GET is public; writes are admin-only.
 // -------------------------------------------------------------------------
 export interface SeasonEvent {
-  id:         number
-  year:       number
-  division:   TournamentDivision
-  is_active:  boolean
-  event:      CanonicalEvent
-  created_at: string
+  id: number;
+  year: number;
+  division: TournamentDivision;
+  is_active: boolean;
+  event: CanonicalEvent;
+  created_at: string;
 }
 
 export interface SeasonEventInput {
-  event_id:   number
-  year:       number
-  division:   TournamentDivision
-  is_active?: boolean
+  event_id: number;
+  year: number;
+  division: TournamentDivision;
+  is_active?: boolean;
 }
 
 export const seasonEventsApi = {
   list: (params: { year?: number; division?: TournamentDivision | TournamentDivision[] } = {}) => {
     const qs = new URLSearchParams();
-    if (params.year !== undefined) qs.set('year', String(params.year))
+    if (params.year !== undefined) qs.set("year", String(params.year));
     if (params.division) {
-      for (const d of Array.isArray(params.division) ? params.division : [params.division]) qs.append('division', d)
+      for (const d of Array.isArray(params.division) ? params.division : [params.division])
+        qs.append("division", d);
     }
-    const query = qs.toString()
-    return api.get<SeasonEvent[]>(`/season-events/${query ? `?${query}` : ''}`)
+    const query = qs.toString();
+    return api.get<SeasonEvent[]>(`/season-events/${query ? `?${query}` : ""}`);
   },
-  create: (body: SeasonEventInput) =>
-    api.post<SeasonEvent>('/admin/season-events/', body),
+  create: (body: SeasonEventInput) => api.post<SeasonEvent>("/admin/season-events/", body),
   update: (id: number, body: Partial<SeasonEventInput>) =>
     api.patch<SeasonEvent>(`/admin/season-events/${id}/`, body),
-  delete: (id: number) =>
-    api.delete<void>(`/admin/season-events/${id}/`),
-}
+  delete: (id: number) => api.delete<void>(`/admin/season-events/${id}/`),
+};
 
 // -------------------------------------------------------------------------
 // Memberships
@@ -831,89 +895,89 @@ export const seasonEventsApi = {
 // Carries the track's name so a renderer needs no separate catalog fetch, and
 // is_archived so a retired track's history can be shown as such.
 export interface MembershipTrackStatus {
-  track_id:    number
-  name:        string
-  is_archived: boolean
+  track_id: number;
+  name: string;
+  is_archived: boolean;
   // "pending" is read-only — a track the member has no row for at all. It is
   // never writable, hence TrackStatus (the write-side union) not carrying it.
-  status:      TrackStatus | "pending"
+  status: TrackStatus | "pending";
   // Whether the member may confirm themselves on this track. Carried here
   // because GET /tracks/ is manage_tournament-gated, so a member page has no
   // other way to learn it.
-  allow_confirm: boolean
+  allow_confirm: boolean;
   // The TD has closed this track to member edits. Carried for the same
   // reason as allow_confirm — the overview card needs it to explain why the
   // Edit button is disabled.
-  lock_responses: boolean
+  lock_responses: boolean;
   // Null on a pending entry: no row, so nothing has been updated.
-  updated_at:  string | null
+  updated_at: string | null;
 }
 
 // How a membership was created. "manual" covers staff-add, owner-on-create,
 // and sync import — collapsed into one value until manual add-by-staff is
 // actually removed.
-export type MembershipSource = 'join_code' | 'public' | 'manual'
+export type MembershipSource = "join_code" | "public" | "manual";
 
 export interface AvailabilitySlot {
-  date:  string
-  start: string
-  end:   string
+  date: string;
+  start: string;
+  end: string;
 }
 
 // Matches MembershipAvailabilityRead — a shift a member marked themselves
 // available for, resolved to its label/start/end (the row itself only
 // carries the shift id).
 export interface MembershipAvailability {
-  shift_id: number
+  shift_id: number;
   // What availability is scoped to. Two sites running the same Saturday are
   // separate tracks, so the members table keys its columns off this, not off
   // `day` — which stays only for display grouping.
-  track_id: number
-  label:    string
-  start:    string
-  end:      string
+  track_id: number;
+  label: string;
+  start: string;
+  end: string;
   // The tournament-local calendar date the shift falls on, resolved
   // server-side. Never derive this from `start` here: that's an instant and
   // the viewer's timezone need not match the tournament's, so a local
   // conversion drifts a day near midnight. Display grouping only — the
   // members table's availability columns key off `track_id`.
-  day:      string
+  day: string;
 }
 
 // Matches MembershipLunchRead
 export interface MembershipLunch {
-  track_id:   number
+  track_id: number;
   // Rides along so a renderer never needs a second catalog request.
-  track_name: string
-  category: string
+  track_name: string;
+  category: string;
   // The short canonical form ("Sofritas"), not the form's full option text
   // ("Sofritas (Vegan)") — see MembershipLunchRead.
-  value:    string
+  value: string;
   // The source question's type — the only thing distinguishing a typed
   // answer from a picked option, since both land in `value`. Null when the
   // field is gone.
-  question_type?: string | null
+  question_type?: string | null;
 }
 
 // Matches MembershipEventPreferenceEventRead
 export interface MembershipEventPreferenceEvent {
-  id:       number
-  name:     string | null
-  division: string | null
-  rank:     number | null
+  id: number;
+  name: string | null;
+  division: string | null;
+  rank: number | null;
 }
 
 // Matches MembershipEventPreferenceOptionRead — one option the member picked,
 // with the events it groups nested inside. The API returns the picked option
 // rather than the flat event rows because one option can group 20+ events.
 export interface MembershipEventPreferenceOption {
-  option_id:   string | null
-  label:       string
-  rank:        number | null
+  option_id: string | null;
+  label: string;
+  rank: number | null;
   // The option (or its field) was archived, or no option matched at all —
   // i.e. the form changed after this answer was given.
-  is_archived: boolean
-  events:      MembershipEventPreferenceEvent[]
+  is_archived: boolean;
+  events: MembershipEventPreferenceEvent[];
 }
 
 // Matches MembershipEventPreferenceRead — one event_preference_{track_id}
@@ -921,47 +985,47 @@ export interface MembershipEventPreferenceOption {
 // is its own axis: a member ranks Day 1's events separately from Test
 // Writing's, so the response is a list.
 export interface MembershipEventPreference {
-  track_id:   number
-  track_name: string
-  options:    MembershipEventPreferenceOption[]
+  track_id: number;
+  track_name: string;
+  options: MembershipEventPreferenceOption[];
 }
 
 // Matches MembershipCustomAnswerRead — one answer to a form field that
 // isn't availability/lunch/track_status/event_preference.
 export interface MembershipCustomAnswer {
-  form_title:    string
-  field_label:   string
+  form_title: string;
+  field_label: string;
   // Slug key, not the question's full sentence — what the panel labels by.
-  field_key:     string
-  question_type: string
-  value:         unknown
+  field_key: string;
+  question_type: string;
+  value: unknown;
   // Stable id behind the display-config "form_field:{id}" key — the label and
   // key are both TD-editable, this isn't.
-  field_id:      string
+  field_id: string;
 }
 
 // Matches RoleRead
 export interface Role {
-  id:             number
-  tournament_id:  number
-  label:          string
-  permissions:    string[]
-  rank:           number
+  id: number;
+  tournament_id: number;
+  label: string;
+  permissions: string[];
+  rank: number;
   // What this role is in TORUS / Duosmium, for the exports. null = unmapped.
-  torus_role:     TorusRole | null
-  duosmium_role:  DuosmiumRole | null
-  created_at:     string
-  updated_at:     string
+  torus_role: TorusRole | null;
+  duosmium_role: DuosmiumRole | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Mirror TORUS_ROLES / DUOSMIUM_ROLES in core/tournament/roles.py.
-export type TorusRole = "writer" | "reviewer" | "tournament_director" | "test_coordinator"
-export type DuosmiumRole = "tournament_director" | "scoremaster" | "event_supervisor"
+export type TorusRole = "writer" | "reviewer" | "tournament_director" | "test_coordinator";
+export type DuosmiumRole = "tournament_director" | "scoremaster" | "event_supervisor";
 
 // Matches RoleWithMemberCount — only the role list/CRUD endpoints compute
 // this count; roles nested inside membership responses stay plain Role.
 export interface RoleWithMemberCount extends Role {
-  member_count: number
+  member_count: number;
 }
 
 /** Matches MemberRoleRead — a role as one *member* holds it. Its own type
@@ -972,11 +1036,11 @@ export interface RoleWithMemberCount extends Role {
  *  than stored: being staffed on a track *is* holding the role there. */
 export interface MemberRole extends Role {
   /** Held across the whole tournament rather than on particular days. */
-  is_tournament_wide: boolean
+  is_tournament_wide: boolean;
   /** Which tracks it's held on. Empty when tournament-wide — the role applies
    *  everywhere, so listing today's tracks would read as a narrower claim.
    *  This is what the roster's role chip hangs its track pill menu off. */
-  track_ids: number[]
+  track_ids: number[];
 }
 
 // Matches MembershipJoinCodeInfo — resolved join-code info embedded on a
@@ -985,8 +1049,8 @@ export interface MemberRole extends Role {
 // populated for a join_code-sourced membership.
 /** One role on a person reference — label and id only, never permissions or rank. */
 export interface PersonRole {
-  id: number | null
-  label: string
+  id: number | null;
+  label: string;
 }
 
 /**
@@ -996,11 +1060,11 @@ export interface PersonRole {
  */
 export interface PersonNameRef {
   /** null when the account was deleted — the name is null with it. */
-  user_id: number | null
+  user_id: number | null;
   /** null when they hold no membership in this tournament/chapter. */
-  membership_id: number | null
-  first_name: string | null
-  last_name: string | null
+  membership_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
 }
 
 /**
@@ -1010,29 +1074,39 @@ export interface PersonNameRef {
  */
 export interface PersonRef extends PersonNameRef {
   /** null = no membership here; [] = a member with no roles; absent = the viewer isn't entitled to them. */
-  roles?: PersonRole[] | null
+  roles?: PersonRole[] | null;
 }
 
 export interface MembershipJoinCodeInfo {
-  id:      number
-  code:    string
-  label:   string | null
-  creator: PersonRef
+  id: number;
+  code: string;
+  label: string | null;
+  creator: PersonRef;
 }
 
 // The `fields` vocabulary — mirrors field_groups.GROUPS. Identity (id,
 // created_at, the member's name) is never in a group and always comes back;
 // these select membership *data*.
 export type MembershipField =
-  | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
-  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age'
-  | 'assignments' | 'onboarding';
+  | "contact"
+  | "profile"
+  | "roles"
+  | "membership"
+  | "tracks"
+  | "availability"
+  | "lunch"
+  | "event_prefs"
+  | "custom"
+  | "notes"
+  | "age"
+  | "assignments"
+  | "onboarding";
 
 // Live onboarding steps answered out of the live total — skipped (draft or
 // archived) steps count toward neither.
 export interface MembershipOnboarding {
-  completed: number
-  total:     number
+  completed: number;
+  total: number;
 }
 
 // Matches MembershipBaseResponse — the membership data the member themselves
@@ -1046,23 +1120,23 @@ export interface MembershipOnboarding {
 // key as empty. Omit `fields` entirely to get everything.
 export interface MembershipBase {
   /** null on GET /members/me/ only, for a caller with no membership row. */
-  id:         number | null
+  id: number | null;
   // When they joined THIS tournament — distinct from user.created_at
   // (their NEXUS account age).
-  created_at: string | null
-  updated_at: string | null
-  user:       UserFull | null
+  created_at: string | null;
+  updated_at: string | null;
+  user: UserFull | null;
 
-  roles?:            MemberRole[]
-  track_statuses?:   MembershipTrackStatus[]
+  roles?: MemberRole[];
+  track_statuses?: MembershipTrackStatus[];
   // Omitted (not null) unless the tournament collects the flag and the member
   // has consented — see gate_age_flags. Never treat `undefined` as `false`.
-  is_over_18?:       boolean | null
-  is_over_21?:       boolean | null
-  availability?:     MembershipAvailability[]
-  lunch?:            MembershipLunch[]
-  event_preferences?: MembershipEventPreference[]
-  custom_responses?: MembershipCustomAnswer[]
+  is_over_18?: boolean | null;
+  is_over_21?: boolean | null;
+  availability?: MembershipAvailability[];
+  lunch?: MembershipLunch[];
+  event_preferences?: MembershipEventPreference[];
+  custom_responses?: MembershipCustomAnswer[];
 }
 
 // Matches MembershipFullResponse — GET /members/ and /members/{id}/, both
@@ -1071,29 +1145,29 @@ export interface MembershipBase {
 export interface MembershipFull extends MembershipBase {
   // Always present here: a row that couldn't say who it was about would be
   // meaningless. MembershipBase widens these for the no-membership /me case.
-  id:                number
-  created_at:        string
-  updated_at:        string
-  user:              UserFull
+  id: number;
+  created_at: string;
+  updated_at: string;
+  user: UserFull;
 
-  tournament_id:     number
-  source?:           MembershipSource
-  join_code?:        MembershipJoinCodeInfo | null
+  tournament_id: number;
+  source?: MembershipSource;
+  join_code?: MembershipJoinCodeInfo | null;
   // null/"consented"/"declined" — lets a fetch with include_declined=true
   // tell declined members apart from active ones.
-  age_disclosure?:   'consented' | 'declined' | null
-  notes?:            string | null
+  age_disclosure?: "consented" | "declined" | null;
+  notes?: string | null;
   // What this member is staffing. On MembershipFull, not MembershipBase:
   // members don't see their own assignments, and the base is what /members/me
   // returns. Optional like every other group — absent unless asked for.
-  assignments?:      Assignment[]
+  assignments?: Assignment[];
   // null when the tournament has no live onboarding steps — nothing to report.
-  onboarding?:       MembershipOnboarding | null
+  onboarding?: MembershipOnboarding | null;
   // Sections this surface's display config emptied out. A section renders
   // even with no data ("No info yet"), so an empty list no longer means
   // "hidden" — this is what says so. Reports display_config removals only:
   // a group never requested via `fields` is absent, which is not the same.
-  hidden_sections?:  string[]
+  hidden_sections?: string[];
 }
 
 // What a component rendering "a member's record" can take: the shared
@@ -1101,17 +1175,18 @@ export interface MembershipFull extends MembershipBase {
 // have them. Both MembershipFull (a manager's read) and MembershipMe (your
 // own) satisfy it, which is what lets the member page render the same
 // sections whichever route it fetched from.
-export type MembershipView =
-  Omit<MembershipBase, "id" | "created_at" | "updated_at" | "user"> & {
-    // Narrowed from MembershipBase: a view of a membership implies there is
-    // one. MembershipBase widens these for the one case that has none — a
-    // GET /members/me/ by someone who never joined — and asMembershipView
-    // is where that case gets ruled out.
-    id:         number
-    created_at: string
-    updated_at: string
-    user:       UserFull
-  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments" | "onboarding">>;
+export type MembershipView = Omit<MembershipBase, "id" | "created_at" | "updated_at" | "user"> & {
+  // Narrowed from MembershipBase: a view of a membership implies there is
+  // one. MembershipBase widens these for the one case that has none — a
+  // GET /members/me/ by someone who never joined — and asMembershipView
+  // is where that case gets ruled out.
+  id: number;
+  created_at: string;
+  updated_at: string;
+  user: UserFull;
+} & Partial<
+    Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments" | "onboarding">
+  >;
 
 /** A MembershipMe as the member sections can render it, or null when the
  *  caller holds no membership in this tournament — nothing to show. */
@@ -1124,68 +1199,68 @@ export function asMembershipView(me: MembershipMe): MembershipView | null {
 
 // PATCH .../members/{id}/ — manage_members override, day-of logistics only
 export interface MembershipCoordinatorUpdate {
-  notes?: string | null
+  notes?: string | null;
 }
 
 // Matches MembershipMeResponse — GET /members/me/, the caller's own row plus
 // what they may do here. The membership data is identical to what
 // manage_members reads about someone else; only the extras below differ.
 export interface MembershipMe extends MembershipBase {
-  is_owner:          boolean
-  permissions:       Permission[]
+  is_owner: boolean;
+  permissions: Permission[];
   // True only while the tournament collects an age flag and this member
   // hasn't answered yet — drives the blocking consent modal. False once
   // answered either way (consented or declined), not just while consented.
-  needs_age_consent: boolean
+  needs_age_consent: boolean;
 }
 
 // Matches MemberSummaryResponse — GET /members/summary/, manage_members.
 // Counts only; the roster is where the people are.
 export interface MemberSummaryAvailabilityOption {
-  option_id:  string
-  label:      string
-  confirmed:  number
-  interested: number
+  option_id: string;
+  label: string;
+  confirmed: number;
+  interested: number;
 }
 
 export interface MemberSummaryTrack {
-  track_id:     number
-  name:         string
-  confirmed:    number
-  interested:   number
-  declined:     number
-  pending:      number
+  track_id: number;
+  name: string;
+  confirmed: number;
+  interested: number;
+  declined: number;
+  pending: number;
   // Each member counts once, under the largest option their shifts fully
   // cover — an all-day volunteer isn't also counted as morning.
-  availability: MemberSummaryAvailabilityOption[]
+  availability: MemberSummaryAvailabilityOption[];
 }
 
 export interface MemberSummary {
-  member_count: number
+  member_count: number;
   // null when the tournament has no live onboarding steps.
-  onboarding:   { steps: number; completed: number; started: number } | null
-  tracks:       MemberSummaryTrack[]
+  onboarding: { steps: number; completed: number; started: number } | null;
+  tracks: MemberSummaryTrack[];
 }
 
 // Matches build_filter_options — every value is a {value,label} pair whose
 // `value` is exactly what the matching query param takes.
 export interface MemberFilterOptions {
-  tracks:             FilterOptionItem[]
+  tracks: FilterOptionItem[];
   // Shifts grouped by their track — the param value is "{trackId}:{shiftId}"
   // (or ":__any__"). Named for the group, not the day, since two sites can
   // run the same Saturday.
-  shift_days:         FilterOptionGroup[]
-  lunch_categories:   FilterOptionGroup[]
-  event_preferences:  FilterOptionGroup[]
-  competition_events: FilterOptionItem[]
-  volunteer_events:   FilterOptionItem[]
-  collect_is_over_18: boolean
-  collect_is_over_21: boolean
+  shift_days: FilterOptionGroup[];
+  lunch_categories: FilterOptionGroup[];
+  event_preferences: FilterOptionGroup[];
+  competition_events: FilterOptionItem[];
+  volunteer_events: FilterOptionItem[];
+  collect_is_over_18: boolean;
+  collect_is_over_21: boolean;
 }
 
 export interface FilterOptionItem {
-  value: string
-  label: string
+  value: string;
+  label: string;
 }
 
 // A paired filter's left half (a day, a lunch category, an event-preference
@@ -1193,9 +1268,9 @@ export interface FilterOptionItem {
 // takes them joined: "{group}:{option}", or "{group}:__any__" for a group
 // added but not yet narrowed.
 export interface FilterOptionGroup {
-  value:   string
-  label:   string
-  options: FilterOptionItem[]
+  value: string;
+  label: string;
+  options: FilterOptionItem[];
 }
 
 export const membersApi = {
@@ -1209,22 +1284,25 @@ export const membersApi = {
   // which field groups the rows carry (see fields_for_surface). `filters`
   // maps a param name to the values to include — omitted or empty means that
   // filter doesn't apply.
-  list: (tournamentId: number, opts: {
-    includeDeclined?: boolean;
-    surface?: string;
-    // Which field groups to return. Omit for everything; pass [] for
-    // identity only. `surface` fills in when this is omitted, so the members
-    // table doesn't have to restate what its saved columns need.
-    fields?: MembershipField[];
-    filters?: Record<string, string[]>;
-    // Identity/authority narrowing — what the role pickers ask for. A picker
-    // is this roster with a name search and a role bound on it, which is why
-    // there is no separate search endpoint any more.
-    q?: string;
-    roleId?: number;
-    excludeRoleId?: number;
-    maxRank?: number;
-  } = {}) => {
+  list: (
+    tournamentId: number,
+    opts: {
+      includeDeclined?: boolean;
+      surface?: string;
+      // Which field groups to return. Omit for everything; pass [] for
+      // identity only. `surface` fills in when this is omitted, so the members
+      // table doesn't have to restate what its saved columns need.
+      fields?: MembershipField[];
+      filters?: Record<string, string[]>;
+      // Identity/authority narrowing — what the role pickers ask for. A picker
+      // is this roster with a name search and a role bound on it, which is why
+      // there is no separate search endpoint any more.
+      q?: string;
+      roleId?: number;
+      excludeRoleId?: number;
+      maxRank?: number;
+    } = {},
+  ) => {
     const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
     if (opts.surface) params.set("surface", opts.surface);
     if (opts.fields) params.set("fields", opts.fields.join(","));
@@ -1263,8 +1341,7 @@ export const membersApi = {
   // re-calling with consent=true flips straight back to active.
   setAgeDisclosure: (tournamentId: number, consent: boolean) =>
     api.post<MembershipMe>(`/tournaments/${tournamentId}/members/me/age-disclosure/`, { consent }),
-  leaveMe: (tournamentId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/members/me/`),
+  leaveMe: (tournamentId: number) => api.delete<void>(`/tournaments/${tournamentId}/members/me/`),
   update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
@@ -1280,7 +1357,8 @@ export const membersApi = {
       | { track_id: number; is_tournament_wide?: false }
       | { is_tournament_wide: true; track_id?: null }
     ),
-  ) => api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
+  ) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
 
   // ---- Self-service: what the member may change about themselves --------
   // One request backs the whole member edit page.
@@ -1290,64 +1368,81 @@ export const membersApi = {
   // travels with the shifts because the two move together: "Not available"
   // is `{ shift_ids: [], status: "declined" }` in one call, so a member can
   // never be left declined with shifts still selected.
-  updateMyAvailability: (tournamentId: number, trackId: number, body: { shift_ids: number[]; status?: TrackStatus }) =>
+  updateMyAvailability: (
+    tournamentId: number,
+    trackId: number,
+    body: { shift_ids: number[]; status?: TrackStatus },
+  ) =>
     api.put<MembershipAvailability[]>(
-      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`, body,
+      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`,
+      body,
     ),
   // Send `option_ids` for a question with options, `text` for a free-text
   // one — the question's type decides, and the wrong one is a 422.
-  updateMyLunch: (tournamentId: number, trackId: number, category: string, body: { option_ids?: string[]; text?: string | null }) =>
+  updateMyLunch: (
+    tournamentId: number,
+    trackId: number,
+    category: string,
+    body: { option_ids?: string[]; text?: string | null },
+  ) =>
     api.put<MembershipLunch[]>(
-      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`, body,
+      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`,
+      body,
     ),
   // Whole-set for the track. Ranks are required and must be contiguous from
   // 1 on ranked_choice, and omitted on every other question type.
-  updateMyEventPreferences: (tournamentId: number, trackId: number, selections: MyEventPreferenceSelection[]) =>
+  updateMyEventPreferences: (
+    tournamentId: number,
+    trackId: number,
+    selections: MyEventPreferenceSelection[],
+  ) =>
     api.put<MembershipEventPreference[]>(
-      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`, { selections },
+      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`,
+      { selections },
     ),
   // See backend/docs/track-status-rules.md: `declined` always; `confirmed` only
   // with the track's allow_confirm; `interested` only without it.
   updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
     api.put<MembershipTrackStatus>(
-      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`, { status },
+      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`,
+      { status },
     ),
-}
+};
 
 // GET /members/me/options/ — everything the member edit page needs, grouped
 // the way the page is laid out: one section per live track. A track with no
 // questions still appears, since its status is always the member's to set.
 export interface MyTrackOptions {
-  track_id:      number
-  track_name:    string
-  is_primary:    boolean
-  allow_confirm: boolean
+  track_id: number;
+  track_name: string;
+  is_primary: boolean;
+  allow_confirm: boolean;
   // The TD has closed this track to member edits — it is dropped from the
   // edit page entirely rather than rendered inert.
-  lock_responses: boolean
+  lock_responses: boolean;
   // Null when the member has no row for this track at all.
-  status:        TrackStatus | null
+  status: TrackStatus | null;
   // Fields come back in get_form_for_rendering shape with config.options
   // already resolved, which is what lets the page reuse QuestionRenderer
   // instead of growing a second set of answer widgets.
-  availability:  FormField[]
+  availability: FormField[];
   // This member's currently-selected shifts *on this track* — the whole-set
   // that a PUT to this track replaces.
-  selected_shift_ids: number[]
-  lunch:              (FormField & { category: string })[]
-  lunch_selections:   { category: string; value: string; label: string }[]
+  selected_shift_ids: number[];
+  lunch: (FormField & { category: string })[];
+  lunch_selections: { category: string; value: string; label: string }[];
   // At most one preference question per track, by construction.
-  event_preferences:            FormField | null
-  event_preference_selections:  { tournament_event_id: number; rank: number | null }[]
+  event_preferences: FormField | null;
+  event_preference_selections: { tournament_event_id: number; rank: number | null }[];
 }
 
 export interface MyOptionsResponse {
-  tracks: MyTrackOptions[]
+  tracks: MyTrackOptions[];
 }
 
 export interface MyEventPreferenceSelection {
-  option_id: string
-  rank?:     number | null
+  option_id: string;
+  rank?: number | null;
 }
 
 // -------------------------------------------------------------------------
@@ -1355,57 +1450,63 @@ export interface MyEventPreferenceSelection {
 // -------------------------------------------------------------------------
 // Matches ALL_PERMISSIONS in app/core/tournament/permissions.py
 export type Permission =
-  | 'manage_tournament'
-  | 'manage_roles'
-  | 'manage_members'
-  | 'manage_events'
-  | 'manage_invites'
-  | 'manage_forms'
+  | "manage_tournament"
+  | "manage_roles"
+  | "manage_members"
+  | "manage_events"
+  | "manage_invites"
+  | "manage_forms";
 
 export const ALL_PERMISSIONS: Permission[] = [
-  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites', 'manage_forms',
-]
+  "manage_tournament",
+  "manage_roles",
+  "manage_members",
+  "manage_events",
+  "manage_invites",
+  "manage_forms",
+];
 
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
   manage_tournament: {
-    label: 'Manage Tournament',
-    description: 'Edit tournament settings and view the audit log.',
+    label: "Manage Tournament",
+    description: "Edit tournament settings and view the audit log.",
   },
   manage_roles: {
-    label: 'Manage Roles',
-    description: 'Create, edit, and delete role definitions, and reorder rank.',
+    label: "Manage Roles",
+    description: "Create, edit, and delete role definitions, and reorder rank.",
   },
   manage_members: {
-    label: 'Manage Members',
-    description: 'View and manage the member roster, and assign roles to members.',
+    label: "Manage Members",
+    description: "View and manage the member roster, and assign roles to members.",
   },
   manage_events: {
-    label: 'Manage Events',
-    description: 'Create and manage events, assign events to buildings, add event shifts, and manage event start and end times.',
+    label: "Manage Events",
+    description:
+      "Create and manage events, assign events to buildings, add event shifts, and manage event start and end times.",
   },
   manage_invites: {
-    label: 'Manage Invites',
-    description: 'Create invite links to the tournament and manage existing ones.',
+    label: "Manage Invites",
+    description: "Create invite links to the tournament and manage existing ones.",
   },
   manage_forms: {
-    label: 'Manage Forms',
-    description: 'Create and edit forms, and manage their published state.',
+    label: "Manage Forms",
+    description: "Create and edit forms, and manage their published state.",
   },
-}
+};
 
 export interface RoleDefinition {
-  label:          string
-  permissions:    Permission[]
-  rank:           number
-  torus_role?:    TorusRole | null
-  duosmium_role?: DuosmiumRole | null
+  label: string;
+  permissions: Permission[];
+  rank: number;
+  torus_role?: TorusRole | null;
+  duosmium_role?: DuosmiumRole | null;
 }
 
 // Matches RoleBulkReorder — final ranks are computed client-side by the
 // drag-and-drop preview, the backend only rank-bound checks and writes them.
 export interface RoleRankAssignment {
-  role_id: number
-  rank:    number
+  role_id: number;
+  rank: number;
 }
 
 export const rolesApi = {
@@ -1421,35 +1522,34 @@ export const rolesApi = {
     api.post<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/apply-template/`, {}),
   reorderBulk: (tournamentId: number, roles: RoleRankAssignment[]) =>
     api.patch<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/reorder-bulk/`, { roles }),
-}
+};
 
 // -------------------------------------------------------------------------
 // Invites — nested under /tournaments/{id}/join-codes/ (backend route name
 // unchanged; "invite" is the frontend-facing term)
 // -------------------------------------------------------------------------
 export interface Invite {
-  id:         number
-  code:       string
-  label:      string | null
-  expires_at: string | null
-  created_at: string
-  use_count:  number
-  creator: PersonRef
+  id: number;
+  code: string;
+  label: string | null;
+  expires_at: string | null;
+  created_at: string;
+  use_count: number;
+  creator: PersonRef;
 }
 
 export interface InviteCreate {
-  label?:            string | null
-  expires_in_hours?: number | null
+  label?: string | null;
+  expires_in_hours?: number | null;
 }
 
 export interface InviteUpdate {
-  label?:     string | null
-  add_hours?: number | null
+  label?: string | null;
+  add_hours?: number | null;
 }
 
 export const invitesApi = {
-  list: (tournamentId: number) =>
-    api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
+  list: (tournamentId: number) => api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
   create: (tournamentId: number, body: InviteCreate) =>
     api.post<Invite>(`/tournaments/${tournamentId}/join-codes/`, body),
   update: (tournamentId: number, id: number, body: InviteUpdate) =>
@@ -1457,7 +1557,7 @@ export const invitesApi = {
   // Deactivates the invite (one-way) — does not delete the row, history stays visible via GET.
   deactivate: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/join-codes/${id}/`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Staff invites — /tournaments/{id}/staff-invites/. Sends one email per
@@ -1466,20 +1566,20 @@ export const invitesApi = {
 // invitesApi.create first and pass the resulting id here.
 // -------------------------------------------------------------------------
 export interface StaffInviteCreate {
-  join_code_id: number
-  emails:       string[]
+  join_code_id: number;
+  emails: string[];
 }
 
 export interface StaffInviteResponse {
-  join_code: Invite
-  sent:      string[]
-  failed:    string[]
+  join_code: Invite;
+  sent: string[];
+  failed: string[];
 }
 
 export const staffInvitesApi = {
   send: (tournamentId: number, body: StaffInviteCreate) =>
     api.post<StaffInviteResponse>(`/tournaments/${tournamentId}/staff-invites/`, body),
-}
+};
 
 // -------------------------------------------------------------------------
 // Audit log — /tournaments/{id}/audit-log/. Keyset-paginated (before_id/
@@ -1487,104 +1587,104 @@ export const staffInvitesApi = {
 // page; null means no more results.
 // -------------------------------------------------------------------------
 export interface AuditLogEntry {
-  id:            number
-  tournament_id: number
-  action:        string
-  target_type:   string | null
-  target_id:     number | null
-  extra_data:    Record<string, unknown> | null
-  created_at:    string
+  id: number;
+  tournament_id: number;
+  action: string;
+  target_type: string | null;
+  target_id: number | null;
+  extra_data: Record<string, unknown> | null;
+  created_at: string;
   // The actor's membership in this tournament — falls back to the bare user
   // when they have none (e.g. a site admin acting without ever joining).
-  actor: PersonRef
+  actor: PersonRef;
   // Current role state — populated only when target_type === "role" and the
   // role still exists (null for role_deleted, and for role_updated's
   // bulk-reorder variant, which has no single target_id).
-  role:          Role | null
+  role: Role | null;
 }
 
 export interface AuditLogPage {
-  items:          AuditLogEntry[]
-  next_before_id: number | null
+  items: AuditLogEntry[];
+  next_before_id: number | null;
 }
 
 export interface AuditLogActor {
-  actor: PersonRef
+  actor: PersonRef;
   // Total entries this actor has in this tournament's log — sorted
   // most-active first by the backend, feeds the "Filter by User" dropdown.
-  count: number
+  count: number;
 }
 
 export interface AuditLogParams {
-  limit?:       number
-  before_id?:   number
-  action?:      string
-  target_type?: string
-  target_id?:   number
-  actor_id?:    number
-  since?:       string
-  until?:       string
+  limit?: number;
+  before_id?: number;
+  action?: string;
+  target_type?: string;
+  target_id?: number;
+  actor_id?: number;
+  since?: string;
+  until?: string;
 }
 
 export const auditLogApi = {
   list: (tournamentId: number, params: AuditLogParams = {}) => {
     const qs = new URLSearchParams();
-    if (params.limit !== undefined) qs.set('limit', String(params.limit))
-    if (params.before_id !== undefined) qs.set('before_id', String(params.before_id))
-    if (params.action) qs.set('action', params.action)
-    if (params.target_type) qs.set('target_type', params.target_type)
-    if (params.target_id !== undefined) qs.set('target_id', String(params.target_id))
-    if (params.actor_id !== undefined) qs.set('actor_id', String(params.actor_id))
-    if (params.since) qs.set('since', params.since)
-    if (params.until) qs.set('until', params.until)
-    return api.get<AuditLogPage>(`/tournaments/${tournamentId}/audit-log/?${qs.toString()}`)
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params.before_id !== undefined) qs.set("before_id", String(params.before_id));
+    if (params.action) qs.set("action", params.action);
+    if (params.target_type) qs.set("target_type", params.target_type);
+    if (params.target_id !== undefined) qs.set("target_id", String(params.target_id));
+    if (params.actor_id !== undefined) qs.set("actor_id", String(params.actor_id));
+    if (params.since) qs.set("since", params.since);
+    if (params.until) qs.set("until", params.until);
+    return api.get<AuditLogPage>(`/tournaments/${tournamentId}/audit-log/?${qs.toString()}`);
   },
   actors: (tournamentId: number) =>
     api.get<AuditLogActor[]>(`/tournaments/${tournamentId}/audit-log/actors/`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Setup checklist — /tournaments/{id}/setup-checklist/
 // -------------------------------------------------------------------------
 export interface SetupChecklistItem {
-  item_key: string
-  label:    string
-  status:   'not_started' | 'complete'
+  item_key: string;
+  label: string;
+  status: "not_started" | "complete";
 }
 
 export interface SetupChecklistResponse {
-  items:           SetupChecklistItem[]
-  completed_count: number
-  total_count:     number
+  items: SetupChecklistItem[];
+  completed_count: number;
+  total_count: number;
 }
 
 export const setupChecklistApi = {
   get: (tournamentId: number) =>
     api.get<SetupChecklistResponse>(`/tournaments/${tournamentId}/setup-checklist/`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Join — single redemption entry point shared by tournament & chapter codes
 // -------------------------------------------------------------------------
 export interface JoinRedeemResponse {
-  type:          'tournament' | 'chapter'
-  target_id:     number
-  membership_id: number
+  type: "tournament" | "chapter";
+  target_id: number;
+  membership_id: number;
 }
 
 // GET /join/preview/ — discriminated on `type`, mirrors the backend's
 // JoinPreviewTournament/JoinPreviewChapter split.
 export interface JoinPreviewTournament extends TournamentPublic {
-  type:      'tournament'
-  target_id: number
+  type: "tournament";
+  target_id: number;
 }
 
 export interface JoinPreviewChapter {
-  type:      'chapter'
-  target_id: number
+  type: "chapter";
+  target_id: number;
 }
 
-export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter
+export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter;
 
 export const joinApi = {
   redeem: (code: string, ageDisclosureConsent = false) =>
@@ -1593,12 +1693,12 @@ export const joinApi = {
     }),
   preview: (code: string) =>
     api.get<JoinPreviewResponse>(`/join/preview/?code=${encodeURIComponent(code)}`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Sheet Configs
 // -------------------------------------------------------------------------
-export type SheetType = 'volunteers' | 'events'
+export type SheetType = "volunteers" | "events";
 
 // -------------------------------------------------------------------------
 // Form question option — a single answer choice from a Google Form.
@@ -1606,42 +1706,52 @@ export type SheetType = 'volunteers' | 'events'
 // Also persisted in ColumnMapping so edit page + exports retain alias editor.
 // -------------------------------------------------------------------------
 export interface FormQuestionOption {
-  raw:   string   // exact string as it appears in the form
-  alias: string   // auto-suggested short version for DB storage
+  raw: string; // exact string as it appears in the form
+  alias: string; // auto-suggested short version for DB storage
 }
 
-export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
-export type ParseRuleAction    =
-  | 'set' | 'replace' | 'prepend' | 'append' | 'discard'
-  | 'parse_time_range'    // canonical action (backend refactor)
-  | 'parse_availability'  // legacy alias — kept for backwards compat
+export type ParseRuleCondition =
+  | "always"
+  | "contains"
+  | "equals"
+  | "starts_with"
+  | "ends_with"
+  | "regex";
+export type ParseRuleAction =
+  | "set"
+  | "replace"
+  | "prepend"
+  | "append"
+  | "discard"
+  | "parse_time_range" // canonical action (backend refactor)
+  | "parse_availability"; // legacy alias — kept for backwards compat
 
 export interface ParseRule {
-  condition:      ParseRuleCondition
-  match?:         string
-  case_sensitive: boolean
-  action:         ParseRuleAction
-  value?:         string
-  is_alias?:      boolean
+  condition: ParseRuleCondition;
+  match?: string;
+  case_sensitive: boolean;
+  action: ParseRuleAction;
+  value?: string;
+  is_alias?: boolean;
 }
 
 export interface ColumnMapping {
-  field:         string
-  type:          'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
-  row_key?:      string
-  extra_key?:    string
-  rules?:        ParseRule[]
-  delimiter?:    string
+  field: string;
+  type: "string" | "ignore" | "boolean" | "integer" | "multi_select" | "matrix_row";
+  row_key?: string;
+  extra_key?: string;
+  rules?: ParseRule[];
+  delimiter?: string;
   // Persisted form enrichment — powers alias editor on edit page + JSON exports
   // options is a flat list of raw option strings; aliases are encoded in rules (is_alias=true)
-  options?:      string[]
-  grid_rows?:    string[]
-  grid_columns?: string[]
+  options?: string[];
+  grid_rows?: string[];
+  grid_columns?: string[];
 }
 
 export interface ColumnMappingEntry extends ColumnMapping {
-  column_index: number
-  header: string
+  column_index: number;
+  header: string;
 }
 
 // -------------------------------------------------------------------------
@@ -1653,33 +1763,33 @@ export interface ColumnMappingEntry extends ColumnMapping {
 // The frontend Type dropdown is always editable by the TD.
 // -------------------------------------------------------------------------
 export interface MappedHeader {
-  column_index:  number
-  header:        string             // raw column header from the sheet
-  field:         string             // suggested target field
-  type:          string             // suggested mapping type
-  row_key?:      string
-  extra_key?:    string
-  rules?:        ParseRule[]
-  delimiter?:    string
+  column_index: number;
+  header: string; // raw column header from the sheet
+  field: string; // suggested target field
+  type: string; // suggested mapping type
+  row_key?: string;
+  extra_key?: string;
+  rules?: ParseRule[];
+  delimiter?: string;
   // Form enrichment — null/absent when no form URL or no question matched
-  options?:      FormQuestionOption[]
-  grid_rows?:    string[]
-  grid_columns?: string[]
+  options?: FormQuestionOption[];
+  grid_rows?: string[];
+  grid_columns?: string[];
 }
 
 export interface SheetConfig {
-  id:              number
-  tournament_id:   number
-  label:           string
-  sheet_type:      SheetType
-  sheet_url:       string
-  spreadsheet_id:  string
-  sheet_name:      string
-  column_mappings: ColumnMappingEntry[]
-  is_active:       boolean
-  last_synced_at:  string | null
-  created_at:      string
-  updated_at:      string
+  id: number;
+  tournament_id: number;
+  label: string;
+  sheet_type: SheetType;
+  sheet_url: string;
+  spreadsheet_id: string;
+  sheet_name: string;
+  column_mappings: ColumnMappingEntry[];
+  is_active: boolean;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SheetConfigWithWarnings extends SheetConfig {
@@ -1687,41 +1797,42 @@ export interface SheetConfigWithWarnings extends SheetConfig {
 }
 
 export interface SyncResult {
-  created:        number
-  updated:        number
-  skipped:        number
-  errors:         Array<{ row: number; email: string | null; detail: string }>
-  last_synced_at: string
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; email: string | null; detail: string }>;
+  last_synced_at: string;
 }
 
 export interface ValidationIssue {
-  header?:     string[] | string | null
-  column_index?: number[] | number | null
-  message:     string
-  rule_index?: number
+  header?: string[] | string | null;
+  column_index?: number[] | number | null;
+  message: string;
+  rule_index?: number;
 }
 
 export interface ValidateMappingsResult {
-  ok:       boolean
-  errors:   ValidationIssue[]
-  warnings: ValidationIssue[]
+  ok: boolean;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
 }
 
 // Flat response — one MappedHeader per sheet column, enrichment already merged.
 export interface SheetHeadersResponse {
-  sheet_name:            string
-  sheet_type:            string
-  mappings:              MappedHeader[]
-  known_fields:          string[]
-  valid_types:           string[]
-  valid_rule_conditions: string[]
-  valid_rule_actions:    string[]
+  sheet_name: string;
+  sheet_type: string;
+  mappings: MappedHeader[];
+  known_fields: string[];
+  valid_types: string[];
+  valid_rule_conditions: string[];
+  valid_rule_actions: string[];
 }
 
 export const sheetsApi = {
   validate: (tournamentId: number, sheet_url: string) =>
     api.post<{ spreadsheet_id: string; spreadsheet_title: string; sheet_names: string[] }>(
-      `/tournaments/${tournamentId}/sheets/validate/`, { sheet_url }
+      `/tournaments/${tournamentId}/sheets/validate/`,
+      { sheet_url },
     ),
   headers: (
     tournamentId: number,
@@ -1730,45 +1841,52 @@ export const sheetsApi = {
     sheet_type: SheetType,
     form_url?: string,
   ) =>
-    api.post<SheetHeadersResponse>(
-      `/tournaments/${tournamentId}/sheets/headers/`,
-      { sheet_url, sheet_name, sheet_type, ...(form_url ? { form_url } : {}) }
-    ),
-  listConfigs:  (tournamentId: number) =>
+    api.post<SheetHeadersResponse>(`/tournaments/${tournamentId}/sheets/headers/`, {
+      sheet_url,
+      sheet_name,
+      sheet_type,
+      ...(form_url ? { form_url } : {}),
+    }),
+  listConfigs: (tournamentId: number) =>
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
-  getConfig:    (tournamentId: number, id: number) =>
+  getConfig: (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   validateMappings: (tournamentId: number, column_mappings: ColumnMappingEntry[]) =>
-    api.post<ValidateMappingsResult>(`/tournaments/${tournamentId}/sheets/configs/validate-mappings/`, { column_mappings }),
+    api.post<ValidateMappingsResult>(
+      `/tournaments/${tournamentId}/sheets/configs/validate-mappings/`,
+      { column_mappings },
+    ),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
     api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),
   updateConfig: (tournamentId: number, id: number, body: Partial<SheetConfig>) =>
     api.patch<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
   deleteConfig: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
-  sync:         (tournamentId: number, configId: number) =>
+  sync: (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?fields=contact`)
-    return memberships.map((m) => m.user.email)
+    const memberships = await api.get<MembershipFull[]>(
+      `/tournaments/${tournamentId}/members/?fields=contact`,
+    );
+    return memberships.map((m) => m.user.email);
   },
-}
+};
 
 // -------------------------------------------------------------------------
 // Forms — see backend/docs/form-question-types-reference.md for the full
 // question_type/config/reserved-field_key shape reference this mirrors.
 // -------------------------------------------------------------------------
 export type FormQuestionType =
-  | 'acknowledgment'
-  | 'single_select_radio'
-  | 'single_select_dropdown'
-  | 'multi_select_checkbox'
-  | 'ranked_choice'
-  | 'short_text'
-  | 'long_text'
+  | "acknowledgment"
+  | "single_select_radio"
+  | "single_select_dropdown"
+  | "multi_select_checkbox"
+  | "ranked_choice"
+  | "short_text"
+  | "long_text";
 
-export type FormStatus = 'draft' | 'published' | 'archived'
-export type FormOwnerType = 'tournament' | 'chapter'
+export type FormStatus = "draft" | "published" | "archived";
+export type FormOwnerType = "tournament" | "chapter";
 
 // value is normally TD-facing display text; for an entity-backed reserved
 // field_key (availability → TournamentShift ids, event_preference →
@@ -1777,69 +1895,81 @@ export type FormOwnerType = 'tournament' | 'chapter'
 // ResolvedEventOption[] instead — see resolve_field_options in
 // backend/app/core/form/__init__.py.
 export interface FormFieldOption {
-  option_id:      string
-  value:          string | number[] | TrackStatusAssignment[] | AvailabilityTrackStatusValue | ResolvedTrackStatusAssignment[] | ResolvedShiftOption[] | ResolvedEventOption[]
-  label:          string
-  is_archived?:   boolean
+  option_id: string;
+  value:
+    | string
+    | number[]
+    | TrackStatusAssignment[]
+    | AvailabilityTrackStatusValue
+    | ResolvedTrackStatusAssignment[]
+    | ResolvedShiftOption[]
+    | ResolvedEventOption[];
+  label: string;
+  is_archived?: boolean;
   // single_select_radio/dropdown only — mutually exclusive with each other.
-  next_field_id?: string | null
-  action?:        'submit_form' | null
+  next_field_id?: string | null;
+  action?: "submit_form" | null;
 }
 
-export type TrackStatus = "interested" | "confirmed" | "declined"
-export interface TrackStatusAssignment { id: number; status: TrackStatus }
-export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment { name: string }
+export type TrackStatus = "interested" | "confirmed" | "declined";
+export interface TrackStatusAssignment {
+  id: number;
+  status: TrackStatus;
+}
+export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment {
+  name: string;
+}
 export interface AvailabilityTrackStatusValue {
-  shift_ids?: number[]
-  shifts?: ResolvedShiftOption[]
+  shift_ids?: number[];
+  shifts?: ResolvedShiftOption[];
   /** The status this option sets on the field's own track — "" until the TD
    *  picks one. Not a list: availability_{track_id} names exactly one track,
    *  which is what track_status_* fields can't do. */
-  track_status: TrackStatus | ""
+  track_status: TrackStatus | "";
 }
 
 // value shape after GET-time resolution for availability/event_preference —
 // one entry per grouped entity, kept separate rather than collapsed.
 export interface ResolvedShiftOption {
-  id:    number
-  label: string
-  start: string
-  end:   string
+  id: number;
+  label: string;
+  start: string;
+  end: string;
 }
 
 export interface ResolvedEventOption {
-  id:       number
-  name:     string
-  division: string
+  id: number;
+  name: string;
+  division: string;
 }
 
 export interface FormFieldConfig {
-  required?:         boolean
-  confirm_label?:    string
-  options?:          FormFieldOption[]
-  ranks?:            number
-  allow_duplicates?: boolean
-  max_length?:       number
+  required?: boolean;
+  confirm_label?: string;
+  options?: FormFieldOption[];
+  ranks?: number;
+  allow_duplicates?: boolean;
+  max_length?: number;
   // single_select_radio and multi_select_checkbox only — long option labels
   // don't fit ButtonGroup's pill layout well, so the TD can fall back to a
   // plain radio/checkbox list. single_select_dropdown has no equivalent
   // (always a closed Dropdown control, not a style choice).
-  display_style?:    "buttons" | "list"
-  track_status_enabled?: boolean
+  display_style?: "buttons" | "list";
+  track_status_enabled?: boolean;
 }
 
 export interface FormField {
-  id:            string
-  form_id:       string
-  field_key:     string
-  order:         number
-  label:         string
-  description:   string | null
-  question_type: FormQuestionType
-  is_archived:   boolean
-  config:        FormFieldConfig | null
-  created_at:    string
-  updated_at:    string
+  id: string;
+  form_id: string;
+  field_key: string;
+  order: number;
+  label: string;
+  description: string | null;
+  question_type: FormQuestionType;
+  is_archived: boolean;
+  config: FormFieldConfig | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // One entry in a PUT .../fields/ bulk-update payload — the full target state
@@ -1848,165 +1978,165 @@ export interface FormField {
 // Omitting `field_key` on an update leaves the key alone; sending one renames.
 // See BulkFieldEntry in backend/app/schemas/form.py.
 export interface FormFieldInput {
-  id?:            string
-  field_key?:     string
-  label:          string
-  description?:   string | null
-  question_type:  FormQuestionType
-  config?:        FormFieldConfig | null
+  id?: string;
+  field_key?: string;
+  label: string;
+  description?: string | null;
+  question_type: FormQuestionType;
+  config?: FormFieldConfig | null;
   /** The TD's answer, for this question, to "ask previous responders to
       review this?" — collected by the save-time confirmation modal.
       Governs only the judgment-call changes (wording, and moving between a
       preset and a standard key); changes that actually invalidate an answer
       prompt regardless. Omit to accept each change's own default. */
-  notify_responders?: boolean | null
+  notify_responders?: boolean | null;
 }
 
-export type PrerequisiteMatch = "any" | "all"
+export type PrerequisiteMatch = "any" | "all";
 
 export interface IdPrerequisite {
-  ids: number[]
-  match: PrerequisiteMatch
+  ids: number[];
+  match: PrerequisiteMatch;
 }
 
 export interface AvailabilityPrerequisite {
-  shift_ids: number[]
-  match: PrerequisiteMatch
+  shift_ids: number[];
+  match: PrerequisiteMatch;
 }
 
 export interface TournamentFormPrerequisites {
-  onboarding_complete: boolean
-  roles?: IdPrerequisite | null
-  availability?: AvailabilityPrerequisite | null
+  onboarding_complete: boolean;
+  roles?: IdPrerequisite | null;
+  availability?: AvailabilityPrerequisite | null;
 }
 
 /** The member-facing event shape (?public=true), and what any response embeds
  *  when it needs to name an event — an assignment, say. Still not the staff
  *  shape: no building/room/floor, no volunteers_needed. */
 export interface TournamentEventMember {
-  id: number
-  name: string | null
-  division: string | null
-  event_type: string
-  shifts: TournamentShiftBase[]
+  id: number;
+  name: string | null;
+  division: string | null;
+  event_type: string;
+  shifts: TournamentShiftBase[];
 }
 
 /** One member staffing one event in one role, optionally within one shift.
  *  The same shape from the assignments collection, from a write, and nested
  *  on a membership under `fields=assignments`. */
 export interface Assignment {
-  id: number
-  event: TournamentEventMember
-  member: PersonNameRef
+  id: number;
+  event: TournamentEventMember;
+  member: PersonNameRef;
   /** PersonRole, not the full role: permissions and rank are the tournament's
    *  authorization model and have no business on a staffing chip. */
-  role: PersonRole
+  role: PersonRole;
   /** Null means genuinely unpinned — test writing has no shifts at all. */
-  shift: TournamentShiftBase | null
+  shift: TournamentShiftBase | null;
   /** Never null, unlike the shift: every row is for a track. A pinned row
    *  repeats what its shift says; an unpinned one carries the only record of
    *  which of an event's workstreams it belongs to. */
-  track: TournamentTrackRef
-  created_at: string
-  updated_at: string
+  track: TournamentTrackRef;
+  created_at: string;
+  updated_at: string;
 }
 
 /** A track reduced to naming it — mirrors TournamentTrackRef on the server. */
 export interface TournamentTrackRef {
-  id: number
-  name: string
-  is_primary: boolean
+  id: number;
+  name: string;
+  is_primary: boolean;
 }
 
 export interface MemberForm {
-  id:            string
-  name:          string
-  title:         string | null
-  description:   string | null
-  status:        FormStatus
-  is_onboarding: boolean
-  completed:     boolean
-  eligible:      boolean
+  id: string;
+  name: string;
+  title: string | null;
+  description: string | null;
+  status: FormStatus;
+  is_onboarding: boolean;
+  completed: boolean;
+  eligible: boolean;
   /** Whether a completed response can be revised — drives the Edit button. */
-  allow_response_edits: boolean
+  allow_response_edits: boolean;
 }
 
 export interface Form {
-  id:              string
-  name:            string
-  title:           string | null
-  description:     string | null
-  status:          FormStatus
-  owner_type:      FormOwnerType
-  tournament_id:   number | null
-  chapter_id:      number | null
+  id: string;
+  name: string;
+  title: string | null;
+  description: string | null;
+  status: FormStatus;
+  owner_type: FormOwnerType;
+  tournament_id: number | null;
+  chapter_id: number | null;
   /** null once the creator's account is deleted. */
-  created_by:      number | null
+  created_by: number | null;
   /** Members may revise any answer after submitting, not just flagged ones. */
-  allow_response_edits: boolean
-  created_at:      string
-  updated_at:      string
-  response_count:  number
-  prerequisites:   TournamentFormPrerequisites | null
-  fields:          FormField[]
+  allow_response_edits: boolean;
+  created_at: string;
+  updated_at: string;
+  response_count: number;
+  prerequisites: TournamentFormPrerequisites | null;
+  fields: FormField[];
   /** null for a chapter form — there's no tournament to be archived. */
-  tournament_is_archived: boolean | null
+  tournament_is_archived: boolean | null;
 }
 
 // Matches ChapterMemberResponse — no chapter dashboard exists yet, so this
 // exists only to type FormListItem.creator for chapter-owned forms.
 export interface ChapterMember extends UserSlim {
-  membership_id: number
-  role:          string
-  joined_at:     string
+  membership_id: number;
+  role: string;
+  joined_at: string;
 }
 
 // GET /tournaments/{id}/forms/ and /chapters/{id}/forms/ — a lighter row
 // shape than Form: no fields array, and creator resolved server-side the
 // same way Invite.creator/AuditLogEntry.actor are.
 export interface FormListItem {
-  id:              string
-  name:            string
-  title:           string | null
-  description:     string | null
-  status:          FormStatus
-  owner_type:      FormOwnerType
-  tournament_id:   number | null
-  chapter_id:      number | null
-  creator: PersonRef
-  allow_response_edits: boolean
-  created_at:      string
-  updated_at:      string
-  response_count:  number
-  prerequisites:   TournamentFormPrerequisites | null
+  id: string;
+  name: string;
+  title: string | null;
+  description: string | null;
+  status: FormStatus;
+  owner_type: FormOwnerType;
+  tournament_id: number | null;
+  chapter_id: number | null;
+  creator: PersonRef;
+  allow_response_edits: boolean;
+  created_at: string;
+  updated_at: string;
+  response_count: number;
+  prerequisites: TournamentFormPrerequisites | null;
 }
 
 export interface FormCreateInput {
-  name:          string
-  title?:        string | null
-  description?:  string | null
-  owner_type:    FormOwnerType
-  tournament_id?: number | null
-  chapter_id?:   number | null
+  name: string;
+  title?: string | null;
+  description?: string | null;
+  owner_type: FormOwnerType;
+  tournament_id?: number | null;
+  chapter_id?: number | null;
 }
 
 export interface FormUpdateInput {
-  name?:        string
-  title?:       string
-  description?: string
-  status?:      FormStatus
-  allow_response_edits?: boolean
+  name?: string;
+  title?: string;
+  description?: string;
+  status?: FormStatus;
+  allow_response_edits?: boolean;
 }
 
 export interface FormAnswer {
-  id:       string
-  field_id: string
-  value:    unknown
+  id: string;
+  field_id: string;
+  value: unknown;
 }
 
 export interface FormAnswerInput {
-  field_id: string
-  value:    unknown
+  field_id: string;
+  value: unknown;
 }
 
 /** Why a question was flagged for another look. Several can apply at once —
@@ -2018,59 +2148,59 @@ export type PendingUpdateReason =
   | "option_regrouped"
   | "now_required"
   | "key_changed"
-  | "text_changed"
+  | "text_changed";
 
 /** One question a proposed save would ask previous responders to review —
     the server's verdict, from classifyFieldChanges. */
 export interface FieldChange {
-  field_id:       string
-  label:          string
-  reasons:        PendingUpdateReason[]
+  field_id: string;
+  label: string;
+  reasons: PendingUpdateReason[];
   /** At least one reason is mandatory: the TD sees it but can't switch it
       off, because the change invalidated the stored answer. */
-  locked:         boolean
+  locked: boolean;
   /** What notify_responders should default to if the TD doesn't touch it. */
-  notify_default: boolean
+  notify_default: boolean;
 }
 
 /** A question this response is being asked to revisit. `field_id` is the only
     thing `patchResponse` will accept — everything else on the response is
     locked. */
 export interface FormPendingUpdate {
-  field_id:   string
-  reasons:    PendingUpdateReason[]
-  created_at: string
+  field_id: string;
+  reasons: PendingUpdateReason[];
+  created_at: string;
 }
 
 export interface FormResponse {
-  id:              string
-  form_id:         string
-  user_id:         number
-  submitted_at:    string
-  updated_at:      string
-  answers:         FormAnswer[]
-  pending_updates: FormPendingUpdate[]
+  id: string;
+  form_id: string;
+  user_id: number;
+  submitted_at: string;
+  updated_at: string;
+  answers: FormAnswer[];
+  pending_updates: FormPendingUpdate[];
 }
 
 /** Who submitted a response — matches FormRespondentRead. Managers only. */
 export interface FormRespondent extends PersonNameRef {
-  email: string
+  email: string;
 }
 
 /** GET /forms/{id}/responses/ — the managers' view, adding who answered. */
 export interface FormResponseManager extends FormResponse {
-  respondent: FormRespondent
+  respondent: FormRespondent;
 }
 
 // Matches OnboardingFormRead — a tournament form selected into the ordered
 // member onboarding sequence.
 export interface OnboardingForm extends FormListItem {
-  order: number | null
+  order: number | null;
 }
 
 export interface TournamentOnboardingProgress {
-  next_form_id: string | null
-  onboarded_at: string | null
+  next_form_id: string | null;
+  onboarded_at: string | null;
 }
 
 export const formsApi = {
@@ -2078,19 +2208,36 @@ export const formsApi = {
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
   listMineForTournament: (tournamentId: number) =>
     api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
-  listForChapter: (chapterId: number) =>
-    api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
+  listForChapter: (chapterId: number) => api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
   // Every field_key already in use across this tournament's forms (archived
   // included — an archived key isn't released for reuse) — the builder's
   // field_key Combobox shows these as disabled options.
   listFieldKeysForTournament: (tournamentId: number) =>
     api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
-  updatePrerequisites: (tournamentId: number, formId: string, prerequisites: TournamentFormPrerequisites) =>
+  updatePrerequisites: (
+    tournamentId: number,
+    formId: string,
+    prerequisites: TournamentFormPrerequisites,
+  ) =>
     api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
-  createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
-    api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
-  createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>
-    api.post<Form>(`/chapters/${chapterId}/forms/`, { ...body, owner_type: 'chapter', chapter_id: chapterId }),
+  createForTournament: (
+    tournamentId: number,
+    body: { name: string; title?: string | null; description?: string | null },
+  ) =>
+    api.post<Form>(`/tournaments/${tournamentId}/forms/`, {
+      ...body,
+      owner_type: "tournament",
+      tournament_id: tournamentId,
+    }),
+  createForChapter: (
+    chapterId: number,
+    body: { name: string; title?: string | null; description?: string | null },
+  ) =>
+    api.post<Form>(`/chapters/${chapterId}/forms/`, {
+      ...body,
+      owner_type: "chapter",
+      chapter_id: chapterId,
+    }),
   // Renders with option values already resolved (availability/event_preference) —
   // for a respondent-facing view (or the future /preview page), not the builder.
   get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
@@ -2125,8 +2272,7 @@ export const formsApi = {
     api.post<FieldChange[]>(`/forms/${formId}/fields/classify/`, { fields }),
   // Questions taken out of use. Config comes back raw, so an entry can go
   // straight back into putFields — which is how a question is unarchived.
-  listArchivedFields: (formId: string) =>
-    api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
+  listArchivedFields: (formId: string) => api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
   // Destroys the question and every answer to it, permanently. Archiving —
   // omitting the field from putFields — is the undoable alternative. 409s
   // while another question's option still branches to this one.
@@ -2147,7 +2293,7 @@ export const formsApi = {
   deleteResponse: (formId: string, responseId: string) =>
     api.delete<void>(`/forms/${formId}/responses/${responseId}/`),
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
-}
+};
 
 export const tournamentOnboardingApi = {
   listForms: (tournamentId: number) =>
@@ -2155,15 +2301,14 @@ export const tournamentOnboardingApi = {
   addForm: (tournamentId: number, formId: string) =>
     api.post<OnboardingForm>(`/tournaments/${tournamentId}/onboarding-forms/`, { form_id: formId }),
   reorderForms: (tournamentId: number, formIds: string[]) =>
-    api.patch<OnboardingForm[]>(
-      `/tournaments/${tournamentId}/onboarding-forms/reorder/`,
-      { forms: formIds.map((form_id, index) => ({ form_id, order: index + 1 })) },
-    ),
+    api.patch<OnboardingForm[]>(`/tournaments/${tournamentId}/onboarding-forms/reorder/`, {
+      forms: formIds.map((form_id, index) => ({ form_id, order: index + 1 })),
+    }),
   removeForm: (tournamentId: number, formId: string) =>
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
   progress: (tournamentId: number) =>
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
-}
+};
 
 // `public: true` is the member-facing read: same rows, membership alone is
 // the gate. Both listings include pending-delete tracks, flagged by
@@ -2184,7 +2329,7 @@ export const tournamentTracksApi = {
     api.delete<TournamentTrackDeleteResult>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
   restore: (tournamentId: number, trackId: number) =>
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
-}
+};
 
 // -------------------------------------------------------------------------
 // Tournament Buildings — nested under /tournaments/{id}/buildings/
@@ -2197,27 +2342,27 @@ export const tournamentTracksApi = {
  *  reader of a building already holds the track catalog, so embedding would
  *  repeat the same handful of rows once per building. */
 export interface TournamentBuilding {
-  id: number
-  tournament_id: number
-  name: string
+  id: number;
+  tournament_id: number;
+  name: string;
   /** Which tracks this building is in use on. Empty is legal — a building
    *  entered before the schedule is settled isn't available anywhere yet. */
-  track_ids: number[]
-  created_at: string
-  updated_at: string
+  track_ids: number[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TournamentBuildingInput {
-  name: string
+  name: string;
   /** Whole-set, like an event's shift_ids: sending it replaces the tags. */
-  track_ids?: number[]
+  track_ids?: number[];
 }
 
 /** What the delete cost. A building still holding events can be removed, but
  *  the number of event locations it blanked is reported rather than left to
  *  be discovered. */
 export interface TournamentBuildingDeleteResult {
-  locations_cleared: number
+  locations_cleared: number;
 }
 
 export const buildingsApi = {
@@ -2244,7 +2389,7 @@ export const buildingsApi = {
 // resolved on read, which is what makes moving an event to a building in
 // another zone move it between zones with no write to either.
 
-export type ZoneMemberKind = 'building' | 'floor' | 'event';
+export type ZoneMemberKind = "building" | "floor" | "event";
 
 /** One rule saying what a zone contains. Which fields are legal depends on
  *  the kind:
@@ -2255,76 +2400,76 @@ export type ZoneMemberKind = 'building' | 'floor' | 'event';
  *
  *  Sending the wrong combination is a 422, not a silent correction. */
 export interface ZoneMember {
-  kind: ZoneMemberKind
-  building_id?: number | null
-  floor?: string | null
-  tournament_event_id?: number | null
+  kind: ZoneMemberKind;
+  building_id?: number | null;
+  floor?: string | null;
+  tournament_event_id?: number | null;
 }
 
 export interface ZoneMemberRead extends ZoneMember {
-  id: number
-  building_name: string | null
-  event_name: string | null
+  id: number;
+  building_name: string | null;
+  event_name: string | null;
 }
 
 export interface ZoneInput {
-  track_id: number
-  name: string
+  track_id: number;
+  name: string;
   /** The role a drag onto this zone staffs someone in. Distinct from the
    *  track's default role — a zone is usually one job. */
-  default_role_id?: number | null
+  default_role_id?: number | null;
   /** Whole-set: sending it replaces the zone's rules. */
-  members?: ZoneMember[]
+  members?: ZoneMember[];
 }
 
 export interface Zone {
-  id: number
-  tournament_id: number
-  track_id: number
-  name: string
-  default_role_id: number | null
-  default_role_label: string | null
-  members: ZoneMemberRead[]
+  id: number;
+  tournament_id: number;
+  track_id: number;
+  name: string;
+  default_role_id: number | null;
+  default_role_label: string | null;
+  members: ZoneMemberRead[];
   /** Resolved, not stored. Precedence is event > floor > building, so an
    *  event added explicitly to this zone stays here even when another zone's
    *  building rule also covers it. */
-  event_ids: number[]
-  created_at: string
-  updated_at: string
+  event_ids: number[];
+  created_at: string;
+  updated_at: string;
 }
 
 /** One track's whole zone picture in a single read — the /zones page renders
  *  from exactly this. */
 export interface ZoneCoverage {
-  track_id: number
-  zones: Zone[]
+  track_id: number;
+  zones: Zone[];
   /** Events on this track that no zone's rules reach. Flagged in the UI, not
    *  an error — a tournament may deliberately zone only part of a venue. */
-  unzoned_event_ids: number[]
+  unzoned_event_ids: number[];
   /** Events on this track with no building at all. Not a subset of
    *  unzoned_event_ids: an explicit `event` rule zones an unplaced event. */
-  unplaced_event_ids: number[]
+  unplaced_event_ids: number[];
 }
 
 export interface ZoneAssignmentInput {
-  zone_id: number
-  membership_id: number
+  zone_id: number;
+  membership_id: number;
   /** Omit to use the zone's default_role_id. A role is always required in the
    *  end — if the zone has no default, this must name one. */
-  role_id?: number | null
+  role_id?: number | null;
 }
 
 /** Someone covering a zone for a whole track day. No shift and no target: a
  *  zone assignment is "you have this area", not a slot to fill. */
 export interface ZoneAssignment {
-  id: number
-  zone_id: number
-  zone_name: string
-  track_id: number
-  member: PersonNameRef
-  role: PersonRole
-  created_at: string
-  updated_at: string
+  id: number;
+  zone_id: number;
+  zone_name: string;
+  track_id: number;
+  member: PersonNameRef;
+  role: PersonRole;
+  created_at: string;
+  updated_at: string;
 }
 
 export const zonesApi = {
@@ -2336,7 +2481,7 @@ export const zonesApi = {
     api.post<Zone>(`/tournaments/${tournamentId}/zones/`, body),
   // track_id is not updatable — a zone's rules are scoped to its track, so
   // moving one would mean revalidating every rule against a different venue.
-  update: (tournamentId: number, zoneId: number, body: Partial<Omit<ZoneInput, 'track_id'>>) =>
+  update: (tournamentId: number, zoneId: number, body: Partial<Omit<ZoneInput, "track_id">>) =>
     api.patch<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/`, body),
   delete: (tournamentId: number, zoneId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/zones/${zoneId}/`),
@@ -2361,46 +2506,46 @@ export const zoneAssignmentsApi = {
 // carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
 // also carries a title and the custom fields assigned to it.
 export interface DisplayConfigSection {
-  id: string
-  hidden?: boolean
-  hidden_fields?: string[]
-  title?: string | null
-  fields?: string[]
+  id: string;
+  hidden?: boolean;
+  hidden_fields?: string[];
+  title?: string | null;
+  fields?: string[];
 }
 
 export interface DisplayConfigSort {
-  field: string
-  direction: 'asc' | 'desc'
+  field: string;
+  direction: "asc" | "desc";
 }
 
 // One surface's config for the *current viewer*. Every field is per member:
 // two coordinators on the same roster keep their own columns, filters and
 // sort rather than overwriting each other.
 export interface DisplayConfigSurface {
-  hidden: string[]
+  hidden: string[];
   // Either table: visible columns in display order. null means "use that
   // table's defaults" — an empty array means "no data columns", so they
   // differ. Which keys are legal depends on the surface.
-  columns?: string[] | null
+  columns?: string[] | null;
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
-  sections?: DisplayConfigSection[] | null
+  sections?: DisplayConfigSection[] | null;
   // Either table: committed filters, keyed by that table's own filter
   // vocabulary — the roster stores query params it will send back, the
   // events table stores the values it excludes client-side. Sets don't
   // survive JSON, so the wire shape is arrays.
-  filters?: Record<string, string[]> | null
+  filters?: Record<string, string[]> | null;
   // Either table: the viewer's sort. null means the page's own default.
-  sort?: DisplayConfigSort | null
+  sort?: DisplayConfigSort | null;
   // Surfaces that sort by more than one key, in precedence order — the first
   // sorts, the rest break its ties. Separate from `sort` so the single-sort
   // tables keep reading exactly what they wrote.
-  sorts?: DisplayConfigSort[] | null
+  sorts?: DisplayConfigSort[] | null;
   /** page_header only: the page header is folded into the Topbar. */
-  collapsed?: boolean | null
+  collapsed?: boolean | null;
 }
 
-export type DisplayConfig = Record<string, DisplayConfigSurface>
+export type DisplayConfig = Record<string, DisplayConfigSurface>;
 
 // The assignments board is tabbed per track, and each tab keeps its own
 // columns, filters and sort for both halves of the board. So its two surfaces
@@ -2420,28 +2565,28 @@ export function tabSurface(base: string, trackId?: number | null): string {
 }
 
 export interface DisplayConfigCatalogItem {
-  key: string
-  label: string
+  key: string;
+  label: string;
 }
 
 export interface DisplayConfigCatalog {
-  tracks: DisplayConfigCatalogItem[]
-  lunch_categories: DisplayConfigCatalogItem[]
-  availability: DisplayConfigCatalogItem[]
-  event_preferences: DisplayConfigCatalogItem[]
-  custom_fields: DisplayConfigCatalogItem[]
+  tracks: DisplayConfigCatalogItem[];
+  lunch_categories: DisplayConfigCatalogItem[];
+  availability: DisplayConfigCatalogItem[];
+  event_preferences: DisplayConfigCatalogItem[];
+  custom_fields: DisplayConfigCatalogItem[];
   // Members table: every column that can be turned on, fixed ones first.
-  columns: DisplayConfigCatalogItem[]
+  columns: DisplayConfigCatalogItem[];
   // Events table: its own column universe, sharing no keys with `columns`.
-  event_columns: DisplayConfigCatalogItem[]
+  event_columns: DisplayConfigCatalogItem[];
   // Member panel: built-in sections and their individually hideable fields.
-  sections: DisplayConfigSectionCatalogItem[]
+  sections: DisplayConfigSectionCatalogItem[];
 }
 
 export interface DisplayConfigSectionCatalogItem {
-  id: string
-  label: string
-  fields: DisplayConfigCatalogItem[]
+  id: string;
+  label: string;
+  fields: DisplayConfigCatalogItem[];
 }
 
 export const displayConfigApi = {
@@ -2452,7 +2597,7 @@ export const displayConfigApi = {
   // Every item a TD could hide — surface-agnostic, see build_catalog's docstring.
   getCatalog: (tournamentId: number) =>
     api.get<DisplayConfigCatalog>(`/tournaments/${tournamentId}/display-config/catalog/`),
-}
+};
 
 // -------------------------------------------------------------------------
 // Export presets — nested under /tournaments/{id}/export-presets/
@@ -2461,42 +2606,42 @@ export const displayConfigApi = {
 // built-ins (TORUS, Duosmium, email list) are frontend code, never rows here.
 
 /** What one exported row is: a member, or an event with its members. */
-export type ExportRowType = 'member' | 'event'
+export type ExportRowType = "member" | "event";
 
 /** How a column writes its values. Shift-like columns: shift names or
  *  `08:00-12:00`. The per-event Members column: full name or email. */
-export type ExportColumnMode = 'names' | 'times' | 'full_name' | 'email'
+export type ExportColumnMode = "names" | "times" | "full_name" | "email";
 
-export type ExportOutput = 'copy' | 'csv' | 'txt'
+export type ExportOutput = "copy" | "csv" | "txt";
 
 export interface ExportPresetColumn {
-  key:   string
-  mode?: ExportColumnMode | null
+  key: string;
+  mode?: ExportColumnMode | null;
 }
 
 // Matches ExportPresetCreate. Lists and dicts are whole-value on update.
 export interface ExportPresetInput {
-  name:            string
-  row_type:        ExportRowType
-  columns:         ExportPresetColumn[]
+  name: string;
+  row_type: ExportRowType;
+  columns: ExportPresetColumn[];
   // Who it covers: roster query-param filters, and the board's event filters.
-  member_filters:  Record<string, string[]>
-  event_filters:   Record<string, string[]>
+  member_filters: Record<string, string[]>;
+  event_filters: Record<string, string[]>;
   // Every field must be one of `columns`' keys.
-  sorts:           DisplayConfigSort[]
-  include_header:  boolean
+  sorts: DisplayConfigSort[];
+  include_header: boolean;
   // Where the Export menu sends this preset.
-  output_type:     ExportOutput
+  output_type: ExportOutput;
 }
 
 // Matches ExportPresetRead. Read leniently server-side, so a column whose
 // track or form field was deleted can still be here — skip what won't resolve.
 export interface ExportPreset extends ExportPresetInput {
-  id:            number
-  tournament_id: number
-  created_by:    number | null
-  created_at:    string
-  updated_at:    string
+  id: number;
+  tournament_id: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export const exportPresetsApi = {
@@ -2508,4 +2653,4 @@ export const exportPresetsApi = {
     api.patch<ExportPreset>(`/tournaments/${tournamentId}/export-presets/${presetId}/`, body),
   delete: (tournamentId: number, presetId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/export-presets/${presetId}/`),
-}
+};

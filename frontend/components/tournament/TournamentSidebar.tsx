@@ -1,17 +1,17 @@
 "use client";
 
+import { Sidebar, type SidebarItem } from "@/components/layout/Sidebar";
+import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import {
-  IconHome,
   IconAssignments,
+  IconCalendar,
   IconEvents,
   IconForms,
+  IconHome,
   IconMembers,
   IconSettings,
-  IconCalendar,
 } from "@/components/ui/Icons";
-import { Sidebar, SidebarItem } from "@/components/layout/Sidebar";
-import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
-import { Permission } from "@/lib/api";
+import type { Permission } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { useSettingsPages } from "@/lib/useSettingsPages";
@@ -43,22 +43,36 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
   const settingsPages = useSettingsPages(tournamentId);
 
   const items: SidebarItem[] = [
-    { key: "overview",    href: `${base}/overview`,    icon: <IconHome />,             label: "Overview" },
-    ...(canManageEvents ? [
-      { key: "events",    href: `${base}/events`,      icon: <IconEvents />, label: "Events" },
-      { key: "shifts",    href: `${base}/shifts`,      icon: <IconCalendar size={17} />, label: "Shifts" },
-    ] : []),
+    { key: "overview", href: `${base}/overview`, icon: <IconHome />, label: "Overview" },
+    ...(canManageEvents
+      ? [
+          { key: "events", href: `${base}/events`, icon: <IconEvents />, label: "Events" },
+          {
+            key: "shifts",
+            href: `${base}/shifts`,
+            icon: <IconCalendar size={17} />,
+            label: "Shifts",
+          },
+        ]
+      : []),
     // Matches the page's own view gate: staffing is part of reading the event
     // (manage_events) or deciding who does it (manage_members).
-    ...(canManageEvents || canManageMembers ? [
-      { key: "assignments", href: `${base}/assignments`, icon: <IconAssignments />, label: "Assignments" },
-    ] : []),
-    ...(can("manage_forms") ? [
-      { key: "forms",     href: `${base}/forms`,       icon: <IconForms />,  label: "Forms" },
-    ] : []),
-    ...(canManageMembers ? [
-      { key: "members",   href: `${base}/members`,     icon: <IconMembers />, label: "Members" },
-    ] : []),
+    ...(canManageEvents || canManageMembers
+      ? [
+          {
+            key: "assignments",
+            href: `${base}/assignments`,
+            icon: <IconAssignments />,
+            label: "Assignments",
+          },
+        ]
+      : []),
+    ...(can("manage_forms")
+      ? [{ key: "forms", href: `${base}/forms`, icon: <IconForms />, label: "Forms" }]
+      : []),
+    ...(canManageMembers
+      ? [{ key: "members", href: `${base}/members`, icon: <IconMembers />, label: "Members" }]
+      : []),
     {
       key: "settings",
       match: settingsBase,

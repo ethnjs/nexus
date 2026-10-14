@@ -1,29 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { invitesApi, Invite, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
-import { useMyMembership } from "@/lib/useMyMembership";
+import { useEffect, useState } from "react";
+import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
+import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
+import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { Card } from "@/components/ui/Card";
-import table from "@/components/ui/Table.module.css";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { EditableText } from "@/components/ui/EditableText";
-import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconArchive, IconInvite, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
-import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
-import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
-import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
+import { Spinner } from "@/components/ui/Spinner";
+import table from "@/components/ui/Table.module.css";
+import { ApiError, type Invite, invitesApi } from "@/lib/api";
 import { formatCountdown } from "@/lib/timeFormat";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { useTournament } from "@/lib/useTournament";
 
 // Label / Code / Creator / Expiry / Uses / Actions
 const INVITE_ROW_COLUMNS = "1.2fr 120px 1.3fr 170px 60px 72px";
 
-function EditableLabel({ tournamentId, invite, onUpdated }: {
+function EditableLabel({
+  tournamentId,
+  invite,
+  onUpdated,
+}: {
   tournamentId: number;
   invite: Invite;
   onUpdated: (invite: Invite) => void;
@@ -31,10 +35,16 @@ function EditableLabel({ tournamentId, invite, onUpdated }: {
   return (
     <EditableText
       value={invite.label ?? ""}
-      onSave={async (label) => onUpdated(await invitesApi.update(tournamentId, invite.id, { label }))}
+      onSave={async (label) =>
+        onUpdated(await invitesApi.update(tournamentId, invite.id, { label }))
+      }
       textStyle={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
+        fontWeight: 500,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
       }}
       title="Click to edit label"
     />
@@ -42,7 +52,11 @@ function EditableLabel({ tournamentId, invite, onUpdated }: {
 }
 
 function InviteRow({
-  tournamentId, invite, now, onUpdated, onDeactivated,
+  tournamentId,
+  invite,
+  now,
+  onUpdated,
+  onDeactivated,
 }: {
   tournamentId: number;
   invite: Invite;
@@ -51,9 +65,8 @@ function InviteRow({
   onDeactivated: (id: number) => void;
 }) {
   const [deactivating, setDeactivating] = useState(false);
-  const expiry = invite.expires_at === null
-    ? "∞"
-    : formatCountdown(new Date(invite.expires_at).getTime() - now);
+  const expiry =
+    invite.expires_at === null ? "∞" : formatCountdown(new Date(invite.expires_at).getTime() - now);
 
   async function handleDeactivate() {
     setDeactivating(true);
@@ -69,7 +82,8 @@ function InviteRow({
     <div className={table.row}>
       <EditableLabel tournamentId={tournamentId} invite={invite} onUpdated={onUpdated} />
       <Badge
-        variant="default" className="font-mono"
+        variant="default"
+        className="font-mono"
         copyValue={`${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${invite.code}`}
         title="Copy join link"
         style={{ justifySelf: "center" }}
@@ -81,16 +95,33 @@ function InviteRow({
         noMembershipLabel="No membership in this tournament"
         style={{ justifyContent: "center", justifySelf: "center", width: "100%" }}
       />
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
         {expiry}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
         {invite.use_count}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
         <AddTimePopover tournamentId={tournamentId} invite={invite} onUpdated={onUpdated} />
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
           title="Deactivate"
           loading={deactivating}
           onClick={handleDeactivate}
@@ -103,7 +134,13 @@ function InviteRow({
   );
 }
 
-function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
+function InviteTable({
+  invites,
+  tournamentId,
+  now,
+  onUpdated,
+  onDeactivated,
+}: {
   invites: Invite[];
   tournamentId: number;
   now: number;
@@ -111,30 +148,31 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
   onDeactivated: (id: number) => void;
 }) {
   return (
-    <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px", marginBottom: "16px" }}>
-      <div
-        className={table.table}
-        style={{ gridTemplateColumns: INVITE_ROW_COLUMNS }}
-      >
-      <div className={table.header}>
-        <span>Invites — {invites.length}</span>
-        <span style={{ textAlign: "center" }}>Code</span>
-        <span style={{ textAlign: "center" }}>Creator</span>
-        <span style={{ textAlign: "center" }}>Expiry</span>
-        <span style={{ textAlign: "center" }}>Uses</span>
-        <span />
-      </div>
+    <Card
+      radius="lg"
+      className={table.scroll}
+      style={{ padding: "8px 12px", marginBottom: "16px" }}
+    >
+      <div className={table.table} style={{ gridTemplateColumns: INVITE_ROW_COLUMNS }}>
+        <div className={table.header}>
+          <span>Invites — {invites.length}</span>
+          <span style={{ textAlign: "center" }}>Code</span>
+          <span style={{ textAlign: "center" }}>Creator</span>
+          <span style={{ textAlign: "center" }}>Expiry</span>
+          <span style={{ textAlign: "center" }}>Uses</span>
+          <span />
+        </div>
 
-      {invites.map((invite) => (
-        <InviteRow
-          key={invite.id}
-          tournamentId={tournamentId}
-          invite={invite}
-          now={now}
-          onUpdated={onUpdated}
-          onDeactivated={onDeactivated}
-        />
-      ))}
+        {invites.map((invite) => (
+          <InviteRow
+            key={invite.id}
+            tournamentId={tournamentId}
+            invite={invite}
+            now={now}
+            onUpdated={onUpdated}
+            onDeactivated={onDeactivated}
+          />
+        ))}
       </div>
     </Card>
   );
@@ -147,7 +185,8 @@ export default function InvitesSettingsPage() {
   const { user: currentUser } = useAuth();
   const { isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
+  const canManageInvites =
+    currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
 
   const [invites, setInvites] = useState<Invite[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -156,7 +195,8 @@ export default function InvitesSettingsPage() {
 
   useEffect(() => {
     if (!canManageInvites) return;
-    invitesApi.list(tournamentId)
+    invitesApi
+      .list(tournamentId)
       .then(setInvites)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load invites."));
   }, [tournamentId, canManageInvites]);
@@ -220,14 +260,27 @@ export default function InvitesSettingsPage() {
         page="invites"
         heading="Invites"
         action={
-          <Button type="button" variant="primary" size="md" disabled={isArchived} onClick={() => setCreating(true)}>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            disabled={isArchived}
+            onClick={() => setCreating(true)}
+          >
             <IconPlus size={14} /> Add invite
           </Button>
         }
       />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}

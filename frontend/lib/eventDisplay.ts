@@ -1,4 +1,4 @@
-import { TournamentEvent } from "@/lib/api";
+import type { TournamentEvent } from "@/lib/api";
 
 /** The minimum an event has to carry to be named. Stated structurally rather
  *  than as TournamentEvent so the slimmer refs nested on other responses

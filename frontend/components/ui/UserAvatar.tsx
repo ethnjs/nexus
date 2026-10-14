@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { IconLogout, IconSettings, IconUser } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/useAuth";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { IconLogout, IconUser, IconSettings } from "@/components/ui/Icons";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import Link from "next/link";
 
 interface UserAvatarProps {
   /**
@@ -33,9 +33,8 @@ export function UserAvatar({ logoutOnly = false }: UserAvatarProps) {
 
   if (!user) return null;
 
-  const fullName = user.first_name && user.last_name
-    ? `${user.first_name} ${user.last_name}`
-    : null;
+  const fullName =
+    user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : null;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -47,81 +46,146 @@ export function UserAvatar({ logoutOnly = false }: UserAvatarProps) {
       </button>
 
       {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 8px)", right: 0, width: "220px",
-          background: "var(--color-surface)", border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-          overflow: "hidden", zIndex: 100,
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            width: "220px",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
+            overflow: "hidden",
+            zIndex: 100,
+          }}
+        >
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
-            <div style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "var(--color-text-primary)",
+              }}
+            >
               {fullName ?? user.email}
             </div>
             {/* Only when it isn't already standing in as the heading — an
                 account part-way through onboarding has no name yet. */}
             {fullName && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                  marginTop: "3px",
+                }}
+              >
                 {user.email}
               </div>
             )}
             <div style={{ marginTop: "8px" }}>
-              <span style={{
-                fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                textTransform: "uppercase", letterSpacing: "0.07em",
-                color: "var(--color-text-secondary)", background: "var(--color-accent-subtle)",
-                padding: "2px 7px", borderRadius: "var(--radius-sm)",
-              }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  color: "var(--color-text-secondary)",
+                  background: "var(--color-accent-subtle)",
+                  padding: "2px 7px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
                 {user.role}
               </span>
             </div>
           </div>
           {!logoutOnly && (
-          <>
-          <Link
-            href={`/profile/${user.id}`}
-            onClick={() => setOpen(false)}
-            style={{
-              display: "flex", alignItems: "center", gap: "8px",
-              width: "100%", padding: "11px 16px",
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-              color: "var(--color-text-primary)", textDecoration: "none",
-              borderBottom: "1px solid var(--color-border)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-          >
-            <IconUser size={16}/>
-            Profile
-          </Link>
-          <Link
-            href="/settings/account"
-            onClick={() => setOpen(false)}
-            style={{
-              display: "flex", alignItems: "center", gap: "8px",
-              width: "100%", padding: "11px 16px",
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-              color: "var(--color-text-primary)", textDecoration: "none",
-              borderBottom: "1px solid var(--color-border)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-          >
-            <IconSettings size={16}/>
-            Settings
-          </Link>
-          </>
+            <>
+              <Link
+                href={`/profile/${user.id}`}
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "11px 16px",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: "var(--color-text-primary)",
+                  textDecoration: "none",
+                  borderBottom: "1px solid var(--color-border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--color-bg)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <IconUser size={16} />
+                Profile
+              </Link>
+              <Link
+                href="/settings/account"
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "11px 16px",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: "var(--color-text-primary)",
+                  textDecoration: "none",
+                  borderBottom: "1px solid var(--color-border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--color-bg)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <IconSettings size={16} />
+                Settings
+              </Link>
+            </>
           )}
           <button
-            onClick={() => guard(() => { setOpen(false); logout(); })}
+            onClick={() =>
+              guard(() => {
+                setOpen(false);
+                logout();
+              })
+            }
             style={{
-              display: "flex", alignItems: "center", gap: "8px",
-              width: "100%", padding: "11px 16px",
-              border: "none", background: "transparent",
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-              color: "var(--color-danger)", cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "11px 16px",
+              border: "none",
+              background: "transparent",
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "var(--color-danger)",
+              cursor: "pointer",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-danger-subtle)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--color-danger-subtle)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
           >
             <IconLogout />
             Sign out

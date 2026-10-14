@@ -150,7 +150,9 @@
   cursor: pointer;
   background: transparent;
   color: var(--color-text-tertiary);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .row.active {
@@ -208,7 +210,9 @@
   text-decoration: none;
   box-sizing: border-box;
   flex-shrink: 0;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .subRow.active {

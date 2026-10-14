@@ -1,17 +1,23 @@
 "use client";
 
-import { CSSProperties, ReactNode } from "react";
-import { Assignment, TournamentDivision, TournamentEvent, TournamentTrack } from "@/lib/api";
-import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
-import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
-import { staffedCount } from "@/lib/assignments/staffing";
+import type { CSSProperties, ReactNode } from "react";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
-import type { EventSortField } from "@/lib/eventSort";
+import {
+  ChipsCell,
+  type EventEditContext,
+  LocationCell,
+  SelectCell,
+  StaffingCell,
+} from "@/components/tournament/events/EditableCells";
+import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
-import { ChipsCell, EventEditContext, LocationCell, SelectCell, StaffingCell } from "@/components/tournament/events/EditableCells";
+import type { Assignment, TournamentDivision, TournamentEvent, TournamentTrack } from "@/lib/api";
+import { staffedCount } from "@/lib/assignments/staffing";
+import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
+import type { EventSortField } from "@/lib/eventSort";
 import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
+import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
 // viewer saves their own, and what Reset returns to.
@@ -44,9 +50,16 @@ const WIDTHS = {
 } as const;
 
 const TEXT_CELL: CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-  textAlign: "center", display: "block", width: "100%",
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-text-secondary)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  minWidth: 0,
+  textAlign: "center",
+  display: "block",
+  width: "100%",
 };
 
 // Read left-to-right at length, where a centred ellipsis reads badly.
@@ -97,7 +110,10 @@ type TrackFamily = keyof typeof TRACK_FAMILIES;
 const isTrackFamily = (key: string): key is TrackFamily => key in TRACK_FAMILIES;
 
 /** The tracks one family draws a column for, in the order given. */
-export function familyTracks(family: string, tracks: readonly TournamentTrack[]): TournamentTrack[] {
+export function familyTracks(
+  family: string,
+  tracks: readonly TournamentTrack[],
+): TournamentTrack[] {
   if (!isTrackFamily(family)) return [];
   return tracks.filter((t) => t.is_primary || !TRACK_FAMILIES[family].primaryOnly);
 }
@@ -115,12 +131,17 @@ export function trackFamilyOf(key: string): TrackFamily | null {
  * how a track added later gets a column without anyone re-saving. Duplicates
  * collapse, so a list naming both the alias and a track doesn't render it twice.
  */
-export function expandTrackColumns(keys: readonly string[], tracks: readonly TournamentTrack[]): string[] {
+export function expandTrackColumns(
+  keys: readonly string[],
+  tracks: readonly TournamentTrack[],
+): string[] {
   const out: string[] = [];
   for (const raw of keys) {
     // Time was briefly per track ("time:2"); it's one column now.
     const key = raw.startsWith("time:") ? "time" : raw;
-    const expanded = isTrackFamily(key) ? familyTracks(key, tracks).map((t) => `${key}:${t.id}`) : [key];
+    const expanded = isTrackFamily(key)
+      ? familyTracks(key, tracks).map((t) => `${key}:${t.id}`)
+      : [key];
     for (const k of expanded) if (!out.includes(k)) out.push(k);
   }
   return out;
@@ -129,44 +150,71 @@ export function expandTrackColumns(keys: readonly string[], tracks: readonly Tou
 // An absent value worth naming ("No location"), muted like the editable
 // cells' own placeholders so locked and editable rows read the same.
 const noValue = (text: string) => (
-  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>{text}</span>
+  <span
+    style={{
+      fontFamily: "var(--font-sans)",
+      fontSize: "13px",
+      color: "var(--color-text-tertiary)",
+      whiteSpace: "nowrap",
+    }}
+  >
+    {text}
+  </span>
 );
 
 const EMPTY_CELL = (
-  <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>
+  <span
+    style={{
+      fontFamily: "var(--font-sans)",
+      fontSize: "12px",
+      color: "var(--color-text-tertiary)",
+    }}
+  >
+    —
+  </span>
 );
 
 /** This event's shifts on one track, in schedule order. */
 function trackShifts(e: TournamentEvent, track: TournamentTrack) {
-  return e.shifts.filter((s) => s.track_id === track.id).sort((a, b) => a.start.localeCompare(b.start));
+  return e.shifts
+    .filter((s) => s.track_id === track.id)
+    .sort((a, b) => a.start.localeCompare(b.start));
 }
 
 /** One track's cell for one family. */
 function renderTrackCell(
-  family: TrackFamily, track: TournamentTrack, e: TournamentEvent, ctx: EventColumnContext, lockReason?: string,
+  family: TrackFamily,
+  track: TournamentTrack,
+  e: TournamentEvent,
+  ctx: EventColumnContext,
+  lockReason?: string,
 ): ReactNode {
   switch (family) {
     case "shifts": {
       // A track running several days has same-time shifts on different dates,
       // so the hover names the day too; on a one-day track that is noise.
-      const multiDay = !!track.start_date && !!track.end_date && track.start_date !== track.end_date;
+      const multiDay =
+        !!track.start_date && !!track.end_date && track.start_date !== track.end_date;
       const shifts = trackShifts(e, track);
       const shiftTime = (s: { start: string; end: string }) => {
         const time = `${formatTime(s.start)} – ${formatTime(s.end)}`;
         return multiDay ? `${formatDayLabel(toDateInput(s.start))} · ${time}` : time;
       };
-      const display = shifts.length === 0 ? EMPTY_CELL : (
-        <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-          {/* Tooltip, not a native title: title waits a second or so and is
+      const display =
+        shifts.length === 0 ? (
+          EMPTY_CELL
+        ) : (
+          <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
+            {/* Tooltip, not a native title: title waits a second or so and is
               easy to never see — the app's hover detail everywhere else is
               this component, and it escapes the cell's clipping. */}
-          {shifts.map((s) => (
-            <Tooltip key={s.id} variant="info" showIcon={false} message={shiftTime(s)}>
-              <Badge>{s.label}</Badge>
-            </Tooltip>
-          ))}
-        </span>
-      );
+            {shifts.map((s) => (
+              <Tooltip key={s.id} variant="info" showIcon={false} message={shiftTime(s)}>
+                <Badge>{s.label}</Badge>
+              </Tooltip>
+            ))}
+          </span>
+        );
       if (!ctx.edit) return display;
       const { edit } = ctx;
       const current = e.shifts.map((s) => s.id);
@@ -174,7 +222,9 @@ function renderTrackCell(
         <ChipsCell
           display={display}
           selected={shifts}
-          all={edit.shifts.filter((s) => s.track_id === track.id).sort((a, b) => a.start.localeCompare(b.start))}
+          all={edit.shifts
+            .filter((s) => s.track_id === track.id)
+            .sort((a, b) => a.start.localeCompare(b.start))}
           getKey={(s) => s.id}
           getLabel={(s) => s.label}
           getTooltip={shiftTime}
@@ -189,9 +239,16 @@ function renderTrackCell(
     case "location": {
       const detail = e.track_details.find((d) => d.track_id === track.id);
       const label = trackLocationLabel(detail);
-      const display = label
-        ? <span style={{ ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px" }} title={label}>{label}</span>
-        : noValue("No location");
+      const display = label ? (
+        <span
+          style={{ ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px" }}
+          title={label}
+        >
+          {label}
+        </span>
+      ) : (
+        noValue("No location")
+      );
       if (!ctx.edit) return display;
       const { edit } = ctx;
       return (
@@ -202,7 +259,9 @@ function renderTrackCell(
           buildings={edit.buildings}
           lockReason={lockReason}
           // Joins the track if the event isn't on it yet (withTrackDetail adds it).
-          onSave={(updates) => edit.update(e, { track_details: withTrackDetail(e, track.id, updates) })}
+          onSave={(updates) =>
+            edit.update(e, { track_details: withTrackDetail(e, track.id, updates) })
+          }
           ensureBuilding={edit.ensureBuilding}
         />
       );
@@ -210,13 +269,20 @@ function renderTrackCell(
     case "staffing": {
       const needs = e.track_details.find((d) => d.track_id === track.id)?.needs ?? [];
       const rows = ctx.assignmentsFor(e.id);
-      const display = needs.length === 0 ? noValue("No staffing") : (
-        <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
-          {needs.map((need) => (
-            <StaffingNeedLine key={need.role_id} need={need} filled={staffedCount(rows, need.role_id, track.id)} />
-          ))}
-        </span>
-      );
+      const display =
+        needs.length === 0 ? (
+          noValue("No staffing")
+        ) : (
+          <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
+            {needs.map((need) => (
+              <StaffingNeedLine
+                key={need.role_id}
+                need={need}
+                filled={staffedCount(rows, need.role_id, track.id)}
+              />
+            ))}
+          </span>
+        );
       if (!ctx.edit) return display;
       const { edit } = ctx;
       return (
@@ -226,7 +292,9 @@ function renderTrackCell(
           roles={edit.roles}
           lockReason={lockReason}
           // Joins the track if the event isn't on it yet (withTrackDetail adds it).
-          onSave={(next) => edit.update(e, { track_details: withTrackDetail(e, track.id, { needs: next }) })}
+          onSave={(next) =>
+            edit.update(e, { track_details: withTrackDetail(e, track.id, { needs: next }) })
+          }
         />
       );
     }
@@ -239,7 +307,13 @@ function renderTrackCell(
  * One column rather than one per track, so a day the event isn't on costs
  * no width. The track name is dropped when there's only one competition track.
  */
-function EventTimeLines({ event, tracks }: { event: TournamentEvent; tracks: readonly TournamentTrack[] }) {
+function EventTimeLines({
+  event,
+  tracks,
+}: {
+  event: TournamentEvent;
+  tracks: readonly TournamentTrack[];
+}) {
   const named = tracks.filter((t) => t.is_primary).length > 1;
   const days = new Map<string, { trackId: number; start: string; end: string }>();
   for (const s of [...event.shifts].sort((a, b) => a.start.localeCompare(b.start))) {
@@ -255,9 +329,15 @@ function EventTimeLines({ event, tracks }: { event: TournamentEvent; tracks: rea
         const trackName = tracks.find((t) => t.id === day.trackId)?.name;
         const line = `${formatDayLabel(toDateInput(day.start))} ${formatTime(day.start)} – ${formatTime(day.end)}`;
         return (
-          <span key={`${day.trackId}${day.start}`} style={LEFT_TEXT_CELL} title={named && trackName ? `${trackName}: ${line}` : line}>
+          <span
+            key={`${day.trackId}${day.start}`}
+            style={LEFT_TEXT_CELL}
+            title={named && trackName ? `${trackName}: ${line}` : line}
+          >
             {named && trackName && (
-              <span style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>{trackName}: </span>
+              <span style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>
+                {trackName}:{" "}
+              </span>
             )}
             {line}
           </span>
@@ -268,13 +348,21 @@ function EventTimeLines({ event, tracks }: { event: TournamentEvent; tracks: rea
 }
 
 /** One track's column for one family. */
-function trackColumn(key: string, family: TrackFamily, track: TournamentTrack, ctx: EventColumnContext): EventColumn {
+function trackColumn(
+  key: string,
+  family: TrackFamily,
+  track: TournamentTrack,
+  ctx: EventColumnContext,
+): EventColumn {
   const { label } = TRACK_FAMILIES[family];
   return {
     key,
     // One track in the family: its name is the tournament's, so the bare
     // field name says more than "Main location" would.
-    label: familyTracks(family, ctx.tracks).length === 1 ? label : `${track.name} ${label.toLowerCase()}`,
+    label:
+      familyTracks(family, ctx.tracks).length === 1
+        ? label
+        : `${track.name} ${label.toLowerCase()}`,
     width: WIDTHS[family],
     align: "start",
     render: (e, lockReason) => renderTrackCell(family, track, e, ctx, lockReason),
@@ -294,22 +382,41 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
   switch (key) {
     case "division":
       return {
-        key, label: "Division", width: WIDTHS.division, sortField: "division",
+        key,
+        label: "Division",
+        width: WIDTHS.division,
+        sortField: "division",
         render: (e, lockReason) => {
-          const display = e.division
-            ? <Badge variant={DIVISION_BADGE_VARIANT[e.division]}>{e.division}</Badge>
-            : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>;
-          if (!ctx.edit) return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
+          const display = e.division ? (
+            <Badge variant={DIVISION_BADGE_VARIANT[e.division]}>{e.division}</Badge>
+          ) : (
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              —
+            </span>
+          );
+          if (!ctx.edit)
+            return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
           const { edit } = ctx;
           return (
             <span style={{ display: "flex", justifyContent: "center" }}>
               <SelectCell
                 display={display}
                 value={e.division ?? ""}
-                options={[...edit.divisions.map((d) => ({ value: d, label: d })), { value: "", label: "None" }]}
+                options={[
+                  ...edit.divisions.map((d) => ({ value: d, label: d })),
+                  { value: "", label: "None" },
+                ]}
                 lockReason={lockReason}
                 divisions
-                onPick={(division) => edit.update(e, { division: (division || null) as TournamentDivision | null })}
+                onPick={(division) =>
+                  edit.update(e, { division: (division || null) as TournamentDivision | null })
+                }
               />
             </span>
           );
@@ -317,23 +424,31 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       };
     case "type":
       return {
-        key, label: "Type", width: WIDTHS.type,
+        key,
+        label: "Type",
+        width: WIDTHS.type,
         render: (e, lockReason) => {
           const display = (
             <Badge variant={e.event_type === "trial" ? "warning" : "default"}>
               {e.event_type === "trial" ? "Trial" : "Standard"}
             </Badge>
           );
-          if (!ctx.edit) return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
+          if (!ctx.edit)
+            return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
           const { edit } = ctx;
           return (
             <span style={{ display: "flex", justifyContent: "center" }}>
               <SelectCell
                 display={display}
                 value={e.event_type}
-                options={[{ value: "standard", label: "Standard" }, { value: "trial", label: "Trial" }]}
+                options={[
+                  { value: "standard", label: "Standard" },
+                  { value: "trial", label: "Trial" },
+                ]}
                 lockReason={lockReason}
-                onPick={(event_type) => edit.update(e, { event_type: event_type as TournamentEvent["event_type"] })}
+                onPick={(event_type) =>
+                  edit.update(e, { event_type: event_type as TournamentEvent["event_type"] })
+                }
               />
             </span>
           );
@@ -341,18 +456,30 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       };
     case "time":
       return {
-        key, label: "Time", width: WIDTHS.time, align: "start",
+        key,
+        label: "Time",
+        width: WIDTHS.time,
+        align: "start",
         render: (e) => <EventTimeLines event={e} tracks={ctx.tracks} />,
       };
     case "category":
       return {
-        key, label: "Category", width: WIDTHS.category, align: "start", sortField: "category",
+        key,
+        label: "Category",
+        width: WIDTHS.category,
+        align: "start",
+        sortField: "category",
         render: (e) => {
           const name = e.event?.category.name ?? "";
           return (
-            <span style={{
-              ...LEFT_TEXT_CELL, fontFamily: "var(--font-sans)", fontSize: "13px",
-            }} title={name}>
+            <span
+              style={{
+                ...LEFT_TEXT_CELL,
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+              }}
+              title={name}
+            >
               {name}
             </span>
           );
@@ -363,13 +490,20 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       // derivable from its shifts, but they are the same days its track
       // already names — the track is the thing that isn't inferable.
       return {
-        key, label: "Tracks", width: WIDTHS.tracks, align: "start",
+        key,
+        label: "Tracks",
+        width: WIDTHS.tracks,
+        align: "start",
         render: (e, lockReason) => {
           const display = (
             <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
               {e.tracks.length > 0
                 ? e.tracks.map((t) => (
-                    <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
+                    <Badge
+                      key={t.id}
+                      variant={t.is_archived ? "warning" : "default"}
+                      title={t.is_archived ? PENDING_TRACK_NOTE : undefined}
+                    >
                       {t.name}
                     </Badge>
                   ))
@@ -382,10 +516,13 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
           // on it, those go too (the server won't unlink a track a shift sits
           // on), so that case asks first.
           const removeTrack = (t: TournamentTrack) => {
-            const save = () => edit.update(e, {
-              shift_ids: e.shifts.filter((s) => s.track_id !== t.id).map((s) => s.id),
-              track_details: e.track_details.filter((d) => d.track_id !== t.id).map(toTrackDetailInput),
-            });
+            const save = () =>
+              edit.update(e, {
+                shift_ids: e.shifts.filter((s) => s.track_id !== t.id).map((s) => s.id),
+                track_details: e.track_details
+                  .filter((d) => d.track_id !== t.id)
+                  .map(toTrackDetailInput),
+              });
             const onTrack = e.shifts.filter((s) => s.track_id === t.id).length;
             if (onTrack === 0) return save();
             edit.confirm({

@@ -1,61 +1,100 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
+import { CellGuard, LockedCell, SelectCell } from "@/components/tournament/events/EditableCells";
 import {
-  tournamentShiftsApi, tournamentEventsApi, tournamentTracksApi, displayConfigApi, ApiError,
-  DisplayConfig, TournamentEvent, TournamentShift, TournamentShiftInput, TournamentTrack,
-} from "@/lib/api";
-import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
-import { persistSurfaceView } from "@/lib/persistSurfaceView";
+  MASS_SHIFT_EDITOR_WIDTH,
+  MassShiftEditor,
+} from "@/components/tournament/events/MassShiftEditor";
+import { SHIFT_PANEL_WIDTH, ShiftPanel } from "@/components/tournament/events/ShiftPanel";
 import {
-  DEFAULT_SHIFT_SORT, SHIFT_SORT_OPTIONS, SHIFT_SORT_TIEBREAK, isShiftSortField, shiftSortTiebreak, shiftSortValue,
-  type ShiftSortField,
-} from "@/lib/shiftSort";
-import {
-  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
-} from "@/lib/sorting";
-import { SortableHeader } from "@/components/ui/SortableHeader";
-import { SortButton } from "@/components/ui/SortButton";
-import { SortModal } from "@/components/ui/SortModal";
-import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
-import {
-  formatDayLabel, formatSpan, formatTimeOfDay, fromDayAndTime, parseLooseTime, toDateInput, toTimeInput,
-} from "@/lib/timeFormat";
-import { useArchiveLock } from "@/lib/useArchiveLock";
-import { usePanelSelection } from "@/lib/usePanelSelection";
-import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
-import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
-import { Card } from "@/components/ui/Card";
-import table from "@/components/ui/Table.module.css";
-import { Badge } from "@/components/ui/Badge";
+  SHIFTS_FILTER_KEYS,
+  ShiftsFilterModal,
+  type ShiftsFilterState,
+  shiftPassesFilters,
+  shiftsFilterFromStored,
+  shiftsFilterToStored,
+  shiftTrackOptions,
+} from "@/components/tournament/events/ShiftsFilterModal";
 import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
+import { trackDays } from "@/components/tournament/TrackDayPicker";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
+import { EditableText } from "@/components/ui/EditableText";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import {
-  ShiftsFilterModal, ShiftsFilterState, SHIFTS_FILTER_KEYS, shiftPassesFilters, shiftTrackOptions,
-  shiftsFilterFromStored, shiftsFilterToStored,
-} from "@/components/tournament/events/ShiftsFilterModal";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ShiftPanel, SHIFT_PANEL_WIDTH } from "@/components/tournament/events/ShiftPanel";
-import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
-import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournament/events/MassShiftEditor";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { EditableText } from "@/components/ui/EditableText";
-import { CellGuard, LockedCell, SelectCell } from "@/components/tournament/events/EditableCells";
-import { trackDays } from "@/components/tournament/TrackDayPicker";
+  IconCalendar,
+  IconCopy,
+  IconLock,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+} from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { useToast } from "@/lib/useToast";
-import { IconPlus, IconCalendar, IconTrash, IconLock, IconCopy, IconSearch } from "@/components/ui/Icons";
-import { useParams } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { rowActivation } from "@/lib/rowActivation";
+import { SortableHeader } from "@/components/ui/SortableHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { Spinner } from "@/components/ui/Spinner";
+import table from "@/components/ui/Table.module.css";
+import {
+  ApiError,
+  type DisplayConfig,
+  displayConfigApi,
+  type TournamentEvent,
+  type TournamentShift,
+  type TournamentShiftInput,
+  type TournamentTrack,
+  tournamentEventsApi,
+  tournamentShiftsApi,
+  tournamentTracksApi,
+} from "@/lib/api";
+import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { handleGridArrows } from "@/lib/gridNav";
-import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import { rowActivation } from "@/lib/rowActivation";
+import {
+  DEFAULT_SHIFT_SORT,
+  isShiftSortField,
+  SHIFT_SORT_OPTIONS,
+  SHIFT_SORT_TIEBREAK,
+  type ShiftSortField,
+  shiftSortTiebreak,
+  shiftSortValue,
+} from "@/lib/shiftSort";
+import {
+  cycleSortRule,
+  type SortRule,
+  sameSortRules,
+  sortRows,
+  sortRulesFromStored,
+  sortRulesToStored,
+} from "@/lib/sorting";
+import {
+  formatDayLabel,
+  formatSpan,
+  formatTimeOfDay,
+  fromDayAndTime,
+  parseLooseTime,
+  toDateInput,
+  toTimeInput,
+} from "@/lib/timeFormat";
+import { useArchiveLock } from "@/lib/useArchiveLock";
+import { useAuth } from "@/lib/useAuth";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { useToast } from "@/lib/useToast";
 
 // Select / Label / Track / Date / Start / End / Duration / Events / Actions —
 // every column, always (no picker: a shift has few enough fields to show them
@@ -69,14 +108,14 @@ import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 function shiftGridColumns(selectMode: boolean) {
   return [
     selectMode ? "28px" : "0px",
-    "minmax(max-content, 1.2fr)",  // label
-    "minmax(80px, 0.8fr)",         // track — one badge
-    "minmax(110px, 1fr)",          // date — "Sat, Feb 13"
-    "minmax(90px, 1fr)",           // start
-    "minmax(90px, 1fr)",           // end
-    "minmax(80px, 0.8fr)",         // duration — "1h 30m"
-    "minmax(70px, 0.6fr)",         // events
-    "40px",                        // actions
+    "minmax(max-content, 1.2fr)", // label
+    "minmax(80px, 0.8fr)", // track — one badge
+    "minmax(110px, 1fr)", // date — "Sat, Feb 13"
+    "minmax(90px, 1fr)", // start
+    "minmax(90px, 1fr)", // end
+    "minmax(80px, 0.8fr)", // duration — "1h 30m"
+    "minmax(70px, 0.6fr)", // events
+    "40px", // actions
   ].join(" ");
 }
 
@@ -106,7 +145,9 @@ export default function ShiftsPage() {
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<ShiftsFilterState>(() => emptyFilterState(SHIFTS_FILTER_KEYS));
+  const [filters, setFilters] = useState<ShiftsFilterState>(() =>
+    emptyFilterState(SHIFTS_FILTER_KEYS),
+  );
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortRules, setSortRules] = useState<SortRule<ShiftSortField>[]>(DEFAULT_SHIFT_SORT);
   const [showSortModal, setShowSortModal] = useState(false);
@@ -129,9 +170,22 @@ export default function ShiftsPage() {
 
   const initialShiftId = useInitialPanelId("shift");
   const {
-    focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
-    setPanelDirty, focusItem, clearFocus, startExternalFlow, getPrevNext,
-    toggleSelectMode, toggleSelected, toggleSelectAll, openMassPanel, clearSelection, forgetItem,
+    focusedId,
+    selectMode,
+    selectedIds,
+    massPanelOpen,
+    panelDirty,
+    setPanelDirty,
+    focusItem,
+    clearFocus,
+    startExternalFlow,
+    getPrevNext,
+    toggleSelectMode,
+    toggleSelected,
+    toggleSelectAll,
+    openMassPanel,
+    clearSelection,
+    forgetItem,
   } = usePanelSelection({
     onClearExternal: () => setCreatingNew(false),
     initialFocusedId: initialShiftId,
@@ -152,7 +206,8 @@ export default function ShiftsPage() {
   // repointed, so a cached catalog would keep offering a track that is gone
   // and keep the warning banner up after the work is done.
   const loadTracks = useCallback(() => {
-    tournamentTracksApi.list(tournamentId, { public: true })
+    tournamentTracksApi
+      .list(tournamentId, { public: true })
       .then((all) => setTracks(all.filter((t) => t.is_primary)))
       .catch(() => setTracks([]));
   }, [tournamentId]);
@@ -163,13 +218,17 @@ export default function ShiftsPage() {
   // membership is still loading and the answer is a provisional false.
   useEffect(() => {
     if (!canManageEvents) return;
-    tournamentShiftsApi.list(tournamentId)
+    tournamentShiftsApi
+      .list(tournamentId)
       .then(setShifts)
       .catch((err) => {
         setLoadError(err instanceof ApiError ? err.message : "Failed to load shifts.");
         setShifts([]);
       });
-    tournamentEventsApi.list(tournamentId).then(setEvents).catch(() => setEvents([]));
+    tournamentEventsApi
+      .list(tournamentId)
+      .then(setEvents)
+      .catch(() => setEvents([]));
     loadTracks();
   }, [tournamentId, canManageEvents, loadTracks, refreshKey]);
 
@@ -177,8 +236,9 @@ export default function ShiftsPage() {
   useEffect(() => {
     if (!canManageEvents) return;
     let current = true;
-    displayConfigApi.get(tournamentId)
-      .catch(() => ({} as DisplayConfig))
+    displayConfigApi
+      .get(tournamentId)
+      .catch(() => ({}) as DisplayConfig)
       .then((config) => {
         if (!current) return;
         const surface = config?.[SHIFTS_TABLE];
@@ -188,18 +248,26 @@ export default function ShiftsPage() {
         setSortRules(stored.length > 0 ? stored : DEFAULT_SHIFT_SORT);
         setViewReady(true);
       });
-    return () => { current = false; };
+    return () => {
+      current = false;
+    };
   }, [tournamentId, canManageEvents]);
 
-  const applyFilters = useCallback((next: ShiftsFilterState) => {
-    setFilters(next);
-    persistSurfaceView(tournamentId, SHIFTS_TABLE, { filters: shiftsFilterToStored(next) });
-  }, [tournamentId]);
+  const applyFilters = useCallback(
+    (next: ShiftsFilterState) => {
+      setFilters(next);
+      persistSurfaceView(tournamentId, SHIFTS_TABLE, { filters: shiftsFilterToStored(next) });
+    },
+    [tournamentId],
+  );
 
-  const applySort = useCallback((next: SortRule<ShiftSortField>[]) => {
-    setSortRules(next);
-    persistSurfaceView(tournamentId, SHIFTS_TABLE, { sorts: sortRulesToStored(next) });
-  }, [tournamentId]);
+  const applySort = useCallback(
+    (next: SortRule<ShiftSortField>[]) => {
+      setSortRules(next);
+      persistSurfaceView(tournamentId, SHIFTS_TABLE, { sorts: sortRulesToStored(next) });
+    },
+    [tournamentId],
+  );
 
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),
@@ -208,8 +276,15 @@ export default function ShiftsPage() {
 
   const visibleShifts = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = (shifts ?? []).filter((s) => (!q || s.label.toLowerCase().includes(q)) && shiftPassesFilters(s, filters));
-    return sortRows(list, sortRules, (shift, field) => shiftSortValue(shift, field, trackById), shiftSortTiebreak);
+    const list = (shifts ?? []).filter(
+      (s) => (!q || s.label.toLowerCase().includes(q)) && shiftPassesFilters(s, filters),
+    );
+    return sortRows(
+      list,
+      sortRules,
+      (shift, field) => shiftSortValue(shift, field, trackById),
+      shiftSortTiebreak,
+    );
   }, [shifts, search, filters, sortRules, trackById]);
 
   const selectedShifts = useMemo(
@@ -225,58 +300,81 @@ export default function ShiftsPage() {
   }, [shifts, tracks]);
 
   // Lists, so a mass edit or bulk delete reloads tracks once rather than per row.
-  const handleSaved = useCallback((saved: TournamentShift[]) => {
-    const byId = new Map(saved.map((s) => [s.id, s]));
-    setShifts((prev) => {
-      const list = prev ?? [];
-      const known = new Set(list.map((s) => s.id));
-      return [...list.map((s) => byId.get(s.id) ?? s), ...saved.filter((s) => !known.has(s.id))];
-    });
-    // Moving a shift off a pending track can be what purges it.
-    loadTracks();
-  }, [loadTracks]);
+  const handleSaved = useCallback(
+    (saved: TournamentShift[]) => {
+      const byId = new Map(saved.map((s) => [s.id, s]));
+      setShifts((prev) => {
+        const list = prev ?? [];
+        const known = new Set(list.map((s) => s.id));
+        return [...list.map((s) => byId.get(s.id) ?? s), ...saved.filter((s) => !known.has(s.id))];
+      });
+      // Moving a shift off a pending track can be what purges it.
+      loadTracks();
+    },
+    [loadTracks],
+  );
 
   // forgetItem drops a gone row out of the selection and closes a panel on it.
-  const handleDeleted = useCallback((ids: number[]) => {
-    const gone = new Set(ids);
-    setShifts((prev) => (prev ?? []).filter((s) => !gone.has(s.id)));
-    forgetItem(ids);
-    loadTracks();
-  }, [loadTracks, forgetItem]);
+  const handleDeleted = useCallback(
+    (ids: number[]) => {
+      const gone = new Set(ids);
+      setShifts((prev) => (prev ?? []).filter((s) => !gone.has(s.id)));
+      forgetItem(ids);
+      loadTracks();
+    },
+    [loadTracks, forgetItem],
+  );
 
   // An event's shift set changed from inside the panel. Both lists are kept
   // locally, so the shifts' own event_count has to be recomputed alongside —
   // it's what the delete-confirm warning counts.
-  const handleEventUpdated = useCallback((updated: TournamentEvent) => {
-    setEvents((prev) => {
-      const before = (prev ?? []).find((e) => e.id === updated.id);
-      const next = (prev ?? []).map((e) => (e.id === updated.id ? updated : e));
-      const beforeIds = new Set((before?.shifts ?? []).map((s) => s.id));
-      const afterIds = new Set(updated.shifts.map((s) => s.id));
-      setShifts((cur) => (cur ?? []).map((s) => {
-        if (beforeIds.has(s.id) && !afterIds.has(s.id)) return { ...s, event_count: Math.max(0, s.event_count - 1) };
-        if (!beforeIds.has(s.id) && afterIds.has(s.id)) return { ...s, event_count: s.event_count + 1 };
-        return s;
-      }));
-      return next;
-    });
-    // Detaching a shift from the last event on a pending track can purge it.
-    loadTracks();
-  }, [loadTracks]);
+  const handleEventUpdated = useCallback(
+    (updated: TournamentEvent) => {
+      setEvents((prev) => {
+        const before = (prev ?? []).find((e) => e.id === updated.id);
+        const next = (prev ?? []).map((e) => (e.id === updated.id ? updated : e));
+        const beforeIds = new Set((before?.shifts ?? []).map((s) => s.id));
+        const afterIds = new Set(updated.shifts.map((s) => s.id));
+        setShifts((cur) =>
+          (cur ?? []).map((s) => {
+            if (beforeIds.has(s.id) && !afterIds.has(s.id))
+              return { ...s, event_count: Math.max(0, s.event_count - 1) };
+            if (!beforeIds.has(s.id) && afterIds.has(s.id))
+              return { ...s, event_count: s.event_count + 1 };
+            return s;
+          }),
+        );
+        return next;
+      });
+      // Detaching a shift from the last event on a pending track can purge it.
+      loadTracks();
+    },
+    [loadTracks],
+  );
 
   // Inline edits save one field at a time and swap the server's copy in, like
   // the events table — no optimistic write, so a rejected change never lands.
-  const updateShift = useCallback(async (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => {
-    const saved = await tournamentShiftsApi.update(tournamentId, shift.id, patch);
-    handleSaved([saved]);
-  }, [tournamentId, handleSaved]);
+  const updateShift = useCallback(
+    async (shift: TournamentShift, patch: Partial<TournamentShiftInput>) => {
+      const saved = await tournamentShiftsApi.update(tournamentId, shift.id, patch);
+      handleSaved([saved]);
+    },
+    [tournamentId, handleSaved],
+  );
 
-  const editContext = useMemo<ShiftEditContext | undefined>(() => (canManageEvents ? {
-    // Select mode's click toggles the box, so the cells step aside.
-    lockReason: archivedReason ?? (selectMode ? "Leave Select mode to edit in the table" : undefined),
-    update: updateShift,
-    tracks,
-  } : undefined), [canManageEvents, archivedReason, selectMode, updateShift, tracks]);
+  const editContext = useMemo<ShiftEditContext | undefined>(
+    () =>
+      canManageEvents
+        ? {
+            // Select mode's click toggles the box, so the cells step aside.
+            lockReason:
+              archivedReason ?? (selectMode ? "Leave Select mode to edit in the table" : undefined),
+            update: updateShift,
+            tracks,
+          }
+        : undefined,
+    [canManageEvents, archivedReason, selectMode, updateShift, tracks],
+  );
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -301,7 +399,13 @@ export default function ShiftsPage() {
           events={events}
           // Filtered to one day, new shifts go on it — the filter is already
           // the TD saying which day they're working on.
-          defaultTrackId={filters.track.size === 1 ? Number([...filters.track][0]) : tracks.length === 1 ? tracks[0].id : null}
+          defaultTrackId={
+            filters.track.size === 1
+              ? Number([...filters.track][0])
+              : tracks.length === 1
+                ? tracks[0].id
+                : null
+          }
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
@@ -320,7 +424,10 @@ export default function ShiftsPage() {
       // does not cover it.
       if (shifts === null) return;
       const shift = shifts.find((s) => s.id === focusedId);
-      if (!shift) { clearFocus(); return; }
+      if (!shift) {
+        clearFocus();
+        return;
+      }
       // Keyed on the id so clicking another row remounts the panel — its
       // draft is seeded from props via useState, which wouldn't re-read.
       setPanel(
@@ -385,11 +492,32 @@ export default function ShiftsPage() {
 
     clearPanel();
   }, [
-    creatingNew, createKey, focusedId, massPanelOpen, selectedShifts, clearSelection,
-    shifts, events, tracks, filters.track, tournamentId,
-    canManageEvents, isArchived, prevId, nextId, hasPrev, hasNext,
-    focusItem, clearFocus, clearCreatingNew, setPanelDirty,
-    handleSaved, handleDeleted, handleEventUpdated, setPanel, clearPanel,
+    creatingNew,
+    createKey,
+    focusedId,
+    massPanelOpen,
+    selectedShifts,
+    clearSelection,
+    shifts,
+    events,
+    tracks,
+    filters.track,
+    tournamentId,
+    canManageEvents,
+    isArchived,
+    prevId,
+    nextId,
+    hasPrev,
+    hasNext,
+    focusItem,
+    clearFocus,
+    clearCreatingNew,
+    setPanelDirty,
+    handleSaved,
+    handleDeleted,
+    handleEventUpdated,
+    setPanel,
+    clearPanel,
   ]);
 
   // Unmount only (e.g. switching away from this tab) — the panel belongs to
@@ -438,18 +566,26 @@ export default function ShiftsPage() {
   const canEdit = canManageEvents;
   // Blocked while the panel is dirty and clears whatever else is open —
   // otherwise this silently replaces an in-progress edit with a blank draft.
-  const addShift = () => startExternalFlow(() => {
-    setCreatingNew(true);
-    setCreateKey((k) => k + 1);
-  });
+  const addShift = () =>
+    startExternalFlow(() => {
+      setCreatingNew(true);
+      setCreateKey((k) => k + 1);
+    });
 
   // Exact copies with "(copy)" on the label — same track and times, so the TD
   // edits the copies rather than re-entering everything.
   async function duplicateSelected() {
     setDuplicating(true);
-    const outcomes = await Promise.allSettled(selectedShifts.map((s) => tournamentShiftsApi.create(tournamentId, {
-      track_id: s.track_id, label: `${s.label} (copy)`, start: s.start, end: s.end,
-    })));
+    const outcomes = await Promise.allSettled(
+      selectedShifts.map((s) =>
+        tournamentShiftsApi.create(tournamentId, {
+          track_id: s.track_id,
+          label: `${s.label} (copy)`,
+          start: s.start,
+          end: s.end,
+        }),
+      ),
+    );
     const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
     if (created.length > 0) handleSaved(created);
     const failed = outcomes.length - created.length;
@@ -461,14 +597,26 @@ export default function ShiftsPage() {
   // The default chain isn't shown as a header state — it's the absence of a
   // choice, and clicking replaces it (see cycleSortRule).
   const headerSortRules = sameSortRules(sortRules, DEFAULT_SHIFT_SORT) ? [] : sortRules;
-  const sortableHeader = (field: ShiftSortField, label: string, align: "start" | "center" = "start") => {
+  const sortableHeader = (
+    field: ShiftSortField,
+    label: string,
+    align: "start" | "center" = "start",
+  ) => {
     const index = headerSortRules.findIndex((rule) => rule.field === field);
     return (
-      <span style={{ display: "flex", minWidth: 0, justifyContent: align === "start" ? "flex-start" : "center" }}>
+      <span
+        style={{
+          display: "flex",
+          minWidth: 0,
+          justifyContent: align === "start" ? "flex-start" : "center",
+        }}
+      >
         <SortableHeader
           label={label}
           align={align}
-          rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+          rule={
+            index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }
+          }
           showPosition={headerSortRules.length > 1}
           onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_SHIFT_SORT))}
         />
@@ -481,7 +629,14 @@ export default function ShiftsPage() {
       <CollapsibleHeader heading="Shifts" />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -492,8 +647,27 @@ export default function ShiftsPage() {
       {/* Same layout as the events toolbar: search and view controls on the
           left, the one create action on the right. */}
       {shifts.length > 0 && (
-        <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+        <div
+          ref={toolbarRef}
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: "10px",
+            marginBottom: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "10px",
+              flexWrap: "wrap",
+              flex: "1 1 auto",
+              minWidth: 0,
+            }}
+          >
             {/* Grows into the room the toolbar leaves, and gives it back first. */}
             <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
               <Input
@@ -523,10 +697,14 @@ export default function ShiftsPage() {
             />
             {canEdit && (
               <Button
-                type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+                type="button"
+                variant={selectMode ? "primary" : "secondary"}
+                size="md"
                 onClick={toggleSelectMode}
                 disabled={panelDirty || isArchived}
-                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
+                title={
+                  archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)
+                }
               >
                 Select
               </Button>
@@ -534,11 +712,16 @@ export default function ShiftsPage() {
           </div>
           {canEdit && (
             <Button
-              type="button" variant="primary" size="md" iconOnly={compactToolbar} onClick={addShift}
+              type="button"
+              variant="primary"
+              size="md"
+              iconOnly={compactToolbar}
+              onClick={addShift}
               disabled={isArchived}
               title={archivedReason ?? (compactToolbar ? "Add shift" : undefined)}
             >
-              <IconPlus size={14} />{!compactToolbar && " Add shift"}
+              <IconPlus size={14} />
+              {!compactToolbar && " Add shift"}
             </Button>
           )}
         </div>
@@ -550,14 +733,20 @@ export default function ShiftsPage() {
             icon={<IconCalendar size={28} />}
             title="No shifts yet"
             description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;. Each one belongs to a competition day."
-            action={canEdit ? (
-              <Button
-                type="button" variant="primary" size="sm" onClick={addShift}
-                disabled={isArchived} title={archivedReason}
-              >
-                <IconPlus size={12} /> Add shift
-              </Button>
-            ) : undefined}
+            action={
+              canEdit ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={addShift}
+                  disabled={isArchived}
+                  title={archivedReason}
+                >
+                  <IconPlus size={12} /> Add shift
+                </Button>
+              ) : undefined
+            }
           />
         </Card>
       ) : (
@@ -571,48 +760,58 @@ export default function ShiftsPage() {
             // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
             onKeyDown={handleGridArrows}
           >
-          <div className={table.header}>
-            <span
-              className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
-              style={{ display: "flex", justifyContent: "center" }}
-              title={panelDirty ? "Save or discard your changes first" : undefined}
-            >
-              <Checkbox
-                checked={visibleShifts.length > 0 && visibleShifts.every((s) => selectedIds.has(s.id))}
-                locked={panelDirty}
-                onChange={(checked) => toggleSelectAll(visibleShifts.map((s) => s.id), checked)}
-              />
-            </span>
-            {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
-            {sortableHeader("track", "Track")}
-            {sortableHeader("date", "Date")}
-            {sortableHeader("start", "Start")}
-            {sortableHeader("end", "End")}
-            {sortableHeader("duration", "Duration")}
-            {sortableHeader("events", "Events", "center")}
-            <span />
-          </div>
+            <div className={table.header}>
+              <span
+                className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                style={{ display: "flex", justifyContent: "center" }}
+                title={panelDirty ? "Save or discard your changes first" : undefined}
+              >
+                <Checkbox
+                  checked={
+                    visibleShifts.length > 0 && visibleShifts.every((s) => selectedIds.has(s.id))
+                  }
+                  locked={panelDirty}
+                  onChange={(checked) =>
+                    toggleSelectAll(
+                      visibleShifts.map((s) => s.id),
+                      checked,
+                    )
+                  }
+                />
+              </span>
+              {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
+              {sortableHeader("track", "Track")}
+              {sortableHeader("date", "Date")}
+              {sortableHeader("start", "Start")}
+              {sortableHeader("end", "End")}
+              {sortableHeader("duration", "Duration")}
+              {sortableHeader("events", "Events", "center")}
+              <span />
+            </div>
 
-          {visibleShifts.length === 0 && (
-            <EmptyState title="No matching shifts" description="Try adjusting your search or filters." />
-          )}
-          {visibleShifts.map((shift) => (
-            <ShiftRow
-              key={shift.id}
-              shift={shift}
-              track={trackById(shift.track_id)}
-              focused={focusedId === shift.id}
-              canEdit={canEdit}
-              deleteLockedReason={archivedReason}
-              onClick={() => focusItem(shift.id)}
-              onDelete={() => setDeleteTargets([shift])}
-              selectMode={selectMode}
-              selected={selectedIds.has(shift.id)}
-              selectionLocked={panelDirty}
-              onToggleSelect={() => toggleSelected(shift.id)}
-              edit={editContext}
-            />
-          ))}
+            {visibleShifts.length === 0 && (
+              <EmptyState
+                title="No matching shifts"
+                description="Try adjusting your search or filters."
+              />
+            )}
+            {visibleShifts.map((shift) => (
+              <ShiftRow
+                key={shift.id}
+                shift={shift}
+                track={trackById(shift.track_id)}
+                focused={focusedId === shift.id}
+                canEdit={canEdit}
+                deleteLockedReason={archivedReason}
+                onClick={() => focusItem(shift.id)}
+                onDelete={() => setDeleteTargets([shift])}
+                selectMode={selectMode}
+                selected={selectedIds.has(shift.id)}
+                selectionLocked={panelDirty}
+                onToggleSelect={() => toggleSelected(shift.id)}
+                edit={editContext}
+              />
+            ))}
           </div>
         </Card>
       )}
@@ -626,14 +825,25 @@ export default function ShiftsPage() {
         actions={
           <>
             <Button
-              type="button" variant="secondary" size="sm" iconOnly title="Duplicate selected"
-              disabled={selectedIds.size === 0} loading={duplicating} onClick={duplicateSelected}
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              title="Duplicate selected"
+              disabled={selectedIds.size === 0}
+              loading={duplicating}
+              onClick={duplicateSelected}
             >
               <IconCopy size={13} />
             </Button>
             <Button
-              type="button" variant="secondary" size="sm" iconOnly title="Delete selected"
-              disabled={selectedIds.size === 0} onClick={() => setDeleteTargets(selectedShifts)}
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              title="Delete selected"
+              disabled={selectedIds.size === 0}
+              onClick={() => setDeleteTargets(selectedShifts)}
             >
               <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
             </Button>
@@ -685,8 +895,18 @@ interface ShiftEditContext {
 }
 
 const LABEL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 } as const;
-const DATE_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "nowrap" } as const;
-const TIME_TEXT = { fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 400, color: "var(--color-text-secondary)" } as const;
+const DATE_TEXT = {
+  fontFamily: "var(--font-sans)",
+  fontSize: "13px",
+  color: "var(--color-text-secondary)",
+  whiteSpace: "nowrap",
+} as const;
+const TIME_TEXT = {
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  fontWeight: 400,
+  color: "var(--color-text-secondary)",
+} as const;
 const TIME_HINT = "try 930, 9:30a or 14:15";
 
 /** Both ends moved by whole days so `start` lands on `day`, each keeping its
@@ -703,7 +923,10 @@ function moveToDay(shift: TournamentShift, day: string): { start: string; end: s
 }
 
 /** Same rule as ShiftPanel: keep the date if the new track has it, else its first day. */
-function moveToTrack(shift: TournamentShift, track: TournamentTrack): Partial<TournamentShiftInput> {
+function moveToTrack(
+  shift: TournamentShift,
+  track: TournamentTrack,
+): Partial<TournamentShiftInput> {
   const days = trackDays(track);
   const day = toDateInput(shift.start);
   if (days.length === 0 || days.includes(day)) return { track_id: track.id };
@@ -713,8 +936,18 @@ function moveToTrack(shift: TournamentShift, track: TournamentTrack): Partial<To
 // Label, track, date and times edit in place; everything else (events,
 // delete confirm) stays in the panel, which a click outside those cells opens.
 function ShiftRow({
-  shift, track, focused, canEdit, deleteLockedReason, onClick, onDelete,
-  selectMode, selected, selectionLocked, onToggleSelect, edit,
+  shift,
+  track,
+  focused,
+  canEdit,
+  deleteLockedReason,
+  onClick,
+  onDelete,
+  selectMode,
+  selected,
+  selectionLocked,
+  onToggleSelect,
+  edit,
 }: {
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
@@ -741,27 +974,30 @@ function ShiftRow({
 
   // Locked keeps the same EditableText, just inert, so text doesn't shift
   // when the row opens in the panel.
-  const guard = (content: ReactNode) => (lockReason
-    ? <LockedCell align="start">{content}</LockedCell>
-    : <CellGuard align="start">{content}</CellGuard>);
+  const guard = (content: ReactNode) =>
+    lockReason ? (
+      <LockedCell align="start">{content}</LockedCell>
+    ) : (
+      <CellGuard align="start">{content}</CellGuard>
+    );
 
   const labelCell = edit
     ? guard(
-      <EditableText
-        value={shift.label}
-        // Empty reaches onSave so it can say Required, like the panel, rather
-        // than silently reverting.
-        allowEmpty
-        onSave={(label) => {
-          if (!label) throw new Error("Required");
-          return edit.update(shift, { label });
-        }}
-        locked={!!lockReason}
-        errorToast
-        textStyle={LABEL_TEXT}
-        title={lockReason ?? "Click to rename"}
-      />,
-    )
+        <EditableText
+          value={shift.label}
+          // Empty reaches onSave so it can say Required, like the panel, rather
+          // than silently reverting.
+          allowEmpty
+          onSave={(label) => {
+            if (!label) throw new Error("Required");
+            return edit.update(shift, { label });
+          }}
+          locked={!!lockReason}
+          errorToast
+          textStyle={LABEL_TEXT}
+          title={lockReason ?? "Click to rename"}
+        />,
+      )
     : shift.label;
 
   const badge = (
@@ -774,9 +1010,10 @@ function ShiftRow({
   );
   // A pending-delete track can't take a shift (409), so it's only listed as
   // the one this shift is already on.
-  const trackOptions = edit?.tracks
-    .filter((t) => !t.is_archived || t.id === shift.track_id)
-    .map((t) => ({ value: String(t.id), label: t.name })) ?? [];
+  const trackOptions =
+    edit?.tracks
+      .filter((t) => !t.is_archived || t.id === shift.track_id)
+      .map((t) => ({ value: String(t.id), label: t.name })) ?? [];
 
   const days = trackDays(track);
   const dateText = <span style={DATE_TEXT}>{formatDayLabel(toDateInput(shift.start))}</span>;
@@ -800,8 +1037,10 @@ function ShiftRow({
           // The day stays the shift's own; Date is its own cell.
           const next = fromDayAndTime(toDateInput(iso), parsed)!;
           // The panel's check, against the end this edit leaves alone.
-          if (which === "start" && new Date(next) >= new Date(shift.end)) throw new Error("Must be before the end.");
-          if (which === "end" && new Date(next) <= new Date(shift.start)) throw new Error("Must be after the start.");
+          if (which === "start" && new Date(next) >= new Date(shift.end))
+            throw new Error("Must be before the end.");
+          if (which === "end" && new Date(next) <= new Date(shift.start))
+            throw new Error("Must be after the start.");
           await edit.update(shift, { [which]: next });
         }}
       />,
@@ -826,7 +1065,9 @@ function ShiftRow({
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
       </span>
-      <span data-nav-col="label" style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>{labelCell}</span>
+      <span data-nav-col="label" style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>
+        {labelCell}
+      </span>
       <span data-nav-col="track" style={{ display: "flex", minWidth: 0 }}>
         {edit && track ? (
           <SelectCell
@@ -840,7 +1081,9 @@ function ShiftRow({
               if (next) await edit.update(shift, moveToTrack(shift, next));
             }}
           />
-        ) : badge}
+        ) : (
+          badge
+        )}
       </span>
       {/* Only a multi-day track has another day to move to. */}
       <span data-nav-col="date" style={{ display: "flex", minWidth: 0 }}>
@@ -853,22 +1096,45 @@ function ShiftRow({
             align="start"
             onPick={(day) => edit.update(shift, moveToDay(shift, day))}
           />
-        ) : dateText}
+        ) : (
+          dateText
+        )}
       </span>
-      <span data-nav-col="start" style={{ display: "flex", minWidth: 0 }}>{timeCell("start")}</span>
-      <span data-nav-col="end" style={{ display: "flex", minWidth: 0 }}>{timeCell("end")}</span>
+      <span data-nav-col="start" style={{ display: "flex", minWidth: 0 }}>
+        {timeCell("start")}
+      </span>
+      <span data-nav-col="end" style={{ display: "flex", minWidth: 0 }}>
+        {timeCell("end")}
+      </span>
       <span data-nav-col="duration" style={TIME_TEXT}>
         {formatSpan(shift.start, shift.end)}
       </span>
-      <span data-nav-col="events" style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+      <span
+        data-nav-col="events"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-tertiary)",
+          textAlign: "center",
+        }}
+      >
         {shift.event_count}
       </span>
       {/* Opening is the row's own click; delete keeps its own confirm. */}
-      <div data-nav-col="actions" style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+      <div
+        data-nav-col="actions"
+        style={{ display: "flex", justifyContent: "center", gap: "4px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {canEdit && (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
-            disabled={!!deleteLockedReason} title={deleteLockedReason ?? "Delete shift"}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={onDelete}
+            disabled={!!deleteLockedReason}
+            title={deleteLockedReason ?? "Delete shift"}
           >
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
           </Button>

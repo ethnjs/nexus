@@ -1,21 +1,21 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { ValidationIssue, ApiError } from "@/lib/api";
+import { useRef, useState } from "react";
 import { Banner } from "@/components/ui/Banner";
+import { ApiError, type ValidationIssue } from "@/lib/api";
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSheetValidation() {
-  const [validationErrors,     setValidationErrors]     = useState<ValidationIssue[]>([]);
+  const [validationErrors, setValidationErrors] = useState<ValidationIssue[]>([]);
   const [validationGeneration, setValidationGeneration] = useState(0);
-  const [validationWarnings,   setValidationWarnings]   = useState<ValidationIssue[]>([]);
-  const [saveError,            setSaveError]            = useState("");
+  const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
+  const [saveError, setSaveError] = useState("");
 
-  const errorCount   = validationErrors.length;
+  const errorCount = validationErrors.length;
   const warningCount = validationWarnings.length;
-  const hasErrors    = errorCount > 0;
-  const hasWarnings  = warningCount > 0;
+  const hasErrors = errorCount > 0;
+  const hasWarnings = warningCount > 0;
 
   // Tracks whether the current warnings have been shown to the user.
   // Set to true when warnings arrive; reset when warnings are cleared.
@@ -28,11 +28,15 @@ export function useSheetValidation() {
     warningsShown.current = false;
   }
 
-  function handleValidateResult(result: { ok: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] }): {
+  function handleValidateResult(result: {
+    ok: boolean;
+    errors: ValidationIssue[];
+    warnings: ValidationIssue[];
+  }): {
     ok: boolean;
     shouldConfirm: boolean;
   } {
-    const errs  = result.errors   ?? [];
+    const errs = result.errors ?? [];
     const warns = result.warnings ?? [];
     const hadWarningsAlready = warningsShown.current;
 
@@ -46,7 +50,7 @@ export function useSheetValidation() {
       warningsShown.current = false;
     }
 
-    const ok            = errs.length === 0;
+    const ok = errs.length === 0;
     const shouldConfirm = ok && warns.length > 0 && hadWarningsAlready;
     return { ok, shouldConfirm };
   }
@@ -54,16 +58,13 @@ export function useSheetValidation() {
   function clearRow(columnIndex: number | undefined, header: string | undefined) {
     const matches = (issue: ValidationIssue) => {
       const ci = issue.column_index;
-      const ciMatch = columnIndex != null && (
-        Array.isArray(ci) ? ci.includes(columnIndex) : ci === columnIndex
-      );
+      const ciMatch =
+        columnIndex != null && (Array.isArray(ci) ? ci.includes(columnIndex) : ci === columnIndex);
       const h = issue.header;
-      const hMatch = header != null && (
-        Array.isArray(h) ? h.includes(header) : h === header
-      );
+      const hMatch = header != null && (Array.isArray(h) ? h.includes(header) : h === header);
       return ciMatch || hMatch;
     };
-    setValidationErrors((prev)   => prev.filter((e) => !matches(e)));
+    setValidationErrors((prev) => prev.filter((e) => !matches(e)));
     setValidationWarnings((prev) => prev.filter((w) => !matches(w)));
   }
 
@@ -91,14 +92,14 @@ export function useSheetValidation() {
 
       if (Array.isArray(detail)) {
         errs = detail.map((d) => {
-          const loc       = d.loc ?? [];
-          const header    = typeof loc[2] === "string" ? loc[2] : undefined;
+          const loc = d.loc ?? [];
+          const header = typeof loc[2] === "string" ? loc[2] : undefined;
           const ruleIndex = typeof loc[4] === "number" ? loc[4] : undefined;
-          const message   = d.msg.replace(/^Value error,\s*/i, "");
+          const message = d.msg.replace(/^Value error,\s*/i, "");
           return { header, rule_index: ruleIndex, message } as ValidationIssue;
         });
       } else if (detail && "errors" in detail) {
-        errs  = detail.errors  ?? [];
+        errs = detail.errors ?? [];
         warns = detail.warnings ?? [];
       }
 
@@ -108,7 +109,7 @@ export function useSheetValidation() {
       setSaveError(
         errs.length === 1
           ? "1 validation error — expand the highlighted row to fix it."
-          : `${errs.length} validation errors — expand the highlighted rows to fix them.`
+          : `${errs.length} validation errors — expand the highlighted rows to fix them.`,
       );
       return true;
     }

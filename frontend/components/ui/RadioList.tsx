@@ -1,33 +1,41 @@
-'use client'
+"use client";
 
-import { ReactNode } from 'react'
-import { RadioCircle } from '@/components/ui/RadioCircle'
+import type { ReactNode } from "react";
+import { RadioCircle } from "@/components/ui/RadioCircle";
 
 export interface RadioListOption {
-  value: string
-  label: string
+  value: string;
+  label: string;
   /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
-  badge?: ReactNode
+  badge?: ReactNode;
 }
 
 interface RadioListProps {
-  options: RadioListOption[]
-  value: string
-  onChange: (value: string) => void
-  locked?: boolean
+  options: RadioListOption[];
+  value: string;
+  onChange: (value: string) => void;
+  locked?: boolean;
   /** Radio circle diameter in px. */
-  size?: number
-  fontSize?: string
-  gap?: string
+  size?: number;
+  fontSize?: string;
+  gap?: string;
 }
 
-const ROW_HEIGHT = '36px'
+const ROW_HEIGHT = "36px";
 
 // Plain radio-circle list — the fallback for single-select when option
 // labels are too long for ButtonGroup's pill layout to read well.
-export function RadioList({ options, value, onChange, locked = false, size = 16, fontSize = '13px', gap = '8px' }: RadioListProps) {
+export function RadioList({
+  options,
+  value,
+  onChange,
+  locked = false,
+  size = 16,
+  fontSize = "13px",
+  gap = "8px",
+}: RadioListProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+    <div style={{ display: "flex", flexDirection: "column", gap }}>
       {options.map((opt) => (
         <RadioRow
           key={opt.value}
@@ -40,16 +48,23 @@ export function RadioList({ options, value, onChange, locked = false, size = 16,
         />
       ))}
     </div>
-  )
+  );
 }
 
-function RadioRow({ option, checked, locked, size, fontSize, onClick }: {
-  option: RadioListOption
-  checked: boolean
-  locked: boolean
-  size: number
-  fontSize: string
-  onClick: () => void
+function RadioRow({
+  option,
+  checked,
+  locked,
+  size,
+  fontSize,
+  onClick,
+}: {
+  option: RadioListOption;
+  checked: boolean;
+  locked: boolean;
+  size: number;
+  fontSize: string;
+  onClick: () => void;
 }) {
   return (
     <label
@@ -58,26 +73,32 @@ function RadioRow({ option, checked, locked, size, fontSize, onClick }: {
       // clicked (the form builder focuses that option's editor row).
       data-option-value={option.value}
       style={{
-        display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        boxSizing: "border-box",
         // minHeight, not height: a label long enough to wrap would
         // otherwise overflow a fixed-height row.
         minHeight: ROW_HEIGHT,
-        borderRadius: 'var(--radius-md)',
-        background: 'var(--color-surface)',
-        cursor: locked ? 'default' : 'pointer',
+        borderRadius: "var(--radius-md)",
+        background: "var(--color-surface)",
+        cursor: locked ? "default" : "pointer",
       }}
     >
       <RadioCircle checked={checked} disabled={locked} size={size} />
       {/* Dimmed to match the circle, which already greys itself when
           disabled — a locked row reads as inactive rather than as an option
           that simply isn't responding. */}
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize,
-        color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize,
+          color: locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
+        }}
+      >
         {option.label}
       </span>
       {option.badge}
     </label>
-  )
+  );
 }

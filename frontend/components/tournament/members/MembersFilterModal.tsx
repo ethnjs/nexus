@@ -1,23 +1,39 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
-import { FilterOptionGroup, FilterOptionItem, MemberFilterOptions, membersApi } from "@/lib/api";
+import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { ChipInput } from "@/components/ui/ChipInput";
-import { Popover } from "@/components/ui/Popover";
-import { PillTone, PillTrigger } from "@/components/ui/PillMenu";
-import { Input } from "@/components/ui/Input";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
-import { IconPlus } from "@/components/ui/Icons";
+import { ChipInput } from "@/components/ui/ChipInput";
 import {
-  FilterModal, FilterSectionConfig, FilterState, SEARCHABLE_ABOVE, emptyFilterState,
+  emptyFilterState,
+  FilterModal,
+  type FilterSectionConfig,
+  type FilterState,
+  SEARCHABLE_ABOVE,
 } from "@/components/ui/FilterModal";
+import { IconPlus } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { type PillTone, PillTrigger } from "@/components/ui/PillMenu";
+import { Popover } from "@/components/ui/Popover";
+import {
+  type FilterOptionGroup,
+  type FilterOptionItem,
+  type MemberFilterOptions,
+  membersApi,
+} from "@/lib/api";
 
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
-  "role", "track", "lunch", "event_pref",
-  "competition_event", "volunteer_event", "age", "shift", "assigned",
+  "role",
+  "track",
+  "lunch",
+  "event_pref",
+  "competition_event",
+  "volunteer_event",
+  "age",
+  "shift",
+  "assigned",
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
@@ -30,7 +46,14 @@ export type MembersFilterState = FilterState<MembersFilterKey>;
 // the pair is from an older release (availability used to persist bare shift
 // ids) — the server ignores it, so the modal has to as well, or a chip would
 // sit there claiming to narrow a roster it isn't touching.
-const PAIRED_KEYS: readonly MembersFilterKey[] = ["role", "track", "lunch", "event_pref", "shift", "assigned"];
+const PAIRED_KEYS: readonly MembersFilterKey[] = [
+  "role",
+  "track",
+  "lunch",
+  "event_pref",
+  "shift",
+  "assigned",
+];
 
 function usableValues(key: string, values: Set<string>): string[] {
   const list = [...values];
@@ -53,9 +76,11 @@ export function membersFilterFromStored(
       const strings = values.filter((v): v is string => typeof v === "string");
       // A role id saved before roles could be narrowed to tracks means "any
       // track", which is what an unnarrowed chip already is.
-      state[key] = new Set(key === "role"
-        ? strings.map((v) => (v.includes(":") || v === "none" ? v : `${v}:${ANY}`))
-        : strings);
+      state[key] = new Set(
+        key === "role"
+          ? strings.map((v) => (v.includes(":") || v === "none" ? v : `${v}:${ANY}`))
+          : strings,
+      );
     }
   }
   return state;
@@ -90,7 +115,10 @@ const ANY = "__any__";
 // all". Its counterpart is ANY — "answered something" — so the two are the
 // pill's answered/not-answered toggle rather than two more rows in its list.
 const UNANSWERED = "__unanswered__";
-const ANSWERED_OPTIONS = [{ value: ANY, label: "Answered" }, { value: UNANSWERED, label: "Not answered" }];
+const ANSWERED_OPTIONS = [
+  { value: ANY, label: "Answered" },
+  { value: UNANSWERED, label: "Not answered" },
+];
 
 // Event preferences: a chip's rank condition, kept as one more value under
 // its track ("rank:le:3") — shared with the backend's RANK_PREFIX. One per
@@ -137,7 +165,8 @@ const TRACK_STATUS_TONES: Record<string, PillTone> = { confirmed: "success", dec
  * question. A default, not a rule: every chip is removable.
  */
 export function defaultMemberFiltersForTab(
-  trackIds: number[], activeTrackId: number | null,
+  trackIds: number[],
+  activeTrackId: number | null,
 ): MembersFilterState {
   const scope = activeTrackId === null ? trackIds : [activeTrackId];
   return {
@@ -207,7 +236,18 @@ function withGroup(selected: Set<string>, group: string, options: string[]): Set
 //
 // Only the control — FilterModal draws the heading and Clear around it, the
 // same frame every other section gets.
-function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyMessage, searchable, optionTones, answeredToggle, rankFilter }: {
+function PairedChipBody({
+  groups,
+  selected,
+  onChange,
+  anyLabel,
+  addLabel,
+  emptyMessage,
+  searchable,
+  optionTones,
+  answeredToggle,
+  rankFilter,
+}: {
   groups: FilterOptionGroup[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
@@ -228,10 +268,14 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
   // an archived track) still filters, so it keeps a chip under its raw key
   // rather than silently narrowing the roster from nowhere.
   const known = new Set(groups.map((group) => group.value));
-  const orphans = [...new Set([...selected].filter((v) => v.includes(":")).map((value) => splitPair(value)[0]))]
+  const orphans = [
+    ...new Set([...selected].filter((v) => v.includes(":")).map((value) => splitPair(value)[0])),
+  ]
     .filter((group) => !known.has(group))
     .map((group) => ({ value: group, label: group, options: [] as FilterOptionItem[] }));
-  const chipped = [...groups, ...orphans].filter((group) => optionsFor(selected, group.value).length > 0);
+  const chipped = [...groups, ...orphans].filter(
+    (group) => optionsFor(selected, group.value).length > 0,
+  );
   const groupByLabel = new Map(chipped.map((group) => [group.label, group]));
   // Already-chipped groups drop out of the picker: a second chip for the
   // same track would just overwrite the first one's status.
@@ -241,7 +285,9 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
   function chosenFor(group: FilterOptionGroup): string[] {
     const chosen = optionsFor(selected, group.value);
     if (answeredToggle && chosen.includes(ANY)) return group.options.map((option) => option.value);
-    return chosen.filter((option) => option !== ANY && option !== UNANSWERED && !option.startsWith(RANK_PREFIX));
+    return chosen.filter(
+      (option) => option !== ANY && option !== UNANSWERED && !option.startsWith(RANK_PREFIX),
+    );
   }
 
   /** The chip's rank condition, if it has one. */
@@ -255,14 +301,22 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
 
   /** Rewrites a chip's events, carrying its rank condition along. */
   function writeGroup(group: FilterOptionGroup, options: string[], rank = rankFor(group)) {
-    onChange(withGroup(selected, group.value, rank ? [...options, `${RANK_PREFIX}${rank.op}:${rank.n}`] : options));
+    onChange(
+      withGroup(
+        selected,
+        group.value,
+        rank ? [...options, `${RANK_PREFIX}${rank.op}:${rank.n}`] : options,
+      ),
+    );
   }
 
   function summaryFor(group: FilterOptionGroup): string {
     const rank = rankFor(group);
     const base = eventSummaryFor(group);
     // Only once it filters anything — an operator with no number yet doesn't.
-    return rank?.n ? `${base} · rank ${RANK_OPS.find((o) => o.value === rank.op)?.label} ${rank.n}` : base;
+    return rank?.n
+      ? `${base} · rank ${RANK_OPS.find((o) => o.value === rank.op)?.label} ${rank.n}`
+      : base;
   }
 
   function eventSummaryFor(group: FilterOptionGroup): string {
@@ -284,7 +338,9 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
 
   function toggleOption(group: FilterOptionGroup, option: string) {
     const chosen = chosenFor(group);
-    const next = chosen.includes(option) ? chosen.filter((value) => value !== option) : [...chosen, option];
+    const next = chosen.includes(option)
+      ? chosen.filter((value) => value !== option)
+      : [...chosen, option];
     // Every box ticked is exactly "answered", so it collapses back to the
     // sentinel — otherwise an answer nobody listed as an option (an "other",
     // a free-text reply) would be dropped by a pill claiming to show all.
@@ -304,13 +360,23 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
     const base = events.length > 0 ? events : [ANY];
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Rank</span>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          Rank
+        </span>
         <ButtonGroup
           options={RANK_OPS}
           value={rank?.op ?? ""}
           // Toggles: the lit operator clicked again drops the condition. A
           // fresh one starts at 1 — "= 1", first choice, is the likeliest ask.
-          onChange={(op) => writeGroup(group, base, op === rank?.op ? null : { op, n: rank?.n || "1" })}
+          onChange={(op) =>
+            writeGroup(group, base, op === rank?.op ? null : { op, n: rank?.n || "1" })
+          }
           size="sm"
         />
         <div style={{ width: "56px", flexShrink: 0 }}>
@@ -372,7 +438,9 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
             searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
             isSelected={(option) => chosenFor(group).includes(option.value)}
             onToggle={(option) => toggleOption(group, option.value)}
-            header={answeredToggle ? answeredHeader(group) : rankFilter ? rankHeader(group) : undefined}
+            header={
+              answeredToggle ? answeredHeader(group) : rankFilter ? rankHeader(group) : undefined
+            }
             emptyMessage="Nothing to filter by"
             // Room for the rank row on one line.
             width={rankFilter ? 340 : 260}
@@ -383,7 +451,14 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
       addButton={
         <Popover
           trigger={
-            <Button type="button" variant="secondary" size="sm" iconOnly title={addLabel} style={{ padding: 0, flexShrink: 0 }}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              title={addLabel}
+              style={{ padding: 0, flexShrink: 0 }}
+            >
               <IconPlus size={13} />
             </Button>
           }
@@ -403,14 +478,23 @@ function PairedChipBody({ groups, selected, onChange, anyLabel, addLabel, emptyM
 }
 
 export function MembersFilterModal({
-  tournamentId, roleOptions, filters, defaults, options: suppliedOptions, onApply, onClose,
+  tournamentId,
+  roleOptions,
+  filters,
+  defaults,
+  options: suppliedOptions,
+  onApply,
+  onClose,
 }: MembersFilterModalProps) {
   const [fetched, setFetched] = useState<MemberFilterOptions | null>(null);
   const options = suppliedOptions ?? fetched;
 
   useEffect(() => {
     if (suppliedOptions) return;
-    membersApi.filterOptions(tournamentId).then(setFetched).catch(() => setFetched(null));
+    membersApi
+      .filterOptions(tournamentId)
+      .then(setFetched)
+      .catch(() => setFetched(null));
   }, [tournamentId, suppliedOptions]);
 
   // Seeded from the full key set and then overlaid, rather than handed over
@@ -429,17 +513,20 @@ export function MembersFilterModal({
 
   const simpleTournament = (options?.tracks ?? []).length <= 1;
   const roleGroups: FilterOptionGroup[] = roleOptions.map((role) => ({
-    ...role, options: options?.tracks ?? [],
+    ...role,
+    options: options?.tracks ?? [],
   }));
 
   // Statuses are the same three for every track, so the groups are built
   // here rather than repeated in the options payload.
   const trackGroups: FilterOptionGroup[] = (options?.tracks ?? []).map((track) => ({
-    ...track, options: TRACK_STATUS_OPTIONS,
+    ...track,
+    options: TRACK_STATUS_OPTIONS,
   }));
 
   const assignmentGroups: FilterOptionGroup[] = (options?.tracks ?? []).map((track) => ({
-    ...track, options: ASSIGNMENT_STATUS_OPTIONS,
+    ...track,
+    options: ASSIGNMENT_STATUS_OPTIONS,
   }));
 
   const ageOptions: FilterOptionItem[] = [
@@ -449,11 +536,16 @@ export function MembersFilterModal({
 
   /** A paired section — hidden when the tournament has no groups to offer. */
   function paired(
-    key: MembersFilterKey, title: string, groups: FilterOptionGroup[],
+    key: MembersFilterKey,
+    title: string,
+    groups: FilterOptionGroup[],
     body: Omit<Parameters<typeof PairedChipBody>[0], "groups" | "selected" | "onChange">,
   ): FilterSectionConfig<MembersFilterKey> {
     return {
-      key, title, control: "custom", hidden: groups.length === 0,
+      key,
+      title,
+      control: "custom",
+      hidden: groups.length === 0,
       render: (selected, onChange) => (
         <PairedChipBody groups={groups} selected={selected} onChange={onChange} {...body} />
       ),
@@ -466,37 +558,61 @@ export function MembersFilterModal({
     simpleTournament
       ? { key: "role", title: "Roles", control: "chips", options: roleOptions }
       : paired("role", "Roles", roleGroups, {
-          anyLabel: "Any track", addLabel: "Filter by role", emptyMessage: "No roles yet.",
+          anyLabel: "Any track",
+          addLabel: "Filter by role",
+          emptyMessage: "No roles yet.",
         }),
     paired("assigned", "Assignments", assignmentGroups, {
-      anyLabel: "Any", addLabel: "Filter by track", emptyMessage: "No active tracks.",
+      anyLabel: "Any",
+      addLabel: "Filter by track",
+      emptyMessage: "No active tracks.",
     }),
     paired("track", "Track status", trackGroups, {
-      optionTones: TRACK_STATUS_TONES, anyLabel: "Any status", addLabel: "Filter by track",
+      optionTones: TRACK_STATUS_TONES,
+      anyLabel: "Any status",
+      addLabel: "Filter by track",
       emptyMessage: "No active tracks.",
     }),
     // Two options at most, both fixed — a chip row with an add popover is
     // more machinery than picking between 18+ and 21+ deserves.
-    { key: "age", title: "Age", control: "buttons", options: ageOptions, hidden: ageOptions.length === 0 },
+    {
+      key: "age",
+      title: "Age",
+      control: "buttons",
+      options: ageOptions,
+      hidden: ageOptions.length === 0,
+    },
     paired("shift", "Availability", options?.shift_days ?? [], {
-      anyLabel: "Any shift", addLabel: "Filter by track",
+      anyLabel: "Any shift",
+      addLabel: "Filter by track",
       emptyMessage: "No shifts on this tournament yet.",
     }),
     paired("lunch", "Lunch", options?.lunch_categories ?? [], {
-      answeredToggle: true, anyLabel: "Any answer", addLabel: "Filter by lunch question",
+      answeredToggle: true,
+      anyLabel: "Any answer",
+      addLabel: "Filter by lunch question",
       emptyMessage: "No lunch questions on this tournament yet.",
     }),
     paired("event_pref", "Event preferences", options?.event_preferences ?? [], {
-      searchable: true, rankFilter: true, anyLabel: "Any event", addLabel: "Filter by event preference",
+      searchable: true,
+      rankFilter: true,
+      anyLabel: "Any event",
+      addLabel: "Filter by event preference",
       emptyMessage: "No event preference questions on this tournament yet.",
     }),
     {
-      key: "competition_event", title: "Competition experience", control: "chips",
-      options: options?.competition_events ?? [], searchable: true,
+      key: "competition_event",
+      title: "Competition experience",
+      control: "chips",
+      options: options?.competition_events ?? [],
+      searchable: true,
     },
     {
-      key: "volunteer_event", title: "Volunteer experience", control: "chips",
-      options: options?.volunteer_events ?? [], searchable: true,
+      key: "volunteer_event",
+      title: "Volunteer experience",
+      control: "chips",
+      options: options?.volunteer_events ?? [],
+      searchable: true,
     },
   ];
 

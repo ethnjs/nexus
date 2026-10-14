@@ -1,37 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { universitiesApi, University, ApiError } from "@/lib/api";
-import { Card } from "@/components/ui/Card";
+import { NewUniversityModal } from "@/components/admin/NewUniversityModal";
+import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EditableText } from "@/components/ui/EditableText";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { IconPlus, IconSchool, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { EditableText } from "@/components/ui/EditableText";
-import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { NewUniversityModal } from "@/components/admin/NewUniversityModal";
-import { IconSearch, IconSchool, IconTrash, IconPlus } from "@/components/ui/Icons";
-import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
+import { ApiError, type University, universitiesApi } from "@/lib/api";
+import { useActionToast } from "@/lib/useActionToast";
 
 const COLUMNS = [
-  "minmax(260px, 2fr)",   // name
+  "minmax(260px, 2fr)", // name
   "minmax(120px, 0.7fr)", // abbreviation
   "minmax(180px, 1.2fr)", // location
-  "44px",                 // actions — one icon button
+  "44px", // actions — one icon button
 ].join(" ");
 
 const MIN_TABLE_WIDTH = 664;
 
 const CELL_TEXT: React.CSSProperties = {
-  fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400,
+  fontFamily: "var(--font-sans)",
+  fontSize: "13px",
+  fontWeight: 400,
 };
 
-function UniversityRow({ university, onSave, onDelete }: {
+function UniversityRow({
+  university,
+  onSave,
+  onDelete,
+}: {
   university: University;
   /** Rejects with the server's message, which EditableText shows under the field. */
-  onSave: (patch: { name?: string; abbreviation?: string | null; location?: string | null }) => Promise<void>;
+  onSave: (patch: {
+    name?: string;
+    abbreviation?: string | null;
+    location?: string | null;
+  }) => Promise<void>;
   onDelete: () => void;
 }) {
   return (
@@ -68,8 +78,12 @@ function UniversityRow({ university, onSave, onDelete }: {
 
       <div style={{ display: "flex", justifyContent: "center" }}>
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title="Delete university" onClick={onDelete}
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title="Delete university"
+          onClick={onDelete}
         >
           <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
         </Button>
@@ -87,7 +101,8 @@ export default function AdminUniversitiesPage() {
   const [deleteTarget, setDeleteTarget] = useState<University | null>(null);
 
   useEffect(() => {
-    universitiesApi.list()
+    universitiesApi
+      .list()
       .then(setUniversities)
       .catch((err: unknown) => {
         setUniversities([]);
@@ -99,10 +114,11 @@ export default function AdminUniversitiesPage() {
     const rows = universities ?? [];
     const query = search.trim().toLowerCase();
     if (!query) return rows;
-    return rows.filter((u) =>
-      u.name.toLowerCase().includes(query) ||
-      (u.abbreviation?.toLowerCase().includes(query) ?? false) ||
-      (u.location?.toLowerCase().includes(query) ?? false)
+    return rows.filter(
+      (u) =>
+        u.name.toLowerCase().includes(query) ||
+        (u.abbreviation?.toLowerCase().includes(query) ?? false) ||
+        (u.location?.toLowerCase().includes(query) ?? false),
     );
   }, [universities, search]);
 
@@ -118,7 +134,7 @@ export default function AdminUniversitiesPage() {
     // Inserted in name order rather than appended — the list is sorted by name
     // server-side, and a new row landing at the bottom looks like it failed.
     setUniversities((prev) =>
-      [...(prev ?? []), created].sort((a, b) => a.name.localeCompare(b.name))
+      [...(prev ?? []), created].sort((a, b) => a.name.localeCompare(b.name)),
     );
   }
 
@@ -133,12 +149,27 @@ export default function AdminUniversitiesPage() {
       <PageHeader heading="Universities" />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          alignItems: "center",
+          marginBottom: "16px",
+          flexWrap: "wrap",
+        }}
+      >
         <Input
           placeholder="Search name, abbreviation or location"
           value={search}
@@ -152,7 +183,12 @@ export default function AdminUniversitiesPage() {
         />
         {/* Pushed to the right edge — the search sits with the table it
             filters, the action belongs opposite it. */}
-        <Button variant="primary" size="md" onClick={() => setShowNew(true)} style={{ marginLeft: "auto" }}>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => setShowNew(true)}
+          style={{ marginLeft: "auto" }}
+        >
           <IconPlus />
           Add university
         </Button>
@@ -167,15 +203,19 @@ export default function AdminUniversitiesPage() {
           <EmptyState
             icon={<IconSchool size={26} />}
             title={isFiltered ? "No matching universities" : "No universities yet"}
-            description={isFiltered
-              ? "Try adjusting your search."
-              : "Add the first one — users pick from this list on their profile."}
-            action={isFiltered ? undefined : (
-              <Button variant="secondary" size="md" onClick={() => setShowNew(true)}>
-                <IconPlus />
-                Add university
-              </Button>
-            )}
+            description={
+              isFiltered
+                ? "Try adjusting your search."
+                : "Add the first one — users pick from this list on their profile."
+            }
+            action={
+              isFiltered ? undefined : (
+                <Button variant="secondary" size="md" onClick={() => setShowNew(true)}>
+                  <IconPlus />
+                  Add university
+                </Button>
+              )
+            }
           />
         </Card>
       ) : (

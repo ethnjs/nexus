@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { adminUsersApi, AdminUserFull, ApiError } from "@/lib/api";
-import { DockedPanel } from "@/components/layout/DockedPanel";
-import { Spinner } from "@/components/ui/Spinner";
 import { AccountBadges } from "@/components/admin/AccountBadges";
-import { Button } from "@/components/ui/Button";
+import { DockedPanel } from "@/components/layout/DockedPanel";
 import { ProfileCard } from "@/components/profile/ProfileCard";
-import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
+import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
-import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
+import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
+import { Button } from "@/components/ui/Button";
 import { IconExpand } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import { type AdminUserFull, ApiError, adminUsersApi } from "@/lib/api";
 
 // Exported so a caller registering this in the layout slot reserves exactly
 // the width it renders at.
@@ -26,7 +26,14 @@ export const ADMIN_USER_PANEL_WIDTH = 620;
  * them, and adds the account-level facts those don't carry (role, status,
  * email verification) since that is what an admin opened this for.
  */
-export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNext }: {
+export function AdminUserPanel({
+  userId,
+  onClose,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
+}: {
   userId: number;
   onClose: () => void;
   /** Step through the caller's current filtered/sorted order. Omit both to hide the controls. */
@@ -51,13 +58,18 @@ export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNe
 
   useEffect(() => {
     let cancelled = false;
-    adminUsersApi.get(userId)
-      .then((u) => { if (!cancelled) setUser(u); })
+    adminUsersApi
+      .get(userId)
+      .then((u) => {
+        if (!cancelled) setUser(u);
+      })
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(err instanceof ApiError ? err.message : "Couldn't load this account.");
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   return (
@@ -70,7 +82,10 @@ export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNe
       nextDisabled={!hasNext}
       headerActions={
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
           title="Open full profile"
           onClick={() => window.open(`/profile/${userId}`, "_blank", "noopener,noreferrer")}
         >
@@ -79,7 +94,14 @@ export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNe
       }
     >
       {error ? (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", padding: "20px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            padding: "20px",
+          }}
+        >
           {error}
         </p>
       ) : !user ? (
@@ -91,18 +113,23 @@ export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNe
           {/* Account state rides in the header beside the name — it's the
               reason an admin opened this rather than /profile/[id], and the
               shared profile sections don't carry any of it. */}
-          <ProfileHeader
-            user={user}
-            badges={<AccountBadges user={user} />}
-          />
+          <ProfileHeader user={user} badges={<AccountBadges user={user} />} />
 
           {/* One ProfileCard per section, same as /profile/[id] and MemberPanel —
               the sections render their heading and content only, and rely on a
               card around them for separation. */}
-          <ProfileCard><EducationCareerSection user={user} /></ProfileCard>
-          <ProfileCard><CompetitionExperienceSection user={user} /></ProfileCard>
-          <ProfileCard><VolunteerExperienceSection user={user} /></ProfileCard>
-          <ProfileCard><LogisticsSection user={user} /></ProfileCard>
+          <ProfileCard>
+            <EducationCareerSection user={user} />
+          </ProfileCard>
+          <ProfileCard>
+            <CompetitionExperienceSection user={user} />
+          </ProfileCard>
+          <ProfileCard>
+            <VolunteerExperienceSection user={user} />
+          </ProfileCard>
+          <ProfileCard>
+            <LogisticsSection user={user} />
+          </ProfileCard>
         </div>
       )}
     </DockedPanel>

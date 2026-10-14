@@ -2,7 +2,8 @@
 // can — one wording on the overview's Forms card and the form's own page.
 
 export const RESPONSE_NOT_ACCEPTING = "This form isn't accepting changes right now.";
-export const RESPONSE_EDITS_LOCKED = "Editing is locked. Contact your tournament director if something needs changing.";
+export const RESPONSE_EDITS_LOCKED =
+  "Editing is locked. Contact your tournament director if something needs changing.";
 
 export function responseEditLockedReason(form: {
   status: string;

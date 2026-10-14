@@ -1,37 +1,45 @@
 "use client";
 
-import type { ReactNode } from 'react'
-import { useDroppable } from '@dnd-kit/core'
+import { useDroppable } from "@dnd-kit/core";
+import type { ReactNode } from "react";
 
-import { MemberChip } from '@/components/tournament/assignments/MemberChip'
-import { StaffingNeedLine } from '@/components/tournament/assignments/StaffingNeedLine'
-import { TrackShiftGrid } from '@/components/tournament/assignments/TrackShiftGrid'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { IconBuilding, IconClock, IconLocation } from '@/components/ui/Icons'
-import { PillMenu } from '@/components/ui/PillMenu'
+import { MemberChip } from "@/components/tournament/assignments/MemberChip";
+import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
+import { TrackShiftGrid } from "@/components/tournament/assignments/TrackShiftGrid";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { IconBuilding, IconClock, IconLocation } from "@/components/ui/Icons";
+import { PillMenu } from "@/components/ui/PillMenu";
 import type {
-  Assignment, Role, TournamentEvent, TournamentShift, TournamentTrack,
-} from '@/lib/api'
-import type { Flag } from '@/lib/assignments/flags'
-import type { Lane } from '@/lib/assignments/lanes'
-import type { BoardHandlers } from '@/lib/assignments/board'
-import { staffedCount } from '@/lib/assignments/staffing'
-import { trackLocationLabel } from '@/lib/eventDisplay'
-import { placeOfTrack } from '@/lib/tournamentDisplay'
-import { formatTime } from '@/lib/timeFormat'
-
+  Assignment,
+  Role,
+  TournamentEvent,
+  TournamentShift,
+  TournamentTrack,
+} from "@/lib/api";
+import type { BoardHandlers } from "@/lib/assignments/board";
+import type { Flag } from "@/lib/assignments/flags";
+import type { Lane } from "@/lib/assignments/lanes";
+import { staffedCount } from "@/lib/assignments/staffing";
+import { trackLocationLabel } from "@/lib/eventDisplay";
+import { formatTime } from "@/lib/timeFormat";
+import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <span style={{
-      display: 'flex', alignItems: 'center', gap: '5px',
-      fontFamily: 'var(--font-sans)', fontSize: '11px',
-      color: 'var(--color-text-tertiary)',
-    }}>
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "5px",
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {icon}
       {children}
     </span>
-  )
+  );
 }
 
 /** A track's default role, as a pill menu — picking a new role hands the
@@ -39,18 +47,23 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
  *  it means both a track PATCH and a bulk assignment rewrite that only the
  *  page has the state for. Shared by the timeline header and a cosmetic
  *  track's column header — same field, same control, wherever it shows. */
-function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
-  track: TournamentTrack
-  roleCatalog: Role[]
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>
+function DefaultRolePillMenu({
+  track,
+  roleCatalog,
+  onPickDefaultRole,
+}: {
+  track: TournamentTrack;
+  roleCatalog: Role[];
+  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>;
 }) {
-  const role = track.default_role_id === null
-    ? null
-    : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+  const role =
+    track.default_role_id === null
+      ? null
+      : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
   return (
     <PillMenu
-      label={role ? role.label : 'No default role'}
-      tone={role ? 'default' : 'muted'}
+      label={role ? role.label : "No default role"}
+      tone={role ? "default" : "muted"}
       items={roleCatalog}
       getKey={(r) => r.id}
       renderLabel={(r) => r.label}
@@ -61,7 +74,7 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
       width={180}
       align="left"
     />
-  )
+  );
 }
 
 /**
@@ -79,79 +92,99 @@ function DefaultRolePillMenu({ track, roleCatalog, onPickDefaultRole }: {
  * since it has no columns to aim at.
  */
 export function TrackSection({
-  event, track, shifts, pinnedLanes, unpinnedLanes, rowAssignments, roleCatalog, flagsFor,
+  event,
+  track,
+  shifts,
+  pinnedLanes,
+  unpinnedLanes,
+  rowAssignments,
+  roleCatalog,
+  flagsFor,
   showLabel,
   handlers,
 }: {
-  event: TournamentEvent
-  track: TournamentTrack
+  event: TournamentEvent;
+  track: TournamentTrack;
   /** This track's own shifts, in schedule order. Empty for a shiftless one. */
-  shifts: TournamentShift[]
+  shifts: TournamentShift[];
   /** Bars on those shifts. */
-  pinnedLanes: Lane[]
+  pinnedLanes: Lane[];
   /** People on this track but on none of its shifts. */
-  unpinnedLanes: Lane[]
-  rowAssignments: Assignment[]
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
+  unpinnedLanes: Lane[];
+  rowAssignments: Assignment[];
+  roleCatalog: Role[];
+  flagsFor: (a: Assignment) => Flag[];
   /** False on a track tab and in simple mode — the tab already names the
    *  track, so the pill, time, location and staffing stand on their own. */
-  showLabel: boolean
-  handlers: BoardHandlers
+  showLabel: boolean;
+  handlers: BoardHandlers;
 }) {
-  const hasShifts = shifts.length > 0
+  const hasShifts = shifts.length > 0;
   // A track with columns is aimed at through them; a shiftless one is aimed
   // at whole, so only it registers as a target.
   const { setNodeRef, isOver } = useDroppable({
     id: `track:${event.id}:${track.id}`,
-    data: { kind: 'track', eventId: event.id, trackId: track.id, label: track.name },
+    data: { kind: "track", eventId: event.id, trackId: track.id, label: track.name },
     disabled: hasShifts,
-  })
+  });
 
-  const detail = event.track_details.find((d) => d.track_id === track.id) ?? null
-  const location = trackLocationLabel(detail)
+  const detail = event.track_details.find((d) => d.track_id === track.id) ?? null;
+  const location = trackLocationLabel(detail);
   // The track's venue (campus), vs. `location` — this event's building and rooms on it.
   // Neither applies to a cosmetic (non-competition-day) track, which has no place.
-  const venue = track.is_primary ? placeOfTrack(track, { short: true }) : null
+  const venue = track.is_primary ? placeOfTrack(track, { short: true }) : null;
   // The track's window: its first shift's start to its last one's end.
   // Derived, not stored — an event has no times of its own, only the union of
   // the shifts on it (see TournamentEvent in models.py).
   const span = hasShifts
     ? `${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`
-    : null
-  const needs = detail?.needs ?? []
+    : null;
+  const needs = detail?.needs ?? [];
 
   return (
     <div
       ref={setNodeRef}
       style={{
-        display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "5px",
+        minWidth: 0,
         // Boxed only where there is no timeline — a grid draws its own edges
         // in its columns. The box is also the drop target itself, so it tints
         // rather than lighting its border, the same signal the shift columns
         // give.
-        ...(hasShifts ? null : {
-          border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-sm)',
-          padding: '6px 8px',
-          background: isOver && unpinnedLanes.length > 0
-            ? 'var(--color-accent-subtle)'
-            : 'transparent',
-          transition: 'background 120ms ease',
-        }),
+        ...(hasShifts
+          ? null
+          : {
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-sm)",
+              padding: "6px 8px",
+              background:
+                isOver && unpinnedLanes.length > 0 ? "var(--color-accent-subtle)" : "transparent",
+              transition: "background 120ms ease",
+            }),
       }}
     >
       {/* Label, role, time and place on one line — they are all answers to
           "what is this track of this event", and each is short enough that
           stacking them spent a row of height per word. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", minWidth: 0 }}
+      >
         {showLabel && (
-          <span style={{
-            fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-            letterSpacing: '0.05em', textTransform: 'uppercase',
-            color: 'var(--color-text-tertiary)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "10px",
+              fontWeight: 600,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              color: "var(--color-text-tertiary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {track.name}
           </span>
         )}
@@ -167,7 +200,7 @@ export function TrackSection({
         {/* Always shown on a competition day, so a missing room reads as
             missing rather than as a line that isn't there. */}
         {track.is_primary && (
-          <MetaLine icon={<IconBuilding size={12} />}>{location ?? 'No location'}</MetaLine>
+          <MetaLine icon={<IconBuilding size={12} />}>{location ?? "No location"}</MetaLine>
         )}
       </div>
 
@@ -175,7 +208,7 @@ export function TrackSection({
           row of them reads as one progress line for the track rather than as
           a list of separate facts. */}
       {needs.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 14px' }}>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 14px" }}>
           {needs.map((need) => (
             <StaffingNeedLine
               key={need.role_id}
@@ -203,15 +236,26 @@ export function TrackSection({
               rather than in a section of their own — they are this track's
               staffing either way. */}
           {unpinnedLanes.length > 0 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
-              paddingTop: '5px', borderTop: '1px dashed var(--color-border)',
-            }}>
-              <span style={{
-                fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-                letterSpacing: '0.05em', textTransform: 'uppercase',
-                color: 'var(--color-text-tertiary)',
-              }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "6px",
+                paddingTop: "5px",
+                borderTop: "1px dashed var(--color-border)",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
                 No shift
               </span>
               {unpinnedLanes.map((lane) => (
@@ -236,7 +280,7 @@ export function TrackSection({
         // same thing twice.
         <EmptyState size="sm" title="Nobody assigned" active={isOver} />
       ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {unpinnedLanes.map((lane) => (
             <MemberChip
               key={lane.key}
@@ -250,5 +294,5 @@ export function TrackSection({
         </div>
       )}
     </div>
-  )
+  );
 }

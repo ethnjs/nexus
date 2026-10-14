@@ -1,6 +1,6 @@
 "use client";
 
-import { RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 
 const DURATION_MS = 220;
 const EASING = "cubic-bezier(0.22, 0.61, 0.36, 1)";
@@ -49,10 +49,10 @@ export function useCardHeight(ref: RefObject<HTMLElement | null>, state: unknown
     // The outgoing content is still its old size for a frame or two.
     el.style.overflow = "hidden";
 
-    const animation = el.animate(
-      [{ height: `${from}px` }, { height: `${to}px` }],
-      { duration: DURATION_MS, easing: EASING },
-    );
+    const animation = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+      duration: DURATION_MS,
+      easing: EASING,
+    });
     animRef.current = animation;
 
     const settle = () => {
@@ -72,6 +72,7 @@ export function useCardHeight(ref: RefObject<HTMLElement | null>, state: unknown
 }
 
 function prefersReducedMotion() {
-  return typeof window !== "undefined"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }

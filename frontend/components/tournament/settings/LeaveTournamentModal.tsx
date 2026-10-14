@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { membersApi, ApiError } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, membersApi } from "@/lib/api";
 
 const CONFIRM_PHRASE = "LEAVE";
 
@@ -15,7 +15,12 @@ interface LeaveTournamentModalProps {
   onLeft: () => void;
 }
 
-export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, onLeft }: LeaveTournamentModalProps) {
+export function LeaveTournamentModal({
+  tournamentId,
+  tournamentName,
+  onClose,
+  onLeft,
+}: LeaveTournamentModalProps) {
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -38,7 +43,13 @@ export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, on
   return (
     <Modal title="Leave tournament" onClose={onClose} variant="danger">
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           You&rsquo;ll lose your roles and access to <strong>{tournamentName}</strong>. You can
           rejoin later with an invite.
         </p>
@@ -55,14 +66,28 @@ export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, on
         />
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button type="button" variant="danger" loading={loading} disabled={!canSubmit} onClick={handleLeave}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            loading={loading}
+            disabled={!canSubmit}
+            onClick={handleLeave}
+          >
             Leave tournament
           </Button>
         </div>

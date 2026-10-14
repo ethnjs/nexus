@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 /**
  * Keeping the open docked panel in the page's URL, so a refresh — or a
@@ -25,7 +25,11 @@ export function replaceSearchParams(params: URLSearchParams): void {
   const query = params.toString();
   const search = query ? `?${query}` : "";
   if (search === window.location.search) return;
-  window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${search}${window.location.hash}`,
+  );
 }
 
 /** The panel id this page was loaded with, or null. Read once — the caller

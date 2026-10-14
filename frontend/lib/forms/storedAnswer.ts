@@ -1,4 +1,4 @@
-import { FormField, FormFieldOption } from "@/lib/api";
+import type { FormField, FormFieldOption } from "@/lib/api";
 
 // A stored choice answer holds {option_id, value, label} snapshots (see
 // snapshot_answer_value on the backend), but QuestionRenderer takes the same
@@ -44,7 +44,11 @@ export function removedPickedOptions(field: FormField, value: unknown): FormFiel
       removed.set(optionId, { ...fromConfig, is_archived: false });
     } else if (item !== null && typeof item === "object" && "label" in item) {
       const snap = item as { label: string; value?: FormFieldOption["value"] };
-      removed.set(optionId, { option_id: optionId, label: snap.label, value: snap.value ?? optionId });
+      removed.set(optionId, {
+        option_id: optionId,
+        label: snap.label,
+        value: snap.value ?? optionId,
+      });
     }
     // A bare id with no snapshot (availability answers) has no label to show.
   }

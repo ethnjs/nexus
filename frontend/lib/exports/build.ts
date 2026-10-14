@@ -1,32 +1,46 @@
 import type {
-  DisplayConfigSort, ExportPresetColumn, ExportRowType, MembershipField, MembershipFull, TournamentEvent,
+  DisplayConfigSort,
+  ExportPresetColumn,
+  ExportRowType,
+  MembershipField,
+  MembershipFull,
+  TournamentEvent,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import {
-  CellValue, ExportColumn, ExportContext, ExportRow, Spread, columnMode, resolveExportColumn,
+  type CellValue,
+  columnMode,
+  type ExportColumn,
+  type ExportContext,
+  type ExportRow,
+  resolveExportColumn,
+  type Spread,
 } from "@/lib/exports/columns";
 import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 
 // Roster and event rows -> an export table. Pure: the caller fetches, this shapes.
 
 export interface ExportSpec {
-  rowType:       ExportRowType;
-  columns:       ExportPresetColumn[];
-  sorts:         DisplayConfigSort[];
+  rowType: ExportRowType;
+  columns: ExportPresetColumn[];
+  sorts: DisplayConfigSort[];
   includeHeader: boolean;
   // Frontend-only track picker: null = every track.
-  trackId:       number | null;
+  trackId: number | null;
   // Events passing the event filters; null = no event filter.
-  eventIds:      Set<number> | null;
+  eventIds: Set<number> | null;
 }
 
 export interface ExportTable {
   header: string[] | null;
-  rows:   string[][];
+  rows: string[][];
 }
 
 /** The roster field groups `columns` read — what the fetch should ask for. */
-export function fieldsForColumns(columns: ExportPresetColumn[], ctx: ExportContext): MembershipField[] {
+export function fieldsForColumns(
+  columns: ExportPresetColumn[],
+  ctx: ExportContext,
+): MembershipField[] {
   const groups = new Set<MembershipField>();
   for (const { key } of columns) {
     for (const group of resolveExportColumn(key, ctx)?.groups ?? []) groups.add(group);
@@ -37,9 +51,11 @@ export function fieldsForColumns(columns: ExportPresetColumn[], ctx: ExportConte
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function byName(a: MembershipFull, b: MembershipFull): number {
-  return collator.compare(a.user.last_name ?? "", b.user.last_name ?? "")
-    || collator.compare(a.user.first_name ?? "", b.user.first_name ?? "")
-    || collator.compare(a.user.email, b.user.email);
+  return (
+    collator.compare(a.user.last_name ?? "", b.user.last_name ?? "") ||
+    collator.compare(a.user.first_name ?? "", b.user.first_name ?? "") ||
+    collator.compare(a.user.email, b.user.email)
+  );
 }
 
 /**
@@ -49,15 +65,20 @@ function byName(a: MembershipFull, b: MembershipFull): number {
  * nobody is staffing still gets a row — the gap is the point. Its members are
  * the (already filtered) roster's, assigned to it on the export's track.
  */
-export function buildExportRows(members: MembershipFull[], events: TournamentEvent[], spec: ExportSpec): ExportRow[] {
-  const counts = (a: { track: { id: number }; event: { id: number } }) => (
-    (spec.trackId === null || a.track.id === spec.trackId)
-    && (spec.eventIds === null || spec.eventIds.has(a.event.id))
-  );
+export function buildExportRows(
+  members: MembershipFull[],
+  events: TournamentEvent[],
+  spec: ExportSpec,
+): ExportRow[] {
+  const counts = (a: { track: { id: number }; event: { id: number } }) =>
+    (spec.trackId === null || a.track.id === spec.trackId) &&
+    (spec.eventIds === null || spec.eventIds.has(a.event.id));
 
   if (spec.rowType === "member") {
     return members.map((member) => ({
-      kind: "member", member, assignments: (member.assignments ?? []).filter(counts),
+      kind: "member",
+      member,
+      assignments: (member.assignments ?? []).filter(counts),
     }));
   }
 
@@ -70,10 +91,11 @@ export function buildExportRows(members: MembershipFull[], events: TournamentEve
     }
   }
   return events
-    .filter((event) => (
-      (spec.trackId === null || event.track_details.some((d) => d.track_id === spec.trackId))
-      && (spec.eventIds === null || spec.eventIds.has(event.id))
-    ))
+    .filter(
+      (event) =>
+        (spec.trackId === null || event.track_details.some((d) => d.track_id === spec.trackId)) &&
+        (spec.eventIds === null || spec.eventIds.has(event.id)),
+    )
     .sort((a, b) => collator.compare(eventNameWithDivision(a), eventNameWithDivision(b)))
     .map((event) => ({
       kind: "event",
@@ -104,27 +126,30 @@ export function buildExportTable(
       const column = resolveExportColumn(c.key, ctx);
       return column && { column, mode: columnMode(column, c.mode) };
     })
-    .filter((c): c is { column: ExportColumn; mode: ReturnType<typeof columnMode> } => (
-      c !== null && c.column.rowTypes.includes(spec.rowType)
-    ));
+    .filter(
+      (c): c is { column: ExportColumn; mode: ReturnType<typeof columnMode> } =>
+        c !== null && c.column.rowTypes.includes(spec.rowType),
+    );
 
   const rows = buildExportRows(members, events, spec);
   const values = rows.map((row) => resolved.map(({ column, mode }) => column.value(row, mode)));
 
   // A spread column is as wide as its longest value across every row.
-  const widths = resolved.map((_, i) => (
+  const widths = resolved.map((_, i) =>
     values.reduce((width, row) => {
       const value = row[i];
       return isSpread(value) ? Math.max(width, value.spread.length) : width;
-    }, 0)
-  ));
+    }, 0),
+  );
   const spreads = resolved.map((_, i) => values.some((row) => isSpread(row[i])));
 
   // host column index -> the partner interleaved into it. A partner whose
   // host isn't in the export spreads on its own.
   const partners = new Map<number, number>();
   resolved.forEach(({ column }, i) => {
-    const host = column.pairsWith ? resolved.findIndex((c) => c.column.key === column.pairsWith) : -1;
+    const host = column.pairsWith
+      ? resolved.findIndex((c) => c.column.key === column.pairsWith)
+      : -1;
     if (host !== -1 && spreads[host] && spreads[i]) {
       partners.set(host, i);
       widths[host] = Math.max(widths[host], widths[i]);
@@ -133,25 +158,29 @@ export function buildExportTable(
   const absorbed = new Set(partners.values());
   const spreadOf = (value: CellValue) => (isSpread(value) ? value.spread : []);
 
-  const cellsOf = (row: CellValue[]): string[] => row.flatMap((value, i) => {
-    if (absorbed.has(i)) return [];
-    if (!spreads[i]) return [cellText(value as string | string[])];
-    const partner = partners.get(i);
-    return Array.from({ length: widths[i] }, (_, n) => (
-      partner === undefined
-        ? [spreadOf(value)[n] ?? ""]
-        : [spreadOf(value)[n] ?? "", spreadOf(row[partner])[n] ?? ""]
-    )).flat();
-  });
+  const cellsOf = (row: CellValue[]): string[] =>
+    row.flatMap((value, i) => {
+      if (absorbed.has(i)) return [];
+      if (!spreads[i]) return [cellText(value as string | string[])];
+      const partner = partners.get(i);
+      return Array.from({ length: widths[i] }, (_, n) =>
+        partner === undefined
+          ? [spreadOf(value)[n] ?? ""]
+          : [spreadOf(value)[n] ?? "", spreadOf(row[partner])[n] ?? ""],
+      ).flat();
+    });
 
   // Sort on the first cell a column produces. Array.sort is stable, so ties
   // keep the rows' own order (roster order, or event name).
   const sortIndexes = spec.sorts
-    .map((sort) => ({ index: resolved.findIndex((c) => c.column.key === sort.field), direction: sort.direction }))
+    .map((sort) => ({
+      index: resolved.findIndex((c) => c.column.key === sort.field),
+      direction: sort.direction,
+    }))
     .filter((sort) => sort.index !== -1);
   const sortText = (row: CellValue[], index: number): string => {
     const value = row[index];
-    return isSpread(value) ? value.spread[0] ?? "" : cellText(value);
+    return isSpread(value) ? (value.spread[0] ?? "") : cellText(value);
   };
   const order = values.map((_, i) => i);
   if (sortIndexes.length > 0) {
@@ -166,15 +195,15 @@ export function buildExportTable(
 
   const header = spec.includeHeader
     ? resolved.flatMap(({ column }, i) => {
-      if (absorbed.has(i)) return [];
-      if (!spreads[i]) return [column.header];
-      const partner = partners.get(i);
-      return Array.from({ length: widths[i] }, (_, n) => (
-        partner === undefined
-          ? [`${column.header} ${n + 1}`]
-          : [`${column.header} ${n + 1}`, `${resolved[partner].column.header} ${n + 1}`]
-      )).flat();
-    })
+        if (absorbed.has(i)) return [];
+        if (!spreads[i]) return [column.header];
+        const partner = partners.get(i);
+        return Array.from({ length: widths[i] }, (_, n) =>
+          partner === undefined
+            ? [`${column.header} ${n + 1}`]
+            : [`${column.header} ${n + 1}`, `${resolved[partner].column.header} ${n + 1}`],
+        ).flat();
+      })
     : null;
 
   return { header, rows: order.map((i) => cellsOf(values[i])) };

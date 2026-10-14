@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Modal } from "@/components/ui/Modal";
 import { IconChevronDown, IconRestore, IconTrash } from "@/components/ui/Icons";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { ApiError, FormField, formsApi } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, type FormField, formsApi } from "@/lib/api";
 import { QUESTION_TYPE_OPTIONS } from "@/lib/forms/fieldTypes";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 const TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -20,7 +20,13 @@ const TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((o) => [o.value
 // Two actions, deliberately unequal in weight:
 //   Unarchive — puts the question back, answers and all. Reversible.
 //   Delete    — erases the question and every answer to it. Permanent.
-export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted, locked = false }: {
+export function ArchivedFieldsSection({
+  formId,
+  fields,
+  onUnarchive,
+  onDeleted,
+  locked = false,
+}: {
   formId: string;
   fields: FormField[];
   /** Archived tournament — the list stays browsable, both actions lock. */
@@ -57,7 +63,9 @@ export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted, 
   return (
     <div style={{ marginTop: "24px" }}>
       <Button
-        type="button" variant="ghost" size="sm"
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen((v) => !v)}
         style={{ color: "var(--color-text-secondary)" }}
       >
@@ -71,36 +79,63 @@ export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted, 
       {open && (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
           {fields.map((field) => (
-            <Card key={field.id} radius="lg" style={{
-              padding: "12px 16px", display: "flex", alignItems: "center",
-              justifyContent: "space-between", gap: "12px",
-            }}>
+            <Card
+              key={field.id}
+              radius="lg"
+              style={{
+                padding: "12px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
               <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
+                <div
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "14px",
+                    color: "var(--color-text-primary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {field.label || "Untitled question"}
                 </div>
-                <div style={{
-                  fontFamily: "var(--font-mono)", fontSize: "12px",
-                  color: "var(--color-text-tertiary)", marginTop: "2px",
-                }}>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "12px",
+                    color: "var(--color-text-tertiary)",
+                    marginTop: "2px",
+                  }}
+                >
                   {field.field_key} · {TYPE_LABELS[field.question_type] ?? field.question_type}
                 </div>
               </div>
               <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
                 <Button
-                  type="button" variant="secondary" size="xs" onClick={() => onUnarchive(field)}
-                  disabled={locked} title={locked ? ARCHIVED_REASON : undefined}
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => onUnarchive(field)}
+                  disabled={locked}
+                  title={locked ? ARCHIVED_REASON : undefined}
                 >
                   <IconRestore size={12} /> Unarchive
                 </Button>
                 <Button
-                  type="button" variant="ghost" size="xs" iconOnly
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  iconOnly
                   disabled={locked}
                   title={locked ? ARCHIVED_REASON : "Delete permanently"}
-                  onClick={() => { setError(undefined); setConfirming(field); }}
+                  onClick={() => {
+                    setError(undefined);
+                    setConfirming(field);
+                  }}
                   style={{ color: "var(--color-danger)" }}
                 >
                   <IconTrash size={12} />
@@ -114,20 +149,39 @@ export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted, 
       {confirming && (
         <Modal title="Delete question" onClose={() => setConfirming(null)} variant="danger">
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
               Delete <strong>{confirming.label || "this question"}</strong> and every answer anyone
               gave it? This can&rsquo;t be undone — leave it archived instead if you might want the
               responses later.
             </p>
 
             {error && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  color: "var(--color-danger)",
+                }}
+              >
                 {error}
               </p>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-              <Button type="button" variant="secondary" onClick={() => setConfirming(null)} disabled={deleting}>
+            <div
+              style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirming(null)}
+                disabled={deleting}
+              >
                 Cancel
               </Button>
               <Button type="button" variant="danger" loading={deleting} onClick={handleDelete}>

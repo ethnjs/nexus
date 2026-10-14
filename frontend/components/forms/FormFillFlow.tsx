@@ -1,17 +1,17 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Form, FormField, FormFieldOption, PendingUpdateReason } from "@/lib/api";
-import { REASON_LABELS } from "@/lib/forms/changeClassification";
-import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
-import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
-import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Banner } from "@/components/ui/Banner";
 import styles from "@/components/forms/FormFlow.module.css";
+import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import type { Form, FormField, FormFieldOption, PendingUpdateReason } from "@/lib/api";
+import { REASON_LABELS } from "@/lib/forms/changeClassification";
+import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
+import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
 // Mirrors backend/app/core/form/branching.py's compute_reachable_field_ids —
@@ -72,7 +72,8 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
   const required = !!field.config?.required;
   if (field.question_type === "ranked_choice") {
     const ranks = field.config?.ranks ?? 0;
-    const pickedCount = value && typeof value === "object" ? Object.keys(value as object).length : 0;
+    const pickedCount =
+      value && typeof value === "object" ? Object.keys(value as object).length : 0;
     if (pickedCount === 0) return required ? "This can't be empty." : undefined;
     if (pickedCount < ranks) return "All ranks must be filled.";
     return undefined;
@@ -121,7 +122,13 @@ interface FormFillFlowProps {
 // cleanup between every place a form gets filled out — the builder's own
 // /preview page and any other embedded viewer alike, so they can never
 // drift out of sync with each other or with the server's own validation.
-export function FormFillFlow({ form, banner, successMessage, onComplete, existing }: FormFillFlowProps) {
+export function FormFillFlow({
+  form,
+  banner,
+  successMessage,
+  onComplete,
+  existing,
+}: FormFillFlowProps) {
   // Flagged questions start blank on purpose — prefilling the answer being
   // questioned invites a reflexive resubmit.
   const initialAnswers = useMemo(() => {
@@ -184,7 +191,10 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
     const changed: Record<string, unknown> = {};
     for (const field of fields) {
       if (isLocked(field)) continue;
-      if (existing.flagged.has(field.id) || !sameAnswer(answers[field.id], initialAnswers[field.id])) {
+      if (
+        existing.flagged.has(field.id) ||
+        !sameAnswer(answers[field.id], initialAnswers[field.id])
+      ) {
         changed[field.id] = answers[field.id] ?? null;
       }
     }
@@ -196,15 +206,19 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
   // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
   const showSuccess = submitSucceeded;
-  const invalidCount = walk.filter((f) => attemptedIds.has(f.id) && errorFor(f, answers[f.id]) !== undefined).length;
+  const invalidCount = walk.filter(
+    (f) => attemptedIds.has(f.id) && errorFor(f, answers[f.id]) !== undefined,
+  ).length;
   // Broader than the submit bar's own visibility (allContinued) — leaving
   // partway through, before ever reaching the end, should still warn if the
   // respondent has actually answered something. Only clears once Submit
   // has succeeded, same as showSuccess.
   // Revising: dirty means changed from what was stored, not merely non-blank.
-  const isDirty = !showSuccess && (existing
-    ? Object.keys(changedAnswers()).length > 0
-    : Object.values(answers).some((v) => !isBlank(v)));
+  const isDirty =
+    !showSuccess &&
+    (existing
+      ? Object.keys(changedAnswers()).length > 0
+      : Object.values(answers).some((v) => !isBlank(v)));
   useBlockNavigation(isDirty);
 
   // A branching answer changing (editing an already-passed radio/dropdown)
@@ -240,7 +254,9 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
 
   useEffect(() => {
     if (!pendingBarClearanceId || submitBarHeight === 0) return;
-    const card = document.querySelector<HTMLElement>(`[data-form-field="${pendingBarClearanceId}"]`);
+    const card = document.querySelector<HTMLElement>(
+      `[data-form-field="${pendingBarClearanceId}"]`,
+    );
     if (!card) {
       setPendingBarClearanceId(null);
       return;
@@ -321,7 +337,11 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
       setSubmitSucceeded(true);
     } catch (error: unknown) {
       setSubmitSucceeded(false);
-      setSubmitError(error instanceof Error ? error.message : "Failed to submit your response. Please try again.");
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit your response. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -332,19 +352,35 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
       className={styles.page}
       // Only the measured submit-bar reserve stays inline — it's a runtime
       // value. It overrides the stylesheet's padding-bottom, as inline does.
-      style={{ paddingBottom: `${22 + submitBarHeight}px`, transition: "padding-bottom 0.25s ease" }}
+      style={{
+        paddingBottom: `${22 + submitBarHeight}px`,
+        transition: "padding-bottom 0.25s ease",
+      }}
     >
       {banner}
 
       {(form.title || form.description) && (
         <Card radius="lg" className={styles.card}>
           {form.title && (
-            <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)" }}>
+            <h1
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "24px",
+                color: "var(--color-text-primary)",
+              }}
+            >
               {form.title}
             </h1>
           )}
           {form.description && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "14px",
+                color: "var(--color-text-secondary)",
+                marginTop: "8px",
+              }}
+            >
               {form.description}
             </p>
           )}
@@ -353,14 +389,22 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
 
       {fields.length === 0 ? (
         <Card radius="lg" className={styles.card}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
             This form has no fields yet.
           </p>
         </Card>
       ) : (
         visibleFields.map((field, i) => {
           const isActive = i === visibleFields.length - 1 && !allContinued;
-          const errorMessage = attemptedIds.has(field.id) ? errorFor(field, answers[field.id]) : undefined;
+          const errorMessage = attemptedIds.has(field.id)
+            ? errorFor(field, answers[field.id])
+            : undefined;
           const locked = isLocked(field);
           const reasons = existing?.flagged.get(field.id);
           // ranked_choice surfaces its own error on the add-combobox (via
@@ -368,9 +412,22 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
           // inline slot for it yet, so it falls back to plain text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
-            <Card key={field.id} data-form-field={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} className={styles.card}>
+            <Card
+              key={field.id}
+              data-form-field={field.id}
+              radius="lg"
+              variant={errorMessage ? "danger" : "normal"}
+              className={styles.card}
+            >
               {reasons && (
-                <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+                <div
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-secondary)",
+                    marginBottom: "10px",
+                  }}
+                >
                   {reasons.map((r) => REASON_LABELS[r]).join(" · ")}
                 </div>
               )}
@@ -382,21 +439,46 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
                 onChange={(v) => setAnswer(field.id, v)}
                 error={isRanked ? errorMessage : undefined}
                 // A past pick that's no longer offered still shows, marked Removed.
-                removedOptions={existing && !reasons ? removedPickedOptions(field, existing.stored[field.id]) : undefined}
-                answerNote={locked && isBlankAnswer(answers[field.id]) ? (
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontStyle: "italic", color: "var(--color-text-tertiary)" }}>
-                    Not answered
-                  </span>
-                ) : undefined}
+                removedOptions={
+                  existing && !reasons
+                    ? removedPickedOptions(field, existing.stored[field.id])
+                    : undefined
+                }
+                answerNote={
+                  locked && isBlankAnswer(answers[field.id]) ? (
+                    <span
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        fontStyle: "italic",
+                        color: "var(--color-text-tertiary)",
+                      }}
+                    >
+                      Not answered
+                    </span>
+                  ) : undefined
+                }
               />
               {!isRanked && errorMessage && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "10px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    color: "var(--color-danger)",
+                    marginTop: "10px",
+                  }}
+                >
                   {errorMessage}
                 </p>
               )}
               {isActive && (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
-                  <Button type="button" variant="primary" size="md" onClick={() => handleContinue(field)}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    onClick={() => handleContinue(field)}
+                  >
                     Continue
                   </Button>
                 </div>
@@ -406,9 +488,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete, existin
         })
       )}
 
-      {showSuccess && (
-        <Banner variant="success" message={successMessage} />
-      )}
+      {showSuccess && <Banner variant="success" message={successMessage} />}
 
       <FloatingSubmitBar
         visible={allContinued && !showSuccess}

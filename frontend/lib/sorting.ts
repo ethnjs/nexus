@@ -7,16 +7,16 @@
  * "by category" never disagree about what that means.
  */
 
-export type SortDirection = 'asc' | 'desc'
+export type SortDirection = "asc" | "desc";
 
 export interface SortRule<F extends string = string> {
-  field: F
-  direction: SortDirection
+  field: F;
+  direction: SortDirection;
 }
 
 /** What a row is worth under one sort field. null/undefined means "no value",
  *  which sorts last in *both* directions — see compareValues. */
-export type SortValue = string | number | null | undefined
+export type SortValue = string | number | null | undefined;
 
 /**
  * Two values under one key, ascending.
@@ -30,11 +30,11 @@ export type SortValue = string | number | null | undefined
  * inside names order 2 before 10), numbers numerically.
  */
 export function compareValues(a: SortValue, b: SortValue): number {
-  const aEmpty = a === null || a === undefined || a === ''
-  const bEmpty = b === null || b === undefined || b === ''
-  if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1
-  if (typeof a === 'number' && typeof b === 'number') return a - b
-  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+  const aEmpty = a === null || a === undefined || a === "";
+  const bEmpty = b === null || b === undefined || b === "";
+  if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
 /**
@@ -53,11 +53,11 @@ export function buildComparator<T, F extends string>(
 ): (a: T, b: T) => number {
   return (a, b) => {
     for (const rule of rules) {
-      const cmp = compareValues(valueOf(a, rule.field), valueOf(b, rule.field))
-      if (cmp !== 0) return rule.direction === 'asc' ? cmp : -cmp
+      const cmp = compareValues(valueOf(a, rule.field), valueOf(b, rule.field));
+      if (cmp !== 0) return rule.direction === "asc" ? cmp : -cmp;
     }
-    return tail(a, b)
-  }
+    return tail(a, b);
+  };
 }
 
 /** Sorted copy. Array.sort mutates, and the rows it would mutate are React
@@ -68,7 +68,7 @@ export function sortRows<T, F extends string>(
   valueOf: (row: T, field: F) => SortValue,
   tail: (a: T, b: T) => number,
 ): T[] {
-  return [...rows].sort(buildComparator(rules, valueOf, tail))
+  return [...rows].sort(buildComparator(rules, valueOf, tail));
 }
 
 /** The stored wire shape into rules, dropping anything this surface no longer
@@ -78,25 +78,28 @@ export function sortRulesFromStored<F extends string>(
   stored: { field: string; direction?: string }[] | null | undefined,
   isKnownField: (field: string) => field is F,
 ): SortRule<F>[] {
-  if (!Array.isArray(stored)) return []
+  if (!Array.isArray(stored)) return [];
   return stored
     .filter((rule): rule is { field: F; direction?: string } => isKnownField(rule.field))
-    .map((rule) => ({ field: rule.field, direction: rule.direction === 'desc' ? 'desc' : 'asc' }))
+    .map((rule) => ({ field: rule.field, direction: rule.direction === "desc" ? "desc" : "asc" }));
 }
 
 export function sortRulesToStored<F extends string>(
   rules: readonly SortRule<F>[],
 ): { field: string; direction: SortDirection }[] {
-  return rules.map((rule) => ({ field: rule.field, direction: rule.direction }))
+  return rules.map((rule) => ({ field: rule.field, direction: rule.direction }));
 }
 
 /** Whether two chains sort the same way — for a Reset button that should
  *  only light up when there is something to reset. */
 export function sameSortRules<F extends string>(
-  a: readonly SortRule<F>[], b: readonly SortRule<F>[],
+  a: readonly SortRule<F>[],
+  b: readonly SortRule<F>[],
 ): boolean {
-  return a.length === b.length
-    && a.every((rule, i) => rule.field === b[i].field && rule.direction === b[i].direction)
+  return (
+    a.length === b.length &&
+    a.every((rule, i) => rule.field === b[i].field && rule.direction === b[i].direction)
+  );
 }
 
 /**
@@ -107,13 +110,16 @@ export function sameSortRules<F extends string>(
  * happened. Emptying the chain hands back the defaults.
  */
 export function cycleSortRule<F extends string>(
-  rules: readonly SortRule<F>[], field: F, defaults: readonly SortRule<F>[],
+  rules: readonly SortRule<F>[],
+  field: F,
+  defaults: readonly SortRule<F>[],
 ): SortRule<F>[] {
-  const base = sameSortRules(rules, defaults) ? [] : rules
-  const current = base.find((rule) => rule.field === field)
-  let next: SortRule<F>[]
-  if (!current) next = [...base, { field, direction: 'asc' }]
-  else if (current.direction === 'asc') next = base.map((rule) => (rule.field === field ? { field, direction: 'desc' } : rule))
-  else next = base.filter((rule) => rule.field !== field)
-  return next.length > 0 ? next : [...defaults]
+  const base = sameSortRules(rules, defaults) ? [] : rules;
+  const current = base.find((rule) => rule.field === field);
+  let next: SortRule<F>[];
+  if (!current) next = [...base, { field, direction: "asc" }];
+  else if (current.direction === "asc")
+    next = base.map((rule) => (rule.field === field ? { field, direction: "desc" } : rule));
+  else next = base.filter((rule) => rule.field !== field);
+  return next.length > 0 ? next : [...defaults];
 }

@@ -1,5 +1,11 @@
-import { FormField, FormFieldConfig, FormFieldInput, FormFieldOption, FormQuestionType } from "@/lib/api";
-import { EditableOption } from "@/components/forms/OptionsEditor";
+import type { EditableOption } from "@/components/forms/OptionsEditor";
+import type {
+  FormField,
+  FormFieldConfig,
+  FormFieldInput,
+  FormFieldOption,
+  FormQuestionType,
+} from "@/lib/api";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
@@ -59,7 +65,9 @@ export function cleanOption(option: StagedOption, questionType: FormQuestionType
     value: option.value,
     label: option.label,
     ...(option.is_archived !== undefined ? { is_archived: option.is_archived } : {}),
-    ...(branching && option.next_field_id !== undefined ? { next_field_id: option.next_field_id } : {}),
+    ...(branching && option.next_field_id !== undefined
+      ? { next_field_id: option.next_field_id }
+      : {}),
     ...(branching && option.action !== undefined ? { action: option.action } : {}),
   };
 }
@@ -73,7 +81,9 @@ export function withOptionClientKeys(field: FormField): FormField {
     ...field,
     config: {
       ...field.config,
-      options: field.config.options.map((opt) => ({ ...opt, clientKey: opt.option_id } as EditableOption)),
+      options: field.config.options.map(
+        (opt) => ({ ...opt, clientKey: opt.option_id }) as EditableOption,
+      ),
     },
   };
 }
@@ -130,7 +140,10 @@ export function toFieldInput(field: EditableField, notifyResponders?: boolean): 
     if (config.ranks === undefined) config.ranks = 1;
     if (config.allow_duplicates === undefined) config.allow_duplicates = false;
   }
-  if ((field.question_type === "short_text" || field.question_type === "long_text") && config.max_length === undefined) {
+  if (
+    (field.question_type === "short_text" || field.question_type === "long_text") &&
+    config.max_length === undefined
+  ) {
     config.max_length = 500;
   }
   // FieldCard auto-syncs field_key from label live, but that's a UI

@@ -1,8 +1,8 @@
 "use client";
 
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
-import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { DEFAULT_EVENT_COLUMNS, trackFamilyOf } from "@/components/tournament/events/eventColumns";
+import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 
 interface EventsColumnsModalProps {
   tournamentId: number;
@@ -28,7 +28,8 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
       selectColumns={(catalog) => catalog.event_columns}
       buildGroups={(columns) => {
         const families = FAMILY_GROUPS.map(({ family, title }) => ({
-          title, items: columns.filter((c) => trackFamilyOf(c.key) === family),
+          title,
+          items: columns.filter((c) => trackFamilyOf(c.key) === family),
         }));
         // A field with one track (a simple tournament) has nothing to pick
         // between, so it's a plain toggle named for the field, not the track.
@@ -36,7 +37,10 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
           .filter((f) => f.items.length === 1)
           .map((f) => ({ ...f.items[0], label: f.title }));
         return [
-          { title: "Event", items: [...columns.filter((c) => trackFamilyOf(c.key) === null), ...single] },
+          {
+            title: "Event",
+            items: [...columns.filter((c) => trackFamilyOf(c.key) === null), ...single],
+          },
           ...families
             .filter((f) => f.items.length > 1)
             .map((f) => ({ ...f, layout: "chips" as const })),
@@ -45,11 +49,16 @@ export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsCol
       // A bare family key ("shifts") in the defaults and older saved configs
       // means every track's column; without expanding it they'd read as off.
       // The catalog already lists exactly the per-track keys each family has.
-      expandKeys={(keys, columns) => keys.map((key) => (key.startsWith("time:") ? "time" : key)).flatMap((key) => (
-        FAMILY_GROUPS.some((g) => g.family === key)
-          ? columns.filter((c) => trackFamilyOf(c.key) === key).map((c) => c.key)
-          : [key]
-      )).filter((key, i, all) => all.indexOf(key) === i)}
+      expandKeys={(keys, columns) =>
+        keys
+          .map((key) => (key.startsWith("time:") ? "time" : key))
+          .flatMap((key) =>
+            FAMILY_GROUPS.some((g) => g.family === key)
+              ? columns.filter((c) => trackFamilyOf(c.key) === key).map((c) => c.key)
+              : [key],
+          )
+          .filter((key, i, all) => all.indexOf(key) === i)
+      }
       onClose={onClose}
       onSaved={onSaved}
       width={560}

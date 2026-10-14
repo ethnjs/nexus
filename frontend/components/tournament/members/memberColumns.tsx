@@ -1,25 +1,34 @@
 "use client";
 
-import { ReactNode, CSSProperties } from "react";
-import { MembershipFull } from "@/lib/api";
-import type { MemberSortField } from "@/lib/memberSort";
-import { formatPhone } from "@/lib/auth";
-import { formatDateTime, formatDuration } from "@/lib/timeFormat";
-import { unslug } from "@/lib/textFormat";
+import type { CSSProperties, ReactNode } from "react";
+import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
+import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
+import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
+import { PreferenceOptionLine } from "@/components/tournament/members/sections/EventPreferencesSection";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
-import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
-import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
-import { PreferenceOptionLine } from "@/components/tournament/members/sections/EventPreferencesSection";
+import type { MembershipFull } from "@/lib/api";
+import { formatPhone } from "@/lib/auth";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
-
 import {
-  AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
+  AVAILABILITY_TRACK_PREFIX,
+  EVENT_PREF_PREFIX,
+  FORM_FIELD_PREFIX,
+  LUNCH_PREFIX,
+  TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
+import type { MemberSortField } from "@/lib/memberSort";
+import { unslug } from "@/lib/textFormat";
+import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 
 // Re-exported so existing importers keep working; the definitions live in lib.
-export { AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX };
+export {
+  AVAILABILITY_TRACK_PREFIX,
+  EVENT_PREF_PREFIX,
+  FORM_FIELD_PREFIX,
+  LUNCH_PREFIX,
+  TRACK_PREFIX,
+};
 
 // Grid track per kind of data, not per individual column. Width is a property
 // of what the cell holds — every track badge is about as wide as every other
@@ -76,17 +85,31 @@ const WIDTHS = {
 // item defaults to min-width:auto, so it refuses to shrink below its content
 // and pushes the row wide instead of ellipsing.
 const LEFT_TEXT_CELL: CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-  textAlign: "left", display: "block", width: "100%",
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-text-secondary)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  minWidth: 0,
+  textAlign: "left",
+  display: "block",
+  width: "100%",
 };
 
 const TEXT_CELL: CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-text-secondary)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  minWidth: 0,
   // Every configured column centers — header and cell alike — so a row reads
   // as a set of aligned marks rather than ragged text of varying length.
-  textAlign: "center", display: "block", width: "100%",
+  textAlign: "center",
+  display: "block",
+  width: "100%",
 };
 
 export interface MemberColumn {
@@ -119,36 +142,61 @@ function Dash() {
 }
 
 // The columns that exist for every tournament, whatever data it holds.
-function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boolean): MemberColumn | null {
+function fixedColumn(
+  key: string,
+  collectIsOver18: boolean,
+  collectIsOver21: boolean,
+): MemberColumn | null {
   switch (key) {
     case "email":
       return {
-        key, label: "Email", width: WIDTHS.email, align: "start",
-        render: (m) => <span style={LEFT_TEXT_CELL} title={m.user.email}>{m.user.email}</span>,
+        key,
+        label: "Email",
+        width: WIDTHS.email,
+        align: "start",
+        render: (m) => (
+          <span style={LEFT_TEXT_CELL} title={m.user.email}>
+            {m.user.email}
+          </span>
+        ),
       };
     case "phone":
       return {
-        key, label: "Phone", width: WIDTHS.phone,
-        render: (m) => <span style={TEXT_CELL}>{m.user.phone ? formatPhone(m.user.phone) : "—"}</span>,
+        key,
+        label: "Phone",
+        width: WIDTHS.phone,
+        render: (m) => (
+          <span style={TEXT_CELL}>{m.user.phone ? formatPhone(m.user.phone) : "—"}</span>
+        ),
       };
     case "account_age":
       return {
-        key, label: "Account Age", width: WIDTHS.accountAge, sortField: "account_age",
+        key,
+        label: "Account Age",
+        width: WIDTHS.accountAge,
+        sortField: "account_age",
         render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
       return {
-        key, label: "Joined", width: WIDTHS.duration, sortField: "joined",
+        key,
+        label: "Joined",
+        width: WIDTHS.duration,
+        sortField: "joined",
         render: (m) => <DurationCell iso={m.created_at} />,
       };
     case "method":
       return {
-        key, label: "Method", width: WIDTHS.method,
+        key,
+        label: "Method",
+        width: WIDTHS.method,
         render: (m) => <JoinMethodCell membership={m} style={{ justifySelf: "center" }} />,
       };
     case "age":
       return {
-        key, label: "Age", width: WIDTHS.age,
+        key,
+        label: "Age",
+        width: WIDTHS.age,
         render: (m) => (
           <AgeFlagsBadges
             isOver18={m.is_over_18}
@@ -161,20 +209,33 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "shirt_size":
       return {
-        key, label: "Shirt", width: WIDTHS.shirtSize,
+        key,
+        label: "Shirt",
+        width: WIDTHS.shirtSize,
         render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
       };
     case "dietary_restriction":
       return {
-        key, label: "Dietary", width: WIDTHS.dietary, align: "start",
+        key,
+        label: "Dietary",
+        width: WIDTHS.dietary,
+        align: "start",
         render: (m) => {
           const text = m.user.dietary_restriction;
-          return text ? <span style={LEFT_TEXT_CELL} title={text}>{text}</span> : <Dash />;
+          return text ? (
+            <span style={LEFT_TEXT_CELL} title={text}>
+              {text}
+            </span>
+          ) : (
+            <Dash />
+          );
         },
       };
     case "onboarding":
       return {
-        key, label: "Onboarding", width: WIDTHS.onboarding,
+        key,
+        label: "Onboarding",
+        width: WIDTHS.onboarding,
         render: (m) => (
           <span style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
             <OnboardingProgress progress={m.onboarding} />
@@ -218,18 +279,28 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
-      key, label: `${label} status`, width: WIDTHS.track, sortField: key,
+      key,
+      label: `${label} status`,
+      width: WIDTHS.track,
+      sortField: key,
       render: (m) => {
         const status = (m.track_statuses ?? []).find((t) => t.track_id === trackId);
         if (!status) return <Dash />;
-        return <Badge variant={status.status === "pending" ? "pending" : status.status}>{status.status}</Badge>;
+        return (
+          <Badge variant={status.status === "pending" ? "pending" : status.status}>
+            {status.status}
+          </Badge>
+        );
       },
     };
   }
   if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
     const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
-      key, label: `${label} availability`, width: WIDTHS.availabilityDay, sortField: key,
+      key,
+      label: `${label} availability`,
+      width: WIDTHS.availabilityDay,
+      sortField: key,
       render: (m) => {
         // Keyed by track, not by day: two sites running the same Saturday are
         // separate tracks, and pooling their shifts into one column would
@@ -237,9 +308,19 @@ function entityColumn(key: string, label: string): MemberColumn | null {
         const shifts = (m.availability ?? []).filter((shift) => shift.track_id === trackId);
         if (shifts.length === 0) return <Dash />;
         return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", minWidth: 0, justifyContent: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "4px",
+              minWidth: 0,
+              justifyContent: "center",
+            }}
+          >
             {shifts.map((shift) => (
-              <Badge key={shift.shift_id} variant="confirmed">{shift.label}</Badge>
+              <Badge key={shift.shift_id} variant="confirmed">
+                {shift.label}
+              </Badge>
             ))}
           </div>
         );
@@ -249,26 +330,40 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(LUNCH_PREFIX)) {
     const [trackId, category] = splitLunchKey(key);
     return {
-      key, label, width: WIDTHS.lunchCategory, sortField: key,
+      key,
+      label,
+      width: WIDTHS.lunchCategory,
+      sortField: key,
       render: (m) => {
         // Both halves: Day 1's protein and Day 2's protein are different
         // questions, and the category alone would merge them.
-        const picks = (m.lunch ?? []).filter((row) => row.track_id === trackId && row.category === category);
+        const picks = (m.lunch ?? []).filter(
+          (row) => row.track_id === trackId && row.category === category,
+        );
         if (picks.length === 0) return <Dash />;
         const text = picks.map((p) => p.value).join(", ");
-        return <span style={TEXT_CELL} title={text}>{text}</span>;
+        return (
+          <span style={TEXT_CELL} title={text}>
+            {text}
+          </span>
+        );
       },
     };
   }
   if (key.startsWith(EVENT_PREF_PREFIX)) {
     const trackId = Number(key.slice(EVENT_PREF_PREFIX.length));
     return {
-      key, label: `${label} prefs`, width: WIDTHS.eventPrefs, align: "start",
+      key,
+      label: `${label} prefs`,
+      width: WIDTHS.eventPrefs,
+      align: "start",
       render: (m) => {
         const answer = (m.event_preferences ?? []).find((p) => p.track_id === trackId);
         if (!answer || answer.options.length === 0) return <Dash />;
         // Rank order; an unranked pick (a checkbox question) keeps its place after the ranked ones.
-        const options = [...answer.options].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+        const options = [...answer.options].sort(
+          (a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity),
+        );
         // One choice per line, as in the panel. A grouped option can't open
         // here, so its events are on hover instead.
         return (
@@ -277,7 +372,11 @@ function entityColumn(key: string, label: string): MemberColumn | null {
               <div
                 key={option.option_id ?? `orphan-${i}`}
                 style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
-                title={option.events.length > 1 ? option.events.map(eventNameWithDivision).join("\n") : undefined}
+                title={
+                  option.events.length > 1
+                    ? option.events.map(eventNameWithDivision).join("\n")
+                    : undefined
+                }
               >
                 <PreferenceOptionLine option={option} compact />
               </div>
@@ -289,11 +388,19 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   }
   if (key.startsWith(FORM_FIELD_PREFIX)) {
     return {
-      key, label, width: WIDTHS.customField,
+      key,
+      label,
+      width: WIDTHS.customField,
       render: (m) => {
-        const answer = (m.custom_responses ?? []).find((a) => `${FORM_FIELD_PREFIX}${a.field_id}` === key);
+        const answer = (m.custom_responses ?? []).find(
+          (a) => `${FORM_FIELD_PREFIX}${a.field_id}` === key,
+        );
         const text = answer ? formatAnswer(answer.value) : "—";
-        return <span style={TEXT_CELL} title={text}>{text}</span>;
+        return (
+          <span style={TEXT_CELL} title={text}>
+            {text}
+          </span>
+        );
       },
     };
   }
@@ -313,9 +420,10 @@ export function resolveColumns(
   collectIsOver21: boolean,
 ): MemberColumn[] {
   return keys
-    .map((key) =>
-      fixedColumn(key, collectIsOver18, collectIsOver21)
-      ?? entityColumn(key, labels.get(key) ?? unslug(key.split(":").pop() ?? key))
+    .map(
+      (key) =>
+        fixedColumn(key, collectIsOver18, collectIsOver21) ??
+        entityColumn(key, labels.get(key) ?? unslug(key.split(":").pop() ?? key)),
     )
     .filter((column): column is MemberColumn => column !== null);
 }

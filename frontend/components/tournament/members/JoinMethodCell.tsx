@@ -1,17 +1,23 @@
 "use client";
 
-import { MembershipView } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
-import { SOURCE_LABELS } from "@/lib/membershipDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { HoverCard } from "@/components/ui/HoverCard";
+import type { MembershipView } from "@/lib/api";
+import { SOURCE_LABELS } from "@/lib/membershipDisplay";
+import { personName } from "@/lib/personDisplay";
 
 // How a member joined — a plain badge for public/manual, or the join code
 // itself with a hover card (label, inviter) for join-code sourced members.
 // The code is on the badge rather than behind the hover so two members'
 // invites can be told apart at a glance down the roster column.
 // Shared between the roster table and the member detail panel.
-export function JoinMethodCell({ membership, style }: { membership: MembershipView; style?: React.CSSProperties }) {
+export function JoinMethodCell({
+  membership,
+  style,
+}: {
+  membership: MembershipView;
+  style?: React.CSSProperties;
+}) {
   // `source` belongs to the `membership` field group. A caller that didn't
   // ask for it has nothing to render here — distinct from a member whose
   // join method is unknown, which can't happen.
@@ -31,10 +37,24 @@ export function JoinMethodCell({ membership, style }: { membership: MembershipVi
       style={style}
       content={
         <>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+            }}
+          >
             {jc.label ?? "Invite"}
           </p>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+              marginTop: "8px",
+            }}
+          >
             Invited by {personName(jc.creator)}
           </p>
         </>

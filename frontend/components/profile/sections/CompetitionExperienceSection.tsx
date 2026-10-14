@@ -1,10 +1,12 @@
-import { SectionHeading } from "@/components/profile/SectionHeading";
-import { FieldValue } from "@/components/profile/PanelField";
 import {
-  CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, ExperienceTableMode,
+  type CompetitionExperienceDraft,
+  CompetitionExperienceSpreadsheet,
   competitionExperienceToDraft,
+  type ExperienceTableMode,
 } from "@/components/profile/ExperienceTables";
-import { CanonicalEvent } from "@/lib/api";
+import { FieldValue } from "@/components/profile/PanelField";
+import { SectionHeading } from "@/components/profile/SectionHeading";
+import type { CanonicalEvent } from "@/lib/api";
 
 interface CompetitionExperienceSectionUser {
   has_competition_experience: boolean | null;
@@ -26,11 +28,15 @@ interface CompetitionExperienceSectionProps {
 }
 
 export function CompetitionExperienceSection({
-  user, mode = "view", events = [], onAdd, onUpdate, onDelete,
+  user,
+  mode = "view",
+  events = [],
+  onAdd,
+  onUpdate,
+  onDelete,
 }: CompetitionExperienceSectionProps) {
-
   const rows: CompetitionExperienceDraft[] = user.competition_experience.map((exp) =>
-    competitionExperienceToDraft(exp as Parameters<typeof competitionExperienceToDraft>[0])
+    competitionExperienceToDraft(exp as Parameters<typeof competitionExperienceToDraft>[0]),
   );
 
   // The panel renders every section, so "they answered: none" and "they never
@@ -39,10 +45,18 @@ export function CompetitionExperienceSection({
   // be added, and the answer itself changed.
   if (mode === "view") {
     if (user.has_competition_experience === false) {
-      return <SectionHeading title="Competition Experience"><FieldValue>None</FieldValue></SectionHeading>;
+      return (
+        <SectionHeading title="Competition Experience">
+          <FieldValue>None</FieldValue>
+        </SectionHeading>
+      );
     }
     if (rows.length === 0) {
-      return <SectionHeading title="Competition Experience"><FieldValue muted>No info yet</FieldValue></SectionHeading>;
+      return (
+        <SectionHeading title="Competition Experience">
+          <FieldValue muted>No info yet</FieldValue>
+        </SectionHeading>
+      );
     }
   } else if (user.has_competition_experience === false) {
     return null;

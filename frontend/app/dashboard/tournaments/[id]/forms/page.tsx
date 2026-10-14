@@ -1,27 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/useAuth";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { Card } from "@/components/ui/Card";
-import table from "@/components/ui/Table.module.css";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
-import { formatRelativeTime } from "@/lib/timeFormat";
-import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
-import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
-import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
+import { useEffect, useState } from "react";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
-import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
-import { useToast } from "@/lib/useToast";
+import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
+import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
+import { Badge } from "@/components/ui/Badge";
+import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import table from "@/components/ui/Table.module.css";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { ApiError, type Form, type FormListItem, type FormStatus, formsApi } from "@/lib/api";
+import { type FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
+import { formatRelativeTime } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { useToast } from "@/lib/useToast";
 
 // Name / Status / Creator / Responses / Updated / Actions. Name and Creator
 // share the free space (Name used to take ~5x Creator's share). Actions is
@@ -36,7 +36,12 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
+function FormRow({
+  form,
+  onAction,
+  onAllowEditsChange,
+  lockedReason,
+}: {
   form: FormListItem;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
@@ -59,16 +64,28 @@ function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
       onClick={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
     >
       <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {form.name}
         </span>
         {!form.allow_response_edits && (
           <span style={{ flexShrink: 0, display: "flex" }}>
-            <Tooltip variant="info" message="Members can't edit their responses. Turn on Allow response edits in the ⋮ menu." showIcon={false}>
-              <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+            <Tooltip
+              variant="info"
+              message="Members can't edit their responses. Turn on Allow response edits in the ⋮ menu."
+              showIcon={false}
+            >
+              <Badge variant="removed">
+                <IconLock size={11} /> Locked
+              </Badge>
             </Tooltip>
           </span>
         )}
@@ -78,23 +95,47 @@ function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
       </Badge>
       <CreatorHoverCard
         creator={form.creator}
-        noMembershipLabel={form.owner_type === "tournament" ? "No membership in this tournament" : "No membership in this chapter"}
+        noMembershipLabel={
+          form.owner_type === "tournament"
+            ? "No membership in this tournament"
+            : "No membership in this chapter"
+        }
         style={{ justifyContent: "flex-start", justifySelf: "start", width: "100%" }}
       />
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
         {form.response_count}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
         {formatRelativeTime(form.updated_at)}
       </span>
       {/* stopPropagation on the whole strip, so a click in a gap doesn't open the builder. */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Which moves exist depends on the status and on whether anyone has
             responded — the same rules the builder's status menu uses. */}
         {formStatusActions(form, lockedReason).map((option) => (
           <Button
             key={option.action}
-            type="button" variant="secondary" size="sm" iconOnly
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
             title={option.disabledReason ?? option.label}
             disabled={!!option.disabledReason || busy}
             onClick={() => act(option)}
@@ -115,30 +156,42 @@ function FormRow({ form, onAction, onAllowEditsChange, lockedReason }: {
   );
 }
 
-function FormTable({ forms, onAction, onAllowEditsChange, lockedReason }: {
+function FormTable({
+  forms,
+  onAction,
+  onAllowEditsChange,
+  lockedReason,
+}: {
   forms: FormListItem[];
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
   lockedReason?: string;
 }) {
   return (
-    <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px", marginBottom: "16px" }}>
-      <div
-        className={table.table}
-        style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}
-      >
-      <div className={table.header}>
-        <span>Forms — {forms.length}</span>
-        <span style={{ textAlign: "center" }}>Status</span>
-        <span>Creator</span>
-        <span style={{ textAlign: "center" }}>Responses</span>
-        <span style={{ textAlign: "center" }}>Updated</span>
-        <span />
-      </div>
+    <Card
+      radius="lg"
+      className={table.scroll}
+      style={{ padding: "8px 12px", marginBottom: "16px" }}
+    >
+      <div className={table.table} style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}>
+        <div className={table.header}>
+          <span>Forms — {forms.length}</span>
+          <span style={{ textAlign: "center" }}>Status</span>
+          <span>Creator</span>
+          <span style={{ textAlign: "center" }}>Responses</span>
+          <span style={{ textAlign: "center" }}>Updated</span>
+          <span />
+        </div>
 
-      {forms.map((form) => (
-        <FormRow key={form.id} form={form} onAction={onAction} onAllowEditsChange={onAllowEditsChange} lockedReason={lockedReason} />
-      ))}
+        {forms.map((form) => (
+          <FormRow
+            key={form.id}
+            form={form}
+            onAction={onAction}
+            onAllowEditsChange={onAllowEditsChange}
+            lockedReason={lockedReason}
+          />
+        ))}
       </div>
     </Card>
   );
@@ -150,7 +203,8 @@ export default function FormsPage() {
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
+  const canManageForms =
+    currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
   const { isArchived, archivedReason } = useArchiveLock();
 
   const [forms, setForms] = useState<FormListItem[] | null>(null);
@@ -161,7 +215,8 @@ export default function FormsPage() {
 
   useEffect(() => {
     if (!canManageForms) return;
-    formsApi.listForTournament(tournamentId)
+    formsApi
+      .listForTournament(tournamentId)
       .then(setForms)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load forms."));
   }, [tournamentId, canManageForms]);
@@ -204,16 +259,28 @@ export default function FormsPage() {
     }
     try {
       const updated = await formsApi.update(form.id, { status: option.target });
-      setForms((prev) => prev && prev.map((f) => (
-        f.id === updated.id ? { ...f, status: updated.status, updated_at: updated.updated_at } : f
-      )));
+      setForms(
+        (prev) =>
+          prev &&
+          prev.map((f) =>
+            f.id === updated.id
+              ? { ...f, status: updated.status, updated_at: updated.updated_at }
+              : f,
+          ),
+      );
     } catch (err) {
-      show(err instanceof ApiError ? err.message : `Failed to ${option.label.toLowerCase()}.`, "error");
+      show(
+        err instanceof ApiError ? err.message : `Failed to ${option.label.toLowerCase()}.`,
+        "error",
+      );
     }
   }
 
   function handleAllowEditsChange(formId: string, allow: boolean) {
-    setForms((prev) => prev && prev.map((f) => (f.id === formId ? { ...f, allow_response_edits: allow } : f)));
+    setForms(
+      (prev) =>
+        prev && prev.map((f) => (f.id === formId ? { ...f, allow_response_edits: allow } : f)),
+    );
   }
 
   // Submit -> POST -> builder in a new tab. title/description are set later,
@@ -223,22 +290,36 @@ export default function FormsPage() {
     setCreating(false);
     // The builder opened in the other tab, so this list would otherwise sit
     // here without the row that was just created.
-    formsApi.listForTournament(tournamentId).then(setForms).catch(() => {});
+    formsApi
+      .listForTournament(tournamentId)
+      .then(setForms)
+      .catch(() => {});
   }
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
         <Button
-          type="button" variant="primary" size="md" onClick={() => setCreating(true)}
-          disabled={isArchived} title={archivedReason}
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={() => setCreating(true)}
+          disabled={isArchived}
+          title={archivedReason}
         >
           <IconPlus size={14} /> New Form
         </Button>
       </div>
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -251,8 +332,12 @@ export default function FormsPage() {
             description="Create a form to start collecting responses from members."
             action={
               <Button
-                type="button" variant="primary" size="sm" onClick={() => setCreating(true)}
-                disabled={isArchived} title={archivedReason}
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => setCreating(true)}
+                disabled={isArchived}
+                title={archivedReason}
               >
                 <IconPlus size={14} /> New Form
               </Button>
@@ -260,14 +345,24 @@ export default function FormsPage() {
           />
         </Card>
       ) : (
-        <FormTable forms={forms} onAction={handleAction} onAllowEditsChange={handleAllowEditsChange} lockedReason={archivedReason} />
+        <FormTable
+          forms={forms}
+          onAction={handleAction}
+          onAllowEditsChange={handleAllowEditsChange}
+          lockedReason={archivedReason}
+        />
       )}
 
       {deleteTarget && (
         <BulkDeleteModal
           items={[deleteTarget]}
           noun="form"
-          description={<>Delete <strong>{deleteTarget.name}</strong>? It has no responses, so nothing else is lost. This can&rsquo;t be undone.</>}
+          description={
+            <>
+              Delete <strong>{deleteTarget.name}</strong>? It has no responses, so nothing else is
+              lost. This can&rsquo;t be undone.
+            </>
+          }
           onDelete={(form) => formsApi.delete(form.id)}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(ids) => setForms((prev) => prev && prev.filter((f) => !ids.includes(f.id)))}

@@ -1,39 +1,59 @@
 "use client";
 
-import { ReactNode, useState, useEffect } from "react";
-import { use } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { TournamentProvider, useTournament } from "@/lib/useTournament";
-import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
-import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosureModal";
-import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
-import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
-import { PageCrumbProvider } from "@/lib/usePageCrumb";
-import { HeaderCollapseProvider } from "@/lib/useHeaderCollapse";
+import { type ReactNode, use, useEffect, useState } from "react";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
-import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
-import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { BoardDndProvider } from "@/components/tournament/assignments/BoardDnd";
+import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosureModal";
+import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
-import { tournamentsApi, ApiError } from "@/lib/api";
-import { BoardDndProvider } from "@/components/tournament/assignments/BoardDnd";
+import { ApiError, tournamentsApi } from "@/lib/api";
+import { HeaderCollapseProvider } from "@/lib/useHeaderCollapse";
+import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
+import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
+import { PageCrumbProvider } from "@/lib/usePageCrumb";
+import { TournamentProvider, useTournament } from "@/lib/useTournament";
+import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 
 function TournamentNotFound() {
   const router = useRouter();
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      height: "100vh", gap: "12px", textAlign: "center", background: "var(--color-bg)",
-    }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+        gap: "12px",
+        textAlign: "center",
+        background: "var(--color-bg)",
+      }}
+    >
       <div style={{ color: "var(--color-text-tertiary)" }}>
         <IconWarning size={28} />
       </div>
-      <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)" }}>
+      <p
+        style={{
+          fontFamily: "Georgia, serif",
+          fontSize: "20px",
+          color: "var(--color-text-primary)",
+        }}
+      >
         Tournament not found
       </p>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", maxWidth: "300px" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          maxWidth: "300px",
+        }}
+      >
         It may have been deleted, or you may not have access to it.
       </p>
       <div style={{ marginTop: "4px" }}>
@@ -63,7 +83,8 @@ function TournamentShell({
   const onSettingsRoute = pathname.startsWith(`/dashboard/tournaments/${tournamentId}/settings`);
 
   useEffect(() => {
-    tournamentsApi.get(Number(tournamentId))
+    tournamentsApi
+      .get(Number(tournamentId))
       .then(setSelectedTournament)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
@@ -80,10 +101,7 @@ function TournamentShell({
 
   return (
     <div className={styles.shell}>
-      <TournamentSidebar
-        onExpandedChange={setSidebarExpanded}
-        tournamentId={tournamentId}
-      />
+      <TournamentSidebar onExpandedChange={setSidebarExpanded} tournamentId={tournamentId} />
       <div className={onSettingsRoute ? `${styles.column} ${styles.columnWide}` : styles.column}>
         {/* The rail carries the wordmark on desktop, but it's an off-canvas
             drawer on mobile — so the bar takes over there, and the tournament
@@ -96,9 +114,7 @@ function TournamentShell({
           sidebarExpanded={sidebarExpanded && !onSettingsRoute}
           showNavToggle
         />
-        <main className={styles.main}>
-          {children}
-        </main>
+        <main className={styles.main}>{children}</main>
       </div>
       {/* Third flex sibling, not an overlay: it shrinks the column above
           (Topbar included) instead of covering it, so the page stays live. */}
@@ -134,24 +150,22 @@ export default function TournamentLayout({
               page lends its title to the Topbar, which is <main>'s sibling
               and so out of reach by nesting. */}
           <PageCrumbProvider>
-          {/* One fold state for every page of the tournament (see useHeaderCollapse). */}
-          <HeaderCollapseProvider tournamentId={Number(tournamentId)}>
-          <LayoutPanelProvider>
-            {/* Above the shell so the assignments board's drag context
+            {/* One fold state for every page of the tournament (see useHeaderCollapse). */}
+            <HeaderCollapseProvider tournamentId={Number(tournamentId)}>
+              <LayoutPanelProvider>
+                {/* Above the shell so the assignments board's drag context
                 reaches both <main> and the panel slot — its member belt is
                 rendered into the latter, a sibling of <main> rather than a
                 descendant of it. Inert on every other tab. */}
-            <BoardDndProvider>
-              {/* Above the shell so the Topbar's drawer toggle and the rail
+                <BoardDndProvider>
+                  {/* Above the shell so the Topbar's drawer toggle and the rail
                   it opens share one state — they're siblings inside it. */}
-              <NavDrawerProvider>
-                <TournamentShell tournamentId={tournamentId}>
-                  {children}
-                </TournamentShell>
-              </NavDrawerProvider>
-            </BoardDndProvider>
-          </LayoutPanelProvider>
-          </HeaderCollapseProvider>
+                  <NavDrawerProvider>
+                    <TournamentShell tournamentId={tournamentId}>{children}</TournamentShell>
+                  </NavDrawerProvider>
+                </BoardDndProvider>
+              </LayoutPanelProvider>
+            </HeaderCollapseProvider>
           </PageCrumbProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>

@@ -1,10 +1,10 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { formsApi, Form, ApiError } from "@/lib/api";
 import { FormFillFlow } from "@/components/forms/FormFillFlow";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, type Form, formsApi } from "@/lib/api";
 
 // TD-only, read-only-but-simulated view of the form as a respondent would
 // see it — must work on draft forms (that's the point of previewing before
@@ -17,7 +17,8 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    formsApi.get(formId)
+    formsApi
+      .get(formId)
       .then(setForm)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load form."));
   }, [formId]);
@@ -25,7 +26,9 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   if (loadError) {
     return (
       <div style={{ padding: "22px 24px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
           {loadError}
         </p>
       </div>

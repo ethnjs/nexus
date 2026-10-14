@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
+import { useEffect, useState } from "react";
+import styles from "@/components/tournament/overview/Overview.module.css";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
-import { ChecklistProgressRing } from "./ChecklistProgressRing";
+import { type SetupChecklistResponse, setupChecklistApi } from "@/lib/api";
+import { useMyMembership } from "@/lib/useMyMembership";
 import { ChecklistCard } from "./ChecklistCard";
-import styles from "@/components/tournament/overview/Overview.module.css";
+import { ChecklistProgressRing } from "./ChecklistProgressRing";
 
 interface ChecklistConfigEntry {
   buildable: boolean;
@@ -16,15 +16,21 @@ interface ChecklistConfigEntry {
 }
 
 const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
-  roles:        { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
+  roles: {
+    buildable: true,
+    onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`),
+  },
   // invite_staff opens a modal rather than navigating — handled as a special
   // case below, not through onClick, but still marked buildable so the card
   // isn't dimmed/"Coming soon".
   invite_staff: { buildable: true, onClick: null },
-  events:       { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/events`) },
-  shifts:       { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/shifts`) },
-  first_form:   { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms`) },
-  onboarding:   { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms/onboarding`) },
+  events: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/events`) },
+  shifts: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/shifts`) },
+  first_form: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms`) },
+  onboarding: {
+    buildable: true,
+    onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms/onboarding`),
+  },
 };
 
 export function SetupChecklistWidget({ tournamentId }: { tournamentId: string }) {
@@ -36,7 +42,10 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
   const canSee = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
 
   function refetchChecklist() {
-    setupChecklistApi.get(Number(tournamentId)).then(setChecklist).catch(() => {});
+    setupChecklistApi
+      .get(Number(tournamentId))
+      .then(setChecklist)
+      .catch(() => {});
   }
 
   useEffect(() => {
@@ -55,16 +64,21 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
         <div className={styles.checklistItems}>
           {checklist.items.map((item) => {
             const config = CHECKLIST_CONFIG[item.item_key];
-            const onClick = item.item_key === "invite_staff"
-              ? () => setShowStaffInvite(true)
-              : config?.buildable && config.onClick
-                ? () => config.onClick!(router, tournamentId)
-                : null;
+            const onClick =
+              item.item_key === "invite_staff"
+                ? () => setShowStaffInvite(true)
+                : config?.buildable && config.onClick
+                  ? () => config.onClick!(router, tournamentId)
+                  : null;
             return <ChecklistCard key={item.item_key} item={item} onClick={onClick} />;
           })}
         </div>
         <div className={styles.checklistRing}>
-          <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} size={180} />
+          <ChecklistProgressRing
+            completed={checklist.completed_count}
+            total={checklist.total_count}
+            size={180}
+          />
         </div>
       </div>
 

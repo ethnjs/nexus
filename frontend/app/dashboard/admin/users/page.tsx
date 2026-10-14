@@ -1,31 +1,39 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { adminUsersApi, AdminUserSlim, ApiError } from "@/lib/api";
-import { formatPhone } from "@/lib/auth";
-import { formatDuration } from "@/lib/timeFormat";
-import { useAuth } from "@/lib/useAuth";
-import { Card } from "@/components/ui/Card";
+import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
+import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
+import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Card } from "@/components/ui/Card";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { HoverCard } from "@/components/ui/HoverCard";
+import {
+  IconCheckCircle,
+  IconKey,
+  IconLock,
+  IconMembers,
+  IconRestore,
+  IconSearch,
+  IconTrash,
+  IconUser,
+  IconUserShield,
+  IconXCircle,
+} from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { HoverCard } from "@/components/ui/HoverCard";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import {
-  IconSearch, IconMembers, IconTrash, IconKey, IconLock, IconRestore,
-  IconUserShield, IconUser, IconCheckCircle, IconXCircle,
-} from "@/components/ui/Icons";
-import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
-import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
-import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
-import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
-import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
+import { type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
+import { formatPhone } from "@/lib/auth";
+import { formatDuration } from "@/lib/timeFormat";
+import { useActionToast } from "@/lib/useActionToast";
+import { useAuth } from "@/lib/useAuth";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 
 // Every track carries a floor *and* an `fr` weight, so the slack on a wide
 // display spreads across all seven in proportion to what they hold. Two `fr`
@@ -37,15 +45,15 @@ const COLUMNS = [
   "minmax(190px, 1.4fr)", // name — avatar + gap eat ~36px before the name
   "minmax(200px, 1.6fr)", // email — the longest content, so the largest share
   "minmax(124px, 0.8fr)", // phone — widest formatted number is ~108px
-  "minmax(92px, 0.6fr)",  // role — one badge
+  "minmax(92px, 0.6fr)", // role — one badge
   "minmax(104px, 0.7fr)", // status — one badge
-  "minmax(96px, 0.7fr)",  // joined
+  "minmax(96px, 0.7fr)", // joined
   // Sized to exactly what it holds: four sm iconOnly buttons are 28px square
   // (Button's sm height) with 4px gaps — 4*28 + 3*4. At that width "centred"
   // and "flush right" are the same thing, so the header sits over the buttons
   // and the track still ends at the card's right edge. An `fr` share here left
   // the buttons floating in a 250px track with the header adrift from them.
-  "124px",                // actions — 4 * 28px buttons + 3 * 4px gaps
+  "124px", // actions — 4 * 28px buttons + 3 * 4px gaps
 ].join(" ");
 
 const MIN_TABLE_WIDTH = 1030;
@@ -53,26 +61,39 @@ const MIN_TABLE_WIDTH = 1030;
 type RoleFilter = "all" | "admin" | "user";
 
 const ROLE_OPTIONS = [
-  { value: "all",   label: "All" },
+  { value: "all", label: "All" },
   { value: "admin", label: "Admins" },
-  { value: "user",  label: "Users" },
+  { value: "user", label: "Users" },
 ];
 
 const NUM_CELL: React.CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px",
-  color: "var(--color-text-secondary)", textAlign: "center",
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-text-secondary)",
+  textAlign: "center",
 };
 
 const TEXT_CELL: React.CSSProperties = {
-  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+  fontFamily: "var(--font-sans)",
+  fontSize: "13px",
+  color: "var(--color-text-secondary)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  minWidth: 0,
 };
 
 function userName(user: AdminUserSlim): string {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
 }
 
-function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
+function UserRow({
+  user,
+  isSelf,
+  isOpen,
+  onOpen,
+  onAction,
+}: {
   user: AdminUserSlim;
   /** The account doing the looking — the backend refuses every one of these on yourself. */
   isSelf: boolean;
@@ -102,10 +123,13 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
       </span>
 
       <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-        <span style={TEXT_CELL} title={user.email}>{user.email}</span>
+        <span style={TEXT_CELL} title={user.email}>
+          {user.email}
+        </span>
         <span
           style={{
-            display: "flex", flexShrink: 0,
+            display: "flex",
+            flexShrink: 0,
             color: user.email_verified ? "var(--color-success)" : "var(--color-warning)",
           }}
           title={user.email_verified ? "Email verified" : "Email not verified"}
@@ -133,14 +157,25 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
         style={{ justifyContent: "center", width: "100%" }}
         content={
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", whiteSpace: "nowrap" }}>
-            Joined {new Date(user.created_at).toLocaleString("en-US", {
-              weekday: "short", month: "short", day: "numeric", year: "numeric",
-              hour: "numeric", minute: "2-digit",
+            Joined{" "}
+            {new Date(user.created_at).toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
             })}
           </span>
         }
       >
-        <span style={{ ...NUM_CELL, borderBottom: "1px dotted var(--color-border-strong)", cursor: "help" }}>
+        <span
+          style={{
+            ...NUM_CELL,
+            borderBottom: "1px dotted var(--color-border-strong)",
+            cursor: "help",
+          }}
+        >
           {formatDuration(user.created_at)} ago
         </span>
       </HoverCard>
@@ -154,16 +189,24 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
       >
         {isActive ? (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            disabled={isSelf} title={isSelf ? selfTitle : "Lock account"}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            disabled={isSelf}
+            title={isSelf ? selfTitle : "Lock account"}
             onClick={() => onAction("lock")}
           >
             <IconLock size={13} />
           </Button>
         ) : (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            disabled={isSelf} title={isSelf ? selfTitle : "Restore to active"}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            disabled={isSelf}
+            title={isSelf ? selfTitle : "Restore to active"}
             onClick={() => onAction("activate")}
           >
             <IconRestore size={13} />
@@ -172,16 +215,24 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
 
         {user.role === "admin" ? (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            disabled={isSelf} title={isSelf ? selfTitle : "Demote to user"}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            disabled={isSelf}
+            title={isSelf ? selfTitle : "Demote to user"}
             onClick={() => onAction("demote")}
           >
             <IconUser size={13} />
           </Button>
         ) : (
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            disabled={isSelf} title={isSelf ? selfTitle : "Promote to admin"}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            disabled={isSelf}
+            title={isSelf ? selfTitle : "Promote to admin"}
             onClick={() => onAction("promote")}
           >
             <IconUserShield size={13} />
@@ -189,7 +240,10 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
         )}
 
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
           title="Send password reset email"
           onClick={() => onAction("reset")}
         >
@@ -197,8 +251,12 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
         </Button>
 
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          disabled={isSelf} title={isSelf ? selfTitle : "Delete account"}
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          disabled={isSelf}
+          title={isSelf ? selfTitle : "Delete account"}
           onClick={() => onAction("delete")}
         >
           <IconTrash size={13} style={{ color: isSelf ? undefined : "var(--color-danger)" }} />
@@ -208,8 +266,10 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
   );
 }
 
-type PendingAction =
-  | { kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete"; user: AdminUserSlim };
+type PendingAction = {
+  kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete";
+  user: AdminUserSlim;
+};
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
@@ -224,7 +284,8 @@ export default function AdminUsersPage() {
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   useEffect(() => {
-    adminUsersApi.list()
+    adminUsersApi
+      .list()
       .then(setUsers)
       .catch((err: unknown) => {
         setUsers([]);
@@ -253,7 +314,8 @@ export default function AdminUsersPage() {
   // reader is actually looking at rather than the unfiltered list.
   const panelIndex = panelUserId === null ? -1 : visible.findIndex((u) => u.id === panelUserId);
   const prevUser = panelIndex > 0 ? visible[panelIndex - 1] : null;
-  const nextUser = panelIndex >= 0 && panelIndex < visible.length - 1 ? visible[panelIndex + 1] : null;
+  const nextUser =
+    panelIndex >= 0 && panelIndex < visible.length - 1 ? visible[panelIndex + 1] : null;
 
   useEffect(() => {
     if (panelUserId === null) {
@@ -293,12 +355,27 @@ export default function AdminUsersPage() {
       <PageHeader heading="Users" />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          alignItems: "center",
+          marginBottom: "16px",
+          flexWrap: "wrap",
+        }}
+      >
         <Input
           placeholder="Search name, email or phone"
           value={search}
@@ -327,7 +404,9 @@ export default function AdminUsersPage() {
           <EmptyState
             icon={<IconMembers size={26} />}
             title={isFiltered ? "No matching users" : "No users yet"}
-            description={isFiltered ? "Try adjusting your search or filter." : "Nobody has signed up."}
+            description={
+              isFiltered ? "Try adjusting your search or filter." : "Nobody has signed up."
+            }
           />
         </Card>
       ) : (
@@ -366,15 +445,15 @@ export default function AdminUsersPage() {
           confirmLabel="Lock account"
           description={
             <>
-              Lock <strong>{userName(pending.user)}</strong>? They lose access immediately —
-              every session they hold is ended and they can&rsquo;t sign in. Only an admin can
-              undo this.
+              Lock <strong>{userName(pending.user)}</strong>? They lose access immediately — every
+              session they hold is ended and they can&rsquo;t sign in. Only an admin can undo this.
             </>
           }
-          onConfirm={() => run(
-            `${userName(pending.user)} locked`,
-            () => adminUsersApi.updateRole(pending.user.id, { status: "locked" }).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${userName(pending.user)} locked`, () =>
+              adminUsersApi.updateRole(pending.user.id, { status: "locked" }).then(replaceRow),
+            )
+          }
           onClose={() => setPending(null)}
         />
       )}
@@ -390,10 +469,11 @@ export default function AdminUsersPage() {
               sign in again with their existing password.
             </>
           }
-          onConfirm={() => run(
-            `${userName(pending.user)} restored`,
-            () => adminUsersApi.updateRole(pending.user.id, { status: "active" }).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${userName(pending.user)} restored`, () =>
+              adminUsersApi.updateRole(pending.user.id, { status: "active" }).then(replaceRow),
+            )
+          }
           onClose={() => setPending(null)}
         />
       )}
@@ -404,15 +484,16 @@ export default function AdminUsersPage() {
           confirmLabel="Promote"
           description={
             <>
-              Make <strong>{userName(pending.user)}</strong> a platform admin? They&rsquo;ll be
-              able to see and act on every tournament, account and event on the platform,
-              including this page.
+              Make <strong>{userName(pending.user)}</strong> a platform admin? They&rsquo;ll be able
+              to see and act on every tournament, account and event on the platform, including this
+              page.
             </>
           }
-          onConfirm={() => run(
-            `${userName(pending.user)} is now an admin`,
-            () => adminUsersApi.updateRole(pending.user.id, { role: "admin" }).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${userName(pending.user)} is now an admin`, () =>
+              adminUsersApi.updateRole(pending.user.id, { role: "admin" }).then(replaceRow),
+            )
+          }
           onClose={() => setPending(null)}
         />
       )}
@@ -428,10 +509,11 @@ export default function AdminUsersPage() {
               per-tournament roles and lose platform-wide access.
             </>
           }
-          onConfirm={() => run(
-            `${userName(pending.user)} is no longer an admin`,
-            () => adminUsersApi.updateRole(pending.user.id, { role: "user" }).then(replaceRow),
-          )}
+          onConfirm={() =>
+            run(`${userName(pending.user)} is no longer an admin`, () =>
+              adminUsersApi.updateRole(pending.user.id, { role: "user" }).then(replaceRow),
+            )
+          }
           onClose={() => setPending(null)}
         />
       )}
@@ -447,10 +529,11 @@ export default function AdminUsersPage() {
               password keeps working until they use it.
             </>
           }
-          onConfirm={() => run(
-            `Password reset sent to ${pending.user.email}`,
-            () => adminUsersApi.sendPasswordReset(pending.user.id),
-          )}
+          onConfirm={() =>
+            run(`Password reset sent to ${pending.user.email}`, () =>
+              adminUsersApi.sendPasswordReset(pending.user.id),
+            )
+          }
           onClose={() => setPending(null)}
         />
       )}

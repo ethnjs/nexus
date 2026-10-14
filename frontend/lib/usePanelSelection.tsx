@@ -87,7 +87,9 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
   // in a setPanel effect's dependency list, where a new identity per render
   // would re-register the panel in a loop.
   const clearExternalRef = useRef(options.onClearExternal);
-  useEffect(() => { clearExternalRef.current = options.onClearExternal; });
+  useEffect(() => {
+    clearExternalRef.current = options.onClearExternal;
+  });
 
   const clearFocus = useCallback(() => {
     setFocusedId(null);
@@ -132,51 +134,67 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
     if (next.size === 0) setMassPanelOpen(false);
   }, []);
 
-  const toggleSelected = useCallback((id: number) => {
-    if (panelDirty) return;
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    applySelection(next);
-  }, [panelDirty, selectedIds, applySelection]);
+  const toggleSelected = useCallback(
+    (id: number) => {
+      if (panelDirty) return;
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      applySelection(next);
+    },
+    [panelDirty, selectedIds, applySelection],
+  );
 
-  const toggleSelectAll = useCallback((ids: number[], checked: boolean) => {
-    const next = new Set(selectedIds);
-    ids.forEach((id) => (checked ? next.add(id) : next.delete(id)));
-    applySelection(next);
-  }, [selectedIds, applySelection]);
+  const toggleSelectAll = useCallback(
+    (ids: number[], checked: boolean) => {
+      const next = new Set(selectedIds);
+      ids.forEach((id) => (checked ? next.add(id) : next.delete(id)));
+      applySelection(next);
+    },
+    [selectedIds, applySelection],
+  );
 
   // Always lands in plain single-focus mode — it never turns Select mode on,
   // and drops out of it (or out of a caller-owned draft) if either was
   // already active, replacing whichever panel was open.
-  const focusItem = useCallback((id: number) => {
-    if (panelDirty) return;
-    clearExternalRef.current?.();
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setMassPanelOpen(false);
-    setFocusedId(id);
-  }, [panelDirty]);
+  const focusItem = useCallback(
+    (id: number) => {
+      if (panelDirty) return;
+      clearExternalRef.current?.();
+      setSelectMode(false);
+      setSelectedIds(new Set());
+      setMassPanelOpen(false);
+      setFocusedId(id);
+    },
+    [panelDirty],
+  );
 
   const openMassPanel = useCallback(() => setMassPanelOpen(true), []);
 
-  const startExternalFlow = useCallback((start: () => void) => {
-    if (panelDirty) return;
-    clearFocus();
-    clearSelection();
-    start();
-  }, [panelDirty, clearFocus, clearSelection]);
+  const startExternalFlow = useCallback(
+    (start: () => void) => {
+      if (panelDirty) return;
+      clearFocus();
+      clearSelection();
+      start();
+    },
+    [panelDirty, clearFocus, clearSelection],
+  );
 
   // Otherwise a deleted-but-still-selected/focused row would keep a panel
   // open against a row that no longer exists.
   // Takes a list for bulk deletes: calling it once per id in a loop would
   // start every call from the same stale selectedIds, keeping all but one.
-  const forgetItem = useCallback((ids: number | number[]) => {
-    const gone = new Set(Array.isArray(ids) ? ids : [ids]);
-    if ([...gone].some((id) => selectedIds.has(id))) {
-      applySelection(new Set([...selectedIds].filter((id) => !gone.has(id))));
-    }
-    setFocusedId((prev) => (prev !== null && gone.has(prev) ? null : prev));
-  }, [selectedIds, applySelection]);
+  const forgetItem = useCallback(
+    (ids: number | number[]) => {
+      const gone = new Set(Array.isArray(ids) ? ids : [ids]);
+      if ([...gone].some((id) => selectedIds.has(id))) {
+        applySelection(new Set([...selectedIds].filter((id) => !gone.has(id))));
+      }
+      setFocusedId((prev) => (prev !== null && gone.has(prev) ? null : prev));
+    },
+    [selectedIds, applySelection],
+  );
 
   // Prev/next only make sense for the plain single-focus flow (not while
   // mass-editing several at once) and step through the caller's own current
@@ -184,24 +202,38 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
   // lands somewhere sensible. Returns plain ids/booleans rather than
   // callbacks so callers can put them in a dependency array without
   // re-registering their panel every render.
-  const getPrevNext = useCallback(<T,>(items: T[], getId: (item: T) => number): PrevNext => {
-    const index = focusedId !== null ? items.findIndex((item) => getId(item) === focusedId) : -1;
-    const hasPrev = !panelDirty && index > 0;
-    const hasNext = !panelDirty && index !== -1 && index < items.length - 1;
-    return {
-      index,
-      hasPrev,
-      hasNext,
-      prevId: hasPrev ? getId(items[index - 1]) : null,
-      nextId: hasNext ? getId(items[index + 1]) : null,
-    };
-  }, [focusedId, panelDirty]);
+  const getPrevNext = useCallback(
+    <T,>(items: T[], getId: (item: T) => number): PrevNext => {
+      const index = focusedId !== null ? items.findIndex((item) => getId(item) === focusedId) : -1;
+      const hasPrev = !panelDirty && index > 0;
+      const hasNext = !panelDirty && index !== -1 && index < items.length - 1;
+      return {
+        index,
+        hasPrev,
+        hasNext,
+        prevId: hasPrev ? getId(items[index - 1]) : null,
+        nextId: hasNext ? getId(items[index + 1]) : null,
+      };
+    },
+    [focusedId, panelDirty],
+  );
 
   return {
-    focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
+    focusedId,
+    selectMode,
+    selectedIds,
+    massPanelOpen,
+    panelDirty,
     setPanelDirty,
-    focusItem, toggleSelectMode, toggleSelected, toggleSelectAll, openMassPanel,
-    clearFocus, clearSelection, forgetItem, startExternalFlow,
+    focusItem,
+    toggleSelectMode,
+    toggleSelected,
+    toggleSelectAll,
+    openMassPanel,
+    clearFocus,
+    clearSelection,
+    forgetItem,
+    startExternalFlow,
     getPrevNext,
   };
 }

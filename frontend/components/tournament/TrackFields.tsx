@@ -1,18 +1,23 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { Role, TournamentDivision, University, TOURNAMENT_DIVISIONS } from "@/lib/api";
-import { TrackDraft } from "@/lib/trackDraft";
-import { todayLocalDateString } from "@/lib/date";
-import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
-import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
-import { IconCalendar, IconLocation } from "@/components/ui/Icons";
+import {
+  type Role,
+  TOURNAMENT_DIVISIONS,
+  type TournamentDivision,
+  type University,
+} from "@/lib/api";
+import { todayLocalDateString } from "@/lib/date";
+import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
+import type { TrackDraft } from "@/lib/trackDraft";
 
 // Dropdown's value is a string; a track's default_role_id is nullable, so
 // "no default" needs a sentinel rather than an empty string collapsing into
@@ -27,7 +32,13 @@ const NO_DEFAULT_ROLE = "__none__";
  * wants its own default just as much as a competition day does.
  */
 export function TrackFields({
-  draft, errors, universities, roles, locked, onChange, showPrimaryToggle = true,
+  draft,
+  errors,
+  universities,
+  roles,
+  locked,
+  onChange,
+  showPrimaryToggle = true,
 }: {
   draft: TrackDraft;
   errors: Record<string, string>;
@@ -50,8 +61,15 @@ export function TrackFields({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       {showPrimaryToggle && (
-        <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
-          <Switch checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
+        <FieldRow
+          label="Competition day"
+          helper="Has a date, venue and divisions. Only competition days can have shifts."
+        >
+          <Switch
+            checked={draft.is_primary}
+            onChange={(v) => onChange({ is_primary: v })}
+            locked={locked}
+          />
         </FieldRow>
       )}
 
@@ -64,24 +82,32 @@ export function TrackFields({
                   able to see what the track will say. `type` swaps to text
                   because a date input can't display anything but a date. */}
               <Input
-                label={multiDay && !draft.dates_tbd ? "Start" : "Date"} required
-                type={draft.dates_tbd ? "text" : "date"} fullWidth
+                label={multiDay && !draft.dates_tbd ? "Start" : "Date"}
+                required
+                type={draft.dates_tbd ? "text" : "date"}
+                fullWidth
                 locked={locked || draft.dates_tbd}
                 min={today}
                 value={draft.dates_tbd ? TBD : draft.start_date}
                 // Single-day tracks keep end_date in step with start_date —
                 // the backend requires both on a competition day, and the TD
                 // has said this one doesn't span days.
-                onChange={(e) => onChange(
-                  multiDay
-                    ? { start_date: e.target.value }
-                    : { start_date: e.target.value, end_date: e.target.value },
-                )}
+                onChange={(e) =>
+                  onChange(
+                    multiDay
+                      ? { start_date: e.target.value }
+                      : { start_date: e.target.value, end_date: e.target.value },
+                  )
+                }
                 error={errors.start_date}
               />
               {multiDay && !draft.dates_tbd && (
                 <Input
-                  label="End" required type="date" fullWidth locked={locked}
+                  label="End"
+                  required
+                  type="date"
+                  fullWidth
+                  locked={locked}
                   min={draft.start_date || today}
                   value={draft.end_date}
                   onChange={(e) => onChange({ end_date: e.target.value })}
@@ -89,7 +115,14 @@ export function TrackFields({
                 />
               )}
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked || draft.dates_tbd ? "default" : "pointer" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: locked || draft.dates_tbd ? "default" : "pointer",
+              }}
+            >
               <Checkbox
                 checked={multiDay && !draft.dates_tbd}
                 locked={locked || draft.dates_tbd}
@@ -98,7 +131,13 @@ export function TrackFields({
                   if (!checked) onChange({ end_date: draft.start_date });
                 }}
               />
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
                 Runs more than one day
               </span>
             </label>
@@ -111,9 +150,11 @@ export function TrackFields({
               // TD has just said they don't have.
               onChange={(checked) => {
                 setSpansDays(false);
-                onChange(checked
-                  ? { dates_tbd: true, start_date: "", end_date: "" }
-                  : { dates_tbd: false });
+                onChange(
+                  checked
+                    ? { dates_tbd: true, start_date: "", end_date: "" }
+                    : { dates_tbd: false },
+                );
               }}
             />
           </div>
@@ -126,7 +167,9 @@ export function TrackFields({
               getLabel={(u) => u.name}
               getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
               value={draft.location_tbd ? TBD : draft.location}
-              onChange={(text, matched) => onChange({ location: text, university_id: matched?.id ?? null })}
+              onChange={(text, matched) =>
+                onChange({ location: text, university_id: matched?.id ?? null })
+              }
               placeholder="e.g. UCI"
               locked={locked || draft.location_tbd}
               error={errors.location}
@@ -135,31 +178,50 @@ export function TrackFields({
               label="Venue not decided yet"
               checked={draft.location_tbd}
               locked={locked}
-              onChange={(checked) => onChange(checked
-                ? { location_tbd: true, location: "", university_id: null }
-                : { location_tbd: false })}
+              onChange={(checked) =>
+                onChange(
+                  checked
+                    ? { location_tbd: true, location: "", university_id: null }
+                    : { location_tbd: false },
+                )
+              }
             />
           </div>
           <div>
-            <div style={{
-              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.07em",
-              color: "var(--color-text-tertiary)", marginBottom: "6px",
-            }}>
+            <div
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "11px",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--color-text-tertiary)",
+                marginBottom: "6px",
+              }}
+            >
               Division<span style={{ color: "var(--color-danger)" }}> *</span>
             </div>
             <DivisionButtonGroup
               options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
               value={draft.division}
-              onChange={(v) => onChange({
-                division: draft.division.includes(v as TournamentDivision)
-                  ? draft.division.filter((x) => x !== v)
-                  : [...draft.division, v as TournamentDivision],
-              })}
+              onChange={(v) =>
+                onChange({
+                  division: draft.division.includes(v as TournamentDivision)
+                    ? draft.division.filter((x) => x !== v)
+                    : [...draft.division, v as TournamentDivision],
+                })
+              }
               locked={locked}
             />
             {errors.division && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", margin: "6px 0 0" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-danger)",
+                  margin: "6px 0 0",
+                }}
+              >
                 {errors.division}
               </p>
             )}
@@ -175,7 +237,11 @@ export function TrackFields({
         label="Members can confirm"
         helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
       >
-        <Switch checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
+        <Switch
+          checked={draft.allow_confirm}
+          onChange={(v) => onChange({ allow_confirm: v })}
+          locked={locked}
+        />
       </FieldRow>
 
       {/* Deliberately not scoped to competition days: a member answers for a
@@ -185,7 +251,11 @@ export function TrackFields({
         label="Lock member responses"
         helper="Closes this track to member edits — availability, lunch, event preferences and status, including opting out."
       >
-        <Switch checked={draft.lock_responses} onChange={(v) => onChange({ lock_responses: v })} locked={locked} />
+        <Switch
+          checked={draft.lock_responses}
+          onChange={(v) => onChange({ lock_responses: v })}
+          locked={locked}
+        />
       </FieldRow>
 
       <FieldRow
@@ -195,7 +265,10 @@ export function TrackFields({
         <Dropdown
           value={draft.default_role_id === null ? NO_DEFAULT_ROLE : String(draft.default_role_id)}
           onChange={(v) => onChange({ default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })}
-          options={[{ value: NO_DEFAULT_ROLE, label: "None" }, ...roles.map((r) => ({ value: String(r.id), label: r.label }))]}
+          options={[
+            { value: NO_DEFAULT_ROLE, label: "None" },
+            ...roles.map((r) => ({ value: String(r.id), label: r.label })),
+          ]}
           locked={locked}
           size="sm"
           width={180}
@@ -211,29 +284,77 @@ export function TrackFields({
  * day can never be saved simply blank. The stored form is still absence; see
  * trackDraftPayload.
  */
-export function TbdCheckbox({ label, checked, locked, onChange }: {
+export function TbdCheckbox({
+  label,
+  checked,
+  locked,
+  onChange,
+}: {
   label: string;
   checked: boolean;
   locked: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked ? "default" : "pointer" }}>
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        cursor: locked ? "default" : "pointer",
+      }}
+    >
       <Checkbox checked={checked} locked={locked} onChange={onChange} />
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+        }}
+      >
         {label}
       </span>
     </label>
   );
 }
 
-export function FieldRow({ label, helper, children }: { label: string; helper?: string; children: ReactNode }) {
+export function FieldRow({
+  label,
+  helper,
+  children,
+}: {
+  label: string;
+  helper?: string;
+  children: ReactNode;
+}) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: "16px",
+      }}
+    >
       <div>
-        <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>{label}</div>
+        <div
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-primary)",
+          }}
+        >
+          {label}
+        </div>
         {helper && (
-          <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
+          <div
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+              marginTop: "2px",
+            }}
+          >
             {helper}
           </div>
         )}
@@ -252,23 +373,49 @@ export function TrackSummary({ draft }: { draft: TrackDraft }) {
   if (!draft.is_primary) return null;
   // TBD reads the same here as it does everywhere else the track is shown, so
   // collapsing a row the TD has just marked TBD doesn't blank the line out.
-  const dates = draft.dates_tbd ? TBD : formatDayRange(draft.start_date || null, draft.end_date || null);
-  const place = draft.location_tbd ? TBD : (draft.location.trim() || null);
+  const dates = draft.dates_tbd
+    ? TBD
+    : formatDayRange(draft.start_date || null, draft.end_date || null);
+  const place = draft.location_tbd ? TBD : draft.location.trim() || null;
   if (!place && !dates && draft.division.length === 0) return null;
 
   return (
-    <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        minWidth: 0,
+        fontFamily: "var(--font-sans)",
+        fontSize: "12px",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {place && (
-        <span style={{ display: "flex", alignItems: "center", gap: "5px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <IconLocation />{place}
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <IconLocation />
+          {place}
         </span>
       )}
       {dates && (
         <span style={{ display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}>
-          <IconCalendar />{dates}
+          <IconCalendar />
+          {dates}
         </span>
       )}
-      {draft.division.map((d) => <Badge key={d}>{d}</Badge>)}
+      {draft.division.map((d) => (
+        <Badge key={d}>{d}</Badge>
+      ))}
     </span>
   );
 }

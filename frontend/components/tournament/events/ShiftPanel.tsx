@@ -1,25 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  tournamentShiftsApi, tournamentEventsApi, ApiError,
-  TournamentEvent, TournamentShift, TournamentTrack,
-} from "@/lib/api";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { toDateInput, toTimeInput, fromDayAndTime } from "@/lib/timeFormat";
-import { eventNameWithDivision } from "@/lib/eventDisplay";
-import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DockedPanel } from "@/components/layout/DockedPanel";
-import { Card } from "@/components/ui/Card";
-import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
-import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
-import { IconPlus, IconTrash, IconEvents, IconSearch, IconX } from "@/components/ui/Icons";
+import { Button } from "@/components/ui/Button";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Card } from "@/components/ui/Card";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { IconEvents, IconPlus, IconSearch, IconTrash, IconX } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import {
+  ApiError,
+  type TournamentEvent,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentEventsApi,
+  tournamentShiftsApi,
+} from "@/lib/api";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { fromDayAndTime, toDateInput, toTimeInput } from "@/lib/timeFormat";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -53,7 +57,9 @@ function draftFromShift(shift: TournamentShift | null, defaultTrackId: number | 
  * initial state — otherwise a new shift would read as dirty on open.
  */
 function draftWithDayDefault(
-  shift: TournamentShift | null, defaultTrackId: number | null, tracks: TournamentTrack[],
+  shift: TournamentShift | null,
+  defaultTrackId: number | null,
+  tracks: TournamentTrack[],
 ): ShiftDraft {
   const draft = draftFromShift(shift, defaultTrackId);
   if (!draft.day && draft.trackId !== null) {
@@ -93,9 +99,21 @@ interface ShiftPanelProps {
 }
 
 export function ShiftPanel({
-  tournamentId, shift, tracks, events, defaultTrackId = null, locked,
-  onClose, onSaved, onDeleted, onEventUpdated, onDirtyChange,
-  onPrev, onNext, hasPrev, hasNext,
+  tournamentId,
+  shift,
+  tracks,
+  events,
+  defaultTrackId = null,
+  locked,
+  onClose,
+  onSaved,
+  onDeleted,
+  onEventUpdated,
+  onDirtyChange,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
 }: ShiftPanelProps) {
   const { guard } = useUnsavedChanges();
 
@@ -103,7 +121,9 @@ export function ShiftPanel({
   // becomes the real row once a create lands, so the Events section can
   // appear without closing the panel.
   const [current, setCurrent] = useState<TournamentShift | null>(shift);
-  const [draft, setDraft] = useState<ShiftDraft>(() => draftWithDayDefault(shift, defaultTrackId, tracks));
+  const [draft, setDraft] = useState<ShiftDraft>(() =>
+    draftWithDayDefault(shift, defaultTrackId, tracks),
+  );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ShiftDraft, string>>>({});
@@ -112,23 +132,30 @@ export function ShiftPanel({
 
   const isNew = current === null;
   const isDirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(draftWithDayDefault(current, defaultTrackId, tracks)),
+    () =>
+      JSON.stringify(draft) !==
+      JSON.stringify(draftWithDayDefault(current, defaultTrackId, tracks)),
     [draft, current, defaultTrackId, tracks],
   );
 
-  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // Same as EventPanel: read the row fresh on open and on tab focus, applied
   // only while the draft is untouched (a ref — the response lands later).
   const dirtyRef = useRef(isDirty);
-  useEffect(() => { dirtyRef.current = isDirty; });
+  useEffect(() => {
+    dirtyRef.current = isDirty;
+  });
   const shiftId = shift?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), shiftId !== null);
   useEffect(() => {
     if (shiftId === null) return;
     let active = true;
-    tournamentShiftsApi.get(tournamentId, shiftId)
+    tournamentShiftsApi
+      .get(tournamentId, shiftId)
       .then((fresh) => {
         if (!active || dirtyRef.current) return;
         setCurrent(fresh);
@@ -136,9 +163,11 @@ export function ShiftPanel({
         onSaved(fresh);
       })
       .catch(() => {});
-    return () => { active = false; };
-  // Callbacks and catalogs left out: only the shift and a focus bump refetch.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      active = false;
+    };
+    // Callbacks and catalogs left out: only the shift and a focus bump refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId, shiftId, refreshKey]);
 
   const track = tracks.find((t) => t.id === draft.trackId);
@@ -178,7 +207,8 @@ export function ShiftPanel({
     if (!draft.day) errors.day = "Required";
     if (!draft.startTime) errors.startTime = "Required";
     if (!draft.endTime) errors.endTime = "Required";
-    else if (draft.startTime && draft.endTime <= draft.startTime) errors.endTime = "Must be after the start.";
+    else if (draft.startTime && draft.endTime <= draft.startTime)
+      errors.endTime = "Must be after the start.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -206,7 +236,11 @@ export function ShiftPanel({
       // route it to that Input rather than only the floating bar.
       if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift start")) {
         setFieldErrors({ startTime: err.message });
-      } else if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift end")) {
+      } else if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.message.includes("Shift end")
+      ) {
         setFieldErrors({ endTime: err.message });
       } else {
         setSaveError(err instanceof ApiError ? err.message : "Failed to save shift.");
@@ -228,7 +262,9 @@ export function ShiftPanel({
   async function setEventShifts(event: TournamentEvent, shiftIds: number[]) {
     setEventError(undefined);
     try {
-      onEventUpdated(await tournamentEventsApi.update(tournamentId, event.id, { shift_ids: shiftIds }));
+      onEventUpdated(
+        await tournamentEventsApi.update(tournamentId, event.id, { shift_ids: shiftIds }),
+      );
     } catch (err) {
       setEventError(err instanceof ApiError ? err.message : "Failed to update event.");
       throw err;
@@ -243,15 +279,17 @@ export function ShiftPanel({
       onNext={onNext}
       prevDisabled={!hasPrev}
       nextDisabled={!hasNext}
-      footer={!locked && (
-        <FloatingSaveBar
-          visible={isDirty}
-          saving={saving}
-          error={saveError}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      )}
+      footer={
+        !locked && (
+          <FloatingSaveBar
+            visible={isDirty}
+            saving={saving}
+            error={saveError}
+            onSave={handleSave}
+            onCancel={handleCancel}
+          />
+        )
+      }
     >
       {/* Extra bottom padding only while the save bar is up — it floats over
           the last 80-ish px of this scroll area. */}
@@ -265,7 +303,9 @@ export function ShiftPanel({
         <SettingsSection title="Details">
           <SettingsRow label="Label">
             <Input
-              fullWidth font="sans" locked={locked}
+              fullWidth
+              font="sans"
+              locked={locked}
               value={draft.label}
               onChange={(e) => patch({ label: e.target.value })}
               error={fieldErrors.label}
@@ -300,7 +340,10 @@ export function ShiftPanel({
 
           <SettingsRow label="Start">
             <Input
-              type="time" fullWidth locked={locked} value={draft.startTime}
+              type="time"
+              fullWidth
+              locked={locked}
+              value={draft.startTime}
               onChange={(e) => patch({ startTime: e.target.value })}
               error={fieldErrors.startTime}
             />
@@ -308,7 +351,10 @@ export function ShiftPanel({
 
           <SettingsRow label="End" last>
             <Input
-              type="time" fullWidth locked={locked} value={draft.endTime}
+              type="time"
+              fullWidth
+              locked={locked}
+              value={draft.endTime}
               onChange={(e) => patch({ endTime: e.target.value })}
               error={fieldErrors.endTime}
             />
@@ -338,7 +384,12 @@ export function ShiftPanel({
               last
               contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             >
-              <Button type="button" variant="secondary" onClick={() => setShowDelete(true)} style={{ color: "var(--color-danger)" }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowDelete(true)}
+                style={{ color: "var(--color-danger)" }}
+              >
                 <IconTrash size={13} /> Delete
               </Button>
             </SettingsRow>
@@ -351,7 +402,10 @@ export function ShiftPanel({
           tournamentId={tournamentId}
           shifts={[current]}
           onClose={() => setShowDelete(false)}
-          onDeleted={() => { onDeleted(current.id); onClose(); }}
+          onDeleted={() => {
+            onDeleted(current.id);
+            onClose();
+          }}
         />
       )}
     </DockedPanel>
@@ -367,7 +421,14 @@ const ALL = "all";
  * time window. The window is gone — everything on the track is eligible — so
  * a regional's 40-odd events need searching and filtering, not scrolling.
  */
-function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEventShifts }: {
+function ShiftEventsSection({
+  shiftId,
+  trackId,
+  events,
+  locked,
+  error,
+  onSetEventShifts,
+}: {
   shiftId: number;
   trackId: number;
   events: TournamentEvent[];
@@ -409,7 +470,10 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
     setBusyId(event.id);
     const ids = event.shifts.map((s) => s.id);
     try {
-      await onSetEventShifts(event, attach ? [...ids, shiftId] : ids.filter((id) => id !== shiftId));
+      await onSetEventShifts(
+        event,
+        attach ? [...ids, shiftId] : ids.filter((id) => id !== shiftId),
+      );
     } catch {
       // Surfaced by the caller's own error state.
     } finally {
@@ -420,113 +484,187 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
   return (
     <SettingsSection title="Events">
       <div style={{ padding: "20px 0" }}>
-        <div style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)",
-          marginBottom: "10px",
-        }}>
+        <div
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-tertiary)",
+            marginBottom: "10px",
+          }}
+        >
           {attached.length === 0
             ? "This shift covers no events yet."
             : `${attached.length} event${attached.length === 1 ? "" : "s"} on this shift.`}
         </div>
 
-      {attached.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}>
-          {attached.map((event) => (
-            <div
-              key={event.id}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                padding: "8px 10px", borderRadius: "var(--radius-md)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                <IconEvents size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
-                <span style={{
-                  fontFamily: "var(--font-sans)", fontSize: "13px",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {eventNameWithDivision(event)}
-                </span>
-              </div>
-              {!locked && (
-                <Button
-                  type="button" variant="ghost" size="xs" iconOnly title="Remove"
-                  loading={busyId === event.id}
-                  onClick={() => toggle(event, false)}
-                >
-                  <IconX size={12} />
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!locked && (
-        <div style={{
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-          padding: "10px", display: "flex", flexDirection: "column", gap: "10px",
-        }}>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <Input
-              size="sm" font="sans" fullWidth
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClear={() => setSearch("")}
-              placeholder="Search events on this track"
-              icon={<IconSearch size={13} />}
-            />
-            {divisions.length > 1 && (
-              <ButtonGroup
-                options={[{ value: ALL, label: "All" }, ...divisions.map((d) => ({ value: d, label: d }))]}
-                value={division}
-                onChange={setDivision}
-                size="sm"
-              />
-            )}
-          </div>
-
-          {/* Capped and scrolled rather than growing the panel — a track can
-              hold every event in the tournament. */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "240px", overflowY: "auto" }}>
-            {visible.length === 0 ? (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 2px" }}>
-                {candidates.length === 0
-                  ? "Every event on this track is already covered by this shift."
-                  : "No events match that search."}
-              </p>
-            ) : visible.map((event) => (
-              <button
+        {attached.length > 0 && (
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}
+          >
+            {attached.map((event) => (
+              <div
                 key={event.id}
-                type="button"
-                onClick={() => toggle(event, true)}
-                disabled={busyId === event.id}
                 style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  padding: "6px 8px", borderRadius: "var(--radius-sm)",
-                  background: "none", border: "none", cursor: "pointer", textAlign: "left",
-                  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
-                  opacity: busyId === event.id ? 0.5 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  padding: "8px 10px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
               >
-                <IconPlus size={12} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {eventNameWithDivision(event)}
-                </span>
-              </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                  <IconEvents
+                    size={13}
+                    style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {eventNameWithDivision(event)}
+                  </span>
+                </div>
+                {!locked && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    iconOnly
+                    title="Remove"
+                    loading={busyId === event.id}
+                    onClick={() => toggle(event, false)}
+                  >
+                    <IconX size={12} />
+                  </Button>
+                )}
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "8px" }}>
-          {error}
-        </p>
-      )}
+        {!locked && (
+          <div
+            style={{
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <Input
+                size="sm"
+                font="sans"
+                fullWidth
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
+                placeholder="Search events on this track"
+                icon={<IconSearch size={13} />}
+              />
+              {divisions.length > 1 && (
+                <ButtonGroup
+                  options={[
+                    { value: ALL, label: "All" },
+                    ...divisions.map((d) => ({ value: d, label: d })),
+                  ]}
+                  value={division}
+                  onChange={setDivision}
+                  size="sm"
+                />
+              )}
+            </div>
+
+            {/* Capped and scrolled rather than growing the panel — a track can
+              hold every event in the tournament. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                maxHeight: "240px",
+                overflowY: "auto",
+              }}
+            >
+              {visible.length === 0 ? (
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-tertiary)",
+                    margin: "4px 2px",
+                  }}
+                >
+                  {candidates.length === 0
+                    ? "Every event on this track is already covered by this shift."
+                    : "No events match that search."}
+                </p>
+              ) : (
+                visible.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => toggle(event, true)}
+                    disabled={busyId === event.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 8px",
+                      borderRadius: "var(--radius-sm)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      color: "var(--color-text-primary)",
+                      opacity: busyId === event.id ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--color-bg)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "none";
+                    }}
+                  >
+                    <IconPlus
+                      size={12}
+                      style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
+                    />
+                    <span
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {eventNameWithDivision(event)}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-danger)",
+              marginTop: "8px",
+            }}
+          >
+            {error}
+          </p>
+        )}
       </div>
     </SettingsSection>
   );

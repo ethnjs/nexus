@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  ApiError, DisplayConfig, DisplayConfigCatalog, DisplayConfigSurface, displayConfigApi,
+  ApiError,
+  type DisplayConfig,
+  type DisplayConfigCatalog,
+  type DisplayConfigSurface,
+  displayConfigApi,
 } from "@/lib/api";
 
 /**
@@ -29,31 +33,45 @@ export function useDisplayConfigDraft(tournamentId: number, surface: string) {
         setFullConfig(config);
         setDraft(config[surface] ?? { hidden: [] });
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load display settings."));
+      .catch((e) =>
+        setError(e instanceof ApiError ? e.message : "Failed to load display settings."),
+      );
   }, [tournamentId, surface]);
 
-  const save = useCallback(async (onSaved?: () => void, onClose?: () => void) => {
-    if (!fullConfig || !draft) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const fresh = await displayConfigApi.get(tournamentId).catch(() => fullConfig);
-      await displayConfigApi.set(tournamentId, {
-        ...fresh,
-        [surface]: {
-          ...fresh[surface],
-          hidden: draft.hidden,
-          columns: draft.columns,
-          sections: draft.sections,
-        },
-      });
-      onSaved?.();
-      onClose?.();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save display settings.");
-      setSaving(false);
-    }
-  }, [tournamentId, surface, fullConfig, draft]);
+  const save = useCallback(
+    async (onSaved?: () => void, onClose?: () => void) => {
+      if (!fullConfig || !draft) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const fresh = await displayConfigApi.get(tournamentId).catch(() => fullConfig);
+        await displayConfigApi.set(tournamentId, {
+          ...fresh,
+          [surface]: {
+            ...fresh[surface],
+            hidden: draft.hidden,
+            columns: draft.columns,
+            sections: draft.sections,
+          },
+        });
+        onSaved?.();
+        onClose?.();
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : "Failed to save display settings.");
+        setSaving(false);
+      }
+    },
+    [tournamentId, surface, fullConfig, draft],
+  );
 
-  return { catalog, draft, setDraft, saving, error, setError, save, loading: catalog === null && error === null };
+  return {
+    catalog,
+    draft,
+    setDraft,
+    saving,
+    error,
+    setError,
+    save,
+    loading: catalog === null && error === null,
+  };
 }

@@ -1,5 +1,7 @@
-'use client'
+"use client";
 
+import type { DragEndEvent } from "@dnd-kit/core";
+import { useParams, useSearchParams } from "next/navigation";
 /**
  * Assignments board.
  *
@@ -20,166 +22,217 @@
  * handler can always tell "real" from "still in flight" without a second
  * bookkeeping structure.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
-import { type DragEndEvent } from '@dnd-kit/core'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { DockedPanel } from '@/components/layout/DockedPanel'
+import { DockedPanel } from "@/components/layout/DockedPanel";
 
-import { useRegisterBoardDnd } from '@/components/tournament/assignments/BoardDnd'
-import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/members/MemberPanel'
-import { EventPanel, EVENT_PANEL_WIDTH } from '@/components/tournament/events/EventPanel'
-import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
+import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
+import { EventRow } from "@/components/tournament/assignments/EventRow";
+import { MemberCard } from "@/components/tournament/assignments/MemberCard";
 import {
-  MembersFilterModal, MEMBERS_FILTER_KEYS, defaultMemberFiltersForTab,
-  membersFilterFromStored, membersFilterToStored, membersFilterParams,
-  type MembersFilterState,
-} from '@/components/tournament/members/MembersFilterModal'
+  DEFAULT_MEMBER_DISPLAY,
+  defaultMemberDisplayForTab,
+  MemberDisplayModal,
+  type MemberDisplayState,
+  memberDisplayFromHidden,
+  memberDisplayToHidden,
+  sameMemberDisplay,
+} from "@/components/tournament/assignments/MemberDisplayModal";
+import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import {
-  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
-  eventCategoryOptions, eventTrackOptions, eventBuildingOptions, eventShiftOptions,
-  eventPassesFilters, eventsFilterFromStored,
-  eventsFilterToStored, isEventsFilterActive,
+  EVENT_FILTER_UNSET,
+  EVENT_TYPE_OPTIONS,
+  EVENTS_FILTER_KEYS,
+  EventsFilterModal,
   type EventsFilterState,
-} from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState, sameFilterState } from '@/components/ui/FilterModal'
-import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
-import { useAuth } from '@/lib/useAuth'
-import { useMyMembership } from '@/lib/useMyMembership'
-import { useTournament } from '@/lib/useTournament'
-import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
-import { Button } from '@/components/ui/Button'
-import { FilterButton } from '@/components/ui/FilterButton'
-import { DisplayButton } from '@/components/ui/DisplayButton'
-import { SortButton } from '@/components/ui/SortButton'
-import { SortModal } from '@/components/ui/SortModal'
-import { Card } from '@/components/ui/Card'
-import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import table from '@/components/ui/Table.module.css'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { IconEvents, IconLock, IconSearch, IconUser } from '@/components/ui/Icons'
-import { Input } from '@/components/ui/Input'
-import { CollapsibleHeader } from '@/components/ui/CollapsibleHeader'
-import { Spinner } from '@/components/ui/Spinner'
+  eventBuildingOptions,
+  eventCategoryOptions,
+  eventPassesFilters,
+  eventShiftOptions,
+  eventsFilterFromStored,
+  eventsFilterToStored,
+  eventTrackOptions,
+  isEventsFilterActive,
+} from "@/components/tournament/events/EventsFilterModal";
+import { ExportButton } from "@/components/tournament/exports/ExportButton";
+import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
 import {
-  ASSIGNMENT_CARD_SURFACE, ASSIGNMENTS_EVENTS_SURFACE,
-  ApiError, assignmentsApi, buildingsApi, canonicalEventsApi, displayConfigApi, membersApi,
-  rolesApi, tabSurface, tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi,
-  type Assignment, type CanonicalEvent, type DisplayConfig, type DisplayConfigCatalog,
-  type FilterOptionGroup, type MembershipFull, type Role,
-  type TournamentBuilding, type TournamentEvent, type TournamentShift, type TournamentTrack,
-} from '@/lib/api'
+  defaultMemberFiltersForTab,
+  MEMBERS_FILTER_KEYS,
+  MembersFilterModal,
+  type MembersFilterState,
+  membersFilterFromStored,
+  membersFilterParams,
+  membersFilterToStored,
+} from "@/components/tournament/members/MembersFilterModal";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { DisplayButton } from "@/components/ui/DisplayButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { emptyFilterState, sameFilterState } from "@/components/ui/FilterModal";
+import { IconEvents, IconLock, IconSearch, IconUser } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { Spinner } from "@/components/ui/Spinner";
+import table from "@/components/ui/Table.module.css";
+import {
+  ApiError,
+  ASSIGNMENT_CARD_SURFACE,
+  ASSIGNMENTS_EVENTS_SURFACE,
+  type Assignment,
+  assignmentsApi,
+  buildingsApi,
+  type CanonicalEvent,
+  canonicalEventsApi,
+  type DisplayConfig,
+  type DisplayConfigCatalog,
+  displayConfigApi,
+  type FilterOptionGroup,
+  type MembershipFull,
+  membersApi,
+  type Role,
+  rolesApi,
+  type TournamentBuilding,
+  type TournamentEvent,
+  type TournamentShift,
+  type TournamentTrack,
+  tabSurface,
+  tournamentEventsApi,
+  tournamentShiftsApi,
+  tournamentTracksApi,
+} from "@/lib/api";
+import {
+  type BoardHandlers,
+  fullName,
+  laneKeyOf,
+  withOrderedShifts,
+} from "@/lib/assignments/board";
 import {
   assignmentFlags,
   assignmentsByEvent,
-  memberFacts,
   type Flag,
-} from '@/lib/assignments/flags'
-import { roleKey, rolesOf, sameRole, type AssignmentRole } from '@/lib/assignments/lanes'
-import { persistDisplayConfigSurface } from '@/lib/displayConfig'
-import { eventName } from '@/lib/eventDisplay'
-import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
-import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from '@/lib/usePanelUrl'
-import { useToast } from '@/lib/useToast'
-
+  memberFacts,
+} from "@/lib/assignments/flags";
+import { type AssignmentRole, roleKey, rolesOf, sameRole } from "@/lib/assignments/lanes";
+import { persistDisplayConfigSurface } from "@/lib/displayConfig";
+import { eventName } from "@/lib/eventDisplay";
 import {
-  DEFAULT_EVENT_SORT, EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK,
-  eventSortTiebreak, eventSortValue, isEventSortField, type EventSortField,
-} from '@/lib/eventSort'
+  DEFAULT_EVENT_SORT,
+  EVENT_SORT_OPTIONS,
+  EVENT_SORT_TIEBREAK,
+  type EventSortField,
+  eventSortTiebreak,
+  eventSortValue,
+  isEventSortField,
+} from "@/lib/eventSort";
 import {
-  sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
-} from '@/lib/sorting'
-import {
-  MEMBER_SORT_TIEBREAK, isMemberSortField, memberSortOptions, memberSortTiebreak, memberSortValue,
+  isMemberSortField,
+  MEMBER_SORT_TIEBREAK,
   type MemberSortField,
-} from '@/lib/memberSort'
+  memberSortOptions,
+  memberSortTiebreak,
+  memberSortValue,
+} from "@/lib/memberSort";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import {
-  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, defaultMemberDisplayForTab,
-  memberDisplayFromHidden, memberDisplayToHidden, sameMemberDisplay,
-  type MemberDisplayState,
-} from '@/components/tournament/assignments/MemberDisplayModal'
-import { MemberCard } from '@/components/tournament/assignments/MemberCard'
-import { ExportButton } from '@/components/tournament/exports/ExportButton'
-import { EventRow } from '@/components/tournament/assignments/EventRow'
-import {
-  fullName, laneKeyOf, withOrderedShifts, type BoardHandlers,
-} from '@/lib/assignments/board'
+  type SortRule,
+  sameSortRules,
+  sortRows,
+  sortRulesFromStored,
+  sortRulesToStored,
+} from "@/lib/sorting";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { useAuth } from "@/lib/useAuth";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from "@/lib/usePanelUrl";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { useToast } from "@/lib/useToast";
+import { useTournament } from "@/lib/useTournament";
 
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
-const BELT_PANEL_WIDTH = 340
+const BELT_PANEL_WIDTH = 340;
 
 /** One open docked panel. At most one of each kind is ever open, which is
  *  what keeps the stack two deep and makes `kind` a usable React key. */
-type PanelKind = 'member' | 'event'
-interface PanelRef { kind: PanelKind; id: number }
+type PanelKind = "member" | "event";
+interface PanelRef {
+  kind: PanelKind;
+  id: number;
+}
 const PANEL_WIDTH: Record<PanelKind, number> = {
   member: MEMBER_PANEL_WIDTH,
   event: EVENT_PANEL_WIDTH,
-}
+};
 /** How long after a drop a click on an event row is ignored. A chip dragged
  *  within its own row makes the row the click's common ancestor, so the drop
  *  would otherwise open the panel it landed on. */
-const CLICK_AFTER_DRAG_MS = 250
+const CLICK_AFTER_DRAG_MS = 250;
 /** An event with only the shifts and tracks the current tab shows. */
-function filterEventTracks(event: TournamentEvent, showsTrack: (id: number) => boolean): TournamentEvent {
+function filterEventTracks(
+  event: TournamentEvent,
+  showsTrack: (id: number) => boolean,
+): TournamentEvent {
   return {
     ...event,
     shifts: event.shifts.filter((s) => showsTrack(s.track_id)),
     tracks: event.tracks.filter((t) => showsTrack(t.id)),
-  }
+  };
 }
 /** Shared by every unstaffed row — a fresh `[]` per render would defeat EventRow's memo. */
-const NO_ASSIGNMENTS: Assignment[] = []
+const NO_ASSIGNMENTS: Assignment[] = [];
 
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
 // A belt is scanned for a person, so alphabetical is the order you can
 // predict without reading. The members table defaults to newest joins instead.
-const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: 'first_name', direction: 'asc' }]
+const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: "first_name", direction: "asc" }];
 
 export default function AssignmentsPage() {
-  const params = useParams()
-  const tournamentId = Number(params.id)
-  const { show } = useToast()
+  const params = useParams();
+  const tournamentId = Number(params.id);
+  const { show } = useToast();
 
-  const { user: currentUser } = useAuth()
-  const { membership, hasPermission, loading: membershipLoading } = useMyMembership()
-  const { selectedTournament } = useTournament()
-  const {
-    canManageMembers, isArchived, canTouchRole, canEditMember,
-  } = useMemberRoleLock()
+  const { user: currentUser } = useAuth();
+  const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
+  const { selectedTournament } = useTournament();
+  const { canManageMembers, isArchived, canTouchRole, canEditMember } = useMemberRoleLock();
 
-  const isAdmin = currentUser?.role === 'admin'
-  const isOwner = !!membership?.is_owner
-  const canManageEvents = isAdmin || isOwner || hasPermission('manage_events')
+  const isAdmin = currentUser?.role === "admin";
+  const isOwner = !!membership?.is_owner;
+  const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
   // Matches the backend's read gate on GET .../assignments/ (manage_events OR
   // manage_members — staffing is part of reading the event, deciding it is
   // member data). Writes need manage_members specifically; see canManageMembers
   // below, checked at each mutation.
-  const canView = canManageEvents || canManageMembers
+  const canView = canManageEvents || canManageMembers;
 
-  const [events, setEvents] = useState<TournamentEvent[] | null>(null)
-  const [rows, setRows] = useState<Assignment[]>([])
-  const [members, setMembers] = useState<MembershipFull[]>([])
+  const [events, setEvents] = useState<TournamentEvent[] | null>(null);
+  const [rows, setRows] = useState<Assignment[]>([]);
+  const [members, setMembers] = useState<MembershipFull[]>([]);
   // Bumped after a board write lands for the focused member, so the open
   // MemberPanel re-reads — it holds its own copy of their assignments.
-  const [panelAssignmentsVersion, setPanelAssignmentsVersion] = useState(0)
+  const [panelAssignmentsVersion, setPanelAssignmentsVersion] = useState(0);
   // Bumped after any assignment write lands, so the belt's server-side
   // filter (the assigned filter especially) re-reads.
-  const [boardWriteVersion, setBoardWriteVersion] = useState(0)
+  const [boardWriteVersion, setBoardWriteVersion] = useState(0);
   // Bumped when the browser tab regains focus, so collaborators' changes show up.
-  const [refreshKey, setRefreshKey] = useState(0)
-  useRefetchOnFocus(() => setRefreshKey((k) => k + 1))
-  const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
-  const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+  const [allShifts, setAllShifts] = useState<TournamentShift[]>([]);
+  const [roleCatalog, setRoleCatalog] = useState<Role[]>([]);
   // Only the event panel reads these two; the board itself has no use for
   // them, so they are fetched for its sake rather than the page's.
-  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([])
-  const [buildings, setBuildings] = useState<TournamentBuilding[]>([])
-  const [tracks, setTracks] = useState<TournamentTrack[]>([])
-  const [loadError, setLoadError] = useState<string | undefined>()
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  const [loadError, setLoadError] = useState<string | undefined>();
 
   // Which member's panel is open, mirrored into ?member= so a refresh — or a
   // link pasted to a colleague — comes back to it. Same param name as the
@@ -188,230 +241,288 @@ export default function AssignmentsPage() {
   // side by side: a 700px member panel beside a 600px event panel leaves no
   // board to drag onto. Only the top one is ever visible — it covers the
   // other outright — and closing it uncovers what was already there.
-  const initialMemberId = useInitialPanelId('member')
-  const initialEventId = useInitialPanelId('event')
+  const initialMemberId = useInitialPanelId("member");
+  const initialEventId = useInitialPanelId("event");
   const [panelStack, setPanelStack] = useState<PanelRef[]>(() => [
     // Member first, so a link carrying both comes back with the event panel
     // on top — the order opening them by hand produces.
-    ...(initialMemberId !== null ? [{ kind: 'member' as const, id: initialMemberId }] : []),
-    ...(initialEventId !== null ? [{ kind: 'event' as const, id: initialEventId }] : []),
-  ])
-  const focusedId = panelStack.find((p) => p.kind === 'member')?.id ?? null
-  const focusedEventId = panelStack.find((p) => p.kind === 'event')?.id ?? null
-  usePanelParamsSync({ member: focusedId, event: focusedEventId })
+    ...(initialMemberId !== null ? [{ kind: "member" as const, id: initialMemberId }] : []),
+    ...(initialEventId !== null ? [{ kind: "event" as const, id: initialEventId }] : []),
+  ]);
+  const focusedId = panelStack.find((p) => p.kind === "member")?.id ?? null;
+  const focusedEventId = panelStack.find((p) => p.kind === "event")?.id ?? null;
+  usePanelParamsSync({ member: focusedId, event: focusedEventId });
 
   // Opening replaces its own kind and moves it to the front — which is both
   // "only one member panel at a time" and "the one you just opened is the
   // one you see", in a single rule.
   const openPanel = useCallback((kind: PanelKind, id: number) => {
-    setPanelStack((stack) => [...stack.filter((p) => p.kind !== kind), { kind, id }])
-  }, [])
+    setPanelStack((stack) => [...stack.filter((p) => p.kind !== kind), { kind, id }]);
+  }, []);
   const closePanel = useCallback((kind: PanelKind) => {
-    setPanelStack((stack) => stack.filter((p) => p.kind !== kind))
-  }, [])
+    setPanelStack((stack) => stack.filter((p) => p.kind !== kind));
+  }, []);
 
   // When the last drop landed. A chip dragged from one shift to another
   // inside the same row leaves that row as the click's common ancestor, so
   // the browser fires a click on it once the drag ends — and the row would
   // open the panel for a gesture that was never a click.
-  const lastDropAt = useRef(0)
+  const lastDropAt = useRef(0);
   // Stable, so the belt's memoised cards survive a page re-render.
-  const openMemberPanel = useCallback((id: number) => openPanel('member', id), [openPanel])
-  const openEventPanel = useCallback((id: number) => {
-    if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return
-    openPanel('event', id)
-  }, [openPanel])
+  const openMemberPanel = useCallback((id: number) => openPanel("member", id), [openPanel]);
+  const openEventPanel = useCallback(
+    (id: number) => {
+      if (Date.now() - lastDropAt.current < CLICK_AFTER_DRAG_MS) return;
+      openPanel("event", id);
+    },
+    [openPanel],
+  );
 
-  const [eventQuery, setEventQuery] = useState('')
-  const [eventFilters, setEventFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS))
-  const [eventSort, setEventSort] = useState<SortRule<EventSortField>[]>(DEFAULT_EVENT_SORT)
-  const [showEventFilterModal, setShowEventFilterModal] = useState(false)
-  const [showEventSortModal, setShowEventSortModal] = useState(false)
+  const [eventQuery, setEventQuery] = useState("");
+  const [eventFilters, setEventFilters] = useState<EventsFilterState>(
+    emptyFilterState(EVENTS_FILTER_KEYS),
+  );
+  const [eventSort, setEventSort] = useState<SortRule<EventSortField>[]>(DEFAULT_EVENT_SORT);
+  const [showEventFilterModal, setShowEventFilterModal] = useState(false);
+  const [showEventSortModal, setShowEventSortModal] = useState(false);
 
-  const [memberQuery, setMemberQuery] = useState('')
-  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS))
-  const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY)
-  const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
-  const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
-  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT)
-  const [showMemberSortModal, setShowMemberSortModal] = useState(false)
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(
+    emptyFilterState(MEMBERS_FILTER_KEYS),
+  );
+  const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY);
+  const [showMemberFilterModal, setShowMemberFilterModal] = useState(false);
+  const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false);
+  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT);
+  const [showMemberSortModal, setShowMemberSortModal] = useState(false);
   // Names every track, lunch question and custom question — what the card
   // display and sort modals offer. Same catalog the members page reads.
-  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null)
+  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null);
   // Each track's preference events, for the per-event sort. Fetched the
   // first time the sort modal opens — nothing else on the board needs them.
-  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null)
+  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null);
 
   // Which track tab is showing; null is All. Mirrored into ?track= so a
   // reload comes back to the day being staffed, the way the buildings board
   // does. A stale id simply falls back to All below.
-  const searchParams = useSearchParams()
+  const searchParams = useSearchParams();
   const [pickedTrackId, setPickedTrackId] = useState<number | null>(
-    () => Number(searchParams.get('track')) || null,
-  )
-  const simple = tracks.length <= 1
-  const activeTrackId = !simple && pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId)
-    ? pickedTrackId
-    : null
+    () => Number(searchParams.get("track")) || null,
+  );
+  const simple = tracks.length <= 1;
+  const activeTrackId =
+    !simple && pickedTrackId !== null && tracks.some((t) => t.id === pickedTrackId)
+      ? pickedTrackId
+      : null;
 
   // Memoised: CollapsibleHeader re-registers the bar's copy whenever this
   // identity changes, and a fresh array each render would do that per frame.
   const headerTabs = useMemo(
-    () => [{ key: 'all', label: 'All' }, ...tracks.map((t) => ({ key: String(t.id), label: t.name }))],
+    () => [
+      { key: "all", label: "All" },
+      ...tracks.map((t) => ({ key: String(t.id), label: t.name })),
+    ],
     [tracks],
-  )
+  );
 
   const pickTab = useCallback((key: string) => {
-    const next = key === 'all' ? null : Number(key)
-    setPickedTrackId(next)
+    const next = key === "all" ? null : Number(key);
+    setPickedTrackId(next);
     // Merged, so an open ?member= panel survives the tab change.
-    const params = new URLSearchParams(window.location.search)
-    if (next === null) params.delete('track')
-    else params.set('track', String(next))
-    replaceSearchParams(params)
-  }, [])
+    const params = new URLSearchParams(window.location.search);
+    if (next === null) params.delete("track");
+    else params.set("track", String(next));
+    replaceSearchParams(params);
+  }, []);
 
   // Each tab keeps its own filters, columns and card fields, stored under its
   // own surface key ("assignments_events:track:3"). The whole config is read
   // once and the tab's slice derived from it, rather than a fetch per tab.
-  const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId)
-  const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId)
+  const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId);
+  const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId);
 
   // What this tab shows and narrows to before anything is saved for it — and
   // what its modals' Reset buttons return to. Held once rather than rebuilt
   // at each use, so the modals and the effect below can't drift apart.
-  const trackIds = useMemo(() => tracks.map((t) => t.id), [tracks])
+  const trackIds = useMemo(() => tracks.map((t) => t.id), [tracks]);
   const memberDisplayDefaults = useMemo(
     () => defaultMemberDisplayForTab(trackIds, activeTrackId),
     [trackIds, activeTrackId],
-  )
+  );
   const memberFilterDefaults = useMemo(
     () => defaultMemberFiltersForTab(trackIds, activeTrackId),
     [trackIds, activeTrackId],
-  )
-  const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null)
+  );
+  const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null);
 
   // Read once: unlike the roster's, nothing here gates a fetch (both halves
   // filter client-side), so the board renders on its defaults and settles onto
   // the saved view when this lands, rather than holding the page on a request.
   useEffect(() => {
-    if (!canView) return
-    let current = true
-    displayConfigApi.get(tournamentId)
-      .then((config) => { if (current) setSavedConfig(config) })
+    if (!canView) return;
+    let current = true;
+    displayConfigApi
+      .get(tournamentId)
+      .then((config) => {
+        if (current) setSavedConfig(config);
+      })
       // No saved view (or no permission to read one) is not an error — the
       // board's defaults are a perfectly good board.
-      .catch(() => { if (current) setSavedConfig({}) })
-    displayConfigApi.getCatalog(tournamentId)
-      .then((data) => { if (current) setCatalog(data) })
-      .catch(() => {})
-    return () => { current = false }
-  }, [tournamentId, canView])
+      .catch(() => {
+        if (current) setSavedConfig({});
+      });
+    displayConfigApi
+      .getCatalog(tournamentId)
+      .then((data) => {
+        if (current) setCatalog(data);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [tournamentId, canView]);
 
   // Re-derived per tab, so switching tabs swaps the whole view with it.
   useEffect(() => {
-    if (savedConfig === null) return
-    const events = savedConfig[eventsSurface]
-    setEventFilters(eventsFilterFromStored(events?.filters))
+    if (savedConfig === null) return;
+    const events = savedConfig[eventsSurface];
+    setEventFilters(eventsFilterFromStored(events?.filters));
     // Absent means "never saved", which is the default chain — an empty
     // *array* is a real state (somebody removed every rule) and stays empty.
-    setEventSort(events?.sorts
-      ? sortRulesFromStored(events.sorts, isEventSortField)
-      : DEFAULT_EVENT_SORT)
-    const card = savedConfig[cardSurface]
+    setEventSort(
+      events?.sorts ? sortRulesFromStored(events.sorts, isEventSortField) : DEFAULT_EVENT_SORT,
+    );
+    const card = savedConfig[cardSurface];
     // Nothing saved for this tab yet: the tab decides what the belt narrows
     // to and which tracks the card carries, rather than every tab starting
     // unfiltered and showing all of them. A saved `{}` is a real state —
     // somebody cleared every chip — so only an absent one falls back.
-    setMemberFilters(card?.filters
-      ? membersFilterFromStored(card.filters)
-      : memberFilterDefaults)
-    setMemberDisplay(Array.isArray(card?.hidden)
-      ? memberDisplayFromHidden(card.hidden)
-      : memberDisplayDefaults)
-    setMemberSort(card?.sorts
-      ? sortRulesFromStored(card.sorts, isMemberSortField)
-      : DEFAULT_BELT_SORT)
-  }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults])
+    setMemberFilters(card?.filters ? membersFilterFromStored(card.filters) : memberFilterDefaults);
+    setMemberDisplay(
+      Array.isArray(card?.hidden) ? memberDisplayFromHidden(card.hidden) : memberDisplayDefaults,
+    );
+    setMemberSort(
+      card?.sorts ? sortRulesFromStored(card.sorts, isMemberSortField) : DEFAULT_BELT_SORT,
+    );
+  }, [savedConfig, eventsSurface, cardSurface, memberFilterDefaults, memberDisplayDefaults]);
 
   /** Persists one surface and keeps the local copy in step, so switching away
    *  and back shows what was just set rather than what was last fetched. */
-  const persistSurface = useCallback((surface: string, patch: Record<string, unknown>) => {
-    setSavedConfig((cur) => ({
-      ...(cur ?? {}),
-      [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
-    }))
-    persistDisplayConfigSurface(tournamentId, surface, patch)
-  }, [tournamentId])
+  const persistSurface = useCallback(
+    (surface: string, patch: Record<string, unknown>) => {
+      setSavedConfig((cur) => ({
+        ...(cur ?? {}),
+        [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
+      }));
+      persistDisplayConfigSurface(tournamentId, surface, patch);
+    },
+    [tournamentId],
+  );
 
-  const applyEventFilters = useCallback((next: EventsFilterState) => {
-    setEventFilters(next)
-    persistSurface(eventsSurface, { filters: eventsFilterToStored(next) })
-  }, [persistSurface, eventsSurface])
+  const applyEventFilters = useCallback(
+    (next: EventsFilterState) => {
+      setEventFilters(next);
+      persistSurface(eventsSurface, { filters: eventsFilterToStored(next) });
+    },
+    [persistSurface, eventsSurface],
+  );
 
-  const applyEventSort = useCallback((next: SortRule<EventSortField>[]) => {
-    setEventSort(next)
-    persistSurface(eventsSurface, { sorts: sortRulesToStored(next) })
-  }, [persistSurface, eventsSurface])
+  const applyEventSort = useCallback(
+    (next: SortRule<EventSortField>[]) => {
+      setEventSort(next);
+      persistSurface(eventsSurface, { sorts: sortRulesToStored(next) });
+    },
+    [persistSurface, eventsSurface],
+  );
 
-  const applyMemberFilters = useCallback((next: MembersFilterState) => {
-    setMemberFilters(next)
-    persistSurface(cardSurface, { filters: membersFilterToStored(next) })
-  }, [persistSurface, cardSurface])
+  const applyMemberFilters = useCallback(
+    (next: MembersFilterState) => {
+      setMemberFilters(next);
+      persistSurface(cardSurface, { filters: membersFilterToStored(next) });
+    },
+    [persistSurface, cardSurface],
+  );
 
-  const applyMemberDisplay = useCallback((next: MemberDisplayState) => {
-    setMemberDisplay(next)
-    persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) })
-  }, [persistSurface, cardSurface])
+  const applyMemberDisplay = useCallback(
+    (next: MemberDisplayState) => {
+      setMemberDisplay(next);
+      persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) });
+    },
+    [persistSurface, cardSurface],
+  );
 
   // Per tab, with the tab's filters and card fields. The belt is fetched with
   // every data group, so no sort here ever waits on a reload.
-  const applyMemberSort = useCallback((next: SortRule<MemberSortField>[]) => {
-    setMemberSort(next)
-    persistSurface(cardSurface, { sorts: sortRulesToStored(next) })
-  }, [persistSurface, cardSurface])
+  const applyMemberSort = useCallback(
+    (next: SortRule<MemberSortField>[]) => {
+      setMemberSort(next);
+      persistSurface(cardSurface, { sorts: sortRulesToStored(next) });
+    },
+    [persistSurface, cardSurface],
+  );
 
   const openMemberSortModal = useCallback(() => {
-    setShowMemberSortModal(true)
+    setShowMemberSortModal(true);
     if (eventPrefGroups === null) {
-      membersApi.filterOptions(tournamentId)
+      membersApi
+        .filterOptions(tournamentId)
         .then((options) => setEventPrefGroups(options.event_preferences))
-        .catch(() => setEventPrefGroups([]))
+        .catch(() => setEventPrefGroups([]));
     }
-  }, [eventPrefGroups, tournamentId])
+  }, [eventPrefGroups, tournamentId]);
 
   const memberSortFields = useMemo(
     () => memberSortOptions(catalog?.columns ?? [], eventPrefGroups ?? []),
     [catalog, eventPrefGroups],
-  )
+  );
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
   // apart, with no second bookkeeping structure to keep in step.
-  const localIdRef = useRef(0)
+  const localIdRef = useRef(0);
   function nextLocalId(): number {
-    localIdRef.current -= 1
-    return localIdRef.current
+    localIdRef.current -= 1;
+    return localIdRef.current;
   }
 
   // Read by handlers that need the *latest* rows from outside React's render
   // cycle — a resize gesture's pointerup fires from a native listener set up
   // once at pointerdown, so the `rows` it would otherwise close over is
   // whatever they were at gesture start, not at release.
-  const rowsRef = useRef(rows)
-  useEffect(() => { rowsRef.current = rows }, [rows])
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   useEffect(() => {
-    if (!canView) return
-    let current = true
-    tournamentEventsApi.list(tournamentId)
-      .then((data) => { if (current) setEvents(data.map(withOrderedShifts)) })
-      .catch((err: unknown) => {
-        if (current) setLoadError(err instanceof ApiError ? err.message : 'Failed to load events.')
+    if (!canView) return;
+    let current = true;
+    tournamentEventsApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setEvents(data.map(withOrderedShifts));
       })
-    assignmentsApi.list(tournamentId).then((data) => { if (current) setRows(data) }).catch(() => {})
-    tournamentShiftsApi.list(tournamentId).then((data) => { if (current) setAllShifts(data) }).catch(() => {})
-    rolesApi.list(tournamentId).then((data) => { if (current) setRoleCatalog(data) }).catch(() => {})
+      .catch((err: unknown) => {
+        if (current) setLoadError(err instanceof ApiError ? err.message : "Failed to load events.");
+      });
+    assignmentsApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setRows(data);
+      })
+      .catch(() => {});
+    tournamentShiftsApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setAllShifts(data);
+      })
+      .catch(() => {});
+    rolesApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setRoleCatalog(data);
+      })
+      .catch(() => {});
     // Live tracks only. The route returns pending-delete ones too (the
     // settings listing is what needs them), so every other consumer drops
     // them the same way — they are on their way out, and the board offers
@@ -419,22 +530,42 @@ export default function AssignmentsPage() {
     // Columns are unaffected: those come off each event's own `tracks`, so an
     // archived track still attached to an event keeps its column until the
     // delete goes through.
-    tournamentTracksApi.list(tournamentId)
-      .then((data) => { if (current) setTracks(data.filter((t) => !t.is_archived)) })
-      .catch(() => {})
+    tournamentTracksApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setTracks(data.filter((t) => !t.is_archived));
+      })
+      .catch(() => {});
     // manage_members-gated — a coordinator with only manage_events can view
     // the board (assignments read is manage_events OR manage_members) but
     // not the roster, so the belt just degrades to empty for them rather
     // than the page 403ing outright.
-    membersApi.list(tournamentId).then((data) => { if (current) setMembers(data) }).catch(() => {})
+    membersApi
+      .list(tournamentId)
+      .then((data) => {
+        if (current) setMembers(data);
+      })
+      .catch(() => {});
     // For the event panel. manage_events-gated like the panel itself, so a
     // members-only coordinator simply never opens one.
     if (canManageEvents) {
-      canonicalEventsApi.list().then((data) => { if (current) setCanonicalEvents(data) }).catch(() => {})
-      buildingsApi.list(tournamentId).then((data) => { if (current) setBuildings(data) }).catch(() => {})
+      canonicalEventsApi
+        .list()
+        .then((data) => {
+          if (current) setCanonicalEvents(data);
+        })
+        .catch(() => {});
+      buildingsApi
+        .list(tournamentId)
+        .then((data) => {
+          if (current) setBuildings(data);
+        })
+        .catch(() => {});
     }
-    return () => { current = false }
-  }, [tournamentId, canView, canManageEvents, refreshKey])
+    return () => {
+      current = false;
+    };
+  }, [tournamentId, canView, canManageEvents, refreshKey]);
 
   // Every event with its hidden tracks stripped out — shifts and tracks both.
   // Derived once and read by *everything* downstream, render and handlers
@@ -447,7 +578,7 @@ export default function AssignmentsPage() {
   const showsTrack = useCallback(
     (id: number) => activeTrackId === null || id === activeTrackId,
     [activeTrackId],
-  )
+  );
 
   // Each event's copy is reused while its source is unchanged, so replacing
   // one event rebuilds only that copy — fresh objects for all of them would
@@ -455,19 +586,22 @@ export default function AssignmentsPage() {
   // pattern React documents for derived state), since a render-time cache
   // mutation is what the compiler rules forbid. A new tab rebuilds them all.
   const [board, setBoard] = useState(() => ({
-    events, showsTrack, boardEvents: (events ?? []).map((e) => filterEventTracks(e, showsTrack)),
-  }))
-  let boardEvents = board.boardEvents
+    events,
+    showsTrack,
+    boardEvents: (events ?? []).map((e) => filterEventTracks(e, showsTrack)),
+  }));
+  let boardEvents = board.boardEvents;
   if (board.events !== events || board.showsTrack !== showsTrack) {
-    const reuse = board.showsTrack === showsTrack
-      ? new Map((board.events ?? []).map((e, i) => [e, board.boardEvents[i]]))
-      : null
-    boardEvents = (events ?? []).map((e) => reuse?.get(e) ?? filterEventTracks(e, showsTrack))
-    setBoard({ events, showsTrack, boardEvents })
+    const reuse =
+      board.showsTrack === showsTrack
+        ? new Map((board.events ?? []).map((e, i) => [e, board.boardEvents[i]]))
+        : null;
+    boardEvents = (events ?? []).map((e) => reuse?.get(e) ?? filterEventTracks(e, showsTrack));
+    setBoard({ events, showsTrack, boardEvents });
   }
 
-  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
-  const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
   // Display only, so it is built from `rows` rather than replacing it: a row
   // pinned to a hidden track's shift is dropped here, but stays in `rows` for
   // the conflict flags and for every write path — hiding a day must not make
@@ -486,20 +620,20 @@ export default function AssignmentsPage() {
   const visibleRows = useMemo(
     () => rows.filter((row) => showsTrack(row.shift ? row.shift.track_id : row.track.id)),
     [rows, showsTrack],
-  )
+  );
 
-  const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
+  const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows]);
 
-  const eventFilterActive = isEventsFilterActive(eventFilters)
+  const eventFilterActive = isEventsFilterActive(eventFilters);
   // Against the tab's defaults, not against nothing: the belt is *always*
   // narrowed to the day being staffed, so isFilterActive would light the
   // clear button on every tab from the first render and offer to undo a
   // state the button itself hands back.
-  const memberFilterActive = !sameFilterState(memberFilters, memberFilterDefaults)
+  const memberFilterActive = !sameFilterState(memberFilters, memberFilterDefaults);
   // Same rule for the cards: off-default is what the control reports, and on
   // a track tab the default already hides every other day's slices.
-  const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults)
-  const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT)
+  const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults);
+  const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT);
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
   // Writing) has no shifts of its own but still belongs on an event and still
@@ -507,39 +641,39 @@ export default function AssignmentsPage() {
   //
   // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
   // every row takes flagsFor, so a new Map per event edit re-rendered them all.
-  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]))
+  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]));
   const eventTrackIds = useMemo(
     () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
     [eventTrackKey],
-  )
+  );
 
   const divisionOptions = useMemo(() => {
     const options = [...new Set((boardEvents ?? []).map((e) => e.division))]
       .filter((d) => d !== null)
-      .map((d) => ({ value: d, label: `Division ${d}` }))
+      .map((d) => ({ value: d, label: `Division ${d}` }));
     // Offered only when something actually has no division — otherwise it is
     // a row that can only ever match nothing.
     return (boardEvents ?? []).some((e) => e.division === null)
-      ? [...options, { value: EVENT_FILTER_UNSET, label: 'No division' }]
-      : options
-  }, [boardEvents])
-  const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
-  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents])
-  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents])
-  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents])
+      ? [...options, { value: EVENT_FILTER_UNSET, label: "No division" }]
+      : options;
+  }, [boardEvents]);
+  const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents]);
+  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents]);
+  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents]);
+  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents]);
 
   const visibleEvents = useMemo(() => {
-    const text = eventQuery.trim().toLowerCase()
+    const text = eventQuery.trim().toLowerCase();
     const matching = (boardEvents ?? []).filter((event) => {
-      if (text && !eventName(event).toLowerCase().includes(text)) return false
+      if (text && !eventName(event).toLowerCase().includes(text)) return false;
       return eventPassesFilters(event, eventFilters, {
         assignmentsFor: (id) => byEvent.get(id) ?? [],
         showsTrack,
         // A track tab narrows to its own track; the All tab honours whatever
         // the saved filter says.
         trackOverride: activeTrackId === null ? undefined : new Set([String(activeTrackId)]),
-      })
-    })
+      });
+    });
     // Sorted after filtering, not before: the staffing key costs a pass over
     // each event's assignments, and there is no reason to pay it for rows the
     // filter is about to drop.
@@ -548,59 +682,68 @@ export default function AssignmentsPage() {
       eventSort,
       (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
       eventSortTiebreak,
-    )
-  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack])
-
+    );
+  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack]);
 
   // Members matching the filters, from the same server filter the members
   // page uses — a client copy drifted. Re-read after writes so the assigned
   // filter follows a drag. null = no filters set, so everyone passes.
-  const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null)
+  const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null);
   useEffect(() => {
-    const filters = membersFilterParams(memberFilters)
+    const filters = membersFilterParams(memberFilters);
     if (!canView || Object.keys(filters).length === 0) {
-      setFilterMatchIds(null)
-      return
+      setFilterMatchIds(null);
+      return;
     }
-    let current = true
-    membersApi.list(tournamentId, { fields: [], filters })
-      .then((data) => { if (current) setFilterMatchIds(new Set(data.map((m) => m.id))) })
-      .catch(() => { if (current) setFilterMatchIds(null) })
-    return () => { current = false }
-  }, [tournamentId, canView, memberFilters, boardWriteVersion, refreshKey])
+    let current = true;
+    membersApi
+      .list(tournamentId, { fields: [], filters })
+      .then((data) => {
+        if (current) setFilterMatchIds(new Set(data.map((m) => m.id)));
+      })
+      .catch(() => {
+        if (current) setFilterMatchIds(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [tournamentId, canView, memberFilters, boardWriteVersion, refreshKey]);
 
   const belt = useMemo(() => {
-    const text = memberQuery.trim().toLowerCase()
+    const text = memberQuery.trim().toLowerCase();
 
     const matching = members.filter((member) => {
-      if (text && !fullName(member.user ?? { first_name: null, last_name: null })
-        .toLowerCase().includes(text)) return false
-      if (filterMatchIds && !filterMatchIds.has(member.id)) return false
-      return true
-    })
-    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak)
-  }, [filterMatchIds, members, memberQuery, memberSort])
+      if (
+        text &&
+        !fullName(member.user ?? { first_name: null, last_name: null })
+          .toLowerCase()
+          .includes(text)
+      )
+        return false;
+      if (filterMatchIds && !filterMatchIds.has(member.id)) return false;
+      return true;
+    });
+    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak);
+  }, [filterMatchIds, members, memberQuery, memberSort]);
 
   const flagsFor = useMemo(() => {
-    const perMember = new Map<number, Assignment[]>()
+    const perMember = new Map<number, Assignment[]>();
     for (const row of rows) {
-      const key = row.member.membership_id
-      if (key === null) continue
-      const list = perMember.get(key)
-      if (list) list.push(row)
-      else perMember.set(key, [row])
+      const key = row.member.membership_id;
+      if (key === null) continue;
+      const list = perMember.get(key);
+      if (list) list.push(row);
+      else perMember.set(key, [row]);
     }
     return (assignment: Assignment): Flag[] => {
-      const id = assignment.member.membership_id
-      const member = id === null ? undefined : memberById.get(id)
-      if (!member) return []
-      return assignmentFlags(
-        assignment,
-        memberFacts(member, perMember.get(member.id) ?? []),
-        { eventTrackIds },
-      )
-    }
-  }, [memberById, rows, eventTrackIds])
+      const id = assignment.member.membership_id;
+      const member = id === null ? undefined : memberById.get(id);
+      if (!member) return [];
+      return assignmentFlags(assignment, memberFacts(member, perMember.get(member.id) ?? []), {
+        eventTrackIds,
+      });
+    };
+  }, [memberById, rows, eventTrackIds]);
 
   // ---------------------------------------------------------------------
   // Server sync — every write lands here or in the two per-gesture callers
@@ -614,14 +757,14 @@ export default function AssignmentsPage() {
    *  which also admits manage_events alone for reading the board. */
   function requireWriteAccess(): boolean {
     if (!canManageMembers) {
-      show("You need the manage members permission to edit assignments.", 'error')
-      return false
+      show("You need the manage members permission to edit assignments.", "error");
+      return false;
     }
     if (isArchived) {
-      show(ARCHIVED_REASON, 'error')
-      return false
+      show(ARCHIVED_REASON, "error");
+      return false;
     }
-    return true
+    return true;
   }
 
   async function createAssignmentRow(row: Assignment) {
@@ -634,44 +777,49 @@ export default function AssignmentsPage() {
         // Ignored by the server when a shift is given (the shift names its
         // own track); the whole answer when one isn't.
         tournament_track_id: row.shift ? null : row.track.id,
-      })
-      setRows((current) => current.map((r) => (r.id === row.id ? created : r)))
-      afterWrite(row)
+      });
+      setRows((current) => current.map((r) => (r.id === row.id ? created : r)));
+      afterWrite(row);
     } catch (err) {
-      setRows((current) => current.filter((r) => r.id !== row.id))
-      show(err instanceof ApiError ? err.message : 'Failed to assign — the change was rolled back.', 'error')
+      setRows((current) => current.filter((r) => r.id !== row.id));
+      show(
+        err instanceof ApiError ? err.message : "Failed to assign — the change was rolled back.",
+        "error",
+      );
     }
   }
 
   async function deleteAssignmentRow(row: Assignment) {
     // A row that never reached the server (its create is still in flight, or
     // failed and was already rolled back) has nothing there to remove.
-    if (row.id < 0) return
+    if (row.id < 0) return;
     try {
-      await assignmentsApi.delete(tournamentId, row.id)
-      afterWrite(row)
+      await assignmentsApi.delete(tournamentId, row.id);
+      afterWrite(row);
     } catch (err) {
-      setRows((current) => [...current, row])
-      show(err instanceof ApiError ? err.message : 'Failed to remove — restored.', 'error')
+      setRows((current) => [...current, row]);
+      show(err instanceof ApiError ? err.message : "Failed to remove — restored.", "error");
     }
   }
 
   function afterWrite(row: Assignment) {
-    setBoardWriteVersion((v) => v + 1)
-    if (row.member.membership_id === focusedId) setPanelAssignmentsVersion((v) => v + 1)
+    setBoardWriteVersion((v) => v + 1);
+    if (row.member.membership_id === focusedId) setPanelAssignmentsVersion((v) => v + 1);
   }
 
   /** The member panel wrote this member's assignments — swap their rows on
    *  the board for the server's. Only theirs, so other in-flight rows survive. */
   function refreshMemberRows(membershipId: number) {
-    assignmentsApi.list(tournamentId, { membershipId })
+    assignmentsApi
+      .list(tournamentId, { membershipId })
       .then((fresh) => {
         setRows((current) => [
-          ...current.filter((r) => r.member.membership_id !== membershipId), ...fresh,
-        ])
-        setBoardWriteVersion((v) => v + 1)
+          ...current.filter((r) => r.member.membership_id !== membershipId),
+          ...fresh,
+        ]);
+        setBoardWriteVersion((v) => v + 1);
       })
-      .catch(() => {})
+      .catch(() => {});
   }
 
   /** The role a track hands a member placed on it with nothing picked yet —
@@ -685,39 +833,41 @@ export default function AssignmentsPage() {
    *  shift belongs to exactly one primary track. Only the bare row target,
    *  which by then has neither, falls back to the event's first track. */
   function trackForDropId(
-    kind: string, target: Record<string, unknown>,
-    event: TournamentEvent, shiftIds: (number | null)[],
+    kind: string,
+    target: Record<string, unknown>,
+    event: TournamentEvent,
+    shiftIds: (number | null)[],
   ): number | undefined {
-    if (kind === 'track') return target.trackId as number
-    const shiftId = shiftIds.find((id): id is number => id !== null)
-    return event.shifts.find((s) => s.id === shiftId)?.track_id
+    if (kind === "track") return target.trackId as number;
+    const shiftId = shiftIds.find((id): id is number => id !== null);
+    return event.shifts.find((s) => s.id === shiftId)?.track_id;
   }
 
   function trackForDrop(event: TournamentEvent, trackId?: number): TournamentTrack | undefined {
     // Only the bare row target arrives without an id, and it has nothing but
     // the event's own list to go on.
-    if (trackId === undefined) return event.tracks[0]
+    if (trackId === undefined) return event.tracks[0];
     // Otherwise the tournament's catalog, not `event.tracks`. A shift names
     // the track it falls on and that is authoritative — an event's track list
     // is a separate bridge and the two do drift, so looking the id up in the
     // event's list turns a perfectly good shift into "this event has no
     // track". Falls back to the event's own list for a track the catalog
     // drops, i.e. one that is pending delete.
-    return trackById.get(trackId) ?? event.tracks.find((t) => t.id === trackId)
+    return trackById.get(trackId) ?? event.tracks.find((t) => t.id === trackId);
   }
 
   /** The compact track an optimistic row carries, shaped like the server's
    *  TournamentTrackRef so the local row and the one that replaces it read
    *  the same. */
   function trackRefFor(event: TournamentEvent, trackId?: number) {
-    const track = trackForDrop(event, trackId)
-    return track ? { id: track.id, name: track.name, is_primary: track.is_primary } : null
+    const track = trackForDrop(event, trackId);
+    return track ? { id: track.id, name: track.name, is_primary: track.is_primary } : null;
   }
 
   function defaultRoleFor(event: TournamentEvent, trackId?: number): Role | null {
-    const roleId = trackForDrop(event, trackId)?.default_role_id ?? null
-    if (roleId === null) return null
-    return roleCatalog.find((r) => r.id === roleId) ?? null
+    const roleId = trackForDrop(event, trackId)?.default_role_id ?? null;
+    if (roleId === null) return null;
+    return roleCatalog.find((r) => r.id === roleId) ?? null;
   }
 
   /**
@@ -745,34 +895,38 @@ export default function AssignmentsPage() {
     roles: AssignmentRole[],
     event: TournamentEvent,
   ): { rows: Assignment[]; added: Assignment[]; removed: Assignment[] } {
-    const everyRow = current.filter((row) =>
-      row.event.id === eventId && laneKeyOf(row) === laneKey)
-    const onScreen = new Set(event.shifts.map((s) => s.id))
-    const parked = everyRow.filter((row) => row.shift !== null && !onScreen.has(row.shift.id))
-    const inLane = everyRow.filter((row) => row.shift === null || onScreen.has(row.shift.id))
-    if (inLane.length === 0 || roles.length === 0) return { rows: current, added: [], removed: [] }
+    const everyRow = current.filter(
+      (row) => row.event.id === eventId && laneKeyOf(row) === laneKey,
+    );
+    const onScreen = new Set(event.shifts.map((s) => s.id));
+    const parked = everyRow.filter((row) => row.shift !== null && !onScreen.has(row.shift.id));
+    const inLane = everyRow.filter((row) => row.shift === null || onScreen.has(row.shift.id));
+    if (inLane.length === 0 || roles.length === 0) return { rows: current, added: [], removed: [] };
 
-    const laneIds = new Set(everyRow.map((row) => row.id))
+    const laneIds = new Set(everyRow.map((row) => row.id));
     const cellKey = (shiftId: number | null, role: AssignmentRole) =>
-      `${shiftId ?? 'none'}|${roleKey(role)}`
-    const existing = new Map(inLane.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]))
+      `${shiftId ?? "none"}|${roleKey(role)}`;
+    const existing = new Map(inLane.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]));
 
-    const next: Assignment[] = []
+    const next: Assignment[] = [];
     for (const shiftId of shiftIds) {
       for (const role of roles) {
-        const found = existing.get(cellKey(shiftId, role))
-        const shift = shiftId === null ? null : event.shifts.find((s) => s.id === shiftId) ?? null
-        next.push(found ?? {
-          ...inLane[0],
-          id: nextLocalId(),
-          role,
-          shift,
-          // An event can hold shifts on more than one day, so a bar stretched
-          // across them changes track as it goes. Unpinned cells keep the
-          // lane's own track — there is no shift to take one from.
-          track: (shift ? trackRefFor(event, shift.track_id) : null) ?? inLane[0].track,
-          updated_at: new Date().toISOString(),
-        })
+        const found = existing.get(cellKey(shiftId, role));
+        const shift =
+          shiftId === null ? null : (event.shifts.find((s) => s.id === shiftId) ?? null);
+        next.push(
+          found ?? {
+            ...inLane[0],
+            id: nextLocalId(),
+            role,
+            shift,
+            // An event can hold shifts on more than one day, so a bar stretched
+            // across them changes track as it goes. Unpinned cells keep the
+            // lane's own track — there is no shift to take one from.
+            track: (shift ? trackRefFor(event, shift.track_id) : null) ?? inLane[0].track,
+            updated_at: new Date().toISOString(),
+          },
+        );
       }
     }
 
@@ -780,22 +934,22 @@ export default function AssignmentsPage() {
     // the render. A resize commits on every pointer move, so this is the
     // common case, not the rare one.
     if (next.length === inLane.length && next.every((row) => laneIds.has(row.id))) {
-      return { rows: current, added: [], removed: [] }
+      return { rows: current, added: [], removed: [] };
     }
-    const nextIds = new Set(next.map((row) => row.id))
+    const nextIds = new Set(next.map((row) => row.id));
     return {
       rows: [...current.filter((row) => !laneIds.has(row.id)), ...parked, ...next],
       added: next.filter((row) => !laneIds.has(row.id)),
       removed: inLane.filter((row) => !nextIds.has(row.id)),
-    }
+    };
   }
 
   /** The lane's distinct shifts in the event's own order. `[null]` keeps an
    *  unpinned lane unpinned rather than silently pinning it to shift one. */
   function laneShiftIds(inLane: Assignment[], event: TournamentEvent): (number | null)[] {
-    const have = new Set(inLane.map((row) => row.shift?.id ?? null))
-    const ordered = event.shifts.filter((s) => have.has(s.id)).map((s) => s.id)
-    return ordered.length > 0 ? ordered : [null]
+    const have = new Set(inLane.map((row) => row.shift?.id ?? null));
+    const ordered = event.shifts.filter((s) => have.has(s.id)).map((s) => s.id);
+    return ordered.length > 0 ? ordered : [null];
   }
 
   /**
@@ -808,40 +962,44 @@ export default function AssignmentsPage() {
    * cursor after one step. Purely local — see onResizeCommit for the sync,
    * which fires once, on release, rather than once per pixel.
    */
-  function handleResize(laneKey: string, eventId: number, edge: 'start' | 'end', index: number) {
-    if (!canManageMembers || isArchived) return
-    const event = (boardEvents ?? []).find((e) => e.id === eventId)
-    if (!event) return
+  function handleResize(laneKey: string, eventId: number, edge: "start" | "end", index: number) {
+    if (!canManageMembers || isArchived) return;
+    const event = (boardEvents ?? []).find((e) => e.id === eventId);
+    if (!event) return;
 
     setRows((current) => {
-      const inLane = current.filter((row) =>
-        row.event.id === eventId && laneKeyOf(row) === laneKey)
-      if (inLane.length === 0) return current
+      const inLane = current.filter(
+        (row) => row.event.id === eventId && laneKeyOf(row) === laneKey,
+      );
+      if (inLane.length === 0) return current;
 
       // The lane's own track's shifts, not the event's. `index` was measured
       // against the columns of one grid, and each track draws its own — on an
       // event running two days, counting into `event.shifts` would land a Day
       // 2 resize on Day 1's columns.
-      const trackId = inLane.find((row) => row.shift)?.shift?.track_id
-      const trackShifts = event.shifts.filter((s) => s.track_id === trackId)
-      const shiftIds = trackShifts.map((s) => s.id)
+      const trackId = inLane.find((row) => row.shift)?.shift?.track_id;
+      const trackShifts = event.shifts.filter((s) => s.track_id === trackId);
+      const shiftIds = trackShifts.map((s) => s.id);
       const covered = inLane
         .map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))
-        .filter((i) => i >= 0)
-      if (covered.length === 0) return current
+        .filter((i) => i >= 0);
+      if (covered.length === 0) return current;
 
-      const first = Math.min(...covered)
-      const last = Math.max(...covered)
+      const first = Math.min(...covered);
+      const last = Math.max(...covered);
       // The dragged edge moves; the other one anchors.
-      const from = edge === 'start' ? Math.min(index, last) : first
-      const to = edge === 'start' ? last : Math.max(index, first)
+      const from = edge === "start" ? Math.min(index, last) : first;
+      const to = edge === "start" ? last : Math.max(index, first);
 
       return rebuildLane(
-        current, eventId, laneKey,
+        current,
+        eventId,
+        laneKey,
         trackShifts.slice(from, to + 1).map((s) => s.id),
-        rolesOf(inLane), event,
-      ).rows
-    })
+        rolesOf(inLane),
+        event,
+      ).rows;
+    });
   }
 
   /** Syncs a resize gesture's net effect once it ends — the whole-lane diff
@@ -850,23 +1008,25 @@ export default function AssignmentsPage() {
    *  the same gesture cancel out here for free — neither ever reaches this
    *  as a diff, since only the endpoints are compared. */
   function handleResizeCommit(laneKey: string, eventId: number, beforeRows: Assignment[]) {
-    const beforeIds = new Set(beforeRows.map((r) => r.id))
-    const current = rowsRef.current.filter((row) =>
-      row.event.id === eventId && laneKeyOf(row) === laneKey)
-    const currentIds = new Set(current.map((r) => r.id))
-    for (const row of current.filter((r) => !beforeIds.has(r.id))) createAssignmentRow(row)
-    for (const row of beforeRows.filter((r) => !currentIds.has(r.id))) deleteAssignmentRow(row)
+    const beforeIds = new Set(beforeRows.map((r) => r.id));
+    const current = rowsRef.current.filter(
+      (row) => row.event.id === eventId && laneKeyOf(row) === laneKey,
+    );
+    const currentIds = new Set(current.map((r) => r.id));
+    for (const row of current.filter((r) => !beforeIds.has(r.id))) createAssignmentRow(row);
+    for (const row of beforeRows.filter((r) => !currentIds.has(r.id))) deleteAssignmentRow(row);
   }
 
   /** Drop a whole bar: every row for that member on that event, across every
    *  shift and role. Removing one row would leave a torn span or a stray role
    *  behind, which is not what an × on the chip promises. */
   function handleRemove(laneKey: string, eventId: number) {
-    if (!requireWriteAccess()) return
-    const toRemove = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey)
-    setRows((current) => current.filter((row) =>
-      !(row.event.id === eventId && laneKeyOf(row) === laneKey)))
-    for (const row of toRemove) deleteAssignmentRow(row)
+    if (!requireWriteAccess()) return;
+    const toRemove = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
+    setRows((current) =>
+      current.filter((row) => !(row.event.id === eventId && laneKeyOf(row) === laneKey)),
+    );
+    for (const row of toRemove) deleteAssignmentRow(row);
   }
 
   /** Add or drop one role across every shift the bar covers. Roles belong to
@@ -880,40 +1040,45 @@ export default function AssignmentsPage() {
    * a set built from stale props.
    */
   function setLaneRoles(
-    laneKey: string, eventId: number,
+    laneKey: string,
+    eventId: number,
     next: (current: AssignmentRole[]) => AssignmentRole[],
   ) {
-    if (!requireWriteAccess()) return
-    const event = (boardEvents ?? []).find((e) => e.id === eventId)
-    if (!event) return
+    if (!requireWriteAccess()) return;
+    const event = (boardEvents ?? []).find((e) => e.id === eventId);
+    if (!event) return;
 
-    const inLane = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey)
-    if (inLane.length === 0) return
+    const inLane = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
+    if (inLane.length === 0) return;
 
-    const nextRoles = next(rolesOf(inLane))
+    const nextRoles = next(rolesOf(inLane));
     // Emptying a lane would delete the assignment outright, which is the ×'s
     // job. The picker locks the last role, but a stale click could still land.
-    if (nextRoles.length === 0) return
+    if (nextRoles.length === 0) return;
 
-    const { rows: nextRows, added, removed } = rebuildLane(
-      rows, eventId, laneKey, laneShiftIds(inLane, event), nextRoles, event,
-    )
-    setRows(nextRows)
-    for (const row of added) createAssignmentRow(row)
-    for (const row of removed) deleteAssignmentRow(row)
+    const {
+      rows: nextRows,
+      added,
+      removed,
+    } = rebuildLane(rows, eventId, laneKey, laneShiftIds(inLane, event), nextRoles, event);
+    setRows(nextRows);
+    for (const row of added) createAssignmentRow(row);
+    for (const row of removed) deleteAssignmentRow(row);
   }
 
   function handleToggleRole(laneKey: string, eventId: number, role: AssignmentRole) {
-    setLaneRoles(laneKey, eventId, (current) => (current.some((r) => sameRole(r, role))
-      ? current.filter((r) => !sameRole(r, role))
-      : [...current, role].sort((a, b) => a.label.localeCompare(b.label))))
+    setLaneRoles(laneKey, eventId, (current) =>
+      current.some((r) => sameRole(r, role))
+        ? current.filter((r) => !sameRole(r, role))
+        : [...current, role].sort((a, b) => a.label.localeCompare(b.label)),
+    );
   }
 
   /** Swap every role for this one. Picking the role someone already solely
    *  holds rebuilds the same lane, which rebuildLane recognises as no change
    *  and writes nothing for. */
   function handlePickRole(laneKey: string, eventId: number, role: AssignmentRole) {
-    setLaneRoles(laneKey, eventId, () => [role])
+    setLaneRoles(laneKey, eventId, () => [role]);
   }
 
   // A track's default role, changed from its timeline header. Scoped to the
@@ -922,23 +1087,32 @@ export default function AssignmentsPage() {
   // "change every Volunteer on Day 1 to Test Writer" means every event on
   // Day 1, not just this one.
   const [pendingRoleChange, setPendingRoleChange] = useState<{
-    track: TournamentTrack
-    oldRole: Role
-    newRole: Role
-    affected: Assignment[]
-    resolve: () => void
-  } | null>(null)
+    track: TournamentTrack;
+    oldRole: Role;
+    newRole: Role;
+    affected: Assignment[];
+    resolve: () => void;
+  } | null>(null);
 
-  async function applyDefaultRoleChange(track: TournamentTrack, newRole: Role, affected: Assignment[]) {
-    const updated = await tournamentTracksApi.update(tournamentId, track.id, { default_role_id: newRole.id })
-    setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)))
+  async function applyDefaultRoleChange(
+    track: TournamentTrack,
+    newRole: Role,
+    affected: Assignment[],
+  ) {
+    const updated = await tournamentTracksApi.update(tournamentId, track.id, {
+      default_role_id: newRole.id,
+    });
+    setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)));
     if (affected.length > 0) {
-      await Promise.all(affected.map((row) =>
-        assignmentsApi.update(tournamentId, row.id, { role_id: newRole.id })))
-      const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label }
-      const affectedIds = new Set(affected.map((r) => r.id))
-      setRows((current) => current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)))
-      setBoardWriteVersion((v) => v + 1)
+      await Promise.all(
+        affected.map((row) => assignmentsApi.update(tournamentId, row.id, { role_id: newRole.id })),
+      );
+      const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label };
+      const affectedIds = new Set(affected.map((r) => r.id));
+      setRows((current) =>
+        current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)),
+      );
+      setBoardWriteVersion((v) => v + 1);
     }
   }
 
@@ -949,24 +1123,25 @@ export default function AssignmentsPage() {
    *  the track's default. Nothing to migrate (no default set yet, or nobody
    *  holds it) applies immediately with no prompt. */
   function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
-    if (!requireWriteAccess()) return Promise.resolve()
-    if (track.default_role_id === newRole.id) return Promise.resolve()
-    const oldRole = track.default_role_id === null
-      ? null
-      : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+    if (!requireWriteAccess()) return Promise.resolve();
+    if (track.default_role_id === newRole.id) return Promise.resolve();
+    const oldRole =
+      track.default_role_id === null
+        ? null
+        : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
     const affected = oldRole
       ? rows.filter((r) => r.track.id === track.id && r.role.id === oldRole.id)
-      : []
-    if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, [])
+      : [];
+    if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, []);
     return new Promise<void>((resolve) => {
-      setPendingRoleChange({ track, oldRole, newRole, affected, resolve })
-    })
+      setPendingRoleChange({ track, oldRole, newRole, affected, resolve });
+    });
   }
 
   // Every write a row can start, in one object whose identity never changes,
   // so the rows' memo survives page re-renders. Each method forwards to this
   // render's handler through the ref, so none of them reads stale state.
-  const latestHandlers = useRef<BoardHandlers>(null!)
+  const latestHandlers = useRef<BoardHandlers>(null!);
   useLayoutEffect(() => {
     latestHandlers.current = {
       onResize: handleResize,
@@ -975,126 +1150,139 @@ export default function AssignmentsPage() {
       onPickRole: handlePickRole,
       onRemove: handleRemove,
       onPickDefaultRole: requestDefaultRoleChange,
-    }
-  })
-  const boardHandlers = useMemo<BoardHandlers>(() => ({
-    onResize: (...args) => latestHandlers.current.onResize(...args),
-    onResizeCommit: (...args) => latestHandlers.current.onResizeCommit(...args),
-    onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
-    onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
-    onRemove: (...args) => latestHandlers.current.onRemove(...args),
-    onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
-  }), [])
+    };
+  });
+  const boardHandlers = useMemo<BoardHandlers>(
+    () => ({
+      onResize: (...args) => latestHandlers.current.onResize(...args),
+      onResizeCommit: (...args) => latestHandlers.current.onResizeCommit(...args),
+      onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
+      onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
+      onRemove: (...args) => latestHandlers.current.onRemove(...args),
+      onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
+    }),
+    [],
+  );
 
-  const { setPanel, clearPanel } = useSetLayoutPanel()
-  const focused = focusedId === null ? null : memberById.get(focusedId) ?? null
+  const { setPanel, clearPanel } = useSetLayoutPanel();
+  const focused = focusedId === null ? null : (memberById.get(focusedId) ?? null);
   // From the unfiltered list: an event hidden by the current tab or filter is
   // still the event whose panel is open, and dropping it out from under the
   // panel because a filter narrowed would close it mid-edit.
-  const focusedEvent = focusedEventId === null
-    ? null
-    : (events ?? []).find((e) => e.id === focusedEventId) ?? null
+  const focusedEvent =
+    focusedEventId === null ? null : ((events ?? []).find((e) => e.id === focusedEventId) ?? null);
 
   // The whole docked column lives in the shell's single slot, since the slot
   // holds one registration at a time: the belt, then the panel stack beside
   // it. The board gives back the belt's width plus the widest open panel —
   // the stack overlaps, so a second panel costs nothing more.
   useEffect(() => {
-    const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1
+    const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1;
     // Through the board's own order, filters and tab included — the arrows
     // walk the list you are looking at, the way the belt's walk the belt.
-    const eventIndex = focusedEvent
-      ? visibleEvents.findIndex((e) => e.id === focusedEvent.id)
-      : -1
+    const eventIndex = focusedEvent ? visibleEvents.findIndex((e) => e.id === focusedEvent.id) : -1;
     // The panel on top decides the column's width — not the widest one open.
     // A wider panel underneath is clipped rather than left sticking out as a
     // strip of half-rendered labels, and closing the top one widens the
     // column back to whatever it uncovers.
-    const top = panelStack[panelStack.length - 1]
-    const stackWidth = top ? PANEL_WIDTH[top.kind] : 0
+    const top = panelStack[panelStack.length - 1];
+    const stackWidth = top ? PANEL_WIDTH[top.kind] : 0;
 
     const panelFor = (ref: PanelRef) => {
-      if (ref.kind === 'member') {
-        return focused && (
-          <MemberPanel
-            key={focused.id}
-            tournamentId={tournamentId}
-            membershipId={focused.id}
-            allRoles={roleCatalog}
-            // The board's own copies, so stepping through members doesn't
-            // re-fetch both on every open.
-            shifts={allShifts}
-            tracks={tracks}
-            canTouchRole={canTouchRole}
-            canEditMember={canEditMember}
-            collectIsOver18={!!selectedTournament?.collect_is_over_18}
-            collectIsOver21={!!selectedTournament?.collect_is_over_21}
-            isArchived={isArchived}
-            isSelf={currentUser?.id === focused.user.id}
-            // No onRemove/onSelfRemove: removing someone from the tournament
-            // is the roster's job, not this board's — omitting them hides
-            // the control entirely rather than wiring a flow that doesn't
-            // belong here.
-            onClose={() => closePanel('member')}
-            // Roles only: the roles PATCH returns none of the built groups
-            // (event prefs, track statuses), so swapping the row would blank them.
-            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
-              m.id === updated.id ? { ...m, roles: updated.roles } : m
-            )))}
-            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
-            assignmentsVersion={panelAssignmentsVersion}
-            onPrev={() => index > 0 && openPanel('member', belt[index - 1].id)}
-            onNext={() => index < belt.length - 1 && openPanel('member', belt[index + 1].id)}
-            hasPrev={index > 0}
-            hasNext={index >= 0 && index < belt.length - 1}
-          />
-        )
+      if (ref.kind === "member") {
+        return (
+          focused && (
+            <MemberPanel
+              key={focused.id}
+              tournamentId={tournamentId}
+              membershipId={focused.id}
+              allRoles={roleCatalog}
+              // The board's own copies, so stepping through members doesn't
+              // re-fetch both on every open.
+              shifts={allShifts}
+              tracks={tracks}
+              canTouchRole={canTouchRole}
+              canEditMember={canEditMember}
+              collectIsOver18={!!selectedTournament?.collect_is_over_18}
+              collectIsOver21={!!selectedTournament?.collect_is_over_21}
+              isArchived={isArchived}
+              isSelf={currentUser?.id === focused.user.id}
+              // No onRemove/onSelfRemove: removing someone from the tournament
+              // is the roster's job, not this board's — omitting them hides
+              // the control entirely rather than wiring a flow that doesn't
+              // belong here.
+              onClose={() => closePanel("member")}
+              // Roles only: the roles PATCH returns none of the built groups
+              // (event prefs, track statuses), so swapping the row would blank them.
+              onUpdated={(updated) =>
+                setMembers((prev) =>
+                  prev.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)),
+                )
+              }
+              onAssignmentsChanged={() => refreshMemberRows(focused.id)}
+              assignmentsVersion={panelAssignmentsVersion}
+              onPrev={() => index > 0 && openPanel("member", belt[index - 1].id)}
+              onNext={() => index < belt.length - 1 && openPanel("member", belt[index + 1].id)}
+              hasPrev={index > 0}
+              hasNext={index >= 0 && index < belt.length - 1}
+            />
+          )
+        );
       }
       // Not loaded is not the same as not there: the id can arrive from the
       // URL before the events fetch lands, so an absent event holds the slot
       // open rather than closing the panel a refresh meant to restore.
-      return focusedEvent && (
-        <EventPanel
-          key={focusedEvent.id}
-          tournamentId={tournamentId}
-          event={focusedEvent}
-          locked={isArchived}
-          canonicalEvents={canonicalEvents}
-          allShifts={allShifts}
-          tracks={tracks}
-          buildings={buildings}
-          roles={roleCatalog}
-          onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
-          onBuildingSaved={(building) => setBuildings((cur) => (
-            cur.some((b) => b.id === building.id)
-              ? cur.map((b) => (b.id === building.id ? building : b))
-              : [...cur, building].sort((a, b) => a.name.localeCompare(b.name))
-          ))}
-          onClose={() => closePanel('event')}
-          // withOrderedShifts, like the list fetch: the board indexes bars by
-          // position in `shifts`, so a save that came back unsorted would
-          // silently reorder the timeline's columns.
-          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (
-            e.id === saved.id ? withOrderedShifts(saved) : e
-          )))}
-          onDeleted={(id) => {
-            setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))
-            closePanel('event')
-          }}
-          // -1 means the open event is filtered out of the current view, so
-          // there is no "next" from it to speak of — both arrows go quiet
-          // rather than jumping to a row chosen by accident.
-          onPrev={() => eventIndex > 0 && openEventPanel(visibleEvents[eventIndex - 1].id)}
-          onNext={() => eventIndex >= 0 && eventIndex < visibleEvents.length - 1
-            && openEventPanel(visibleEvents[eventIndex + 1].id)}
-          hasPrev={eventIndex > 0}
-          hasNext={eventIndex >= 0 && eventIndex < visibleEvents.length - 1}
-        />
-      )
-    }
+      return (
+        focusedEvent && (
+          <EventPanel
+            key={focusedEvent.id}
+            tournamentId={tournamentId}
+            event={focusedEvent}
+            locked={isArchived}
+            canonicalEvents={canonicalEvents}
+            allShifts={allShifts}
+            tracks={tracks}
+            buildings={buildings}
+            roles={roleCatalog}
+            onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+            onBuildingSaved={(building) =>
+              setBuildings((cur) =>
+                cur.some((b) => b.id === building.id)
+                  ? cur.map((b) => (b.id === building.id ? building : b))
+                  : [...cur, building].sort((a, b) => a.name.localeCompare(b.name)),
+              )
+            }
+            onClose={() => closePanel("event")}
+            // withOrderedShifts, like the list fetch: the board indexes bars by
+            // position in `shifts`, so a save that came back unsorted would
+            // silently reorder the timeline's columns.
+            onSaved={(saved) =>
+              setEvents((prev) =>
+                (prev ?? []).map((e) => (e.id === saved.id ? withOrderedShifts(saved) : e)),
+              )
+            }
+            onDeleted={(id) => {
+              setEvents((prev) => (prev ?? []).filter((e) => e.id !== id));
+              closePanel("event");
+            }}
+            // -1 means the open event is filtered out of the current view, so
+            // there is no "next" from it to speak of — both arrows go quiet
+            // rather than jumping to a row chosen by accident.
+            onPrev={() => eventIndex > 0 && openEventPanel(visibleEvents[eventIndex - 1].id)}
+            onNext={() =>
+              eventIndex >= 0 &&
+              eventIndex < visibleEvents.length - 1 &&
+              openEventPanel(visibleEvents[eventIndex + 1].id)
+            }
+            hasPrev={eventIndex > 0}
+            hasNext={eventIndex >= 0 && eventIndex < visibleEvents.length - 1}
+          />
+        )
+      );
+    };
 
     setPanel(
-      <div style={{ display: 'flex', height: '100%' }}>
+      <div style={{ display: "flex", height: "100%" }}>
         {/* No onClose: the belt is the only way onto the board, so a control
             that hides it would leave the page unable to do its one job. */}
         <DockedPanel
@@ -1102,13 +1290,17 @@ export default function AssignmentsPage() {
           headerActions={
             <>
               <DisplayButton
-                size="sm" iconOnly label="Configure member cards"
+                size="sm"
+                iconOnly
+                label="Configure member cards"
                 active={memberDisplayActive}
                 onOpen={() => setShowMemberDisplayModal(true)}
                 onReset={() => applyMemberDisplay(memberDisplayDefaults)}
               />
               <FilterButton
-                size="sm" iconOnly label="Filter members"
+                size="sm"
+                iconOnly
+                label="Filter members"
                 active={memberFilterActive}
                 onOpen={() => setShowMemberFilterModal(true)}
                 // Back to the tab's own filters, not to nothing: this tab's
@@ -1116,7 +1308,9 @@ export default function AssignmentsPage() {
                 onClear={() => applyMemberFilters(memberFilterDefaults)}
               />
               <SortButton
-                size="sm" iconOnly label="Sort members"
+                size="sm"
+                iconOnly
+                label="Sort members"
                 active={!sameSortRules(memberSort, DEFAULT_BELT_SORT)}
                 onOpen={openMemberSortModal}
                 onReset={() => applyMemberSort(DEFAULT_BELT_SORT)}
@@ -1124,13 +1318,13 @@ export default function AssignmentsPage() {
             </>
           }
         >
-          <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
             {/* secondary = white. primary is the same light grey as the page
                 background, which would make the field disappear into it. */}
             <Input
               value={memberQuery}
               onChange={(e) => setMemberQuery(e.target.value)}
-              onClear={() => setMemberQuery('')}
+              onClear={() => setMemberQuery("")}
               placeholder="Search members"
               icon={<IconSearch />}
               size="md"
@@ -1138,18 +1332,24 @@ export default function AssignmentsPage() {
               font="sans"
               fullWidth
             />
-            <span className={table.headerLabel}>Members — {belt.length}/{members.length}</span>
+            <span className={table.headerLabel}>
+              Members — {belt.length}/{members.length}
+            </span>
 
             {belt.length === 0 ? (
               <EmptyState
                 icon={<IconUser size={24} />}
-                title={memberQuery || memberFilterActive ? 'No members match' : 'No members yet'}
-                description={memberQuery || memberFilterActive ? 'Try a wider filter.' : undefined}
+                title={memberQuery || memberFilterActive ? "No members match" : "No members yet"}
+                description={memberQuery || memberFilterActive ? "Try a wider filter." : undefined}
                 action={
                   memberQuery || memberFilterActive ? (
                     <Button
-                      size="sm" variant="secondary"
-                      onClick={() => { setMemberQuery(''); applyMemberFilters(memberFilterDefaults) }}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setMemberQuery("");
+                        applyMemberFilters(memberFilterDefaults);
+                      }}
                     >
                       Clear filters
                     </Button>
@@ -1177,15 +1377,24 @@ export default function AssignmentsPage() {
             the one behind it showing along the inside edge instead of
             floating over its middle. */}
         {panelStack.length > 0 && (
-          <div style={{
-            position: 'relative', width: stackWidth, height: '100%', overflow: 'hidden',
-          }}>
+          <div
+            style={{
+              position: "relative",
+              width: stackWidth,
+              height: "100%",
+              overflow: "hidden",
+            }}
+          >
             {panelStack.map((ref, depth) => (
               <div
                 key={ref.kind}
                 style={{
-                  position: 'absolute', top: 0, right: 0, height: '100%',
-                  width: PANEL_WIDTH[ref.kind], zIndex: depth + 1,
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  height: "100%",
+                  width: PANEL_WIDTH[ref.kind],
+                  zIndex: depth + 1,
                 }}
               >
                 {panelFor(ref)}
@@ -1195,20 +1404,44 @@ export default function AssignmentsPage() {
         )}
       </div>,
       BELT_PANEL_WIDTH + stackWidth,
-    )
+    );
   }, [
-    panelStack, focused, focusedId, focusedEvent, visibleEvents, openEventPanel,
-    belt, members, allShifts, memberQuery,
-    memberFilters, memberFilterDefaults, panelAssignmentsVersion, memberFilterActive,
-    memberDisplay, memberDisplayActive, memberDisplayDefaults, applyMemberDisplay,
-    applyMemberFilters, memberSort, applyMemberSort, openMemberSortModal,
-    canonicalEvents, buildings, tracks, roleCatalog, isArchived, openPanel, closePanel,
+    panelStack,
+    focused,
+    focusedId,
+    focusedEvent,
+    visibleEvents,
+    openEventPanel,
+    belt,
+    members,
+    allShifts,
+    memberQuery,
+    memberFilters,
+    memberFilterDefaults,
+    panelAssignmentsVersion,
+    memberFilterActive,
+    memberDisplay,
+    memberDisplayActive,
+    memberDisplayDefaults,
+    applyMemberDisplay,
+    applyMemberFilters,
+    memberSort,
+    applyMemberSort,
+    openMemberSortModal,
+    canonicalEvents,
+    buildings,
+    tracks,
+    roleCatalog,
+    isArchived,
+    openPanel,
+    closePanel,
     openMemberPanel,
-    setPanel, clearPanel,
-  ])
+    setPanel,
+    clearPanel,
+  ]);
 
   // Unmount only — leaving the page must not leave the panels behind.
-  useEffect(() => () => clearPanel(), [clearPanel])
+  useEffect(() => () => clearPanel(), [clearPanel]);
   /**
    * Which shifts a drop lands on.
    *
@@ -1221,52 +1454,56 @@ export default function AssignmentsPage() {
    * exactly one row per entry — an empty list would silently assign nobody.
    */
   function targetShiftIds(target: Record<string, unknown>, event: TournamentEvent) {
-    if (target.kind === 'shift') return [target.shiftId as number]
-    if (target.kind === 'allday') {
+    if (target.kind === "shift") return [target.shiftId as number];
+    if (target.kind === "allday") {
       // One track's worth, not the event's: the target lives in that track's
       // own timeline body, and an event running two days must never staff
       // somebody across both because they aimed at one.
-      const trackId = target.trackId as number
-      const onTrack = event.shifts.filter((s) => s.track_id === trackId)
-      return onTrack.length > 0 ? onTrack.map((s) => s.id) : [null]
+      const trackId = target.trackId as number;
+      const onTrack = event.shifts.filter((s) => s.track_id === trackId);
+      return onTrack.length > 0 ? onTrack.map((s) => s.id) : [null];
     }
-    return [null]
+    return [null];
   }
 
   function handleDragEnd({ active, over }: DragEndEvent) {
-    if (!over) return
-    const target = over.data.current
-    if (!target) return
-    const kind = target.kind as string
-    if (kind !== 'shift' && kind !== 'allday' && kind !== 'event' && kind !== 'track') return
-    if (!requireWriteAccess()) return
+    if (!over) return;
+    const target = over.data.current;
+    if (!target) return;
+    const kind = target.kind as string;
+    if (kind !== "shift" && kind !== "allday" && kind !== "event" && kind !== "track") return;
+    if (!requireWriteAccess()) return;
 
-    const eventId = target.eventId as number
-    const event = (boardEvents ?? []).find((e) => e.id === eventId)
-    if (!event) return
-    const shiftIds = targetShiftIds(target, event)
-    const source = active.data.current
+    const eventId = target.eventId as number;
+    const event = (boardEvents ?? []).find((e) => e.id === eventId);
+    if (!event) return;
+    const shiftIds = targetShiftIds(target, event);
+    const source = active.data.current;
 
     const eventRef = {
       // Resolved the way the server resolves it (EventMemberRead sends
       // display_name), so an optimistic row names its event like a real one.
-      id: event.id, name: eventName(event), division: event.division,
-      event_type: event.event_type, shifts: event.shifts,
-    }
+      id: event.id,
+      name: eventName(event),
+      division: event.division,
+      event_type: event.event_type,
+      shifts: event.shifts,
+    };
     const shiftFor = (id: number | null) =>
-      id === null ? null : event.shifts.find((s) => s.id === id) ?? null
+      id === null ? null : (event.shifts.find((s) => s.id === id) ?? null);
 
-    if (source?.kind === 'chip') {
-      const assignment = source.assignment as Assignment
+    if (source?.kind === "chip") {
+      const assignment = source.assignment as Assignment;
       // Move the whole bar, not the one row under the cursor: a bar is a
       // grid of rows sharing a membership, and moving one of them would tear
       // the span — or drop every role but one.
-      const laneKey = laneKeyOf(assignment)
-      const moving = rows.filter((row) =>
-        row.event.id === assignment.event.id && laneKeyOf(row) === laneKey)
-      const movingIds = new Set(moving.map((r) => r.id))
-      const template = moving[0] ?? assignment
-      const rolesToKeep = rolesOf(moving.length > 0 ? moving : [assignment])
+      const laneKey = laneKeyOf(assignment);
+      const moving = rows.filter(
+        (row) => row.event.id === assignment.event.id && laneKeyOf(row) === laneKey,
+      );
+      const movingIds = new Set(moving.map((r) => r.id));
+      const template = moving[0] ?? assignment;
+      const rolesToKeep = rolesOf(moving.length > 0 ? moving : [assignment]);
 
       // Diffed by cell rather than deleted and recreated wholesale, the same
       // way rebuildLane treats a resize. Two reasons, and the second is the
@@ -1280,36 +1517,39 @@ export default function AssignmentsPage() {
       // Only within one event. A cross-event move shares no cells (the row
       // names its event) and has no single PATCH for it either, since the
       // shift is what a write can repoint — so it stays a delete and create.
-      const sameEvent = event.id === assignment.event.id
-      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds))
+      const sameEvent = event.id === assignment.event.id;
+      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds));
       if (!trackRef) {
-        show('This drop names no track to assign against.', 'error')
-        return
+        show("This drop names no track to assign against.", "error");
+        return;
       }
       // Each cell is billed to the track its own shift falls on, the way
       // rebuildLane does it — a drop spanning two days must not file Day 2's
       // rows under Day 1 just because the target named that one first.
       const trackForShift = (shiftId: number | null) =>
-        (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef
+        (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef;
       // The track is part of a cell's identity, not just its payload: two
       // unpinned rows for the same person and role differ only by it, so
       // dragging a chip from Test Writing to Test Reviewing has to read as a
       // move rather than as a drop onto the cell it already occupies.
       const cellKey = (shiftId: number | null, trackId: number, role: AssignmentRole) =>
-        `${shiftId ?? 'none'}|${trackId}|${roleKey(role)}`
+        `${shiftId ?? "none"}|${trackId}|${roleKey(role)}`;
       const reusable = new Map(
         sameEvent
           ? moving.map((row) => [cellKey(row.shift?.id ?? null, row.track.id, row.role), row])
           : [],
-      )
+      );
 
-      const kept: Assignment[] = []
-      const added: Assignment[] = []
+      const kept: Assignment[] = [];
+      const added: Assignment[] = [];
       for (const shiftId of shiftIds) {
-        const rowTrack = trackForShift(shiftId)
+        const rowTrack = trackForShift(shiftId);
         for (const role of rolesToKeep) {
-          const found = reusable.get(cellKey(shiftId, rowTrack.id, role))
-          if (found) { kept.push(found); continue }
+          const found = reusable.get(cellKey(shiftId, rowTrack.id, role));
+          if (found) {
+            kept.push(found);
+            continue;
+          }
           added.push({
             ...template,
             id: nextLocalId(),
@@ -1318,61 +1558,60 @@ export default function AssignmentsPage() {
             shift: shiftFor(shiftId),
             track: rowTrack,
             updated_at: new Date().toISOString(),
-          })
+          });
         }
       }
-      const keptIds = new Set(kept.map((row) => row.id))
-      const removed = moving.filter((row) => !keptIds.has(row.id))
+      const keptIds = new Set(kept.map((row) => row.id));
+      const removed = moving.filter((row) => !keptIds.has(row.id));
 
       // Put back exactly where it came from. Not an error to swallow — there
       // is nothing to write, so nothing is written and the rows never leave
       // state. A *different* card landing on an occupied cell still creates,
       // still hits the unique index, and still reports the 409: the server
       // can't tell those two apart, only this can.
-      if (added.length === 0 && removed.length === 0) return
+      if (added.length === 0 && removed.length === 0) return;
 
-      setRows((current) => [
-        ...current.filter((row) => !movingIds.has(row.id)), ...kept, ...added,
-      ])
-      for (const row of removed) deleteAssignmentRow(row)
-      for (const row of added) createAssignmentRow(row)
-      return
+      setRows((current) => [...current.filter((row) => !movingIds.has(row.id)), ...kept, ...added]);
+      for (const row of removed) deleteAssignmentRow(row);
+      for (const row of added) createAssignmentRow(row);
+      return;
     }
 
-    if (source?.kind === 'member') {
-      const member = memberById.get(source.membershipId as number)
-      if (!member) return
+    if (source?.kind === "member") {
+      const member = memberById.get(source.membershipId as number);
+      if (!member) return;
 
       // Which track's default role this drop grants. A cosmetic column says
       // so outright; a shift knows the day it falls on, so a timeline drop
       // answers from the shift rather than from whichever track happened to
       // be listed first on the event.
-      const trackId = trackForDropId(kind, target, event, shiftIds)
-      const role = defaultRoleFor(event, trackId)
+      const trackId = trackForDropId(kind, target, event, shiftIds);
+      const role = defaultRoleFor(event, trackId);
       if (!role) {
-        const track = trackForDrop(event, trackId)
+        const track = trackForDrop(event, trackId);
         show(
           !track
-            ? 'This event has no track to look up a default role from.'
+            ? "This event has no track to look up a default role from."
             : `No default role set for ${track.name} — set one in tournament settings before assigning from the board.`,
-          'error',
-        )
-        return
+          "error",
+        );
+        return;
       }
 
       // Every row names its track now, so an optimistic one has to as well —
       // it is what files the chip into a column before the server answers.
-      const trackRef = trackRefFor(event, trackId)
+      const trackRef = trackRefFor(event, trackId);
       if (!trackRef) {
-        show('This drop names no track to assign against.', 'error')
-        return
+        show("This drop names no track to assign against.", "error");
+        return;
       }
       const newRows: Assignment[] = shiftIds.map((shiftId) => ({
         id: nextLocalId(),
         event: eventRef,
         // From the shift, not from the target: an all-shifts drop on an event
         // running two days writes each row against the day it lands on.
-        track: (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
+        track:
+          (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
         member: {
           user_id: member.user!.id,
           membership_id: member.id,
@@ -1383,60 +1622,67 @@ export default function AssignmentsPage() {
         shift: shiftFor(shiftId),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }))
-      setRows((current) => [...current, ...newRows])
-      for (const row of newRows) createAssignmentRow(row)
+      }));
+      setRows((current) => [...current, ...newRows]);
+      for (const row of newRows) createAssignmentRow(row);
     }
   }
 
   function labelFor(activeId: string) {
-    if (activeId.startsWith('member:')) {
-      const member = memberById.get(Number(activeId.slice(7)))
-      return member ? fullName(member.user ?? { first_name: null, last_name: null }) : null
+    if (activeId.startsWith("member:")) {
+      const member = memberById.get(Number(activeId.slice(7)));
+      return member ? fullName(member.user ?? { first_name: null, last_name: null }) : null;
     }
-    const assignment = rows.find((r) => `chip:${r.id}` === activeId)
-    return assignment ? fullName(assignment.member) : null
+    const assignment = rows.find((r) => `chip:${r.id}` === activeId);
+    return assignment ? fullName(assignment.member) : null;
   }
 
   // The DndContext lives in the layout — the belt is rendered into the panel
   // slot, which is outside <main>, so a context inside this page could never
   // reach it. Behaviour still belongs here; only the context moved.
-  useRegisterBoardDnd('board', {
+  useRegisterBoardDnd("board", {
     onDragEnd: (event) => {
-      lastDropAt.current = Date.now()
-      handleDragEnd(event)
+      lastDropAt.current = Date.now();
+      handleDragEnd(event);
     },
     labelFor,
     renderOverlay: (activeId) => {
-      const label = labelFor(activeId)
-      if (!label) return null
+      const label = labelFor(activeId);
+      if (!label) return null;
       return (
-        <div style={{
-          padding: '6px 10px', borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          fontFamily: 'var(--font-sans)', fontSize: '12px', fontWeight: 500,
-          display: 'flex', alignItems: 'center', gap: '6px',
-        }}>
+        <div
+          style={{
+            padding: "6px 10px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-border)",
+            background: "var(--color-surface)",
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
           {label}
         </div>
-      )
+      );
     },
-  })
+  });
 
   if (membershipLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
         <Spinner size="lg" />
       </div>
-    )
+    );
   }
 
   if (!canView) {
     return (
       <div>
         <CollapsibleHeader heading="Assignments" />
-        <Card radius="lg" style={{ padding: '8px' }}>
+        <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
             title="No access"
@@ -1444,15 +1690,15 @@ export default function AssignmentsPage() {
           />
         </Card>
       </div>
-    )
+    );
   }
 
   if (events === null) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
         <Spinner size="lg" />
       </div>
-    )
+    );
   }
 
   return (
@@ -1465,24 +1711,31 @@ export default function AssignmentsPage() {
       <CollapsibleHeader
         heading="Assignments"
         tabs={simple ? undefined : headerTabs}
-        activeKey={activeTrackId === null ? 'all' : String(activeTrackId)}
+        activeKey={activeTrackId === null ? "all" : String(activeTrackId)}
         onChange={pickTab}
       />
 
       {loadError && (
-        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginBottom: '10px' }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
 
       {/* Events own the page and its scroll — no inner scroller. */}
       <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Input
               value={eventQuery}
               onChange={(e) => setEventQuery(e.target.value)}
-              onClear={() => setEventQuery('')}
+              onClear={() => setEventQuery("")}
               placeholder="Search events"
               icon={<IconSearch />}
               size="md"
@@ -1507,11 +1760,15 @@ export default function AssignmentsPage() {
               <ExportButton
                 tournament={selectedTournament}
                 trackId={activeTrackId}
-                lockedReason={canManageMembers ? null : 'Exporting needs the Manage members permission.'}
+                lockedReason={
+                  canManageMembers ? null : "Exporting needs the Manage members permission."
+                }
               />
             )}
           </div>
-          <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
+          <span className={table.headerLabel}>
+            Events — {visibleEvents.length}/{events.length}
+          </span>
 
           {visibleEvents.length === 0 ? (
             <EmptyState
@@ -1522,7 +1779,10 @@ export default function AssignmentsPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => { setEventQuery(''); applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS)) }}
+                  onClick={() => {
+                    setEventQuery("");
+                    applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                  }}
                 >
                   Clear
                 </Button>
@@ -1537,28 +1797,31 @@ export default function AssignmentsPage() {
             //
             // fit-content, so one very long name wraps at 220px instead of
             // taking the width off every row's timeline.
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'fit-content(220px) 1fr',
-              gap: '8px', minWidth: 0,
-            }}>
-            {visibleEvents.map((event) => (
-              <EventRow
-                key={event.id}
-                event={event}
-                rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
-                roleCatalog={roleCatalog}
-                flagsFor={flagsFor}
-                activeTrackId={activeTrackId}
-                simple={simple}
-                selected={event.id === focusedEventId}
-                onOpen={canManageEvents ? openEventPanel : undefined}
-                handlers={boardHandlers}
-              />
-            ))}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "fit-content(220px) 1fr",
+                gap: "8px",
+                minWidth: 0,
+              }}
+            >
+              {visibleEvents.map((event) => (
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
+                  roleCatalog={roleCatalog}
+                  flagsFor={flagsFor}
+                  activeTrackId={activeTrackId}
+                  simple={simple}
+                  selected={event.id === focusedEventId}
+                  onOpen={canManageEvents ? openEventPanel : undefined}
+                  handlers={boardHandlers}
+                />
+              ))}
             </div>
           )}
         </div>
-
       </div>
 
       {showEventFilterModal && (
@@ -1604,7 +1867,10 @@ export default function AssignmentsPage() {
           defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
           // "form_field:{id}" in the catalog; the card hides by the bare id.
-          customFields={(catalog?.custom_fields ?? []).map((f) => ({ id: f.key.split(':')[1], label: f.label }))}
+          customFields={(catalog?.custom_fields ?? []).map((f) => ({
+            id: f.key.split(":")[1],
+            label: f.label,
+          }))}
           onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
         />
@@ -1625,26 +1891,30 @@ export default function AssignmentsPage() {
           title="Change default role"
           description={
             <>
-              {pendingRoleChange.track.name}&rsquo;s default role is changing from{' '}
-              <strong>{pendingRoleChange.oldRole.label}</strong> to{' '}
-              <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{' '}
-              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{' '}
-              {pendingRoleChange.affected.length === 1 ? 'assignment' : 'assignments'} on this
-              track to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on
-              this track is left alone.
+              {pendingRoleChange.track.name}&rsquo;s default role is changing from{" "}
+              <strong>{pendingRoleChange.oldRole.label}</strong> to{" "}
+              <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{" "}
+              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{" "}
+              {pendingRoleChange.affected.length === 1 ? "assignment" : "assignments"} on this track
+              to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on this
+              track is left alone.
             </>
           }
           confirmLabel="Change role"
           variant="primary"
-          onConfirm={() => applyDefaultRoleChange(
-            pendingRoleChange.track, pendingRoleChange.newRole, pendingRoleChange.affected,
-          )}
+          onConfirm={() =>
+            applyDefaultRoleChange(
+              pendingRoleChange.track,
+              pendingRoleChange.newRole,
+              pendingRoleChange.affected,
+            )
+          }
           onClose={() => {
-            pendingRoleChange.resolve()
-            setPendingRoleChange(null)
+            pendingRoleChange.resolve();
+            setPendingRoleChange(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }

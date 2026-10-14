@@ -1,11 +1,11 @@
 "use client";
 
-import type { MyTrackOptions, TrackStatus } from "@/lib/api";
-import { TrackDraft, allowedStatuses, optedInStatus } from "@/lib/memberEdit";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Card } from "@/components/ui/Card";
+import type { MyTrackOptions, TrackStatus } from "@/lib/api";
+import { allowedStatuses, optedInStatus, type TrackDraft } from "@/lib/memberEdit";
 
 const STATUS_LABEL: Record<TrackStatus, string> = {
   interested: "Interested",
@@ -23,7 +23,12 @@ const NOT_AVAILABLE = "__none__";
  * widget a respondent answers the form with, so a member sees the TD's own
  * option labels rather than a second set of controls invented here.
  */
-export function TrackEditSection({ track, draft, onChange, locked = false }: {
+export function TrackEditSection({
+  track,
+  draft,
+  onChange,
+  locked = false,
+}: {
   track: MyTrackOptions;
   draft: TrackDraft;
   onChange: (updates: Partial<TrackDraft>) => void;
@@ -31,7 +36,8 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
   locked?: boolean;
 }) {
   const statuses = allowedStatuses(track.allow_confirm);
-  const hasQuestions = track.availability.length > 0 || track.lunch.length > 0 || !!track.event_preferences;
+  const hasQuestions =
+    track.availability.length > 0 || track.lunch.length > 0 || !!track.event_preferences;
   // Not taking part means nothing else on this track applies. The questions
   // stay visible with the answers already given rather than disappearing —
   // hiding them would lose the record of what was said, and make opting back
@@ -39,7 +45,10 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
   const declined = draft.status === "declined";
 
   return (
-    <Card radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <Card
+      radius="lg"
+      style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
         <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>{track.track_name}</h2>
         {track.is_primary && <Badge>Competition day</Badge>}
@@ -50,9 +59,11 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
           answers for exactly one. See backend/docs/track-status-rules.md. */}
       <Field
         label="Track status"
-        helper={track.allow_confirm
-          ? "Confirmations are open — confirm to lock in your spot."
-          : "Confirmations aren't open yet. Say you're interested, and you'll be asked to confirm later."}
+        helper={
+          track.allow_confirm
+            ? "Confirmations are open — confirm to lock in your spot."
+            : "Confirmations aren't open yet. Say you're interested, and you'll be asked to confirm later."
+        }
       >
         <ButtonGroup
           options={statuses.map((status) => ({ value: status, label: STATUS_LABEL[status] }))}
@@ -68,7 +79,14 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
       </Field>
 
       {declined && hasQuestions && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", margin: 0 }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-tertiary)",
+            margin: 0,
+          }}
+        >
           You&rsquo;re not taking part in {track.track_name}, so the rest of these are locked.
           Change &ldquo;Taking part&rdquo; above to edit them.
         </p>
@@ -76,19 +94,21 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
 
       {track.availability.map((field) => (
         <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <QuestionRenderer
-                field={field}
-                interactive
-                locked={declined || locked}
-                value={draft.availability[field.id]}
-                onChange={(value) => onChange({
-                  availability: { ...draft.availability, [field.id]: value },
-                  // Picking a real group is opting back in, and the save
-                  // sends both in one request.
-                  notAvailable: false,
-                  status: draft.notAvailable ? optedInStatus(track.allow_confirm) : draft.status,
-                })}
-              />
+          <QuestionRenderer
+            field={field}
+            interactive
+            locked={declined || locked}
+            value={draft.availability[field.id]}
+            onChange={(value) =>
+              onChange({
+                availability: { ...draft.availability, [field.id]: value },
+                // Picking a real group is opting back in, and the save
+                // sends both in one request.
+                notAvailable: false,
+                status: draft.notAvailable ? optedInStatus(track.allow_confirm) : draft.status,
+              })
+            }
+          />
           {/* Mutually exclusive with the groups above, and not one of the
               TD's own options — a member declining is an answer the form
               doesn't have to offer for them to be able to give it. Hidden
@@ -99,10 +119,12 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
               options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
               value={draft.notAvailable ? NOT_AVAILABLE : ""}
               locked={locked}
-              onChange={() => onChange({
-                notAvailable: !draft.notAvailable,
-                status: draft.notAvailable ? draft.status : "declined",
-              })}
+              onChange={() =>
+                onChange({
+                  notAvailable: !draft.notAvailable,
+                  status: draft.notAvailable ? draft.status : "declined",
+                })
+              }
             />
           )}
         </div>
@@ -130,7 +152,14 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
       )}
 
       {!hasQuestions && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", margin: 0 }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-tertiary)",
+            margin: 0,
+          }}
+        >
           Nothing else to fill in for this track yet.
         </p>
       )}
@@ -138,15 +167,37 @@ export function TrackEditSection({ track, draft, onChange, locked = false }: {
   );
 }
 
-function Field({ label, helper, children }: { label: string; helper?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  helper,
+  children,
+}: {
+  label: string;
+  helper?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <div>
-        <div style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
+        <div
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            fontWeight: 500,
+            color: "var(--color-text-primary)",
+          }}
+        >
           {label}
         </div>
         {helper && (
-          <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
+          <div
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+              marginTop: "3px",
+            }}
+          >
             {helper}
           </div>
         )}

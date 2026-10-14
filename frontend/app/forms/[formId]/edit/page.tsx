@@ -1,15 +1,15 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formsApi, Form, ApiError } from "@/lib/api";
-import { Spinner } from "@/components/ui/Spinner";
-import { Banner } from "@/components/ui/Banner";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { SubHeader, CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
-import { TitleCard } from "@/components/forms/TitleCard";
+import { use, useEffect, useState } from "react";
 import { FieldList } from "@/components/forms/FieldList";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
+import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
+import { TitleCard } from "@/components/forms/TitleCard";
+import { Banner } from "@/components/ui/Banner";
+import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, type Form, formsApi } from "@/lib/api";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 export default function FormEditPage({ params }: { params: Promise<{ formId: string }> }) {
   const { formId } = use(params);
@@ -20,7 +20,8 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   const [noAccess, setNoAccess] = useState(false);
 
   useEffect(() => {
-    formsApi.getForEdit(formId)
+    formsApi
+      .getForEdit(formId)
       .then(setForm)
       .catch((e) => {
         // getForEdit is manager-only — a member who lands here gets a 403.
@@ -42,7 +43,9 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   if (loadError) {
     return (
       <div style={{ padding: "22px 24px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
           {loadError}
         </p>
       </div>
@@ -63,7 +66,13 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
 
   return (
     <div>
-      <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} locked={locked} activeTab="questions" />
+      <SubHeader
+        form={form}
+        onUpdated={setForm}
+        onDeleted={handleDeleted}
+        locked={locked}
+        activeTab="questions"
+      />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
         {locked && (
           <div style={{ marginBottom: "16px" }}>

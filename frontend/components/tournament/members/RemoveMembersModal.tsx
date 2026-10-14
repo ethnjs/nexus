@@ -1,7 +1,7 @@
 "use client";
 
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { membersApi, MembershipFull } from "@/lib/api";
+import { type MembershipFull, membersApi } from "@/lib/api";
 
 interface RemoveMembersModalProps {
   tournamentId: number;
@@ -19,7 +19,12 @@ interface RemoveMembersModalProps {
 // The selection toolbar's Remove. Removes whoever it can and names who it
 // skips, rather than refusing the whole batch over one row it can't touch.
 export function RemoveMembersModal({
-  tournamentId, members, lockedCount, includesSelf, onClose, onRemoved,
+  tournamentId,
+  members,
+  lockedCount,
+  includesSelf,
+  onClose,
+  onRemoved,
 }: RemoveMembersModalProps) {
   return (
     <BulkDeleteModal
@@ -35,15 +40,21 @@ export function RemoveMembersModal({
       description={
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <span>
-            Remove <strong>{members.length} member{members.length === 1 ? "" : "s"}</strong> from this
-            tournament? They&apos;ll lose all roles and access.
+            Remove{" "}
+            <strong>
+              {members.length} member{members.length === 1 ? "" : "s"}
+            </strong>{" "}
+            from this tournament? They&apos;ll lose all roles and access.
           </span>
           {lockedCount > 0 && (
             <span>
-              {lockedCount} selected member{lockedCount === 1 ? "" : "s"} can&apos;t be removed by you and will be skipped.
+              {lockedCount} selected member{lockedCount === 1 ? "" : "s"} can&apos;t be removed by
+              you and will be skipped.
             </span>
           )}
-          {includesSelf && <span>You&apos;re skipped too — leave from General settings instead.</span>}
+          {includesSelf && (
+            <span>You&apos;re skipped too — leave from General settings instead.</span>
+          )}
         </div>
       }
     />

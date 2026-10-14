@@ -1,21 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ApiError, MyTrackOptions, formsApi, membersApi } from "@/lib/api";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
-import { TRACK_LOCKED_REASON, TRACK_UNANSWERED_REASON } from "@/lib/responseLock";
-import { Banner } from "@/components/ui/Banner";
-import { MemberEditDraft, TrackDraft, editableTracks, saveDraft, toDraft } from "@/lib/memberEdit";
+import { useEffect, useMemo, useState } from "react";
 import { TrackEditSection } from "@/components/tournament/edit/TrackEditSection";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
-import { Spinner } from "@/components/ui/Spinner";
 import { IconArrowLeft, IconForms, IconLock } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, formsApi, type MyTrackOptions, membersApi } from "@/lib/api";
+import {
+  editableTracks,
+  type MemberEditDraft,
+  saveDraft,
+  type TrackDraft,
+  toDraft,
+} from "@/lib/memberEdit";
+import { TRACK_LOCKED_REASON, TRACK_UNANSWERED_REASON } from "@/lib/responseLock";
+import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { useMyMembership } from "@/lib/useMyMembership";
 
 /**
  * A member editing their own answers, one section per track.
@@ -56,7 +62,10 @@ export default function MemberEditPage() {
     // Waits for the provider: guessing before it lands would refuse a member
     // their own page for a frame, or fetch one they can't have.
     if (membershipLoading || !isSelf || !Number.isFinite(tournamentId)) return;
-    Promise.all([membersApi.getMyOptions(tournamentId), formsApi.listMineForTournament(tournamentId)])
+    Promise.all([
+      membersApi.getMyOptions(tournamentId),
+      formsApi.listMineForTournament(tournamentId),
+    ])
       .then(([response, forms]) => {
         const completed = new Set(forms.filter((form) => form.completed).map((form) => form.id));
         const editable = editableTracks(response.tracks, completed);
@@ -126,8 +135,12 @@ export default function MemberEditPage() {
     <div style={{ maxWidth: "900px", margin: "0 auto", paddingBottom: `${saveBarHeight}px` }}>
       <div style={{ marginBottom: "16px" }}>
         <Button
-          type="button" variant="ghost" size="sm"
-          onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members/${membershipId}`)}
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            router.push(`/dashboard/tournaments/${tournamentId}/members/${membershipId}`)
+          }
         >
           <IconArrowLeft size={14} /> Back
         </Button>
@@ -139,7 +152,14 @@ export default function MemberEditPage() {
       />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "12px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "12px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -155,30 +175,50 @@ export default function MemberEditPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {tracks?.length === 0 && !loadError && (
           <Card radius="lg" style={{ padding: "8px" }}>
-            <EmptyState title="Nothing to edit yet" description="This tournament hasn't set up any tracks." />
+            <EmptyState
+              title="Nothing to edit yet"
+              description="This tournament hasn't set up any tracks."
+            />
           </Card>
         )}
-        {tracks?.map((track) => !isWritable(track) ? (
-          // A placeholder rather than its controls rendered inert: there is
-          // nothing to do with it here, and the overview card is where any
-          // answers stay visible. Locked wins — it is the more final reason.
-          <Card key={track.track_id} radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>{track.track_name}</h2>
-            {track.lock_responses ? (
-              <EmptyState icon={<IconLock size={28} />} title="Editing is closed" description={TRACK_LOCKED_REASON} />
-            ) : (
-              <EmptyState icon={<IconForms size={28} />} title={TRACK_UNANSWERED_REASON} />
-            )}
-          </Card>
-        ) : (
-          <TrackEditSection
-            key={track.track_id}
-            track={track}
-            draft={draft[track.track_id]}
-            onChange={(updates) => patchTrack(track.track_id, updates)}
-            locked={isArchived}
-          />
-        ))}
+        {tracks?.map((track) =>
+          !isWritable(track) ? (
+            // A placeholder rather than its controls rendered inert: there is
+            // nothing to do with it here, and the overview card is where any
+            // answers stay visible. Locked wins — it is the more final reason.
+            <Card
+              key={track.track_id}
+              radius="lg"
+              style={{
+                padding: "20px 24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+              }}
+            >
+              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>
+                {track.track_name}
+              </h2>
+              {track.lock_responses ? (
+                <EmptyState
+                  icon={<IconLock size={28} />}
+                  title="Editing is closed"
+                  description={TRACK_LOCKED_REASON}
+                />
+              ) : (
+                <EmptyState icon={<IconForms size={28} />} title={TRACK_UNANSWERED_REASON} />
+              )}
+            </Card>
+          ) : (
+            <TrackEditSection
+              key={track.track_id}
+              track={track}
+              draft={draft[track.track_id]}
+              onChange={(updates) => patchTrack(track.track_id, updates)}
+              locked={isArchived}
+            />
+          ),
+        )}
       </div>
 
       <FloatingSaveBar
@@ -186,7 +226,10 @@ export default function MemberEditPage() {
         saving={saving}
         error={saveError}
         onSave={handleSave}
-        onCancel={() => { setDraft(baseline); setSaveError(undefined); }}
+        onCancel={() => {
+          setDraft(baseline);
+          setSaveError(undefined);
+        }}
         onHeightChange={setSaveBarHeight}
       />
     </div>

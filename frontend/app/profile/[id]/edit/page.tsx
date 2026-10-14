@@ -1,50 +1,65 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import {
-  usersApi, canonicalEventsApi, CanonicalEvent,
-  universitiesApi, University,
-  STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
-} from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { useEffect, useMemo, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { ProfileCard } from "@/components/profile/ProfileCard";
-import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
-import { IconArrowLeft } from "@/components/ui/Icons";
-import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import styles from "@/components/profile/Profile.module.css";
 import {
-  PronounsField, StudentStatusField,
-  UniversityField, MajorField, YearLevelField, GraduationYearField,
-  EmployerField, YesNoField, ShirtSizeField, DietaryRestrictionField,
-} from "@/components/profile/ProfileFields";
-import {
-  CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, isCompetitionRowValid,
+  type CompetitionExperienceDraft,
+  CompetitionExperienceSpreadsheet,
   competitionExperienceToDraft,
-  VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, isVolunteerRowValid,
+  isCompetitionRowValid,
+  isVolunteerRowValid,
+  type VolunteerExperienceDraft,
+  VolunteerExperienceSpreadsheet,
   volunteerExperienceToDraft,
 } from "@/components/profile/ExperienceTables";
-
-
+import styles from "@/components/profile/Profile.module.css";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+import {
+  DietaryRestrictionField,
+  EmployerField,
+  GraduationYearField,
+  MajorField,
+  PronounsField,
+  ShirtSizeField,
+  StudentStatusField,
+  UniversityField,
+  YearLevelField,
+  YesNoField,
+} from "@/components/profile/ProfileFields";
+import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
+import { Button } from "@/components/ui/Button";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { IconArrowLeft } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  type CanonicalEvent,
+  canonicalEventsApi,
+  type SHIRT_SIZE,
+  type STUDENT_STATUS,
+  type University,
+  type UserMeFull,
+  universitiesApi,
+  usersApi,
+} from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 interface ProfileDraft {
-  pronouns?: string
-  student_status?: STUDENT_STATUS
-  university_id?: number
-  university_name?: string
-  major?: string
-  year_level?: number
-  graduation_year?: number
-  employer?: string
-  has_competition_experience?: boolean
-  has_volunteer_experience?: boolean
-  shirt_size?: SHIRT_SIZE
-  dietary_restriction?: string
+  pronouns?: string;
+  student_status?: STUDENT_STATUS;
+  university_id?: number;
+  university_name?: string;
+  major?: string;
+  year_level?: number;
+  graduation_year?: number;
+  employer?: string;
+  has_competition_experience?: boolean;
+  has_volunteer_experience?: boolean;
+  shirt_size?: SHIRT_SIZE;
+  dietary_restriction?: string;
 }
 
 function profileToDraft(user: UserMeFull): ProfileDraft {
@@ -61,7 +76,7 @@ function profileToDraft(user: UserMeFull): ProfileDraft {
     has_volunteer_experience: user.has_volunteer_experience ?? undefined,
     shirt_size: user.shirt_size ?? undefined,
     dietary_restriction: user.dietary_restriction ?? undefined,
-  }
+  };
 }
 
 export default function ProfileEditPage() {
@@ -99,22 +114,32 @@ export default function ProfileEditPage() {
       return;
     }
 
-    usersApi.meFull()
-      .then(user => {
+    usersApi
+      .meFull()
+      .then((user) => {
         setOriginal(user);
         setDraft(profileToDraft(user));
-        setHasDietary(user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null);
+        setHasDietary(
+          user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
+        );
         setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
         setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
       })
       .catch(() => setLoadError("Failed to load profile."));
 
-    canonicalEventsApi.list().then(setEvents).catch(() => {});
-    universitiesApi.list().then(setUniversities).catch(() => {});
+    canonicalEventsApi
+      .list()
+      .then(setEvents)
+      .catch(() => {});
+    universitiesApi
+      .list()
+      .then(setUniversities)
+      .catch(() => {});
   }, [authLoading, currentUser, profileId, router]);
 
   // ── Effective flags — derived from actual row presence, not just the stored flag ──
-  const effectiveHasCompetitionExp = !!draft.has_competition_experience || competitionRows.length > 0;
+  const effectiveHasCompetitionExp =
+    !!draft.has_competition_experience || competitionRows.length > 0;
   const effectiveHasVolunteerExp = !!draft.has_volunteer_experience || volunteerRows.length > 0;
   const competitionLocked = effectiveHasCompetitionExp && competitionRows.length > 0;
   const volunteerLocked = effectiveHasVolunteerExp && volunteerRows.length > 0;
@@ -126,7 +151,8 @@ export default function ProfileEditPage() {
     const draftChanged = JSON.stringify(draft) !== JSON.stringify(originalDraft);
 
     const originalCompetition = original.competition_experience.map(competitionExperienceToDraft);
-    const competitionChanged = JSON.stringify(competitionRows) !== JSON.stringify(originalCompetition);
+    const competitionChanged =
+      JSON.stringify(competitionRows) !== JSON.stringify(originalCompetition);
 
     const originalVolunteer = original.volunteer_experience.map(volunteerExperienceToDraft);
     const volunteerChanged = JSON.stringify(volunteerRows) !== JSON.stringify(originalVolunteer);
@@ -142,7 +168,9 @@ export default function ProfileEditPage() {
   function handleCancel() {
     if (!original) return;
     setDraft(profileToDraft(original));
-    setHasDietary(original.dietary_restriction !== null ? original.dietary_restriction !== "None" : null);
+    setHasDietary(
+      original.dietary_restriction !== null ? original.dietary_restriction !== "None" : null,
+    );
     setCompetitionRows(original.competition_experience.map(competitionExperienceToDraft));
     setVolunteerRows(original.volunteer_experience.map(volunteerExperienceToDraft));
     setErrors({});
@@ -157,14 +185,14 @@ export default function ProfileEditPage() {
 
   // ── Row diffing helpers ─────────────────────────────────────────────────
   function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
-    const originalIds = new Set(originalRows.filter(r => r.id !== undefined).map(r => r.id));
-    const currentIds = new Set(currentRows.filter(r => r.id !== undefined).map(r => r.id));
+    const originalIds = new Set(originalRows.filter((r) => r.id !== undefined).map((r) => r.id));
+    const currentIds = new Set(currentRows.filter((r) => r.id !== undefined).map((r) => r.id));
 
-    const toAdd = currentRows.filter(r => r.id === undefined);
-    const toDelete = originalRows.filter(r => r.id !== undefined && !currentIds.has(r.id));
-    const toUpdate = currentRows.filter(r => {
+    const toAdd = currentRows.filter((r) => r.id === undefined);
+    const toDelete = originalRows.filter((r) => r.id !== undefined && !currentIds.has(r.id));
+    const toUpdate = currentRows.filter((r) => {
       if (r.id === undefined || !originalIds.has(r.id)) return false;
-      const orig = originalRows.find(o => o.id === r.id);
+      const orig = originalRows.find((o) => o.id === r.id);
       return JSON.stringify(orig) !== JSON.stringify(r);
     });
 
@@ -180,28 +208,37 @@ export default function ProfileEditPage() {
 
     // Validate rows before saving anything
     if (!competitionRows.every(isCompetitionRowValid)) {
-      setErrors(er => ({ ...er, competition_exp: "Every entry needs a school and a matched event." }));
+      setErrors((er) => ({
+        ...er,
+        competition_exp: "Every entry needs a school and a matched event.",
+      }));
       setSaving(false);
       return;
     }
     if (!volunteerRows.every(isVolunteerRowValid)) {
-      setErrors(er => ({ ...er, volunteering_exp: "Every entry needs a tournament name, a 4-digit year, and a role." }));
+      setErrors((er) => ({
+        ...er,
+        volunteering_exp: "Every entry needs a tournament name, a 4-digit year, and a role.",
+      }));
       setSaving(false);
       return;
     }
 
     const dobErr = null; // DOB not editable on this page
-    if (dobErr) { /* unreachable, kept for parity with sign-up validation shape */ }
+    if (dobErr) {
+      /* unreachable, kept for parity with sign-up validation shape */
+    }
 
     if (draft.graduation_year && (draft.graduation_year < 1000 || draft.graduation_year > 9999)) {
-      setErrors(er => ({ ...er, graduation_year: "Must be a valid year." }));
+      setErrors((er) => ({ ...er, graduation_year: "Must be a valid year." }));
       setSaving(false);
       return;
     }
 
-    const isStudent = draft.student_status === 'Undergraduate' || draft.student_status === 'Graduate';
+    const isStudent =
+      draft.student_status === "Undergraduate" || draft.student_status === "Graduate";
     if (isStudent && draft.university_name?.trim() && !draft.university_id) {
-      setErrors(er => ({ ...er, university: "Select a university from the list." }));
+      setErrors((er) => ({ ...er, university: "Select a university from the list." }));
       setSaving(false);
       return;
     }
@@ -210,14 +247,19 @@ export default function ProfileEditPage() {
     const { university_name: _university_name, ...restDraft } = draft;
     const cleaned: Record<string, unknown> = {
       ...restDraft,
-      has_competition_experience: competitionRows.length > 0 ? true : draft.has_competition_experience,
+      has_competition_experience:
+        competitionRows.length > 0 ? true : draft.has_competition_experience,
       has_volunteer_experience: volunteerRows.length > 0 ? true : draft.has_volunteer_experience,
     };
 
-    if (cleaned.student_status === 'Undergraduate' || cleaned.student_status === 'Graduate') {
+    if (cleaned.student_status === "Undergraduate" || cleaned.student_status === "Graduate") {
       cleaned.employer = undefined;
-    } else if (cleaned.student_status === 'Non-Student') {
-      cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+    } else if (cleaned.student_status === "Non-Student") {
+      cleaned.university_id =
+        cleaned.major =
+        cleaned.year_level =
+        cleaned.graduation_year =
+          undefined;
     }
 
     for (const key of Object.keys(cleaned)) {
@@ -230,18 +272,32 @@ export default function ProfileEditPage() {
     try {
       await usersApi.updateMe(cleaned);
 
-      const compDiff = diffRows(original.competition_experience.map(competitionExperienceToDraft), competitionRows);
+      const compDiff = diffRows(
+        original.competition_experience.map(competitionExperienceToDraft),
+        competitionRows,
+      );
       await Promise.all([
-        ...compDiff.toAdd.map(row => usersApi.addCompetitionExperience({
-          event_id: row.event_id as number, school: row.school, notes: row.notes || null,
-        })),
-        ...compDiff.toUpdate.map(row => usersApi.updateCompetitionExperience(row.id as number, {
-          event_id: row.event_id as number, school: row.school, notes: row.notes || null,
-        })),
-        ...compDiff.toDelete.map(row => usersApi.deleteCompetitionExperience(row.id as number)),
+        ...compDiff.toAdd.map((row) =>
+          usersApi.addCompetitionExperience({
+            event_id: row.event_id as number,
+            school: row.school,
+            notes: row.notes || null,
+          }),
+        ),
+        ...compDiff.toUpdate.map((row) =>
+          usersApi.updateCompetitionExperience(row.id as number, {
+            event_id: row.event_id as number,
+            school: row.school,
+            notes: row.notes || null,
+          }),
+        ),
+        ...compDiff.toDelete.map((row) => usersApi.deleteCompetitionExperience(row.id as number)),
       ]);
 
-      const volDiff = diffRows(original.volunteer_experience.map(volunteerExperienceToDraft), volunteerRows);
+      const volDiff = diffRows(
+        original.volunteer_experience.map(volunteerExperienceToDraft),
+        volunteerRows,
+      );
       function volunteerBody(row: VolunteerExperienceDraft) {
         const hasCustomEvent = row.event_id === null && row.event_name.trim();
         const hasNotesOther = row.notes_other.trim();
@@ -250,18 +306,21 @@ export default function ProfileEditPage() {
           year: Number(row.year),
           role: row.role,
           event_id: row.event_id ?? undefined,
-          notes: hasCustomEvent || hasNotesOther
-            ? {
-                ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
-                ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
-              }
-            : undefined,
+          notes:
+            hasCustomEvent || hasNotesOther
+              ? {
+                  ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
+                  ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
+                }
+              : undefined,
         };
       }
       await Promise.all([
-        ...volDiff.toAdd.map(row => usersApi.addVolunteerExperience(volunteerBody(row))),
-        ...volDiff.toUpdate.map(row => usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row))),
-        ...volDiff.toDelete.map(row => usersApi.deleteVolunteerExperience(row.id as number)),
+        ...volDiff.toAdd.map((row) => usersApi.addVolunteerExperience(volunteerBody(row))),
+        ...volDiff.toUpdate.map((row) =>
+          usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row)),
+        ),
+        ...volDiff.toDelete.map((row) => usersApi.deleteVolunteerExperience(row.id as number)),
       ]);
 
       router.push(`/profile/${profileId}`);
@@ -292,7 +351,13 @@ export default function ProfileEditPage() {
     return (
       <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
         <Topbar showWordmark showAvatar />
-        <div style={{ padding: "40px", fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>
+        <div
+          style={{
+            padding: "40px",
+            fontFamily: "var(--font-sans)",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           {loadError ?? "Profile not found."}
         </div>
       </div>
@@ -303,7 +368,13 @@ export default function ProfileEditPage() {
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
       <Topbar showWordmark showAvatar />
       <div className={styles.page}>
-        <Button type="button" variant="ghost" size="sm" onClick={handleBack} className={styles.backLink}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={handleBack}
+          className={styles.backLink}
+        >
           <IconArrowLeft />
           Back to profile
         </Button>
@@ -313,8 +384,8 @@ export default function ProfileEditPage() {
         <ProfileCard>
           <ProfileQuestion question="Pronouns">
             <PronounsField
-              value={draft.pronouns ?? ''}
-              onChange={(v) => setDraft(d => ({ ...d, pronouns: v }))}
+              value={draft.pronouns ?? ""}
+              onChange={(v) => setDraft((d) => ({ ...d, pronouns: v }))}
             />
           </ProfileQuestion>
         </ProfileCard>
@@ -323,7 +394,7 @@ export default function ProfileEditPage() {
           <ProfileQuestion question="Student status">
             <StudentStatusField
               value={draft.student_status}
-              onChange={(v) => setDraft(d => ({ ...d, student_status: v }))}
+              onChange={(v) => setDraft((d) => ({ ...d, student_status: v }))}
             />
           </ProfileQuestion>
 
@@ -332,31 +403,37 @@ export default function ProfileEditPage() {
               <ProfileQuestion question="University">
                 <UniversityField
                   universities={universities}
-                  value={draft.university_name ?? ''}
+                  value={draft.university_name ?? ""}
                   error={errors.university}
-                  onChange={(text, universityId) => setDraft(d => ({ ...d, university_name: text, university_id: universityId ?? undefined }))}
+                  onChange={(text, universityId) =>
+                    setDraft((d) => ({
+                      ...d,
+                      university_name: text,
+                      university_id: universityId ?? undefined,
+                    }))
+                  }
                 />
               </ProfileQuestion>
               <ProfileQuestion question="Major">
                 <MajorField
                   value={draft.major}
                   error={errors.major}
-                  onChange={(v) => setDraft(d => ({ ...d, major: v }))}
+                  onChange={(v) => setDraft((d) => ({ ...d, major: v }))}
                 />
               </ProfileQuestion>
               <ProfileQuestion question="Year level">
                 <YearLevelField
                   value={draft.year_level}
                   error={errors.year_level}
-                  onChange={(v) => setDraft(d => ({ ...d, year_level: v }))}
+                  onChange={(v) => setDraft((d) => ({ ...d, year_level: v }))}
                 />
               </ProfileQuestion>
               <ProfileQuestion question="Projected graduation year">
                 <GraduationYearField
                   value={draft.graduation_year}
                   error={errors.graduation_year}
-                  onValidate={(err) => setErrors(er => ({ ...er, graduation_year: err }))}
-                  onChange={(v) => setDraft(d => ({ ...d, graduation_year: v }))}
+                  onValidate={(err) => setErrors((er) => ({ ...er, graduation_year: err }))}
+                  onChange={(v) => setDraft((d) => ({ ...d, graduation_year: v }))}
                 />
               </ProfileQuestion>
             </>
@@ -367,7 +444,7 @@ export default function ProfileEditPage() {
               <EmployerField
                 value={draft.employer}
                 error={errors.employer}
-                onChange={(v) => setDraft(d => ({ ...d, employer: v }))}
+                onChange={(v) => setDraft((d) => ({ ...d, employer: v }))}
               />
             </ProfileQuestion>
           )}
@@ -377,12 +454,21 @@ export default function ProfileEditPage() {
           <ProfileQuestion question="Have you competed in Science Olympiad before?">
             <div>
               <YesNoField
-                value={effectiveHasCompetitionExp ? true : (draft.has_competition_experience ?? null)}
-                onChange={(val) => setDraft(d => ({ ...d, has_competition_experience: val }))}
+                value={
+                  effectiveHasCompetitionExp ? true : (draft.has_competition_experience ?? null)
+                }
+                onChange={(val) => setDraft((d) => ({ ...d, has_competition_experience: val }))}
                 locked={competitionLocked}
               />
               {competitionLocked && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-tertiary)",
+                    marginTop: "6px",
+                  }}
+                >
                   Remove all competition experience entries below to change this.
                 </p>
               )}
@@ -398,7 +484,14 @@ export default function ProfileEditPage() {
                 events={events}
               />
               {errors.competition_exp && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    color: "var(--color-danger)",
+                    marginTop: "6px",
+                  }}
+                >
                   {errors.competition_exp}
                 </p>
               )}
@@ -411,11 +504,18 @@ export default function ProfileEditPage() {
             <div>
               <YesNoField
                 value={effectiveHasVolunteerExp ? true : (draft.has_volunteer_experience ?? null)}
-                onChange={(val) => setDraft(d => ({ ...d, has_volunteer_experience: val }))}
+                onChange={(val) => setDraft((d) => ({ ...d, has_volunteer_experience: val }))}
                 locked={volunteerLocked}
               />
               {volunteerLocked && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-tertiary)",
+                    marginTop: "6px",
+                  }}
+                >
                   Remove all volunteer experience entries below to change this.
                 </p>
               )}
@@ -431,7 +531,14 @@ export default function ProfileEditPage() {
                 events={events}
               />
               {errors.volunteering_exp && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    color: "var(--color-danger)",
+                    marginTop: "6px",
+                  }}
+                >
                   {errors.volunteering_exp}
                 </p>
               )}
@@ -443,7 +550,7 @@ export default function ProfileEditPage() {
           <ProfileQuestion question="Shirt size">
             <ShirtSizeField
               value={draft.shirt_size}
-              onChange={(v) => setDraft(d => ({ ...d, shirt_size: v }))}
+              onChange={(v) => setDraft((d) => ({ ...d, shirt_size: v }))}
             />
           </ProfileQuestion>
 
@@ -452,7 +559,7 @@ export default function ProfileEditPage() {
               value={hasDietary}
               onChange={(val) => {
                 setHasDietary(val);
-                setDraft(d => ({ ...d, dietary_restriction: val ? "" : "None" }));
+                setDraft((d) => ({ ...d, dietary_restriction: val ? "" : "None" }));
               }}
             />
           </ProfileQuestion>
@@ -462,7 +569,7 @@ export default function ProfileEditPage() {
               <DietaryRestrictionField
                 value={draft.dietary_restriction}
                 error={errors.dietary_restriction}
-                onChange={(v) => setDraft(d => ({ ...d, dietary_restriction: v }))}
+                onChange={(v) => setDraft((d) => ({ ...d, dietary_restriction: v }))}
               />
             </ProfileQuestion>
           )}

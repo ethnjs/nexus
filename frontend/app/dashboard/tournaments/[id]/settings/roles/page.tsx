@@ -1,26 +1,34 @@
 "use client";
 
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { rolesApi, Role, RoleWithMemberCount, ApiError } from "@/lib/api";
-import { groupByRank } from "@/lib/roles/roleReorder";
-import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
-import { useRoleLock } from "@/lib/roles/useRoleLock";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { useParams, useRouter } from "next/navigation";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import {
-  IconPlus, IconSearch, IconLock, IconEye, IconEdit, IconTrash, IconGripVertical, IconUser, IconUserShield,
+  IconEdit,
+  IconEye,
+  IconGripVertical,
+  IconLock,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+  IconUser,
+  IconUserShield,
 } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Spinner } from "@/components/ui/Spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { ApiError, type Role, type RoleWithMemberCount, rolesApi } from "@/lib/api";
+import { groupByRank } from "@/lib/roles/roleReorder";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
+import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // Shared between the header row and each RoleRow so the label/members/actions
 // columns line up: role label, member count, edit+delete buttons.
@@ -89,11 +97,15 @@ export default function RolesSettingsPage() {
   // spreads the RoleWithMemberCount objects we passed in, so member_count
   // survives at runtime — the cast just corrects the narrowed type.
   const reorder = useRoleReorder({
-    tournamentId, roles, isLocked,
+    tournamentId,
+    roles,
+    isLocked,
     onSaved: (updated) => setRoles(updated as RoleWithMemberCount[]),
   });
 
-  const filteredRoles = reorder.draft.filter((r) => r.label.toLowerCase().includes(search.toLowerCase()));
+  const filteredRoles = reorder.draft.filter((r) =>
+    r.label.toLowerCase().includes(search.toLowerCase()),
+  );
 
   if (membershipLoading || roles === null) {
     return (
@@ -134,14 +146,23 @@ export default function RolesSettingsPage() {
               canManageRoles ? (
                 <div style={{ display: "flex", gap: "10px" }}>
                   <Button
-                    type="button" variant="primary" size="sm" loading={applying} onClick={handleApplyTemplate}
-                    disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    loading={applying}
+                    onClick={handleApplyTemplate}
+                    disabled={!canCreateRoles}
+                    title={!canCreateRoles ? ARCHIVED_REASON : undefined}
                   >
                     Apply default template
                   </Button>
                   <Button
-                    type="button" variant="secondary" size="sm" onClick={handleCreateRole}
-                    disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCreateRole}
+                    disabled={!canCreateRoles}
+                    title={!canCreateRoles ? ARCHIVED_REASON : undefined}
                   >
                     Create role
                   </Button>
@@ -168,33 +189,58 @@ export default function RolesSettingsPage() {
             </div>
             {canManageRoles && (
               <Button
-                type="button" variant="primary" size="md"
+                type="button"
+                variant="primary"
+                size="md"
                 onClick={handleCreateRole}
-                disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                disabled={!canCreateRoles}
+                title={!canCreateRoles ? ARCHIVED_REASON : undefined}
               >
                 <IconPlus size={14} /> Create Role
               </Button>
             )}
           </div>
 
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginBottom: "16px" }}>
-            Members use the permissions of every role they hold. Drag roles to reorder their authority.
-            Roles grouped inside a dashed border share the same rank — they&rsquo;re peers and can&rsquo;t edit each other.
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+              marginBottom: "16px",
+            }}
+          >
+            Members use the permissions of every role they hold. Drag roles to reorder their
+            authority. Roles grouped inside a dashed border share the same rank — they&rsquo;re
+            peers and can&rsquo;t edit each other.
           </p>
 
           {loadError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-danger)",
+                marginBottom: "10px",
+              }}
+            >
               {loadError}
             </p>
           )}
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
-            <div style={{
-              display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS,
-              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-              fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-              color: "var(--color-text-tertiary)",
-            }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: ROLE_ROW_COLUMNS,
+                padding: "12px 12px",
+                fontFamily: "var(--font-sans)",
+                fontSize: "11px",
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
               <span>Roles — {roles.length}</span>
               <span style={{ textAlign: "center" }}>Members</span>
               <span />
@@ -204,12 +250,18 @@ export default function RolesSettingsPage() {
               <RoleDropDivider state={reorder.dividerStateFor(null, groups[0]?.[0] ?? null)} />
               {groups.map((group, gi) => (
                 <Fragment key={group[0].id}>
-                  <div style={{
-                    display: "flex", flexDirection: "column",
-                    padding: "4px",
-                    border: group.length > 1 ? "1px dashed var(--color-border-strong)" : "1px solid transparent",
-                    borderRadius: "var(--radius-md)",
-                  }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      padding: "4px",
+                      border:
+                        group.length > 1
+                          ? "1px dashed var(--color-border-strong)"
+                          : "1px solid transparent",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  >
                     {group.map((role, ri) => (
                       <Fragment key={role.id}>
                         <RoleRow
@@ -226,7 +278,12 @@ export default function RolesSettingsPage() {
                       </Fragment>
                     ))}
                   </div>
-                  <RoleDropDivider state={reorder.dividerStateFor(group[group.length - 1], groups[gi + 1]?.[0] ?? null)} />
+                  <RoleDropDivider
+                    state={reorder.dividerStateFor(
+                      group[group.length - 1],
+                      groups[gi + 1]?.[0] ?? null,
+                    )}
+                  />
                 </Fragment>
               ))}
             </DndContext>
@@ -249,7 +306,10 @@ export default function RolesSettingsPage() {
           roleLabel={deleteTarget.label}
           membersAffected={memberCounts[deleteTarget.id] ?? 0}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={() => { setDeleteTarget(null); loadRoles(); }}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            loadRoles();
+          }}
         />
       )}
     </div>
@@ -257,24 +317,35 @@ export default function RolesSettingsPage() {
 }
 
 interface RoleRowProps {
-  role:          Role;
-  tournamentId:  number;
-  lockReason:    string | null;
-  memberCount:   number;
+  role: Role;
+  tournamentId: number;
+  lockReason: string | null;
+  memberCount: number;
   // Only ever set for a "join this tie group" hover — above/below insertion
   // points are shown by the dividers between rows instead.
   dropIndicator: { noop: boolean } | null;
-  onDelete:      (role: Role) => void;
+  onDelete: (role: Role) => void;
 }
 
-const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCount, dropIndicator, onDelete }: RoleRowProps) {
+const RoleRow = memo(function RoleRow({
+  role,
+  tournamentId,
+  lockReason,
+  memberCount,
+  dropIndicator,
+  onDelete,
+}: RoleRowProps) {
   const router = useRouter();
   const locked = lockReason !== null;
   const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
   const [hovered, setHovered] = useState(false);
 
   const indicatorStyle: React.CSSProperties = dropIndicator
-    ? { background: dropIndicator.noop ? "var(--color-accent-subtle)" : "var(--color-success-subtle)" }
+    ? {
+        background: dropIndicator.noop
+          ? "var(--color-accent-subtle)"
+          : "var(--color-success-subtle)",
+      }
     : {};
 
   function goToRole() {
@@ -287,7 +358,12 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
     // element's own hit-test box — hovering toward the grip no longer
     // crosses a "dead zone" that would fire onMouseLeave before it arrives.
     <div
-      style={{ position: "relative", marginLeft: "-31px", paddingLeft: "31px", boxSizing: "border-box" }}
+      style={{
+        position: "relative",
+        marginLeft: "-31px",
+        paddingLeft: "31px",
+        boxSizing: "border-box",
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -296,11 +372,19 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
           ref={setGripRef}
           {...gripProps}
           style={{
-            position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "25px", height: "25px",
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-            background: "var(--color-surface)", color: "var(--color-text-tertiary)",
+            position: "absolute",
+            left: "0",
+            top: "50%",
+            transform: "translateY(-50%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "25px",
+            height: "25px",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--color-surface)",
+            color: "var(--color-text-tertiary)",
             cursor: "grab",
             opacity: hovered ? 1 : 0,
             pointerEvents: hovered ? "auto" : "none",
@@ -315,7 +399,9 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
         ref={setDropRef}
         style={{
           ...dragStyle,
-          display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS, alignItems: "center",
+          display: "grid",
+          gridTemplateColumns: ROLE_ROW_COLUMNS,
+          alignItems: "center",
           padding: "5px 4px",
           borderRadius: "var(--radius-md)",
           borderTop: "2px solid transparent",
@@ -325,12 +411,19 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-          <span style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "24px", height: "24px", borderRadius: "50%",
-            background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
-            flexShrink: 0,
-          }}>
+          <span
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              background: "var(--color-accent-subtle)",
+              color: "var(--color-text-secondary)",
+              flexShrink: 0,
+            }}
+          >
             <IconUserShield size={12} />
           </span>
 
@@ -347,10 +440,17 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
           </span>
         </div>
 
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-          fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)",
-        }}>
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            fontFamily: "var(--font-mono)",
+            fontSize: "12px",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           {memberCount} <IconUser size={12} />
         </span>
 
@@ -359,7 +459,12 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
             {locked ? <IconEye size={13} /> : <IconEdit size={13} />}
           </Button>
           <Button
-            type="button" variant="secondary" size="sm" iconOnly disabled={locked} onClick={() => onDelete(role)}
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            disabled={locked}
+            onClick={() => onDelete(role)}
             style={{ color: "var(--color-danger)" }}
           >
             <IconTrash size={13} />

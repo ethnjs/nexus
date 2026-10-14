@@ -1,32 +1,43 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetHeadersResponse, SheetType, MappedHeader } from "@/lib/api";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useRef, useState } from "react";
+import { ImportSummaryModal } from "@/components/tournament/sheets/ImportSummaryModal";
 import {
-  MappingRow,
-  MappingsExport,
-  ImportSummary,
-  parseMappingsJson,
-  applyImport,
-} from "@/lib/importMappings";
-import {
-  RichMappingRow,
   makeRichRow,
+  type RichMappingRow,
   SheetConfigMappingTable,
 } from "@/components/tournament/sheets/SheetConfigMappingTable";
-import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
-import { Button } from "@/components/ui/Button";
+import {
+  SheetMappingValidationErrorsModal,
+  SheetMappingValidationWarningsModal,
+} from "@/components/tournament/sheets/SheetMappingValidationModals";
 import { Banner } from "@/components/ui/Banner";
-import { Modal } from "@/components/ui/Modal";
-import { ImportSummaryModal } from "@/components/tournament/sheets/ImportSummaryModal";
-import { Input } from "@/components/ui/Input";
-import { StepIndicator } from "@/components/ui/StepIndicator";
+import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { StatCard } from "@/components/ui/StatCard";
-import { useSheetValidation } from "@/lib/useSheetValidation";
+import { StepIndicator } from "@/components/ui/StepIndicator";
+import {
+  type ColumnMapping,
+  type ColumnMappingEntry,
+  type MappedHeader,
+  type SheetConfig,
+  type SheetHeadersResponse,
+  type SheetType,
+  sheetsApi,
+} from "@/lib/api";
+import {
+  applyImport,
+  type ImportSummary,
+  type MappingRow,
+  type MappingsExport,
+  parseMappingsJson,
+} from "@/lib/importMappings";
 import { useArchiveLock } from "@/lib/useArchiveLock";
-import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/tournament/sheets/SheetMappingValidationModals";
+import { useSheetValidation } from "@/lib/useSheetValidation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,41 +55,45 @@ const fieldLabelStyle: React.CSSProperties = {
 type Step = "url" | "sheet-select" | "form-url" | "mapping" | "syncing" | "results";
 
 interface ValidateResult {
-  spreadsheet_id:    string;
+  spreadsheet_id: string;
   spreadsheet_title: string;
-  sheet_names:       string[];
+  sheet_names: string[];
 }
 
 interface SyncResult {
-  created:       number;
-  updated:       number;
-  skipped:       number;
-  errors:        Array<{ row: number; email: string | null; detail: string }>;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; email: string | null; detail: string }>;
   last_synced_at: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SHEET_TYPES: { value: SheetType; label: string; description: string }[] = [
-  { value: "volunteers", label: "Volunteers", description: "Interest forms, confirmation forms — maps to volunteer records" },
-  { value: "events",     label: "Events",     description: "Event list — maps to tournament event data" },
+  {
+    value: "volunteers",
+    label: "Volunteers",
+    description: "Interest forms, confirmation forms — maps to volunteer records",
+  },
+  { value: "events", label: "Events", description: "Event list — maps to tournament event data" },
 ];
 
 function getWizardSteps(sheetType: SheetType) {
   if (sheetType === "volunteers") {
     return [
-      { key: "url",          label: "Sheet URL" },
+      { key: "url", label: "Sheet URL" },
       { key: "sheet-select", label: "Select Sheet" },
-      { key: "form-url",     label: "Form URL" },
-      { key: "mapping",      label: "Map Columns" },
-      { key: "results",      label: "Done" },
+      { key: "form-url", label: "Form URL" },
+      { key: "mapping", label: "Map Columns" },
+      { key: "results", label: "Done" },
     ];
   }
   return [
-    { key: "url",          label: "Sheet URL" },
+    { key: "url", label: "Sheet URL" },
     { key: "sheet-select", label: "Select Sheet" },
-    { key: "mapping",      label: "Map Columns" },
-    { key: "results",      label: "Done" },
+    { key: "mapping", label: "Map Columns" },
+    { key: "results", label: "Done" },
   ];
 }
 
@@ -88,12 +103,12 @@ function emptyMappingRow(header: string, m: MappedHeader): MappingRow {
   return {
     column_index: m.column_index,
     header,
-    field:     m.field     ?? "__ignore__",
-    type:      m.type      ?? "ignore",
-    row_key:   m.row_key   ?? "",
+    field: m.field ?? "__ignore__",
+    type: m.type ?? "ignore",
+    row_key: m.row_key ?? "",
     extra_key: m.extra_key ?? "",
     delimiter: m.delimiter ?? "",
-    rules:     m.rules     ?? [],
+    rules: m.rules ?? [],
   };
 }
 
@@ -105,30 +120,68 @@ function SaveConfirmModal({
   onCancel,
 }: {
   duplicates: SheetConfig[];
-  onConfirm:  () => void;
-  onCancel:   () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
     <Modal title="Add duplicate sheet tab?" onClose={onCancel} width={420}>
-      <div style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", padding: "12px 14px", marginBottom: "20px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+      <div
+        style={{
+          background: "var(--color-warning-subtle)",
+          border: "1px solid var(--color-warning)",
+          borderRadius: "var(--radius-md)",
+          padding: "12px 14px",
+          marginBottom: "20px",
+        }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-primary)",
+            marginBottom: "6px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
           <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
           This tab is already connected as:
         </p>
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
           {duplicates.map((d) => (
-            <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            <li
+              key={d.id}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
               <strong>{d.label}</strong> ({d.sheet_name})
             </li>
           ))}
         </ul>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
-          Having multiple configs pointing at the same sheet tab is allowed, but syncing them may overwrite each other&apos;s data if they map to the same fields.
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-secondary)",
+            marginTop: "8px",
+          }}
+        >
+          Having multiple configs pointing at the same sheet tab is allowed, but syncing them may
+          overwrite each other&apos;s data if they map to the same fields.
         </p>
       </div>
       <div style={{ display: "flex", gap: "10px" }}>
-        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Go back</Button>
-        <Button variant="primary"   size="md" fullWidth onClick={onConfirm}>Add anyway</Button>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
+          Go back
+        </Button>
+        <Button variant="primary" size="md" fullWidth onClick={onConfirm}>
+          Add anyway
+        </Button>
       </div>
     </Modal>
   );
@@ -137,8 +190,8 @@ function SaveConfirmModal({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function NewSheetPage() {
-  const router       = useRouter();
-  const params       = useParams();
+  const router = useRouter();
+  const params = useParams();
   const tournamentId = Number(params.id);
   // Reachable by URL even with the list's Add button locked — the final
   // save is where it has to stop.
@@ -147,40 +200,54 @@ export default function NewSheetPage() {
   const [step, setStep] = useState<Step>("url");
 
   // Step 1
-  const [sheetUrl,        setSheetUrl]        = useState("");
-  const [urlLoading,      setUrlLoading]      = useState(false);
-  const [urlError,        setUrlError]        = useState("");
-  const [validateResult,  setValidateResult]  = useState<ValidateResult | null>(null);
+  const [sheetUrl, setSheetUrl] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlError, setUrlError] = useState("");
+  const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
   const [existingConfigs, setExistingConfigs] = useState<SheetConfig[]>([]);
 
   // Step 2
   const [selectedSheet, setSelectedSheet] = useState("");
-  const [sheetType,     setSheetType]     = useState<SheetType>("volunteers");
-  const [sheetLabel,    setSheetLabel]    = useState("");
+  const [sheetType, setSheetType] = useState<SheetType>("volunteers");
+  const [sheetLabel, setSheetLabel] = useState("");
 
   // Step 3
-  const [formUrl,        setFormUrl]        = useState("");
-  const [formUrlError,   setFormUrlError]   = useState("");
+  const [formUrl, setFormUrl] = useState("");
+  const [formUrlError, setFormUrlError] = useState("");
   const [formUrlLoading, setFormUrlLoading] = useState(false);
 
   // Step 4
-  const [headersResult,  setHeadersResult]  = useState<SheetHeadersResponse | null>(null);
-  const [mappingRows,    setMappingRows]    = useState<RichMappingRow[]>([]);
-  const [saveLoading,    setSaveLoading]    = useState(false);
-  const [showSaveConfirm,      setShowSaveConfirm]      = useState(false);
-  const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
-  const [showErrorsModal,      setShowErrorsModal]      = useState(false);
-  const [importBanner,         setImportBanner]         = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
-  const [showImportSummary,    setShowImportSummary]    = useState(false);
+  const [headersResult, setHeadersResult] = useState<SheetHeadersResponse | null>(null);
+  const [mappingRows, setMappingRows] = useState<RichMappingRow[]>([]);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
+  const [showErrorsModal, setShowErrorsModal] = useState(false);
+  const [importBanner, setImportBanner] = useState<{
+    variant: "success" | "error";
+    message: string;
+    summary?: ImportSummary;
+  } | null>(null);
+  const [showImportSummary, setShowImportSummary] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Track options per column index so duplicate headers stay distinct
-  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  const [headerOptions, setHeaderOptions] = useState<
+    Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>
+  >(new Map());
 
   // Validation
   const {
-    validationErrors, validationWarnings, validationGeneration,
-    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
+    validationErrors,
+    validationWarnings,
+    validationGeneration,
+    clearAll,
+    clearRow,
+    handle422,
+    handleSaveSuccess,
+    handleValidateResult,
+    setGenericError,
+    renderErrorBanner,
   } = useSheetValidation();
 
   // Results
@@ -191,7 +258,7 @@ export default function NewSheetPage() {
   function getDuplicatesForSelection(): SheetConfig[] {
     if (!validateResult || !selectedSheet) return [];
     return existingConfigs.filter(
-      (c) => c.spreadsheet_id === validateResult.spreadsheet_id && c.sheet_name === selectedSheet
+      (c) => c.spreadsheet_id === validateResult.spreadsheet_id && c.sheet_name === selectedSheet,
     );
   }
 
@@ -216,8 +283,8 @@ export default function NewSheetPage() {
         msg.includes("403") || msg.includes("access")
           ? "The service account doesn't have access to this sheet. Make sure you've shared it with the service account."
           : msg.includes("404") || msg.includes("not found")
-          ? "Spreadsheet not found. Double-check the URL."
-          : "Failed to validate sheet URL. Check the URL and try again."
+            ? "Spreadsheet not found. Double-check the URL."
+            : "Failed to validate sheet URL. Check the URL and try again.",
       );
     } finally {
       setUrlLoading(false);
@@ -252,13 +319,20 @@ export default function NewSheetPage() {
       setHeadersResult(result);
 
       // Track options per header for buildColumnMappings persistence
-      const optionsMap = new Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<
+        number,
+        { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }
+      >();
 
       const rows: RichMappingRow[] = result.mappings.map((m: MappedHeader) => {
         const base = emptyMappingRow(m.header, m);
         const rawOptions = m.options?.map((o) => o.raw);
         if (rawOptions || m.grid_rows || m.grid_columns) {
-          optionsMap.set(m.column_index, { options: rawOptions, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
+          optionsMap.set(m.column_index, {
+            options: rawOptions,
+            grid_rows: m.grid_rows,
+            grid_columns: m.grid_columns,
+          });
         }
         return makeRichRow(base, base, undefined, undefined, undefined, rawOptions);
       });
@@ -270,17 +344,19 @@ export default function NewSheetPage() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       const detail = (e as { detail?: unknown }).detail;
-      const isInvalidUrl = Array.isArray(detail) &&
-        detail.some((d: { loc?: unknown[]; type?: string }) =>
-          d.type === "value_error" && Array.isArray(d.loc) && d.loc.includes("form_url")
+      const isInvalidUrl =
+        Array.isArray(detail) &&
+        detail.some(
+          (d: { loc?: unknown[]; type?: string }) =>
+            d.type === "value_error" && Array.isArray(d.loc) && d.loc.includes("form_url"),
         );
       const isAccessError = msg.includes("403") || msg.includes("access");
       setFormUrlError(
         isInvalidUrl
           ? "That doesn't look like a valid Google Forms URL. Make sure you're pasting a link to a form, not a spreadsheet."
           : isAccessError
-          ? "Could not access this form. Make sure it's shared with the NEXUS service account."
-          : "Failed to fetch sheet headers. Make sure the sheet tab exists and is accessible."
+            ? "Could not access this form. Make sure it's shared with the NEXUS service account."
+            : "Failed to fetch sheet headers. Make sure the sheet tab exists and is accessible.",
       );
     } finally {
       setFormUrlLoading(false);
@@ -306,7 +382,10 @@ export default function NewSheetPage() {
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
     if (!isJson) {
-      setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
+      setImportBanner({
+        variant: "error",
+        message: "Unsupported file type. Please upload a .json file.",
+      });
       return;
     }
 
@@ -315,15 +394,22 @@ export default function NewSheetPage() {
       const text = ev.target?.result as string;
       const parsed: MappingsExport | null = parseMappingsJson(text);
       if (!parsed) {
-        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: [ ... ] }" });
+        setImportBanner({
+          variant: "error",
+          message: "Invalid JSON file — expected { column_mappings: [ ... ] }",
+        });
         return;
       }
 
       const plainRows: MappingRow[] = mappingRows.map((r) => ({
         column_index: r.column_index,
-        header: r.header, field: r.field, type: r.type,
-        row_key: r.row_key, extra_key: r.extra_key,
-        delimiter: r.delimiter, rules: r.rules,
+        header: r.header,
+        field: r.field,
+        type: r.type,
+        row_key: r.row_key,
+        extra_key: r.extra_key,
+        delimiter: r.delimiter,
+        rules: r.rules,
       }));
 
       const { updatedRows, summary } = applyImport(plainRows, parsed);
@@ -354,12 +440,21 @@ export default function NewSheetPage() {
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
           const hadRuleChanges = updatedList.some(
-            (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+            (entry) =>
+              entry.column_index === r.column_index &&
+              entry.ruleDiffs.some((d) => d.status !== "unchanged"),
           );
           const options = importedOptionsMap.get(r.column_index) ?? r.options;
-          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, options);
+          const base = makeRichRow(
+            updated,
+            r.baseline,
+            undefined,
+            importedValue,
+            undefined,
+            options,
+          );
           return { ...base, openOnMount: hadRuleChanges || undefined };
-        })
+        }),
       );
 
       if (parsed.label && !sheetLabel) setSheetLabel(parsed.label);
@@ -367,7 +462,10 @@ export default function NewSheetPage() {
 
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
-      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
+      setTimeout(
+        () => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))),
+        100,
+      );
     };
     reader.readAsText(file);
   }
@@ -378,14 +476,14 @@ export default function NewSheetPage() {
     const result: ColumnMappingEntry[] = [];
     for (const row of mappingRows) {
       const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
-      if (row.type === "matrix_row"   && row.row_key)   mapping.row_key   = row.row_key;
-      if (row.field === "extra_data"  && row.extra_key) mapping.extra_key = row.extra_key;
+      if (row.type === "matrix_row" && row.row_key) mapping.row_key = row.row_key;
+      if (row.field === "extra_data" && row.extra_key) mapping.extra_key = row.extra_key;
       if (row.type === "multi_select" && row.delimiter) mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       // Persist form enrichment so edit page + exports retain alias editor context
       const enrichment = headerOptions.get(row.column_index);
-      if (enrichment?.options)      mapping.options      = enrichment.options;
-      if (enrichment?.grid_rows)    mapping.grid_rows    = enrichment.grid_rows;
+      if (enrichment?.options) mapping.options = enrichment.options;
+      if (enrichment?.grid_rows) mapping.grid_rows = enrichment.grid_rows;
       if (enrichment?.grid_columns) mapping.grid_columns = enrichment.grid_columns;
       result.push({
         column_index: row.column_index,
@@ -405,11 +503,11 @@ export default function NewSheetPage() {
     setStep("syncing");
     try {
       const config = await sheetsApi.createConfig(tournamentId, {
-        tournament_id:   tournamentId,
-        label:           sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
-        sheet_type:      sheetType,
-        sheet_url:       sheetUrl.trim(),
-        sheet_name:      selectedSheet,
+        tournament_id: tournamentId,
+        label: sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
+        sheet_type: sheetType,
+        sheet_url: sheetUrl.trim(),
+        sheet_name: selectedSheet,
         column_mappings: buildColumnMappings(),
       });
       handleSaveSuccess(config);
@@ -418,7 +516,8 @@ export default function NewSheetPage() {
       setStep("results");
     } catch (e: unknown) {
       setStep("mapping");
-      if (!handle422(e)) setGenericError(e instanceof Error ? e.message : "Failed to save sheet configuration.");
+      if (!handle422(e))
+        setGenericError(e instanceof Error ? e.message : "Failed to save sheet configuration.");
     } finally {
       setSaveLoading(false);
     }
@@ -426,13 +525,22 @@ export default function NewSheetPage() {
 
   async function handleSaveAndSync() {
     const dupes = getDuplicatesForSelection();
-    if (dupes.length > 0) { setShowSaveConfirm(true); return; }
+    if (dupes.length > 0) {
+      setShowSaveConfirm(true);
+      return;
+    }
     setSaveLoading(true);
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
       const { ok, shouldConfirm } = handleValidateResult(validation);
-      if (!ok) { setShowErrorsModal(true); return; }
-      if (shouldConfirm) { setShowWarningsConfirm(true); return; }
+      if (!ok) {
+        setShowErrorsModal(true);
+        return;
+      }
+      if (shouldConfirm) {
+        setShowWarningsConfirm(true);
+        return;
+      }
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch {
@@ -448,7 +556,7 @@ export default function NewSheetPage() {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
         return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.options);
-      })
+      }),
     );
     const row = mappingRows[idx];
     if (row) clearRow(row.column_index, row.header);
@@ -456,9 +564,9 @@ export default function NewSheetPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const changedCount    = mappingRows.filter((r) => r.state === "changed").length;
-  const wizardSteps     = getWizardSteps(sheetType);
-  const indicatorStep   = step === "syncing" ? "mapping" : step;
+  const changedCount = mappingRows.filter((r) => r.state === "changed").length;
+  const wizardSteps = getWizardSteps(sheetType);
+  const indicatorStep = step === "syncing" ? "mapping" : step;
   const selectStepDupes = step === "sheet-select" ? getDuplicatesForSelection() : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -467,16 +575,39 @@ export default function NewSheetPage() {
     <div style={{ width: "100%" }}>
       <button
         onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}
-        style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "20px", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-text-primary)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginBottom: "20px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--color-text-primary)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--color-text-tertiary)";
+        }}
       >
         <IconArrowLeft />
         Back to Sheets
       </button>
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>Add Sheet</h1>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "32px" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          marginBottom: "32px",
+        }}
+      >
         Connect a Google Sheet to import volunteer or event data.
       </p>
 
@@ -485,42 +616,144 @@ export default function NewSheetPage() {
       {/* ── STEP 1: Sheet URL ── */}
       {step === "url" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <Input label="Google Sheets URL" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." value={sheetUrl} onChange={(e) => { setSheetUrl(e.target.value); setUrlError(""); }} onKeyDown={(e) => { if (e.key === "Enter") handleValidateUrl(); }} error={urlError} helper="Make sure the sheet is shared with the NEXUS service account before continuing." fullWidth autoFocus />
-          <div><Button variant="primary" size="lg" loading={urlLoading} disabled={!sheetUrl.trim()} onClick={handleValidateUrl}>Validate URL</Button></div>
+          <Input
+            label="Google Sheets URL"
+            type="url"
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            value={sheetUrl}
+            onChange={(e) => {
+              setSheetUrl(e.target.value);
+              setUrlError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleValidateUrl();
+            }}
+            error={urlError}
+            helper="Make sure the sheet is shared with the NEXUS service account before continuing."
+            fullWidth
+            autoFocus
+          />
+          <div>
+            <Button
+              variant="primary"
+              size="lg"
+              loading={urlLoading}
+              disabled={!sheetUrl.trim()}
+              onClick={handleValidateUrl}
+            >
+              Validate URL
+            </Button>
+          </div>
         </div>
       )}
 
       {/* ── STEP 2: Tab + Type ── */}
       {step === "sheet-select" && validateResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "14px 16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
-            <div style={{ color: "var(--color-success)", marginTop: "2px" }}><IconCheckCircle /></div>
+          <div
+            style={{
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "14px 16px",
+              display: "flex",
+              gap: "12px",
+              alignItems: "flex-start",
+            }}
+          >
+            <div style={{ color: "var(--color-success)", marginTop: "2px" }}>
+              <IconCheckCircle />
+            </div>
             <div>
-              <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>{validateResult.spreadsheet_title}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px", wordBreak: "break-all" }}>{sheetUrl}</div>
+              <div
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                {validateResult.spreadsheet_title}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                  marginTop: "2px",
+                  wordBreak: "break-all",
+                }}
+              >
+                {sheetUrl}
+              </div>
             </div>
           </div>
 
           {selectStepDupes.length > 0 && (
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", padding: "12px 14px" }}>
-              <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "2px" }} />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+                background: "var(--color-warning-subtle)",
+                border: "1px solid var(--color-warning)",
+                borderRadius: "var(--radius-md)",
+                padding: "12px 14px",
+              }}
+            >
+              <IconWarning
+                size={14}
+                style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "2px" }}
+              />
               <div>
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)", marginBottom: "4px" }}>This tab is already connected</p>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "var(--color-text-primary)",
+                    marginBottom: "4px",
+                  }}
+                >
+                  This tab is already connected
+                </p>
                 <ul style={{ margin: 0, paddingLeft: "18px" }}>
                   {selectStepDupes.map((d) => (
-                    <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                    <li
+                      key={d.id}
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
                       <strong>{d.label}</strong> · {d.sheet_name}
                     </li>
                   ))}
                 </ul>
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "6px" }}>
-                  You can still proceed, but syncing both configs may overwrite each other&apos;s data.
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-secondary)",
+                    marginTop: "6px",
+                  }}
+                >
+                  You can still proceed, but syncing both configs may overwrite each other&apos;s
+                  data.
                 </p>
               </div>
             </div>
           )}
 
-          <Input label="Sheet Label" placeholder="e.g. 2026 Nationals Interest Form" value={sheetLabel} onChange={(e) => setSheetLabel(e.target.value)} helper="A friendly name to identify this sheet in NEXUS." fullWidth />
+          <Input
+            label="Sheet Label"
+            placeholder="e.g. 2026 Nationals Interest Form"
+            value={sheetLabel}
+            onChange={(e) => setSheetLabel(e.target.value)}
+            helper="A friendly name to identify this sheet in NEXUS."
+            fullWidth
+          />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
@@ -546,8 +779,17 @@ export default function NewSheetPage() {
           </div>
 
           <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" size="lg" onClick={() => setStep("url")}>Back</Button>
-            <Button variant="primary" size="lg" disabled={!selectedSheet} onClick={handleSheetSelectNext}>Next</Button>
+            <Button variant="secondary" size="lg" onClick={() => setStep("url")}>
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={!selectedSheet}
+              onClick={handleSheetSelectNext}
+            >
+              Next
+            </Button>
           </div>
         </div>
       )}
@@ -555,18 +797,59 @@ export default function NewSheetPage() {
       {/* ── STEP 3: Form URL (volunteers only) ── */}
       {step === "form-url" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "14px 16px" }}>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
-              NEXUS uses your Google Form to understand the question types and answer options in your sheet.
-              This allows it to auto-suggest field mappings and clean up option text automatically.
+          <div
+            style={{
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "14px 16px",
+            }}
+          >
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+                margin: 0,
+              }}
+            >
+              NEXUS uses your Google Form to understand the question types and answer options in
+              your sheet. This allows it to auto-suggest field mappings and clean up option text
+              automatically.
             </p>
           </div>
 
-          <Input label="Google Form URL" type="url" placeholder="https://docs.google.com/forms/d/..." value={formUrl} onChange={(e) => { setFormUrl(e.target.value); setFormUrlError(""); }} onKeyDown={(e) => { if (e.key === "Enter" && formUrl.trim()) handleFormUrlNext(); }} error={formUrlError} helper="Make sure the form is shared with the NEXUS service account. This is the same email you shared your sheet with." fullWidth autoFocus />
+          <Input
+            label="Google Form URL"
+            type="url"
+            placeholder="https://docs.google.com/forms/d/..."
+            value={formUrl}
+            onChange={(e) => {
+              setFormUrl(e.target.value);
+              setFormUrlError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && formUrl.trim()) handleFormUrlNext();
+            }}
+            error={formUrlError}
+            helper="Make sure the form is shared with the NEXUS service account. This is the same email you shared your sheet with."
+            fullWidth
+            autoFocus
+          />
 
           <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
-            <Button variant="primary" size="lg" loading={formUrlLoading} disabled={!formUrl.trim()} onClick={handleFormUrlNext}>Next — Map Columns</Button>
+            <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              loading={formUrlLoading}
+              disabled={!formUrl.trim()}
+              onClick={handleFormUrlNext}
+            >
+              Next — Map Columns
+            </Button>
           </div>
         </div>
       )}
@@ -578,26 +861,61 @@ export default function NewSheetPage() {
             <div>{renderErrorBanner()}</div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
-                Review and adjust how each column maps to NEXUS fields.
-                Ignored columns are dimmed — they won&apos;t be imported.
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  color: "var(--color-text-secondary)",
+                  margin: 0,
+                }}
+              >
+                Review and adjust how each column maps to NEXUS fields. Ignored columns are dimmed —
+                they won&apos;t be imported.
               </p>
               {changedCount > 0 && (
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "#854D0E" }}>
+                <span
+                  style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "#854D0E" }}
+                >
                   {changedCount} edited
                 </span>
               )}
             </div>
             <div style={{ flexShrink: 0 }}>
-              <Button variant="secondary" size="sm" onClick={triggerImport}>Import JSON</Button>
-              <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
+              <Button variant="secondary" size="sm" onClick={triggerImport}>
+                Import JSON
+              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: "none" }}
+                onChange={handleImportFile}
+              />
             </div>
           </div>
 
           {importBanner && (
-            <Banner variant={importBanner.variant} message={importBanner.message} onDismiss={() => setImportBanner(null)} action={importBanner.summary ? (<Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>Show summary</Button>) : undefined} />
+            <Banner
+              variant={importBanner.variant}
+              message={importBanner.message}
+              onDismiss={() => setImportBanner(null)}
+              action={
+                importBanner.summary ? (
+                  <Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>
+                    Show summary
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
 
           <SheetConfigMappingTable
@@ -615,8 +933,23 @@ export default function NewSheetPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {renderErrorBanner()}
             <div style={{ display: "flex", gap: "10px" }}>
-              <Button variant="secondary" size="lg" onClick={() => setStep(sheetType === "volunteers" ? "form-url" : "sheet-select")}>Back</Button>
-              <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync} disabled={isArchived} title={archivedReason}>Save &amp; Sync</Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => setStep(sheetType === "volunteers" ? "form-url" : "sheet-select")}
+              >
+                Back
+              </Button>
+              <Button
+                variant="primary"
+                size="lg"
+                loading={saveLoading}
+                onClick={handleSaveAndSync}
+                disabled={isArchived}
+                title={archivedReason}
+              >
+                Save &amp; Sync
+              </Button>
             </div>
           </div>
         </div>
@@ -624,11 +957,47 @@ export default function NewSheetPage() {
 
       {/* ── SYNCING ── */}
       {step === "syncing" && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "20px", padding: "80px 0", textAlign: "center" }}>
-          <div style={{ width: "40px", height: "40px", border: "3px solid var(--color-border)", borderTopColor: "var(--color-accent)", borderRadius: "50%", animation: "spin 700ms linear infinite" }} />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "20px",
+            padding: "80px 0",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              border: "3px solid var(--color-border)",
+              borderTopColor: "var(--color-accent)",
+              borderRadius: "50%",
+              animation: "spin 700ms linear infinite",
+            }}
+          />
           <div>
-            <p style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "6px" }}>Saving &amp; syncing…</p>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>Importing data from your sheet. This may take a moment.</p>
+            <p
+              style={{
+                fontFamily: "Georgia, serif",
+                fontSize: "22px",
+                color: "var(--color-text-primary)",
+                marginBottom: "6px",
+              }}
+            >
+              Saving &amp; syncing…
+            </p>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              Importing data from your sheet. This may take a moment.
+            </p>
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -644,30 +1013,115 @@ export default function NewSheetPage() {
           </div>
 
           {syncResult.errors.length > 0 ? (
-            <div style={{ border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-              <div style={{ padding: "10px 16px", background: "var(--color-danger-subtle)", borderBottom: "1px solid var(--color-danger)" }}>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-danger)" }}>
-                  {syncResult.errors.length} row{syncResult.errors.length !== 1 ? "s" : ""} had errors
+            <div
+              style={{
+                border: "1px solid var(--color-danger)",
+                borderRadius: "var(--radius-md)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "10px 16px",
+                  background: "var(--color-danger-subtle)",
+                  borderBottom: "1px solid var(--color-danger)",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "var(--color-danger)",
+                  }}
+                >
+                  {syncResult.errors.length} row{syncResult.errors.length !== 1 ? "s" : ""} had
+                  errors
                 </span>
               </div>
               <div style={{ maxHeight: "200px", overflowY: "auto" }}>
                 {syncResult.errors.map((err, i) => (
-                  <div key={i} style={{ padding: "10px 16px", borderBottom: i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none", display: "flex", gap: "12px" }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>Row {err.row}</span>
-                    {err.email && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0 }}>{err.email}</span>}
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>{err.detail}</span>
+                  <div
+                    key={i}
+                    style={{
+                      padding: "10px 16px",
+                      borderBottom:
+                        i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none",
+                      display: "flex",
+                      gap: "12px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "11px",
+                        color: "var(--color-text-tertiary)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Row {err.row}
+                    </span>
+                    {err.email && (
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "11px",
+                          color: "var(--color-text-secondary)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {err.email}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "12px",
+                        color: "var(--color-text-primary)",
+                      }}
+                    >
+                      {err.detail}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ color: "var(--color-success)" }}><IconCheckCircle /></span>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>All rows imported successfully — no errors.</span>
+            <div
+              style={{
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                padding: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <span style={{ color: "var(--color-success)" }}>
+                <IconCheckCircle />
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                All rows imported successfully — no errors.
+              </span>
             </div>
           )}
 
-          <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
+          <div>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}
+            >
+              Back to Sheets
+            </Button>
+          </div>
         </div>
       )}
 
@@ -679,29 +1133,52 @@ export default function NewSheetPage() {
             setShowSaveConfirm(false);
             setSaveLoading(true);
             try {
-              const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
+              const validation = await sheetsApi.validateMappings(
+                tournamentId,
+                buildColumnMappings(),
+              );
               const { ok, shouldConfirm } = handleValidateResult(validation);
-              if (!ok) { setShowErrorsModal(true); return; }
-              if (shouldConfirm) { setShowWarningsConfirm(true); return; }
+              if (!ok) {
+                setShowErrorsModal(true);
+                return;
+              }
+              if (shouldConfirm) {
+                setShowWarningsConfirm(true);
+                return;
+              }
               if (validation.warnings.length > 0) return;
               await doSaveAndSync();
-            } catch { setGenericError("Failed to validate."); }
-            finally { setSaveLoading(false); }
+            } catch {
+              setGenericError("Failed to validate.");
+            } finally {
+              setSaveLoading(false);
+            }
           }}
           onCancel={() => setShowSaveConfirm(false)}
         />
       )}
 
       {showImportSummary && importBanner?.summary && (
-        <ImportSummaryModal summary={importBanner.summary} onClose={() => setShowImportSummary(false)} />
+        <ImportSummaryModal
+          summary={importBanner.summary}
+          onClose={() => setShowImportSummary(false)}
+        />
       )}
 
       {showWarningsConfirm && (
-        <SheetMappingValidationWarningsModal warnings={validationWarnings} onConfirm={doSaveAndSync} onCancel={() => setShowWarningsConfirm(false)} />
+        <SheetMappingValidationWarningsModal
+          warnings={validationWarnings}
+          onConfirm={doSaveAndSync}
+          onCancel={() => setShowWarningsConfirm(false)}
+        />
       )}
 
       {showErrorsModal && (
-        <SheetMappingValidationErrorsModal errors={validationErrors} warnings={validationWarnings} onClose={() => setShowErrorsModal(false)} />
+        <SheetMappingValidationErrorsModal
+          errors={validationErrors}
+          warnings={validationWarnings}
+          onClose={() => setShowErrorsModal(false)}
+        />
       )}
     </div>
   );

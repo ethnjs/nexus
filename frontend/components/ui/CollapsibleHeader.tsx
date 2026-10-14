@@ -1,31 +1,35 @@
-'use client'
+"use client";
 
-import { ReactNode, useEffect, useState } from 'react'
-
-import { PageHeader } from '@/components/ui/PageHeader'
-import { TabStrip } from '@/components/ui/TabStrip'
-import { IconChevronDown } from '@/components/ui/Icons'
-import { useSetPageCrumb, type PageCrumbTab } from '@/lib/usePageCrumb'
-import { useHeaderCollapse } from '@/lib/useHeaderCollapse'
-import styles from '@/components/ui/CollapsibleHeader.module.css'
+import { type ReactNode, useEffect, useState } from "react";
+import styles from "@/components/ui/CollapsibleHeader.module.css";
+import { IconChevronDown } from "@/components/ui/Icons";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TabStrip } from "@/components/ui/TabStrip";
+import { useHeaderCollapse } from "@/lib/useHeaderCollapse";
+import { type PageCrumbTab, useSetPageCrumb } from "@/lib/usePageCrumb";
 
 interface CollapsibleHeaderProps {
-  heading: string
-  subheading?: string
-  metadata?: ReactNode
+  heading: string;
+  subheading?: string;
+  metadata?: ReactNode;
   /** The page's own header action, if it has one. The fold control is not
    *  one of these — it lives in the gutter above the card, since it acts on
    *  the chrome rather than on the page. */
-  action?: ReactNode
+  action?: ReactNode;
   /** Omit (or pass an empty list) for a page with no tabs: the header
    *  collapses to the title alone and the bar shows just that. */
-  tabs?: PageCrumbTab[]
-  activeKey?: string
-  onChange?: (key: string) => void
+  tabs?: PageCrumbTab[];
+  activeKey?: string;
+  onChange?: (key: string) => void;
   /** What the Topbar shows while folded, when that isn't this header — a
    *  settings page reads "Settings / General", with the other settings pages
    *  in the dropdown, though its header has no tabs. Keep it memoised. */
-  crumb?: { title: string; tabs: PageCrumbTab[]; activeKey: string; onChange: (key: string) => void }
+  crumb?: {
+    title: string;
+    tabs: PageCrumbTab[];
+    activeKey: string;
+    onChange: (key: string) => void;
+  };
 }
 
 /**
@@ -39,27 +43,34 @@ interface CollapsibleHeaderProps {
  * and pass the tabs it was rendering itself. Nothing below has to know.
  */
 export function CollapsibleHeader({
-  heading, subheading, metadata, action, tabs, activeKey, onChange, crumb,
+  heading,
+  subheading,
+  metadata,
+  action,
+  tabs,
+  activeKey,
+  onChange,
+  crumb,
 }: CollapsibleHeaderProps) {
   // The tournament's shared fold (see useHeaderCollapse), so every page
   // opens the way the last one was left. Local state only outside one.
-  const shared = useHeaderCollapse()
-  const [localCollapsed, setLocalCollapsed] = useState(false)
-  const collapsed = shared ? shared.collapsed : localCollapsed
-  const setCollapsed = shared ? shared.setCollapsed : setLocalCollapsed
-  const { setCrumb, clearCrumb } = useSetPageCrumb()
+  const shared = useHeaderCollapse();
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const collapsed = shared ? shared.collapsed : localCollapsed;
+  const setCollapsed = shared ? shared.setCollapsed : setLocalCollapsed;
+  const { setCrumb, clearCrumb } = useSetPageCrumb();
 
   // Re-registered whenever the tab or the tab list moves, so the bar's menu
   // is never a frame behind the page. Cleared on expand *and* on unmount —
   // leaving the page must not leave its title in the bar.
   useEffect(() => {
-    if (!collapsed) return
+    if (!collapsed) return;
     setCrumb({
       ...(crumb ?? { title: heading, tabs, activeKey, onChange }),
       onExpand: () => setCollapsed(false),
-    })
-    return () => clearCrumb()
-  }, [collapsed, setCollapsed, heading, tabs, activeKey, onChange, crumb, setCrumb, clearCrumb])
+    });
+    return () => clearCrumb();
+  }, [collapsed, setCollapsed, heading, tabs, activeKey, onChange, crumb, setCrumb, clearCrumb]);
 
   return (
     <div className={styles.wrap}>
@@ -86,16 +97,16 @@ export function CollapsibleHeader({
           overflow clip, since the row that is shrinking is this element's. */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateRows: collapsed ? '0fr' : '1fr',
+          display: "grid",
+          gridTemplateRows: collapsed ? "0fr" : "1fr",
           opacity: collapsed ? 0 : 1,
-          transition: 'grid-template-rows 220ms ease, opacity 160ms ease',
+          transition: "grid-template-rows 220ms ease, opacity 160ms ease",
         }}
         // Nothing inside is reachable while it is folded away — not by tab,
         // not by a screen reader — and the Topbar carries what it said.
         aria-hidden={collapsed}
       >
-        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
           <PageHeader
             heading={heading}
             subheading={subheading}
@@ -108,5 +119,5 @@ export function CollapsibleHeader({
         </div>
       </div>
     </div>
-  )
+  );
 }

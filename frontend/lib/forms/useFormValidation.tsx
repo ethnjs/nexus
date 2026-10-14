@@ -1,9 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, FormFieldConfig, FormQuestionType, TrackStatusAssignment } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
-import { activePresetKind, effectiveFieldKey, presetIncompleteMessage } from "@/lib/forms/fieldKeyPresets";
+import {
+  ApiError,
+  type FormFieldConfig,
+  type FormQuestionType,
+  type TrackStatusAssignment,
+} from "@/lib/api";
+import {
+  activePresetKind,
+  effectiveFieldKey,
+  presetIncompleteMessage,
+} from "@/lib/forms/fieldKeyPresets";
 
 // Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
 // rather than importing it — the hook only touches these five properties,
@@ -23,7 +32,10 @@ export interface FieldValidationIssue {
 }
 
 const OPTION_BEARING = new Set<FormQuestionType>([
-  "single_select_radio", "single_select_dropdown", "multi_select_checkbox", "ranked_choice",
+  "single_select_radio",
+  "single_select_dropdown",
+  "multi_select_checkbox",
+  "ranked_choice",
 ]);
 
 // Structural checks only — matches the backend's per-config Pydantic models
@@ -72,16 +84,25 @@ export function issuesFor(field: ValidatableField): string[] {
       if (new Set(labels).size !== labels.length) issues.push("Option labels must be unique.");
     }
     if (presetKind === "track_status") {
-      const onlyAssignments = (items: unknown[]): TrackStatusAssignment[] => items.filter(
-        (item): item is TrackStatusAssignment => typeof item === "object" && item !== null && "id" in item && "status" in item,
+      const onlyAssignments = (items: unknown[]): TrackStatusAssignment[] =>
+        items.filter(
+          (item): item is TrackStatusAssignment =>
+            typeof item === "object" && item !== null && "id" in item && "status" in item,
+        );
+      const unset = options.some(
+        (option) =>
+          Array.isArray(option.value) &&
+          onlyAssignments(option.value).some((assignment) => !assignment.status),
       );
-      const unset = options.some((option) => Array.isArray(option.value)
-        && onlyAssignments(option.value).some((assignment) => !assignment.status));
       if (unset) issues.push("Choose a status for every track.");
     }
     if (presetKind === "availability" && config.track_status_enabled) {
-      const unset = options.some((option) =>
-        typeof option.value === "object" && !Array.isArray(option.value) && !option.value.track_status);
+      const unset = options.some(
+        (option) =>
+          typeof option.value === "object" &&
+          !Array.isArray(option.value) &&
+          !option.value.track_status,
+      );
       if (unset) issues.push("Choose a status for every option.");
     }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {
@@ -119,7 +140,10 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
     }
     const key = effectiveFieldKey(field);
     if (key && (keyCounts.get(key) ?? 0) > 1) {
-      issues.push({ clientKey: field.clientKey, message: "This field key is already used by another question on this form." });
+      issues.push({
+        clientKey: field.clientKey,
+        message: "This field key is already used by another question on this form.",
+      });
     }
   }
 
@@ -164,10 +188,14 @@ export function useFormValidation() {
   function handle422(e: unknown, fields?: ValidatableField[]): FieldValidationIssue[] {
     if (!(e instanceof ApiError)) return [];
     const dupKey = DUPLICATE_FIELD_KEY_PATTERN.exec(e.message)?.[1];
-    const target = dupKey && fields ? fields.find((f) => effectiveFieldKey(f) === dupKey) : undefined;
+    const target =
+      dupKey && fields ? fields.find((f) => effectiveFieldKey(f) === dupKey) : undefined;
     if (target) {
       const issues: FieldValidationIssue[] = [
-        { clientKey: target.clientKey, message: "This field key is already used by another question." },
+        {
+          clientKey: target.clientKey,
+          message: "This field key is already used by another question.",
+        },
       ];
       setValidationErrors(issues);
       setSaveError("");
@@ -180,7 +208,12 @@ export function useFormValidation() {
   function renderErrorBanner() {
     if (hasErrors) {
       const n = validationErrors.length;
-      return <Banner variant="error" message={`${n} issue${n !== 1 ? "s" : ""} — fix the highlighted question${n !== 1 ? "s" : ""}.`} />;
+      return (
+        <Banner
+          variant="error"
+          message={`${n} issue${n !== 1 ? "s" : ""} — fix the highlighted question${n !== 1 ? "s" : ""}.`}
+        />
+      );
     }
     if (saveError) return <Banner variant="error" message={saveError} />;
     return null;
