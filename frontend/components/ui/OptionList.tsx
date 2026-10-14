@@ -240,6 +240,7 @@ export function OptionList({
                   </div>
                 </>
               )}
+              {/* biome-ignore lint/a11y/useFocusableInteractive: needs aria-activedescendant; deferred to the accessibility pass */}
               <div
                 role="option"
                 aria-selected={!!opt.selected}

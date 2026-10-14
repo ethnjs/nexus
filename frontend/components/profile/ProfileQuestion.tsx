@@ -25,7 +25,7 @@ export function ProfileQuestion({
 
   return (
     <div>
-      <label
+      <div
         style={{
           display: "block",
           marginBottom: "10px",
@@ -37,7 +37,7 @@ export function ProfileQuestion({
       >
         {question}
         {required && <span style={{ color: "var(--color-danger)", marginLeft: "3px" }}>*</span>}
-      </label>
+      </div>
 
       {children}
 

@@ -92,9 +92,9 @@ export function Popover<T>({
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: notifies the parent only when open changes
   useEffect(() => {
     onOpenChange?.(open);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -157,6 +157,7 @@ export function Popover<T>({
   // Positioned once per opening, not on scroll: a chip input's add button
   // moves as chips are added, and a panel chasing it pulls the rows out from
   // under the cursor mid-selection. Resize still repositions to stay on screen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: positioned once per opening
   useEffect(() => {
     if (!open) {
       setPanelPos(null);
@@ -172,7 +173,6 @@ export function Popover<T>({
     return () => {
       window.removeEventListener("resize", updatePanelPos);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -302,6 +302,7 @@ export function Popover<T>({
               // Focused on mount rather than through an effect: the panel
               // only renders once its position is measured, so a focus()
               // fired when `open` flips runs before the input exists.
+              // biome-ignore lint/a11y/noAutofocus: see above
               autoFocus
               style={{
                 flexShrink: 0,

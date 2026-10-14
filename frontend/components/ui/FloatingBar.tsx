@@ -20,6 +20,7 @@ export function FloatingBar({ visible, children, onHeightChange }: FloatingBarPr
   const barRef = useRef<HTMLDivElement>(null);
   const [prepared, setPrepared] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: visibility is the lifecycle boundary
   useLayoutEffect(() => {
     const el = barRef.current;
     if (!el) return;
@@ -45,7 +46,6 @@ export function FloatingBar({ visible, children, onHeightChange }: FloatingBarPr
     // Height handlers are often inline page functions. Re-subscribing for
     // each parent render would cleanup with 0, remeasure, and create a
     // feedback loop; visibility is the lifecycle boundary instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   return (

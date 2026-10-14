@@ -234,7 +234,7 @@ export function FormFillFlow({
       const staleIds = Object.keys(prev).filter((id) => !reachableIds.has(id));
       if (staleIds.length === 0) return prev;
       const next = { ...prev };
-      staleIds.forEach((id) => delete next[id]);
+      for (const id of staleIds) delete next[id];
       return next;
     });
   }, [walk]);

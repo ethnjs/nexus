@@ -189,7 +189,7 @@ export function MassEventEditor({
   // only ones "Remove shift" makes sense for.
   const attachedShifts = (() => {
     const byId = new Map<number, TournamentShift>();
-    events.forEach((e) => e.shifts.forEach((s) => byId.set(s.id, s)));
+    for (const e of events) for (const s of e.shifts) byId.set(s.id, s);
     return [...byId.values()];
   })();
 

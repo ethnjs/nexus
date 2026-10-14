@@ -54,6 +54,7 @@ export function CustomResponsesSection({
         {customResponses.length === 0 && <FieldValue muted>No info yet</FieldValue>}
         <FieldGrid>
           {customResponses.map((answer, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
             <PanelField key={i} label={unslug(answer.field_key)}>
               <FieldValue>{formatValue(answer.value)}</FieldValue>
             </PanelField>

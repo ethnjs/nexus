@@ -107,6 +107,7 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
           >
             {details.map((d, i) => (
               <li
+                // biome-ignore lint/suspicious/noArrayIndexKey: an entry's details are static and never reordered
                 key={i}
                 style={{
                   fontFamily: "var(--font-sans)",

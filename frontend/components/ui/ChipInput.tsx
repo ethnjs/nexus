@@ -1,6 +1,6 @@
 "use client";
 
-import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useState } from "react";
+import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconLock, IconX } from "@/components/ui/Icons";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -157,6 +157,7 @@ export function ChipInput({
   renderChipTrailing,
   autoFocus,
 }: ChipInputProps) {
+  const inputId = useId();
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
   const compact = variant === "transparent" ? undefined : COMPACT_CHIPS[size];
@@ -217,6 +218,7 @@ export function ChipInput({
     >
       {label && (
         <label
+          htmlFor={inputId}
           style={{
             fontFamily: "var(--font-sans)",
             fontSize: "11px",
@@ -326,6 +328,7 @@ export function ChipInput({
         })}
         {!disableInput && !locked && (
           <input
+            id={inputId}
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -333,6 +336,7 @@ export function ChipInput({
             onPaste={handlePaste}
             onBlur={handleBlur}
             disabled={disabled}
+            // biome-ignore lint/a11y/noAutofocus: opt-in through the autoFocus prop
             autoFocus={autoFocus}
             placeholder={value.length === 0 ? placeholder : undefined}
             style={{

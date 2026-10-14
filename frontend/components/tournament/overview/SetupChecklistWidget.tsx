@@ -48,10 +48,10 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
       .catch(() => {});
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetchChecklist is recreated each render
   useEffect(() => {
     if (!canSee) return;
     refetchChecklist();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSee, tournamentId]);
 
   if (!canSee || !checklist) return null;

@@ -33,7 +33,7 @@ function ConfirmEmailChangeContent() {
         setError(err instanceof ApiError ? err.message : "Something went wrong");
         setState("error");
       });
-  }, []);
+  }, [token]);
 
   return (
     <>

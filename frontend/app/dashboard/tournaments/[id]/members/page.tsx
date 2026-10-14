@@ -614,7 +614,8 @@ export default function MembersPage() {
   // the built groups; swapping the whole row would blank the row's columns.
   const handleMemberUpdated = useCallback((updated: MembershipFull) => {
     setMembers(
-      (prev) => prev && prev.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)),
+      (prev) =>
+        prev?.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)) ?? null,
     );
   }, []);
 
@@ -760,6 +761,8 @@ export default function MembersPage() {
     clearSelection,
     setPanel,
     clearPanel,
+    selectedTournament?.collect_is_over_18,
+    selectedTournament?.collect_is_over_21,
   ]);
 
   // Unmount only (e.g. navigating off the Members page) — clearing in the
@@ -1100,7 +1103,7 @@ export default function MembersPage() {
           onClose={() => setBulkRemoveOpen(false)}
           onRemoved={(ids) => {
             const gone = new Set(ids);
-            setMembers((prev) => prev && prev.filter((m) => !gone.has(m.id)));
+            setMembers((prev) => prev?.filter((m) => !gone.has(m.id)) ?? null);
             setTotalMembers((n) => (n === null ? n : n - ids.length));
             forgetItem(ids);
           }}
@@ -1114,7 +1117,7 @@ export default function MembersPage() {
           memberName={memberName(removeTarget)}
           onClose={() => setRemoveTarget(null)}
           onRemoved={() => {
-            setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            setMembers((prev) => prev?.filter((m) => m.id !== removeTarget.id) ?? null);
             setTotalMembers((n) => (n === null ? n : n - 1));
             // Otherwise a removed-but-still-selected/focused row would keep a
             // panel open against a member who no longer exists.

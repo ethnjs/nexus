@@ -56,6 +56,7 @@ export function FieldKeyPopover({
     }
   }, [field.field_key]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each save attempt, not on every input change
   useEffect(() => {
     // A preset field's key isn't editable here (see the locked-input branch
     // below) — a key error on it is PresetPopover's to show and open, not
@@ -66,7 +67,6 @@ export function FieldKeyPopover({
       onOpenChange(true);
       setLocalError(keyError);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveAttempt]);
 
   function handleBlur() {

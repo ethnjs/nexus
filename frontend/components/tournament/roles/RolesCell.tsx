@@ -13,7 +13,6 @@ import {
   type MembershipFull,
   type MembershipView,
   type Role,
-  TournamentTrack,
 } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 import {

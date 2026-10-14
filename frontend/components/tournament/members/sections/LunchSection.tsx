@@ -60,8 +60,10 @@ export function LunchCategoryRows({ selections }: { selections: MembershipLunch[
               would mangle it, so it renders as prose. */}
           {rows.map((sel, i) =>
             isFreeText(sel) ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
               <FieldValue key={i}>{sel.value}</FieldValue>
             ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
               <Badge key={i} variant="default">
                 {sel.value}
               </Badge>

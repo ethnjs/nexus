@@ -148,7 +148,10 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
   const toggleSelectAll = useCallback(
     (ids: number[], checked: boolean) => {
       const next = new Set(selectedIds);
-      ids.forEach((id) => (checked ? next.add(id) : next.delete(id)));
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
       applySelection(next);
     },
     [selectedIds, applySelection],

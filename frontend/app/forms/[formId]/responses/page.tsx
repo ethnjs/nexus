@@ -136,7 +136,11 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
             )
           }
           onClose={() => setPendingDelete(null)}
-          onDeleted={(ids) => ids.forEach((id) => removeResponse(String(id)))}
+          onDeleted={(ids) =>
+            ids.forEach((id) => {
+              removeResponse(String(id));
+            })
+          }
         />
       )}
     </div>

@@ -261,12 +261,11 @@ export default function FormsPage() {
       const updated = await formsApi.update(form.id, { status: option.target });
       setForms(
         (prev) =>
-          prev &&
-          prev.map((f) =>
+          prev?.map((f) =>
             f.id === updated.id
               ? { ...f, status: updated.status, updated_at: updated.updated_at }
               : f,
-          ),
+          ) ?? null,
       );
     } catch (err) {
       show(
@@ -279,7 +278,7 @@ export default function FormsPage() {
   function handleAllowEditsChange(formId: string, allow: boolean) {
     setForms(
       (prev) =>
-        prev && prev.map((f) => (f.id === formId ? { ...f, allow_response_edits: allow } : f)),
+        prev?.map((f) => (f.id === formId ? { ...f, allow_response_edits: allow } : f)) ?? null,
     );
   }
 
@@ -365,7 +364,7 @@ export default function FormsPage() {
           }
           onDelete={(form) => formsApi.delete(form.id)}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={(ids) => setForms((prev) => prev && prev.filter((f) => !ids.includes(f.id)))}
+          onDeleted={(ids) => setForms((prev) => prev?.filter((f) => !ids.includes(f.id)) ?? null)}
         />
       )}
 

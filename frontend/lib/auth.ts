@@ -71,19 +71,19 @@ export function checkPassword(password: string, confirm: string | null = null): 
   };
 
   if (password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH)
-    checks["length"] = true;
+    checks.length = true;
 
   // Only printable ASCII ('!' through '~') is allowed. Validity is checked
   // first so a disallowed character can never satisfy a class.
   for (const c of password) {
-    if (c < "!" || c > "~") checks["valid"] = false;
-    else if (c >= "0" && c <= "9") checks["number"] = true;
-    else if (c >= "A" && c <= "Z") checks["upper"] = true;
-    else if (c >= "a" && c <= "z") checks["lower"] = true;
-    else checks["symbol"] = true;
+    if (c < "!" || c > "~") checks.valid = false;
+    else if (c >= "0" && c <= "9") checks.number = true;
+    else if (c >= "A" && c <= "Z") checks.upper = true;
+    else if (c >= "a" && c <= "z") checks.lower = true;
+    else checks.symbol = true;
   }
 
-  if (password && password === confirm) checks["confirm"] = true;
+  if (password && password === confirm) checks.confirm = true;
 
   return checks;
 }
@@ -106,8 +106,8 @@ export const DATE_OF_BIRTH_DISCLAIMER =
 export function validateDateOfBirth(value: string): string | null {
   if (!value) return "Cannot be empty.";
 
-  const date = new Date(value + "T00:00:00");
-  if (isNaN(date.getTime())) return "Must be a valid date.";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "Must be a valid date.";
 
   if (date.getTime() > Date.now()) return "Cannot be in the future.";
 

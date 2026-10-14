@@ -1176,6 +1176,7 @@ export default function AssignmentsPage() {
   // holds one registration at a time: the belt, then the panel stack beside
   // it. The board gives back the belt's width plus the widest open panel —
   // the stack overlaps, so a second panel costs nothing more.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshMemberRows, canTouchRole and canEditMember are recreated each render
   useEffect(() => {
     const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1;
     // Through the board's own order, filters and tab included — the arrows
@@ -1438,6 +1439,10 @@ export default function AssignmentsPage() {
     openMemberPanel,
     setPanel,
     clearPanel,
+    tournamentId,
+    currentUser?.id,
+    selectedTournament?.collect_is_over_18,
+    selectedTournament?.collect_is_over_21,
   ]);
 
   // Unmount only — leaving the page must not leave the panels behind.

@@ -611,7 +611,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
 
             {step === 2 && !advanced && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <label
+                <div
                   style={{
                     fontFamily: "var(--font-sans)",
                     fontSize: "11px",
@@ -622,7 +622,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   }}
                 >
                   Division<span style={{ color: "var(--color-danger)" }}> *</span>
-                </label>
+                </div>
                 <div style={{ display: "flex", gap: "8px" }}>
                   {TOURNAMENT_DIVISIONS.map((d) => (
                     <Button

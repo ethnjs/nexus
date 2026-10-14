@@ -247,16 +247,6 @@
   display: none;
 }
 
-.aside:hover .label,
-.aside.locked .label {
-  display: block;
-}
-
-.aside:hover .chevron,
-.aside.locked .chevron {
-  display: block;
-}
-
 .label {
   font-family: var(--font-sans);
   font-size: 13px;
@@ -274,6 +264,16 @@
 .chevron {
   transition: transform 0.2s ease;
   flex-shrink: 0;
+}
+
+.aside:hover .label,
+.aside.locked .label {
+  display: block;
+}
+
+.aside:hover .chevron,
+.aside.locked .chevron {
+  display: block;
 }
 
 .chevronOpen {

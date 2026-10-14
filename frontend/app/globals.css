@@ -382,6 +382,7 @@ a[href] {
    locked, which a preview always is) and inline styles outrank selectors. */
 .field-preview [data-focus],
 .field-preview [data-option-value] {
+  /* biome-ignore lint/complexity/noImportantStyles: has to beat the inline cursor, as above */
   cursor: text !important;
 }
 

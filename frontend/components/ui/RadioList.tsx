@@ -67,6 +67,7 @@ function RadioRow({
   onClick: () => void;
 }) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: RadioCircle is drawn, not an input; deferred to the accessibility pass
     <label
       onClick={onClick}
       // Lets a read-only preview of this list report which option was

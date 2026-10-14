@@ -65,6 +65,7 @@ export function CheckboxRow({
   onMouseLeave,
 }: CheckboxRowProps) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: wraps a Checkbox unless the caller passes its own control
     <label
       data-option-value={dataOptionValue}
       onMouseEnter={onMouseEnter}

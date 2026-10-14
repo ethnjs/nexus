@@ -63,6 +63,7 @@ export function Tooltip({
     (autoShow || (hovered && !!variant) || (hovered && !!status)) &&
     (typeof message === "string" ? !!message : !!message[status!]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-shows when the status changes, not the variant
   useEffect(() => {
     if (variant) return;
     setAutoShow(true);
@@ -122,7 +123,6 @@ export function Tooltip({
     // Setting shift re-renders but doesn't change `anchor`, so this doesn't
     // re-fire — no measure/adjust loop.
     setShift(dx);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor]);
 
   const bubbleStyle: CSSProperties = {

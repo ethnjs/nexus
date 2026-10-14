@@ -249,6 +249,7 @@ export function ExportButton({
           >
             {panels.map((panel, i) => (
               <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: a stack that is only pushed and popped at the end
                 key={`${panel.id}-${i}`}
                 style={{ width: `${100 / panels.length}%`, flexShrink: 0 }}
               >

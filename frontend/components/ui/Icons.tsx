@@ -17,6 +17,7 @@ interface IconProps {
 export function IconHome({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -32,6 +33,7 @@ export function IconHome({ size = 18, ...props }: IconProps) {
 export function IconAssignments({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -47,6 +49,7 @@ export function IconAssignments({ size = 18, ...props }: IconProps) {
 export function IconEvents({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -64,6 +67,7 @@ export function IconEvents({ size = 18, ...props }: IconProps) {
 export function IconVolunteers({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 20 20"
@@ -92,6 +96,7 @@ export function IconVolunteers({ size = 18, ...props }: IconProps) {
 export function IconSheets({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 20 20"
@@ -109,6 +114,7 @@ export function IconSheets({ size = 18, ...props }: IconProps) {
 export function IconForms({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -124,6 +130,7 @@ export function IconForms({ size = 18, ...props }: IconProps) {
 export function IconMembers({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -139,6 +146,7 @@ export function IconMembers({ size = 18, ...props }: IconProps) {
 export function IconUpload({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -154,6 +162,7 @@ export function IconUpload({ size = 18, ...props }: IconProps) {
 export function IconSettings({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -175,6 +184,7 @@ export function IconSettings({ size = 18, ...props }: IconProps) {
 export function IconShield({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -193,6 +203,7 @@ export function IconShield({ size = 18, ...props }: IconProps) {
 export function IconUserShield({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -210,6 +221,7 @@ export function IconUserShield({ size = 18, ...props }: IconProps) {
 export function IconMenu({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -230,6 +242,7 @@ export function IconMenu({ size = 18, ...props }: IconProps) {
 export function IconButton({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -249,6 +262,7 @@ export function IconButton({ size = 18, ...props }: IconProps) {
 export function IconKey({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -268,6 +282,7 @@ export function IconKey({ size = 18, ...props }: IconProps) {
 export function IconPresets({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -289,6 +304,7 @@ export function IconPresets({ size = 18, ...props }: IconProps) {
 export function IconPlus({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -305,6 +321,7 @@ export function IconPlus({ size = 16, ...props }: IconProps) {
 export function IconDescription({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -320,6 +337,7 @@ export function IconDescription({ size = 16, ...props }: IconProps) {
 export function IconMinus({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -335,6 +353,7 @@ export function IconMinus({ size = 16, ...props }: IconProps) {
 export function IconSave({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -350,6 +369,7 @@ export function IconSave({ size = 16, ...props }: IconProps) {
 export function IconSync({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -390,6 +410,7 @@ export function IconSync({ size = 14, ...props }: IconProps) {
 export function IconLogout({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 14 14"
@@ -417,6 +438,7 @@ export function IconLogout({ size = 14, ...props }: IconProps) {
 export function IconEdit({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -434,6 +456,7 @@ export function IconEdit({ size = 14, ...props }: IconProps) {
 export function IconExpand({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -451,6 +474,7 @@ export function IconExpand({ size = 14, ...props }: IconProps) {
 export function IconTrash({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -480,6 +504,7 @@ export function IconTrash({ size = 14, ...props }: IconProps) {
 export function IconCopy({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -497,6 +522,7 @@ export function IconCopy({ size = 14, ...props }: IconProps) {
 export function IconRocket({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -525,6 +551,7 @@ export function IconRocket({ size = 14, ...props }: IconProps) {
 export function IconBan({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -540,6 +567,7 @@ export function IconBan({ size = 14, ...props }: IconProps) {
 export function IconBranch({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -555,6 +583,7 @@ export function IconBranch({ size = 14, ...props }: IconProps) {
 export function IconSwap({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -570,6 +599,7 @@ export function IconSwap({ size = 14, ...props }: IconProps) {
 export function IconDotsVertical({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -587,6 +617,7 @@ export function IconDotsVertical({ size = 16, ...props }: IconProps) {
 export function IconLock({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -604,6 +635,7 @@ export function IconLock({ size = 14, ...props }: IconProps) {
 export function IconEye({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -621,6 +653,7 @@ export function IconEye({ size = 14, ...props }: IconProps) {
 export function IconSearch({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -637,6 +670,7 @@ export function IconSearch({ size = 14, ...props }: IconProps) {
 export function IconFilter({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -652,6 +686,7 @@ export function IconFilter({ size = 14, ...props }: IconProps) {
 export function IconGripVertical({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -672,6 +707,7 @@ export function IconGripVertical({ size = 14, ...props }: IconProps) {
 export function IconExport({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -699,6 +735,7 @@ export function IconExport({ size = 14, ...props }: IconProps) {
 export function IconSwitch({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"
@@ -731,6 +768,7 @@ export function IconSwitch({ size = 14, ...props }: IconProps) {
 export function IconArrowLeft({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 14 14"
@@ -752,6 +790,7 @@ export function IconArrowLeft({ size = 14, ...props }: IconProps) {
 export function IconChevronDown({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 14 14"
@@ -773,6 +812,7 @@ export function IconChevronDown({ size = 14, ...props }: IconProps) {
 export function IconChevronRight({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 14 14"
@@ -794,6 +834,7 @@ export function IconChevronRight({ size = 14, ...props }: IconProps) {
 export function IconChevronLeft({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 14 14"
@@ -815,6 +856,7 @@ export function IconChevronLeft({ size = 14, ...props }: IconProps) {
 export function IconArrowDown({ size = 22, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 22 22"
@@ -841,6 +883,7 @@ export function IconArrowDown({ size = 22, ...props }: IconProps) {
 export function IconCheck({ size = 12, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 12 12"
@@ -862,6 +905,7 @@ export function IconCheck({ size = 12, ...props }: IconProps) {
 export function IconCheckCircle({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -877,6 +921,7 @@ export function IconCheckCircle({ size = 16, ...props }: IconProps) {
 export function IconXCircle({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -892,6 +937,7 @@ export function IconXCircle({ size = 16, ...props }: IconProps) {
 export function IconArchive({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -909,6 +955,7 @@ export function IconArchive({ size = 16, ...props }: IconProps) {
 export function IconRestore({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -924,6 +971,7 @@ export function IconRestore({ size = 16, ...props }: IconProps) {
 export function IconInvite({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -939,6 +987,7 @@ export function IconInvite({ size = 16, ...props }: IconProps) {
 export function IconWarning({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -954,6 +1003,7 @@ export function IconWarning({ size = 16, ...props }: IconProps) {
 export function IconX({ size = 12, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -969,6 +1019,7 @@ export function IconX({ size = 12, ...props }: IconProps) {
 export function IconInfo({ size = 16, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -988,6 +1039,7 @@ export function IconInfo({ size = 16, ...props }: IconProps) {
 export function IconCalendar({ size = 13, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1003,6 +1055,7 @@ export function IconCalendar({ size = 13, ...props }: IconProps) {
 export function IconClock({ size = 13, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1018,6 +1071,7 @@ export function IconClock({ size = 13, ...props }: IconProps) {
 export function IconBuilding({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1033,6 +1087,7 @@ export function IconBuilding({ size = 18, ...props }: IconProps) {
 export function IconLocation({ size = 13, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1048,6 +1103,7 @@ export function IconLocation({ size = 13, ...props }: IconProps) {
 export function IconUser({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1065,6 +1121,7 @@ export function IconUser({ size = 14, ...props }: IconProps) {
 export function IconTrophy({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1082,6 +1139,7 @@ export function IconTrophy({ size = 18, ...props }: IconProps) {
 export function IconSchool({ size = 18, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 640 640"
@@ -1102,6 +1160,7 @@ export function IconSchool({ size = 18, ...props }: IconProps) {
 export function IconSort({ size = 14, ...props }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 16 16"

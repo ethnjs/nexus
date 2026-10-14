@@ -491,7 +491,7 @@ export function availableExportColumns(
       title,
       columns: keys
         .map((key) => resolveExportColumn(key, ctx))
-        .filter((c): c is ExportColumn => c !== null && c.rowTypes.includes(rowType))
+        .filter((c): c is ExportColumn => c?.rowTypes.includes(rowType) ?? false)
         .map((c) => ({ key: c.key, header: c.header })),
     }))
     .filter((group) => group.columns.length > 0);

@@ -156,12 +156,12 @@ export function PresetPopover({
   const duplicateError = dupDismissed ? undefined : rawDuplicateError;
   const keyError = incompleteError ?? duplicateError;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each save attempt, not on every input change
   useEffect(() => {
     if (saveAttempt > 0 && (incompleteError || rawDuplicateError)) {
       onOpenChange(true);
       setDupDismissed(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveAttempt]);
 
   function applyPresetKind(kind: PresetKind | null) {

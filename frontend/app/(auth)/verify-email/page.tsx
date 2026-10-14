@@ -45,7 +45,7 @@ function VerifyEmailContent() {
         setErrors({ verify: message });
         setState(3);
       });
-  }, []);
+  }, [token]);
 
   return (
     <>

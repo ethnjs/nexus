@@ -271,11 +271,11 @@ export function FieldCard({
   // and animating that would fight dnd-kit's continuous rect measuring.
   useCardHeight(rootRef, expanded, isDragging);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per expand; focusIntent only rides along
   useEffect(() => {
     if (!focusNonce || !rootRef.current) return;
     return applyFocusIntent(rootRef.current, focusIntent);
     // Once per expand — focusNonce is the edge, focusIntent just rides along.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
 
   // Reads the click's position in the preview off the data attributes the

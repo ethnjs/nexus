@@ -344,6 +344,7 @@ export function ExportModal({
   const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [membersKey, setMembersKey] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchKey already encodes fields and memberParams
   useEffect(() => {
     if (!fetchKey || !fields) return;
     let current = true;
@@ -362,7 +363,6 @@ export function ExportModal({
       current = false;
     };
     // fetchKey already encodes fields and memberParams.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey, tournamentId]);
 
   const loadingMembers = fetchKey !== null && membersKey !== fetchKey;

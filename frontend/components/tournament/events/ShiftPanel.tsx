@@ -151,6 +151,7 @@ export function ShiftPanel({
   const shiftId = shift?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), shiftId !== null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the shift and a focus bump refetch
   useEffect(() => {
     if (shiftId === null) return;
     let active = true;
@@ -167,7 +168,6 @@ export function ShiftPanel({
       active = false;
     };
     // Callbacks and catalogs left out: only the shift and a focus bump refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId, shiftId, refreshKey]);
 
   const track = tracks.find((t) => t.id === draft.trackId);

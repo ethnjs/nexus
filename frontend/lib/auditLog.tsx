@@ -117,6 +117,7 @@ function RoleOrderColumn({
     <div style={{ display: "flex", flexDirection: "column", gap: "5px", minWidth: 0 }}>
       <span style={TIER_LABEL_STYLE}>{heading}</span>
       {tiers.map((labels, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: tiers are positional
         <div key={i} style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
           <span
             style={{
@@ -300,6 +301,7 @@ const DESCRIBERS: Record<
           "No permissions"
         ) : (
           <span
+            key="permissions"
             style={{ display: "inline-flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
           >
             Permissions
@@ -342,6 +344,7 @@ const DESCRIBERS: Record<
           ),
         details: [
           <RoleOrderDiff
+            key="order"
             before={orderedTiers(snapshot.before)}
             after={orderedTiers(snapshot.after)}
             movers={movers}
@@ -373,7 +376,7 @@ const DESCRIBERS: Record<
       ),
       details: changes.map((c) => {
         if (c.field === "permissions") {
-          return <PermissionDiff added={c.added ?? []} removed={c.removed ?? []} />;
+          return <PermissionDiff key={c.field} added={c.added ?? []} removed={c.removed ?? []} />;
         }
         if (c.field === "rank") return "Rank changed";
         if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;

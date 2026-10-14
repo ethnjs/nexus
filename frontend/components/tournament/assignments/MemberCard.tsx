@@ -420,6 +420,7 @@ function MiniTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
       {rows.map((row, i) =>
         row.map((cell, j) => (
           <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: rendered in a fixed order and never reordered
             key={`${i}:${j}`}
             title={cell}
             style={{
@@ -647,6 +648,7 @@ function LunchField({ member, display }: FieldProps) {
                 {track.name}
               </span>
               {track.rows.map((row, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: rendered in a fixed order and never reordered
                 <Value key={`${row.category}-${i}`}>
                   {unslug(row.category)}: {row.value}
                 </Value>

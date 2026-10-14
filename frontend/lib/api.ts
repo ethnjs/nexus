@@ -55,7 +55,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (typeof detail === "string") {
       message = detail;
     } else if (Array.isArray(detail)) {
-      message = detail[0]["ctx"]?.reason ?? detail[0]["msg"];
+      message = detail[0].ctx?.reason ?? detail[0].msg;
     }
 
     throw new ApiError(res.status, message, detail);

@@ -4,7 +4,8 @@ import tseslint from "typescript-eslint";
 
 // Only the React Compiler rules, which Biome has no equivalent for. Biome covers everything else.
 const eslintConfig = defineConfig([
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  // The sheets import is deprecated and unmaintained; see biome.jsonc.
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "**/sheets/**"]),
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: { parser: tseslint.parser },

@@ -59,6 +59,7 @@ export default function RolesSettingsPage() {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadRoles is recreated each render
   useEffect(() => {
     loadRoles();
   }, [tournamentId]);

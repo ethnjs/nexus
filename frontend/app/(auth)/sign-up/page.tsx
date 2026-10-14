@@ -128,6 +128,7 @@ function SignUpContent() {
           Already have an account?{" "}
         </span>
         <button
+          type="button"
           onClick={() => router.push(signInHref)}
           className="link-subtle"
           style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}

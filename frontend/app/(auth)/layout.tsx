@@ -18,6 +18,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         {BACK_TO_HOME_ROUTES.includes(pathname) && (
           <div className={styles.backRow}>
             <button
+              type="button"
               onClick={() => router.push("/")}
               className="link-subtle"
               style={{

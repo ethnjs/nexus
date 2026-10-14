@@ -223,6 +223,7 @@ function RestControl({
   children: ReactNode;
 }) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a span to lay out inline in the cell; focusable and keyboard-operable already
     <span
       ref={restRef}
       role="button"
@@ -285,9 +286,9 @@ export function SelectCell({
     0,
     options.findIndex((o) => o.value === value),
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focuses the current selection once, when the list mounts
   const focusSelected = useCallback((el: HTMLDivElement | null) => {
     el?.querySelectorAll<HTMLButtonElement>("button")[selectedIndex]?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (lockReason) {
     return (

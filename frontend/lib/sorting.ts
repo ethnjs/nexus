@@ -48,12 +48,12 @@ export function compareValues(a: SortValue, b: SortValue): number {
  */
 export function buildComparator<T, F extends string>(
   rules: readonly SortRule<F>[],
-  valueOf: (row: T, field: F) => SortValue,
+  valueFor: (row: T, field: F) => SortValue,
   tail: (a: T, b: T) => number,
 ): (a: T, b: T) => number {
   return (a, b) => {
     for (const rule of rules) {
-      const cmp = compareValues(valueOf(a, rule.field), valueOf(b, rule.field));
+      const cmp = compareValues(valueFor(a, rule.field), valueFor(b, rule.field));
       if (cmp !== 0) return rule.direction === "asc" ? cmp : -cmp;
     }
     return tail(a, b);
@@ -65,10 +65,10 @@ export function buildComparator<T, F extends string>(
 export function sortRows<T, F extends string>(
   rows: readonly T[],
   rules: readonly SortRule<F>[],
-  valueOf: (row: T, field: F) => SortValue,
+  valueFor: (row: T, field: F) => SortValue,
   tail: (a: T, b: T) => number,
 ): T[] {
-  return [...rows].sort(buildComparator(rules, valueOf, tail));
+  return [...rows].sort(buildComparator(rules, valueFor, tail));
 }
 
 /** The stored wire shape into rules, dropping anything this surface no longer

@@ -166,7 +166,7 @@ export function MassRoleEditor({
   // hiding them — a role being untouchable is still useful to see.
   const heldRoles = (() => {
     const byId = new Map<number, Role>();
-    memberships.forEach((m) => (m.roles ?? []).forEach((r) => byId.set(r.id, r)));
+    for (const m of memberships) for (const r of m.roles ?? []) byId.set(r.id, r);
     return [...byId.values()];
   })();
 

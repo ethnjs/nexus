@@ -67,6 +67,7 @@ export function ExportPreview({ header, rows, warnings, loading, blocked }: Expo
             {header && (
               <div className={table.header} style={{ paddingTop: "8px", paddingBottom: "8px" }}>
                 {Array.from({ length: width }, (_, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: preview cells are positional
                   <span key={i} style={WRAP}>
                     {header[i] ?? ""}
                   </span>
@@ -77,11 +78,13 @@ export function ExportPreview({ header, rows, warnings, loading, blocked }: Expo
               // Thinner than a page table's rows, and top-aligned so a wrapped
               // cell doesn't push its neighbours to the middle.
               <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: preview cells are positional
                 key={r}
                 className={table.row}
                 style={{ paddingTop: "6px", paddingBottom: "6px", alignItems: "start" }}
               >
                 {Array.from({ length: width }, (_, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: preview cells are positional
                   <span key={i} style={{ ...CELL_TEXT, ...WRAP }}>
                     {row[i] ?? ""}
                   </span>

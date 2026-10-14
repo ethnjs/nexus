@@ -612,11 +612,11 @@ function OptionRow({
   };
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only on this row's mount
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
     // Only on this row's mount — it's created already flagged autoFocus, so
     // there's nothing to react to later.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {

@@ -137,6 +137,7 @@ export function FormPopover({
   // real height and writes the real position immediately — otherwise that
   // first frame would flash at the fallback spot and get corrected visibly
   // a moment later.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: positioned once per opening
   useLayoutEffect(() => {
     if (!open) {
       setPositioned(false);
@@ -152,9 +153,9 @@ export function FormPopover({
     }
     loop();
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is recreated each render
   useEffect(() => {
     if (!open || !closeOnOutsideClick) return;
     function handleClick(e: MouseEvent) {
@@ -162,7 +163,6 @@ export function FormPopover({
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closeOnOutsideClick]);
 
   return (

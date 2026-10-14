@@ -35,6 +35,7 @@ export function ProgressRing({
       style={{ position: "relative", width: size, height: size, flexShrink: 0 }}
     >
       <svg
+        aria-hidden="true"
         viewBox="0 0 100 100"
         style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}
       >

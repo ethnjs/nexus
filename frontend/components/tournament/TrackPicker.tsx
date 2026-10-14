@@ -51,11 +51,11 @@ export function TrackPicker({
   // Fill in the sole track here rather than at each call site's state init:
   // the catalog is usually still loading when that state is created, so an
   // init-time guess leaves the field stuck empty behind a locked control.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onChange is a fresh closure on most renders
   useEffect(() => {
     if (value === null && tracks.length === 1) onChange(tracks[0].id);
     // onChange is a fresh closure on most renders; re-running on it would
     // fight any caller that resets the value deliberately.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracks, value]);
 
   return (

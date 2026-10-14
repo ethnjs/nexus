@@ -50,6 +50,7 @@ export function MassResultsCard({ results }: { results: MassResult[] }) {
             {!r.error &&
               (r.notes ?? []).map((note, i) => (
                 <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
                   key={i}
                   style={{
                     color:

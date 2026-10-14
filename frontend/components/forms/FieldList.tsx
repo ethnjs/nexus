@@ -311,21 +311,21 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     settleRef.current = stop;
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when a scroll is queued; scrollCardIntoView is recreated each render
   useEffect(() => {
     if (!pendingScrollKey) return;
     setPendingScrollKey(null);
     scrollCardIntoView(pendingScrollKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingScrollKey]);
 
   // The bar slides in over whatever happens to sit at the bottom of the
   // viewport, which on the edit that *made* the form dirty is usually the
   // card being edited. Re-runs when the bar appears/grows or the open card
   // changes; the no-op guard above keeps it quiet the rest of the time.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-runs only when the bar or the open card changes
   useEffect(() => {
     if (!expandedKey || saveBarHeight === 0) return;
     scrollCardIntoView(expandedKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveBarHeight, expandedKey]);
 
   // Where you're editing changes as you click and tab through a card, not
@@ -333,6 +333,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // below the one that triggered the initial scroll is covered again. Only
   // while the bar is actually up: with nothing covering the page, moving
   // focus is no reason to move the viewport.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a listener registered once on mount
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -346,7 +347,6 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     };
     list.addEventListener("focusin", onFocusIn);
     return () => list.removeEventListener("focusin", onFocusIn);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetched once per form-editing session (not per field card) — every

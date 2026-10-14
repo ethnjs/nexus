@@ -54,7 +54,7 @@ export default function DashboardPage() {
 
   const resendEmailTooltipMessages: Partial<Record<TooltipStatus, string | undefined>> = {
     success: "Email sent successfully. Please check your inbox.",
-    error: errors["resendEmail"] ?? undefined,
+    error: errors.resendEmail ?? undefined,
   };
 
   const bannerRules: BannerRule[] = [
@@ -65,7 +65,7 @@ export default function DashboardPage() {
       condition: (user) => !user.email_verified,
       snoozeDays: 1,
       action: (
-        <Tooltip status={tooltipStatus["resendEmail"]} message={resendEmailTooltipMessages}>
+        <Tooltip status={tooltipStatus.resendEmail} message={resendEmailTooltipMessages}>
           <Button
             variant="secondary"
             size="sm"
@@ -159,7 +159,7 @@ export default function DashboardPage() {
         <PageHeader
           heading="Tournaments"
           subheading={
-            loading["page"]
+            loading.page
               ? ""
               : tournaments.length === 0
                 ? "No tournaments yet"
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           }
         />
 
-        {loading["page"] ? (
+        {loading.page ? (
           <div
             style={{
               display: "grid",

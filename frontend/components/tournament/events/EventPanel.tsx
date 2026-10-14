@@ -219,6 +219,7 @@ export function EventPanel({
   const eventId = event?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new onSaved per page render must not refetch
   useEffect(() => {
     if (eventId === null) return;
     let active = true;
@@ -239,7 +240,6 @@ export function EventPanel({
     };
     // onSaved is deliberately left out: a new identity per page render must
     // not refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId, eventId, refreshKey]);
 
   function patch(p: Partial<EventDraft>) {

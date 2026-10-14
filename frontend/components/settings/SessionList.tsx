@@ -21,6 +21,7 @@ export function SessionList() {
       .catch(() => setLoadError("Failed to load sessions."));
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount; load is recreated each render
   useEffect(() => {
     load();
   }, []);

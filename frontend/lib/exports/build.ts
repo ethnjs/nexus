@@ -128,7 +128,7 @@ export function buildExportTable(
     })
     .filter(
       (c): c is { column: ExportColumn; mode: ReturnType<typeof columnMode> } =>
-        c !== null && c.column.rowTypes.includes(spec.rowType),
+        c?.column.rowTypes.includes(spec.rowType) ?? false,
     );
 
   const rows = buildExportRows(members, events, spec);

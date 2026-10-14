@@ -247,11 +247,11 @@ export default function InvitesSettingsPage() {
   );
 
   function handleUpdated(updated: Invite) {
-    setInvites((prev) => prev && prev.map((i) => (i.id === updated.id ? updated : i)));
+    setInvites((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null);
   }
 
   function handleDeactivated(id: number) {
-    setInvites((prev) => prev && prev.filter((i) => i.id !== id));
+    setInvites((prev) => prev?.filter((i) => i.id !== id) ?? null);
   }
 
   return (

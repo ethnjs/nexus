@@ -87,6 +87,7 @@ export function MemberSections(props: MemberSectionsProps) {
       {sections.map((section) => {
         if (hiddenSections.has(section.id)) return null;
         const body = isCustomSection(section.id) ? (
+          // biome-ignore lint/correctness/useJsxKeyInIterable: rendered inside the keyed div below
           <CustomResponsesSection
             title={section.title || "Custom Responses"}
             customResponses={assigned.get(section.id) ?? []}

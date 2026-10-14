@@ -537,6 +537,7 @@ function DayTimeline({
         >
           {boundaries.map((moment, i) => (
             <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: boundaries are positional, and adjacent shifts can share a time
               key={i}
               style={{
                 position: "absolute",

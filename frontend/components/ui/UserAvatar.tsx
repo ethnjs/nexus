@@ -39,6 +39,7 @@ export function UserAvatar({ logoutOnly = false }: UserAvatarProps) {
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}
       >
@@ -160,6 +161,7 @@ export function UserAvatar({ logoutOnly = false }: UserAvatarProps) {
             </>
           )}
           <button
+            type="button"
             onClick={() =>
               guard(() => {
                 setOpen(false);

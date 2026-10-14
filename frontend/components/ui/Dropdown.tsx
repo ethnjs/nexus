@@ -177,13 +177,13 @@ export function Dropdown({
   );
   const displayLabel = selected?.label ?? placeholder;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the menu opens or closes
   useEffect(() => {
     if (!open) {
       setSearchQuery("");
       return;
     }
     if (searchable) searchRef.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // ── Close on outside click ────────────────────────────────────────────────
@@ -202,12 +202,12 @@ export function Dropdown({
 
   // ── Set active index to current value when opening ────────────────────────
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: syncs the active row only when the menu opens
   useEffect(() => {
     if (open) {
       const idx = flat.findIndex((o) => o.value === value);
       setActiveIdx(idx >= 0 ? idx : 0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // ── Keyboard handling ─────────────────────────────────────────────────────
@@ -457,6 +457,7 @@ export function Dropdown({
                   {flat.length > 0 && (
                     <div style={{ height: "1px", background: "var(--color-border)" }} />
                   )}
+                  {/* biome-ignore lint/a11y: keyboard support deferred to the accessibility pass */}
                   <div
                     role="button"
                     onClick={() => {
