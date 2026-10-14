@@ -1,60 +1,79 @@
 #!/usr/bin/env bash
-# Lints and formats staged backend Python files, applying Ruff's safe fixes, then
+# Backend: lints and formats staged Python files, applying Ruff's safe fixes, then
 # type-checks the backend. Files with unstaged changes are only checked, so the
 # hook never stages work you left out.
+# Frontend: runs Biome on staged files through lint-staged, which sets unstaged
+# changes aside while it fixes the staged ones.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
-mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR -- 'backend/*.py')
-[[ ${#staged[@]} -eq 0 ]] && exit 0
 
-if ! command -v uv >/dev/null; then
-    echo "pre-commit: uv not found; install it or commit with --no-verify." >&2
-    exit 1
-fi
-
-mapfile -t unstaged < <(git diff --name-only -- 'backend/*.py')
-fix=() check=()
-for f in "${staged[@]}"; do
-    if printf '%s\n' "${unstaged[@]}" | grep -qxF "$f"; then
-        check+=("${f#backend/}")
-    else
-        fix+=("${f#backend/}")
-    fi
-done
-
-cd "$root/backend"
-if [[ ${#fix[@]} -gt 0 ]]; then
-    lint=0
-    uv run --quiet ruff check --fix --quiet "${fix[@]}" || lint=1
-    uv run --quiet ruff format --quiet "${fix[@]}"
-    git add -- "${fix[@]}"
-    if [[ $lint -ne 0 ]]; then
-        echo "pre-commit: fix the lint errors above, then commit again." >&2
+# A subshell, so its cd doesn't leak into the frontend check's pathspec.
+backend_checks() (
+    if ! command -v uv >/dev/null; then
+        echo "pre-commit: uv not found; install it or commit with --no-verify." >&2
         exit 1
     fi
-fi
-bad=()
-for f in "${check[@]}"; do
-    # Check the staged version, which is what gets committed.
-    if ! git show ":backend/$f" | uv run --quiet ruff format --check --quiet --stdin-filename "$f" - \
-        || ! git show ":backend/$f" | uv run --quiet ruff check --quiet --stdin-filename "$f" -; then
-        bad+=("$f")
-    fi
-done
-if [[ ${#bad[@]} -gt 0 ]]; then
-    echo "pre-commit: these files have unstaged changes, so they weren't fixed:" >&2
-    printf '  backend/%s\n' "${bad[@]}" >&2
-    echo "Run 'uv run ruff check --fix' and 'uv run ruff format' in backend/, then stage." >&2
-    exit 1
-fi
 
-# Type-check a copy of the index, not the working tree, so unstaged edits can't
-# change the result. The whole backend: a change can break callers that aren't staged.
-snapshot=$(mktemp -d)
-trap 'rm -rf "$snapshot"' EXIT
-git ls-files -z -- '*.py' pyproject.toml ty.toml | xargs -0 git checkout-index --prefix="$snapshot/" --
-if ! (cd "$snapshot/backend" && uv run --quiet --project "$root/backend" ty check --python "$root/backend/.venv"); then
-    echo "pre-commit: fix the type errors above, then commit again." >&2
-    exit 1
+    mapfile -t unstaged < <(git diff --name-only -- 'backend/*.py')
+    fix=() check=()
+    for f in "${staged[@]}"; do
+        if printf '%s\n' "${unstaged[@]}" | grep -qxF "$f"; then
+            check+=("${f#backend/}")
+        else
+            fix+=("${f#backend/}")
+        fi
+    done
+
+    cd "$root/backend"
+    if [[ ${#fix[@]} -gt 0 ]]; then
+        lint=0
+        uv run --quiet ruff check --fix --quiet "${fix[@]}" || lint=1
+        uv run --quiet ruff format --quiet "${fix[@]}"
+        git add -- "${fix[@]}"
+        if [[ $lint -ne 0 ]]; then
+            echo "pre-commit: fix the lint errors above, then commit again." >&2
+            exit 1
+        fi
+    fi
+    bad=()
+    for f in "${check[@]}"; do
+        # Check the staged version, which is what gets committed.
+        if ! git show ":backend/$f" | uv run --quiet ruff format --check --quiet --stdin-filename "$f" - \
+            || ! git show ":backend/$f" | uv run --quiet ruff check --quiet --stdin-filename "$f" -; then
+            bad+=("$f")
+        fi
+    done
+    if [[ ${#bad[@]} -gt 0 ]]; then
+        echo "pre-commit: these files have unstaged changes, so they weren't fixed:" >&2
+        printf '  backend/%s\n' "${bad[@]}" >&2
+        echo "Run 'uv run ruff check --fix' and 'uv run ruff format' in backend/, then stage." >&2
+        exit 1
+    fi
+
+    # Type-check a copy of the index, not the working tree, so unstaged edits can't
+    # change the result. The whole backend: a change can break callers that aren't staged.
+    snapshot=$(mktemp -d)
+    trap 'rm -rf "$snapshot"' EXIT
+    git ls-files -z -- '*.py' pyproject.toml ty.toml | xargs -0 git checkout-index --prefix="$snapshot/" --
+    if ! (cd "$snapshot/backend" && uv run --quiet --project "$root/backend" ty check --python "$root/backend/.venv"); then
+        echo "pre-commit: fix the type errors above, then commit again." >&2
+        exit 1
+    fi
+)
+
+frontend_checks() {
+    if ! command -v pnpm >/dev/null; then
+        echo "pre-commit: pnpm not found; install it or commit with --no-verify." >&2
+        exit 1
+    fi
+    (cd "$root/frontend" && pnpm exec lint-staged)
+}
+
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR -- 'backend/*.py')
+if [[ ${#staged[@]} -gt 0 ]]; then
+    backend_checks
+fi
+if ! git diff --cached --quiet --diff-filter=ACMR -- frontend; then
+    frontend_checks
 fi

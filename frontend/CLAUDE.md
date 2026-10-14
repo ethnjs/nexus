@@ -1,8 +1,10 @@
 # Frontend
 
-Run from `frontend/`: `pnpm dev`, `pnpm build`, `pnpm lint`, `pnpm exec tsc --noEmit`.
+Run from `frontend/`: `pnpm dev`, `pnpm build`, `pnpm check` (Biome lint and format check), `pnpm fix` (applies its formatting, import sorting and safe fixes), `pnpm format`, `pnpm lint:react` (React Compiler rules), `pnpm typecheck`. CI runs `check`, `lint:react` and `typecheck`; the pre-commit hook runs only Biome, on staged files.
 
-There's no test suite. Type-check with `tsc`. `pnpm lint` has pre-existing findings; don't add new ones in files you touch. UI changes are verified by using them in a browser against the local backend, so say so when you haven't. Judge performance on a production build (`pnpm build && pnpm start -p 3001`), not `next dev`.
+Biome is the linter and formatter (`biome.jsonc`). ESLint runs only the React Compiler rules Biome lacks (`eslint.config.mjs`). Suppress a Biome rule with `// biome-ignore lint/<group>/<rule>: <reason>`; inside JSX children that has to be `{/* biome-ignore … */}`, since `//` there renders as text. Prefer fixing React Compiler findings to suppressing them: an `eslint-disable` for a `react-hooks` rule makes the compiler rules skip the whole component.
+
+There's no test suite. UI changes are verified by using them in a browser against the local backend, so say so when you haven't. Judge performance on a production build (`pnpm build && pnpm start -p 3001`), not `next dev`.
 
 ## Talking to the backend
 
