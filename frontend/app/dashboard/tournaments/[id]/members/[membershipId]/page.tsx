@@ -107,7 +107,7 @@ export default function MemberPage() {
       .list(tournamentId)
       .then(setTracks)
       .catch(() => setTracks([]));
-  }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf]);
+  }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf, reloadKey]);
 
   // The catalog is only the *pickable* roles — the ones a member already
   // holds ride on the membership itself. So it's needed only for the edit
