@@ -1,10 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
+  // Nested under the repo-root biome.jsonc.
+  "root": false,
   "files": {
     "ignoreUnknown": false
   },

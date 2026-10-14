@@ -15,5 +15,39 @@
   "ty.diagnosticMode": "workspace",
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
-  }
+  },
+  // The extension only looks for Biome in the workspace root's node_modules, so point it
+  // at frontend's. pnpm-workspace.yaml hoists the binary to these unversioned paths.
+  "biome.lsp.bin": {
+    "win32-x64": "frontend/node_modules/@biomejs/cli-win32-x64/biome.exe",
+    "win32-arm64": "frontend/node_modules/@biomejs/cli-win32-arm64/biome.exe",
+    "darwin-x64": "frontend/node_modules/@biomejs/cli-darwin-x64/biome",
+    "darwin-arm64": "frontend/node_modules/@biomejs/cli-darwin-arm64/biome",
+    "linux-x64": "frontend/node_modules/@biomejs/cli-linux-x64/biome",
+    "linux-arm64": "frontend/node_modules/@biomejs/cli-linux-arm64/biome",
+    "linux-x64-musl": "frontend/node_modules/@biomejs/cli-linux-x64-musl/biome",
+    "linux-arm64-musl": "frontend/node_modules/@biomejs/cli-linux-arm64-musl/biome"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "eslint.workingDirectories": ["frontend"]
 }

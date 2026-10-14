@@ -1,3 +1,8 @@
 {
-  "recommendations": ["astral-sh.ty", "charliermarsh.ruff"]
+  "recommendations": [
+    "astral-sh.ty",
+    "charliermarsh.ruff",
+    "biomejs.biome",
+    "dbaeumer.vscode-eslint"
+  ]
 }

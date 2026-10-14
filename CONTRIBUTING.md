@@ -69,7 +69,7 @@ uv run pytest                           # everything (about 15 minutes)
 
 Tests run against `nexus_test`. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff, ty and the full suite on every PR that touches `backend/`.
 
-The frontend has no test suite. Check UI changes by clicking through them in a browser, and run `pnpm check`, `pnpm lint:react` and `pnpm typecheck` from `frontend/` (`pnpm fix` applies Biome's safe fixes). CI runs the same checks on every PR that touches `frontend/`.
+The frontend has no test suite. Check UI changes by clicking through them in a browser, and run `pnpm check`, `pnpm lint:react` and `pnpm typecheck` from `frontend/` (`pnpm fix` applies Biome's safe fixes). In VS Code, the recommended Biome and ESLint extensions work with the repo root open; `.vscode/settings.json` points Biome at `frontend/node_modules`, so run `pnpm install` in `frontend/` first. CI runs the same checks on every PR that touches `frontend/`.
 
 ### Migrations
 

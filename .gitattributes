@@ -4,6 +4,8 @@
 *.sh text eol=lf
 .githooks/* text eol=lf
 
-# Biome formats the frontend with LF endings. Checked out with CRLF, as autocrlf
+# Biome formats with LF endings. Checked out with CRLF, as autocrlf
 # does on Windows, every file would differ from Biome's output.
 frontend/** text=auto eol=lf
+biome.jsonc text eol=lf
+.vscode/*.json text eol=lf

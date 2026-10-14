@@ -5,3 +5,5 @@
 16db72d42adc4bf6e9da729f6deebfda23385041
 # style(backend): apply ruff format
 3c6811f5e9ead8f423ea43e3e461e03ebe55de14
+# style(frontend): apply Biome formatting and safe fixes
+001719791ce4c19b5a1cef51d6c68e1287051d44
