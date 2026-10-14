@@ -1,8 +1,8 @@
 "use client";
 
-import { CSSProperties } from "react";
-import { Popover, PopoverProps } from "@/components/ui/Popover";
+import type { CSSProperties } from "react";
 import { IconChevronDown } from "@/components/ui/Icons";
+import { Popover, type PopoverProps } from "@/components/ui/Popover";
 
 // Same four looks as Badge's default/pending/confirmed/declined variants —
 // restated as CSS vars because a pill draws a solid 1px border where Badge
@@ -13,12 +13,28 @@ export type PillTone = "default" | "muted" | "success" | "danger";
 export type PillSize = "sm" | "md";
 
 const TONE_STYLE: Record<PillTone, { background: string; color: string; border: string }> = {
-  default: { background: "transparent",              color: "var(--color-text-secondary)", border: "var(--color-border-strong)" },
+  default: {
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    border: "var(--color-border-strong)",
+  },
   // Nothing chosen yet — filled rather than outlined, so it reads as an
   // empty slot asking to be filled instead of as a value.
-  muted:   { background: "var(--color-bg)",          color: "var(--color-text-tertiary)",  border: "var(--color-border-strong)" },
-  success: { background: "var(--color-success-subtle)", color: "var(--color-success)",     border: "var(--color-success)" },
-  danger:  { background: "var(--color-danger-subtle)",  color: "var(--color-danger)",      border: "var(--color-danger)" },
+  muted: {
+    background: "var(--color-bg)",
+    color: "var(--color-text-tertiary)",
+    border: "var(--color-border-strong)",
+  },
+  success: {
+    background: "var(--color-success-subtle)",
+    color: "var(--color-success)",
+    border: "var(--color-success)",
+  },
+  danger: {
+    background: "var(--color-danger-subtle)",
+    color: "var(--color-danger)",
+    border: "var(--color-danger)",
+  },
 };
 
 const SIZE_STYLE: Record<PillSize, { padding: string; fontSize: string; chevron: number }> = {
@@ -30,20 +46,40 @@ function pillStyle(tone: PillTone, size: PillSize): CSSProperties {
   const t = TONE_STYLE[tone];
   const s = SIZE_STYLE[size];
   return {
-    display: "inline-flex", alignItems: "center", gap: "2px", boxSizing: "border-box",
-    padding: s.padding, borderRadius: "999px",
-    border: `1px solid ${t.border}`, background: t.background, color: t.color,
-    fontFamily: "var(--font-sans)", fontSize: s.fontSize, fontWeight: 600,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "2px",
+    boxSizing: "border-box",
+    padding: s.padding,
+    borderRadius: "999px",
+    border: `1px solid ${t.border}`,
+    background: t.background,
+    color: t.color,
+    fontFamily: "var(--font-sans)",
+    fontSize: s.fontSize,
+    fontWeight: 600,
     whiteSpace: "nowrap",
   };
 }
 
 /** The pill on its own, with no menu behind it — for a viewer who can see the
  *  value but isn't allowed to change it. */
-export function Pill({ label, tone = "default", size = "sm", title }: {
-  label: string; tone?: PillTone; size?: PillSize; title?: string;
+export function Pill({
+  label,
+  tone = "default",
+  size = "sm",
+  title,
+}: {
+  label: string;
+  tone?: PillTone;
+  size?: PillSize;
+  title?: string;
 }) {
-  return <span title={title} style={pillStyle(tone, size)}>{label}</span>;
+  return (
+    <span title={title} style={pillStyle(tone, size)}>
+      {label}
+    </span>
+  );
 }
 
 export type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
@@ -56,13 +92,27 @@ export type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
 /** The pill as a popover trigger: the label plus a chevron that flips while
  *  the panel is open. Pass it from a `trigger` render function, which is
  *  where the open state comes from. */
-export function PillTrigger({ label, tone = "default", size = "sm", open }: {
-  label: string; tone?: PillTone; size?: PillSize; open: boolean;
+export function PillTrigger({
+  label,
+  tone = "default",
+  size = "sm",
+  open,
+}: {
+  label: string;
+  tone?: PillTone;
+  size?: PillSize;
+  open: boolean;
 }) {
   return (
     <span style={{ ...pillStyle(tone, size), cursor: "pointer" }}>
       {label}
-      <IconChevronDown size={SIZE_STYLE[size].chevron} style={{ transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
+      <IconChevronDown
+        size={SIZE_STYLE[size].chevron}
+        style={{
+          transition: "transform 150ms ease",
+          transform: open ? "rotate(180deg)" : "rotate(0deg)",
+        }}
+      />
     </span>
   );
 }
@@ -74,5 +124,10 @@ export function PillTrigger({ label, tone = "default", size = "sm", open }: {
 // one fixed height matching its neighbours instead of growing to fit a
 // full-size Dropdown's chrome.
 export function PillMenu<T>({ label, tone, size, ...popover }: PillMenuProps<T>) {
-  return <Popover {...popover} trigger={(open) => <PillTrigger label={label} tone={tone} size={size} open={open} />} />;
+  return (
+    <Popover
+      {...popover}
+      trigger={(open) => <PillTrigger label={label} tone={tone} size={size} open={open} />}
+    />
+  );
 }

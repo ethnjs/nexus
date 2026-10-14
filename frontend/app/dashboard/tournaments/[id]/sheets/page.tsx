@@ -1,29 +1,42 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  IconDotsVertical,
+  IconEdit,
+  IconExport,
+  IconPlus,
+  IconSheets,
+  IconSync,
+  IconTrash,
+  IconWarning,
+} from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
+import { type SheetConfig, sheetsApi } from "@/lib/api";
 import { useArchiveLock } from "@/lib/useArchiveLock";
-import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
   volunteers: "Volunteers",
-  events:     "Events",
+  events: "Events",
   // legacy — kept for configs saved before the migration
-  interest:     "Interest Form",
+  interest: "Interest Form",
   confirmation: "Confirmation Form",
 };
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", timeZoneName: "short",
-  })
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
 
 function isSameTab(a: SheetConfig, b: SheetConfig) {
@@ -67,26 +80,54 @@ function SyncConfirmModal({
 }) {
   return (
     <Modal title="Sync this sheet?" onClose={onCancel} width={420}>
-      <div style={{
-        background: "var(--color-warning-subtle)",
-        border: "1px solid var(--color-warning)",
-        borderRadius: "var(--radius-md)",
-        padding: "12px 14px",
-        marginBottom: "20px",
-      }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+      <div
+        style={{
+          background: "var(--color-warning-subtle)",
+          border: "1px solid var(--color-warning)",
+          borderRadius: "var(--radius-md)",
+          padding: "12px 14px",
+          marginBottom: "20px",
+        }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-primary)",
+            marginBottom: "6px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
           <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
           This tab is also used by:
         </p>
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
           {duplicates.map((d) => (
-            <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            <li
+              key={d.id}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
               <strong>{d.label}</strong> ({SHEET_TYPE_LABELS[d.sheet_type] ?? d.sheet_type})
             </li>
           ))}
         </ul>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
-          Syncing <strong>{cfg.label}</strong> may overwrite data written by those configs if they map to the same fields.
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-secondary)",
+            marginTop: "8px",
+          }}
+        >
+          Syncing <strong>{cfg.label}</strong> may overwrite data written by those configs if they
+          map to the same fields.
         </p>
       </div>
       <div style={{ display: "flex", gap: "10px" }}>
@@ -116,7 +157,14 @@ function DeleteConfirmModal({
 }) {
   return (
     <Modal title="Delete config?" onClose={onCancel} width={400}>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          marginBottom: "20px",
+        }}
+      >
         <strong>{cfg.label}</strong> will be permanently deleted. Volunteer data is unaffected.
       </p>
       <div style={{ display: "flex", gap: "10px" }}>
@@ -164,18 +212,27 @@ function CardMenu({
     {
       label: "Export JSON",
       icon: <IconExport size={16} />,
-      action: () => { exportJson(cfg); setOpen(false); },
+      action: () => {
+        exportJson(cfg);
+        setOpen(false);
+      },
     },
     {
       label: "Edit",
       icon: <IconEdit size={16} />,
-      action: () => { router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
+      action: () => {
+        router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}/edit`);
+        setOpen(false);
+      },
       disabledReason: lockedReason,
     },
     {
       label: "Delete",
       icon: <IconTrash size={16} />,
-      action: () => { onDelete(); setOpen(false); },
+      action: () => {
+        onDelete();
+        setOpen(false);
+      },
       danger: true,
       disabledReason: lockedReason,
     },
@@ -184,12 +241,18 @@ function CardMenu({
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: "28px", height: "28px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "28px",
+          height: "28px",
           border: "none",
           borderRadius: "var(--radius-sm)",
           background: hovered || open ? "var(--color-bg)" : "transparent",
@@ -253,14 +316,18 @@ function MenuRow({ item }: { item: MenuItem }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex", alignItems: "center", gap: "8px",
-        width: "100%", padding: "7px 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        width: "100%",
+        padding: "7px 12px",
         background: hovered && !disabled ? "var(--color-bg)" : "transparent",
         border: "none",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
         color: item.danger ? "var(--color-danger)" : "var(--color-text-primary)",
-        fontFamily: "var(--font-sans)", fontSize: "13px",
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
         textAlign: "left",
         transition: "background 80ms ease",
       }}
@@ -289,7 +356,11 @@ function ConfigCard({
 }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    created: number;
+    updated: number;
+    skipped: number;
+  } | null>(null);
   const [syncError, setSyncError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -343,16 +414,29 @@ function ConfigCard({
         style={{ padding: "16px 20px", cursor: "pointer" }}
       >
         {hasDuplicates && (
-          <div style={{
-            display: "flex", alignItems: "flex-start", gap: "8px",
-            background: "var(--color-warning-subtle)",
-            border: "1px solid var(--color-warning)",
-            borderRadius: "var(--radius-sm)",
-            padding: "8px 12px",
-            marginBottom: "12px",
-          }}>
-            <IconWarning size={13} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "1px" }} />
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "8px",
+              background: "var(--color-warning-subtle)",
+              border: "1px solid var(--color-warning)",
+              borderRadius: "var(--radius-sm)",
+              padding: "8px 12px",
+              marginBottom: "12px",
+            }}
+          >
+            <IconWarning
+              size={13}
+              style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "1px" }}
+            />
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-primary)",
+              }}
+            >
               Same tab as{" "}
               {duplicates.map((d, i) => (
                 <span key={d.id}>
@@ -360,57 +444,121 @@ function ConfigCard({
                   {i < duplicates.length - 1 ? ", " : ""}
                 </span>
               ))}
-              . Syncing may overwrite data from {duplicates.length === 1 ? "that config" : "those configs"}.
+              . Syncing may overwrite data from{" "}
+              {duplicates.length === 1 ? "that config" : "those configs"}.
             </p>
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
+          }}
+        >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                }}
+              >
                 {cfg.label}
               </span>
-              <span style={{
-                fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                textTransform: "uppercase", letterSpacing: "0.07em",
-                color: "var(--color-text-secondary)", background: "var(--color-accent-subtle)",
-                padding: "2px 7px", borderRadius: "var(--radius-sm)",
-              }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  color: "var(--color-text-secondary)",
+                  background: "var(--color-accent-subtle)",
+                  padding: "2px 7px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
                 {SHEET_TYPE_LABELS[cfg.sheet_type] ?? cfg.sheet_type}
               </span>
               {!cfg.is_active && (
-                <span style={{
-                  fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.07em",
-                  color: "var(--color-text-tertiary)", background: "var(--color-bg)",
-                  padding: "2px 7px", borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--color-border)",
-                }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.07em",
+                    color: "var(--color-text-tertiary)",
+                    background: "var(--color-bg)",
+                    padding: "2px 7px",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
                   Inactive
                 </span>
               )}
             </div>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
                 {cfg.sheet_name}
               </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
                 {mappingCount} mapped column{mappingCount !== 1 ? "s" : ""}
               </span>
               {cfg.last_synced_at && (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    color: "var(--color-text-tertiary)",
+                  }}
+                >
                   Last synced {fmtDateTime(cfg.last_synced_at)}
                 </span>
               )}
             </div>
             {syncResult && (
-              <div style={{ marginTop: "8px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-success)" }}>
-                ✓ Sync complete — {syncResult.created} created, {syncResult.updated} updated, {syncResult.skipped} skipped
+              <div
+                style={{
+                  marginTop: "8px",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-success)",
+                }}
+              >
+                ✓ Sync complete — {syncResult.created} created, {syncResult.updated} updated,{" "}
+                {syncResult.skipped} skipped
               </div>
             )}
             {syncError && (
-              <div style={{ marginTop: "8px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+              <div
+                style={{
+                  marginTop: "8px",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-danger)",
+                }}
+              >
                 {syncError}
               </div>
             )}
@@ -478,7 +626,8 @@ export default function SheetsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    sheetsApi.listConfigs(Number(tournamentId))
+    sheetsApi
+      .listConfigs(Number(tournamentId))
       .then(setConfigs)
       .catch(() => setError("Failed to load sheet configurations."))
       .finally(() => setLoading(false));
@@ -510,17 +659,24 @@ export default function SheetsPage() {
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {[1, 2].map((i) => (
-            <div key={i} style={{
-              height: "80px",
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              opacity: 0.5,
-            }} />
+            <div
+              key={i}
+              style={{
+                height: "80px",
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                opacity: 0.5,
+              }}
+            />
           ))}
         </div>
       ) : error ? (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
+          {error}
+        </p>
       ) : configs.length === 0 ? (
         <EmptyState
           icon={<IconSheets size={24} />}
@@ -531,8 +687,8 @@ export default function SheetsPage() {
               variant="secondary"
               size="sm"
               onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/new`)}
-            disabled={isArchived}
-            title={archivedReason}
+              disabled={isArchived}
+              title={archivedReason}
             >
               <IconPlus />
               Add your first sheet

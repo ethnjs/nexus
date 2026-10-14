@@ -1,9 +1,9 @@
 "use client";
 
-import type { TournamentTrack } from "@/lib/api";
-import { Pill, PillTrigger, type PillSize } from "@/components/ui/PillMenu";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
-import { WIDE_SCOPE, type RoleScope } from "@/lib/roles/roleScope";
+import { Pill, type PillSize, PillTrigger } from "@/components/ui/PillMenu";
+import type { TournamentTrack } from "@/lib/api";
+import { type RoleScope, WIDE_SCOPE } from "@/lib/roles/roleScope";
 
 /** "All", a track's name, or a count once names would crowd the chip. */
 export function scopeLabel(scope: RoleScope, tracks: TournamentTrack[]): string {
@@ -37,7 +37,14 @@ function nextScope(scope: RoleScope, option: ScopeOption): RoleScope {
  * Shared by the roster's role chips (where a pick saves at once) and the mass
  * editor's pending rows (where it edits a draft until Save).
  */
-export function RoleScopePill({ scope, tracks, editable = true, size = "sm", title, onChange }: {
+export function RoleScopePill({
+  scope,
+  tracks,
+  editable = true,
+  size = "sm",
+  title,
+  onChange,
+}: {
   scope: RoleScope;
   tracks: TournamentTrack[];
   editable?: boolean;
@@ -49,7 +56,10 @@ export function RoleScopePill({ scope, tracks, editable = true, size = "sm", tit
   const label = scopeLabel(scope, tracks);
   if (!editable) return <Pill label={label} size={size} title={title} />;
 
-  const options: ScopeOption[] = [WIDE_OPTION, ...tracks.map((t) => ({ kind: "track" as const, track: t }))];
+  const options: ScopeOption[] = [
+    WIDE_OPTION,
+    ...tracks.map((t) => ({ kind: "track" as const, track: t })),
+  ];
 
   return (
     <ChecklistPopover
@@ -60,9 +70,11 @@ export function RoleScopePill({ scope, tracks, editable = true, size = "sm", tit
       isSelected={(o) => (o.kind === "wide" ? scope.wide : scope.trackIds.includes(o.track.id))}
       // Unticking the only thing ticked would leave an empty scope, which is
       // how a role gets removed — not something a menu about *where* should do.
-      isDisabled={(o) => (o.kind === "wide"
-        ? scope.wide
-        : !scope.wide && scope.trackIds.length === 1 && scope.trackIds[0] === o.track.id)}
+      isDisabled={(o) =>
+        o.kind === "wide"
+          ? scope.wide
+          : !scope.wide && scope.trackIds.length === 1 && scope.trackIds[0] === o.track.id
+      }
       disabledReason={() => "Pick somewhere else first"}
       onToggle={(o) => onChange(nextScope(scope, o))}
       width={200}

@@ -1,25 +1,38 @@
-'use client'
+"use client";
 
-import { ReactNode } from 'react'
-import { FormFieldOption, FormFieldConfig, FormQuestionType, ResolvedShiftOption, Tournament, TournamentShift } from '@/lib/api'
-import { formatTime } from '@/lib/timeFormat'
-import { Input } from '@/components/ui/Input'
-import { Textarea } from '@/components/ui/Textarea'
-import { Checkbox } from '@/components/ui/Checkbox'
-import { Dropdown } from '@/components/ui/Dropdown'
-import { ButtonGroup } from '@/components/ui/ButtonGroup'
-import { Switch } from '@/components/ui/Switch'
-import { RankedList } from '@/components/ui/RankedList'
-import { RadioList } from '@/components/ui/RadioList'
-import { CheckboxList } from '@/components/ui/CheckboxList'
-import { Badge } from '@/components/ui/Badge'
-import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
-import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
+import type { ReactNode } from "react";
+import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
 import {
-  activePresetKind, isEntityBackedPreset,
-  parseAvailabilityFieldKey, parseEventPreferenceFieldKey,
-} from '@/lib/forms/fieldKeyPresets'
-import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
+  type BranchTarget,
+  type EditableOption,
+  OptionsEditor,
+} from "@/components/forms/OptionsEditor";
+import { Badge } from "@/components/ui/Badge";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { CheckboxList } from "@/components/ui/CheckboxList";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { Input } from "@/components/ui/Input";
+import { RadioList } from "@/components/ui/RadioList";
+import { RankedList } from "@/components/ui/RankedList";
+import { Switch } from "@/components/ui/Switch";
+import { Textarea } from "@/components/ui/Textarea";
+import type {
+  FormFieldConfig,
+  FormFieldOption,
+  FormQuestionType,
+  ResolvedShiftOption,
+  Tournament,
+  TournamentShift,
+} from "@/lib/api";
+import {
+  activePresetKind,
+  isEntityBackedPreset,
+  parseAvailabilityFieldKey,
+  parseEventPreferenceFieldKey,
+} from "@/lib/forms/fieldKeyPresets";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { formatTime } from "@/lib/timeFormat";
 
 // Only what rendering actually needs — not the full persisted FormField
 // (id, form_id, timestamps, ...), so an in-progress/unsaved draft field in
@@ -27,88 +40,88 @@ import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
 // field_key is optional and only consulted by edit mode (reserved presets —
 // availability/event_preference/lunch — key off it); view mode never reads it.
 export interface QuestionFieldData {
-  label: string
-  description: string | null
-  question_type: FormQuestionType
-  config: FormFieldConfig | null
-  field_key?: string
+  label: string;
+  description: string | null;
+  question_type: FormQuestionType;
+  config: FormFieldConfig | null;
+  field_key?: string;
 }
 
-type FieldUpdate = Partial<QuestionFieldData>
+type FieldUpdate = Partial<QuestionFieldData>;
 
 interface QuestionRendererProps {
-  field: QuestionFieldData
+  field: QuestionFieldData;
   /** 'view' (default) = respondent-facing rendering, either a live answer widget
       (interactive) or a read-only preview. 'edit' = the TD-facing config editor
       for this question_type's body (options list, ranks, confirm text, ...). */
-  mode?: 'view' | 'edit'
+  mode?: "view" | "edit";
   /** view mode only. false = read-only preview (the builder's collapsed card
       state); true = a real respondent can answer. */
-  interactive?: boolean
+  interactive?: boolean;
   /** view mode, interactive only — the question still shows the answer given,
       but every input is locked. Distinct from `interactive: false`, which is a
       blank preview: this is an answer that exists and can't be changed right
       now (e.g. a track the member has declined). */
-  locked?: boolean
+  locked?: boolean;
   /** view mode only. Shape depends on question_type (string for text types,
       boolean for acknowledgment, ...). */
-  value?: unknown
-  onChange?: (value: unknown) => void
+  value?: unknown;
+  onChange?: (value: unknown) => void;
   /** view mode, interactive only — validation message for this field, shown
       inline where the question type has somewhere to put it (currently just
       ranked_choice's add-combobox; other types don't have an equivalent
       inline slot yet, so the caller still has to render its own message for
       them). Not used at all in edit mode — see the `errors` prop instead. */
-  error?: string
+  error?: string;
   /** view mode only — the tournament's shifts, so an availability option's
       time range can resolve even when `value` is still the raw shift-id
       list (the builder's collapsed card preview) rather than GET's already-
       resolved shape. null/undefined = no range shown for the raw-id case
       (an already-resolved `value` still renders its range regardless). */
-  shifts?: TournamentShift[] | null
+  shifts?: TournamentShift[] | null;
   /** Hide the label/description header — e.g. the builder's expanded card already
       shows the label via its own editable Input, so repeating it here would be
       redundant. */
-  showHeader?: boolean
+  showHeader?: boolean;
   /** edit mode only — applies a partial update to the field being edited. */
-  onFieldChange?: (updates: FieldUpdate) => void
+  onFieldChange?: (updates: FieldUpdate) => void;
   /** edit mode only — tournament scope for the availability/event_preference
       presets' entity-backed options (id + is_multi_day, used by
       EntityOptionsEditor). null/undefined hides those presets' editor
       (falls through to the plain preview instead). */
-  tournament?: Tournament | null
+  tournament?: Tournament | null;
   /** edit mode only — candidate "jump to" fields for single_select_radio/dropdown's
       per-option branching. Omitted (or empty) hides the branch dropdown. */
-  branchTargets?: BranchTarget[]
+  branchTargets?: BranchTarget[];
   /** edit mode only — whether branching is currently toggled on for this field
       (the toggle itself lives outside QuestionRenderer, in FieldToolbar). */
-  branchingEnabled?: boolean
+  branchingEnabled?: boolean;
   /** edit mode only — whether this field's options currently show a separate
       value input (freeform types only — entity-backed presets ignore this,
       their value is always the picked entity ids). Toggle lives in
       FieldToolbar, same as branchingEnabled. */
-  customValuesEnabled?: boolean
+  customValuesEnabled?: boolean;
   /** edit mode only — whether archiving an option is a meaningful choice,
       i.e. the form already has responses. On a form nobody has answered
       there's nothing to preserve, so removing an option just removes it and
       the extra control would be noise. */
-  allowArchive?: boolean
+  allowArchive?: boolean;
   /** Forwarded to EntityOptionsEditor — see its own prop. Absent outside the
       form builder, where there is no preset popover to open. */
-  onRequireTrack?: () => void
+  onRequireTrack?: () => void;
   /** Read-only answers only — options a past answer picked that are no longer
       offered (archived, or gone from config). Shown in line with the live
       ones, marked Removed, so the answer still reads as given. */
-  removedOptions?: FormFieldOption[]
+  removedOptions?: FormFieldOption[];
   /** Rendered in place of the input, under the question — e.g. "Not
       answered" in a read-only response. */
-  answerNote?: ReactNode
+  answerNote?: ReactNode;
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
       ranks). Each body works out for itself which of its own inputs a given
       message belongs to, rather than the message carrying that routing. */
-  errors?: string[]
+  errors?: string[];
 }
 
 // Shared between the builder's field-card preview/editor (mode='view'/'edit')
@@ -125,50 +138,82 @@ interface QuestionRendererProps {
 // otherwise wrap the lone asterisk onto a line of its own. Only the tail is
 // nowrap, so everything before it still wraps normally.
 function QuestionLabel({ label, required }: { label: string; required: boolean }) {
-  if (!required) return <>{label}</>
-  const split = label.lastIndexOf(' ')
+  if (!required) return <>{label}</>;
+  const split = label.lastIndexOf(" ");
   return (
     <>
       {split === -1 ? null : label.slice(0, split + 1)}
-      <span style={{ whiteSpace: 'nowrap' }}>
+      <span style={{ whiteSpace: "nowrap" }}>
         {split === -1 ? label : label.slice(split + 1)}
-        <span style={{ color: 'var(--color-danger)' }}> *</span>
+        <span style={{ color: "var(--color-danger)" }}> *</span>
       </span>
     </>
-  )
+  );
 }
 
 export function QuestionRenderer({
-  field, mode = 'view', interactive = false, locked = false, value, onChange, error, shifts, showHeader = true,
-  onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
+  field,
+  mode = "view",
+  interactive = false,
+  locked = false,
+  value,
+  onChange,
+  error,
+  shifts,
+  showHeader = true,
+  onFieldChange,
+  tournament,
+  branchTargets,
+  branchingEnabled,
+  customValuesEnabled,
+  errors = [],
   allowArchive = false,
   onRequireTrack,
   removedOptions,
   answerNote,
 }: QuestionRendererProps) {
-  const config = field.config ?? {}
+  const config = field.config ?? {};
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {showHeader && (
         <div>
           {/* data-focus marks which editor input a click here corresponds to,
               so the builder's collapsed card can open straight into it. Inert
               everywhere else. */}
-          <span data-focus="label" style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            <QuestionLabel label={field.label || 'Untitled question'} required={!!config.required} />
+          <span
+            data-focus="label"
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "18px",
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+            }}
+          >
+            <QuestionLabel
+              label={field.label || "Untitled question"}
+              required={!!config.required}
+            />
           </span>
           {field.description && (
-            <p data-focus="description" style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+            <p
+              data-focus="description"
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "14px",
+                color: "var(--color-text-secondary)",
+                marginTop: "4px",
+              }}
+            >
               {field.description}
             </p>
           )}
         </div>
       )}
 
-      {answerNote !== undefined && mode !== 'edit' ? (
+      {answerNote !== undefined && mode !== "edit" ? (
         answerNote
-      ) : mode === 'edit' ? (
+      ) : mode === "edit" ? (
         <QuestionEditBody
           field={field}
           onFieldChange={onFieldChange ?? (() => {})}
@@ -181,10 +226,19 @@ export function QuestionRenderer({
           onRequireTrack={onRequireTrack}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} locked={locked} value={value} onChange={onChange} error={error} shifts={shifts} removedOptions={removedOptions} />
+        <QuestionBody
+          field={field}
+          interactive={interactive}
+          locked={locked}
+          value={value}
+          onChange={onChange}
+          error={error}
+          shifts={shifts}
+          removedOptions={removedOptions}
+        />
       )}
     </div>
-  )
+  );
 }
 
 // number[] (unresolved, still-editing shape) elements are numbers;
@@ -192,21 +246,23 @@ export function QuestionRenderer({
 // objects. ResolvedEventOption[] is also an array of objects but has no
 // start/end, so checking for 'start' is what actually distinguishes the two
 // resolved shapes (event_preference options must never hit timeRangeOf).
-function isResolvedShiftOptions(value: FormFieldOption['value']): value is ResolvedShiftOption[] {
-  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && 'start' in value[0]
+function isResolvedShiftOptions(value: FormFieldOption["value"]): value is ResolvedShiftOption[] {
+  return (
+    Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && "start" in value[0]
+  );
 }
 
-function isRawShiftIds(value: FormFieldOption['value']): value is number[] {
-  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'number'
+function isRawShiftIds(value: FormFieldOption["value"]): value is number[] {
+  return Array.isArray(value) && value.length > 0 && typeof value[0] === "number";
 }
 
 function timeRangeOf(starts: string[], ends: string[]): string {
   // ISO strings compare lexicographically the same as chronologically here
   // since they're all the same backend format/timezone, so plain string
   // min/max works without parsing dates.
-  const start = starts.reduce((min, s) => (s < min ? s : min))
-  const end = ends.reduce((max, e) => (e > max ? e : max))
-  return `${formatTime(start)}–${formatTime(end)}`
+  const start = starts.reduce((min, s) => (s < min ? s : min));
+  const end = ends.reduce((max, e) => (e > max ? e : max));
+  return `${formatTime(start)}–${formatTime(end)}`;
 }
 
 // availability's option label alone doesn't tell a respondent when it
@@ -219,91 +275,123 @@ function timeRangeOf(starts: string[], ends: string[]): string {
 // needs `shifts` (looked up by id) to find each one's start/end itself.
 function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] | null): string {
   if (isResolvedShiftOptions(option.value)) {
-    const resolved = option.value
-    return `${option.label} (${timeRangeOf(resolved.map((s) => s.start), resolved.map((s) => s.end))})`
+    const resolved = option.value;
+    return `${option.label} (${timeRangeOf(
+      resolved.map((s) => s.start),
+      resolved.map((s) => s.end),
+    )})`;
   }
   if (isRawShiftIds(option.value) && shifts) {
-    const matched = shifts.filter((s) => (option.value as number[]).includes(s.id))
+    const matched = shifts.filter((s) => (option.value as number[]).includes(s.id));
     if (matched.length > 0) {
-      return `${option.label} (${timeRangeOf(matched.map((s) => s.start), matched.map((s) => s.end))})`
+      return `${option.label} (${timeRangeOf(
+        matched.map((s) => s.start),
+        matched.map((s) => s.end),
+      )})`;
     }
   }
-  return option.label
+  return option.label;
 }
 
-function QuestionBody({ field, interactive, locked, value, onChange, error, shifts, removedOptions = [] }: {
-  field: QuestionFieldData
-  interactive?: boolean
-  value?: unknown
-  onChange?: (value: unknown) => void
-  error?: string
-  shifts?: TournamentShift[] | null
-  locked?: boolean
-  removedOptions?: FormFieldOption[]
+function QuestionBody({
+  field,
+  interactive,
+  locked,
+  value,
+  onChange,
+  error,
+  shifts,
+  removedOptions = [],
+}: {
+  field: QuestionFieldData;
+  interactive?: boolean;
+  value?: unknown;
+  onChange?: (value: unknown) => void;
+  error?: string;
+  shifts?: TournamentShift[] | null;
+  locked?: boolean;
+  removedOptions?: FormFieldOption[];
 }) {
-  const config = field.config ?? {}
+  const config = field.config ?? {};
   // Locked keeps the answer on screen but refuses edits, so every input is
   // locked and every handler is a no-op. `interactive` still decides whether
   // there is an answer to show at all.
-  const editable = interactive && !locked
+  const editable = interactive && !locked;
   // An archived option stays in `config.options` forever so old answers
   // referencing its option_id keep resolving (see apply_option_archiving on
   // the backend) — it is storage, never a choice to present. Respondents
   // whose answer pointed at one are asked to re-answer via the
   // "option_archived" pending-update flow instead.
-  const removedIds = new Set(removedOptions.map((opt) => opt.option_id))
+  const removedIds = new Set(removedOptions.map((opt) => opt.option_id));
   const liveOptions: FormFieldOption[] = [
     ...(config.options ?? []).filter((opt) => !opt.is_archived && !removedIds.has(opt.option_id)),
     ...removedOptions,
-  ]
+  ];
   const badgeFor = (optionId: string) =>
-    removedIds.has(optionId) ? <Badge variant="declined">Removed</Badge> : undefined
+    removedIds.has(optionId) ? <Badge variant="declined">Removed</Badge> : undefined;
 
   switch (field.question_type) {
-    case 'short_text':
+    case "short_text":
       return (
         <Input
-          value={interactive ? (value as string | undefined) ?? '' : ''}
+          value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
-          placeholder={interactive ? undefined : 'Short answer'}
+          placeholder={interactive ? undefined : "Short answer"}
           locked={!editable}
           fullWidth
         />
-      )
+      );
 
-    case 'long_text':
+    case "long_text":
       return (
         <Textarea
-          value={interactive ? (value as string | undefined) ?? '' : ''}
+          value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
-          placeholder={interactive ? undefined : 'Long answer'}
+          placeholder={interactive ? undefined : "Long answer"}
           disabled={!editable}
           rows={3}
           fullWidth
         />
-      )
+      );
 
-    case 'acknowledgment':
+    case "acknowledgment":
       return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: editable ? 'pointer' : 'default' }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            cursor: editable ? "pointer" : "default",
+          }}
+        >
           <Checkbox
             checked={interactive ? Boolean(value) : false}
             onChange={(checked) => editable && onChange?.(checked)}
             locked={!editable}
             size={18}
           />
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)' }}>
-            {config.confirm_label || 'I understand'}
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            {config.confirm_label || "I understand"}
           </span>
         </label>
-      )
+      );
 
-    case 'single_select_radio': {
-      const options = liveOptions
-      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts), badge: badgeFor(opt.option_id) }))
-      const selected = interactive ? (value as string | undefined) ?? '' : ''
+    case "single_select_radio": {
+      const options = liveOptions;
+      const displayOptions = options.map((opt) => ({
+        value: opt.option_id,
+        label: optionDisplayLabel(opt, shifts),
+        badge: badgeFor(opt.option_id),
+      }));
+      const selected = interactive ? ((value as string | undefined) ?? "") : "";
 
-      if (config.display_style === 'buttons') {
+      if (config.display_style === "buttons") {
         return (
           <ButtonGroup
             options={displayOptions}
@@ -312,7 +400,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
             locked={!editable}
             clickThrough={!interactive}
           />
-        )
+        );
       }
 
       return (
@@ -325,34 +413,46 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
           fontSize="16px"
           gap="8px"
         />
-      )
+      );
     }
 
-    case 'single_select_dropdown': {
-      const options = liveOptions
+    case "single_select_dropdown": {
+      const options = liveOptions;
       return (
         <Dropdown
-          value={interactive ? (value as string | undefined) ?? '' : ''}
+          value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(v) => editable && onChange?.(v)}
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label, badge: badgeFor(opt.option_id) }))}
+          options={options.map((opt) => ({
+            value: opt.option_id,
+            label: opt.label,
+            badge: badgeFor(opt.option_id),
+          }))}
           placeholder="Choose"
           locked={!editable}
           fullWidth
         />
-      )
+      );
     }
 
-    case 'multi_select_checkbox': {
-      const options = liveOptions
-      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts), badge: badgeFor(opt.option_id) }))
-      const selected = interactive ? ((value as string[] | undefined) ?? []) : []
+    case "multi_select_checkbox": {
+      const options = liveOptions;
+      const displayOptions = options.map((opt) => ({
+        value: opt.option_id,
+        label: optionDisplayLabel(opt, shifts),
+        badge: badgeFor(opt.option_id),
+      }));
+      const selected = interactive ? ((value as string[] | undefined) ?? []) : [];
 
       function toggle(optionId: string) {
-        if (!editable) return
-        onChange?.(selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId])
+        if (!editable) return;
+        onChange?.(
+          selected.includes(optionId)
+            ? selected.filter((id) => id !== optionId)
+            : [...selected, optionId],
+        );
       }
 
-      if (config.display_style === 'buttons') {
+      if (config.display_style === "buttons") {
         return (
           <ButtonGroup
             options={displayOptions}
@@ -361,7 +461,7 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
             locked={!editable}
             clickThrough={!interactive}
           />
-        )
+        );
       }
 
       return (
@@ -376,32 +476,43 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
           rowHeight="36px"
           labelGap="16px"
         />
-      )
+      );
     }
 
-    case 'ranked_choice': {
-      const options = liveOptions
-      const ranks = config.ranks ?? options.length
+    case "ranked_choice": {
+      const options = liveOptions;
+      const ranks = config.ranks ?? options.length;
       return (
         <RankedList
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label, badge: badgeFor(opt.option_id) }))}
+          options={options.map((opt) => ({
+            value: opt.option_id,
+            label: opt.label,
+            badge: badgeFor(opt.option_id),
+          }))}
           ranks={ranks}
-          value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
+          value={interactive ? ((value as Record<string, string> | undefined) ?? {}) : {}}
           onChange={(next) => editable && onChange?.(next)}
           allowDuplicates={!!config.allow_duplicates}
           locked={!editable}
           error={error}
         />
-      )
+      );
     }
 
     default:
       // reserved lunch_* config bodies (date + category picker) — not wired up yet.
       return (
-        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-tertiary)",
+            fontStyle: "italic",
+          }}
+        >
           Preview not available for &ldquo;{field.question_type}&rdquo; yet.
         </p>
-      )
+      );
   }
 }
 
@@ -417,61 +528,81 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false, onRequireTrack }: {
-  field: QuestionFieldData
-  onFieldChange: (updates: FieldUpdate) => void
-  tournament: Tournament | null
-  branchTargets?: BranchTarget[]
-  branchingEnabled?: boolean
-  customValuesEnabled?: boolean
-  errors?: string[]
-  allowArchive?: boolean
-  onRequireTrack?: () => void
+function QuestionEditBody({
+  field,
+  onFieldChange,
+  tournament,
+  branchTargets,
+  branchingEnabled,
+  customValuesEnabled,
+  errors = [],
+  allowArchive = false,
+  onRequireTrack,
+}: {
+  field: QuestionFieldData;
+  onFieldChange: (updates: FieldUpdate) => void;
+  tournament: Tournament | null;
+  branchTargets?: BranchTarget[];
+  branchingEnabled?: boolean;
+  customValuesEnabled?: boolean;
+  errors?: string[];
+  allowArchive?: boolean;
+  onRequireTrack?: () => void;
 }) {
-  const presetKind = activePresetKind(field.field_key ?? '')
-  const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
-  const isEntityBackedKind = isEntityBackedPreset(presetKind)
+  const presetKind = activePresetKind(field.field_key ?? "");
+  const supportsBranching = BRANCHING_TYPES.includes(field.question_type);
+  const isEntityBackedKind = isEntityBackedPreset(presetKind);
   // The track named in the field's own key — scopes what the entity pickers
   // may offer. track_status names no track, so it has none.
   const presetTrackId =
-    presetKind === 'availability' ? parseAvailabilityFieldKey(field.field_key ?? '').trackId
-    : presetKind === 'event_preference' ? parseEventPreferenceFieldKey(field.field_key ?? '').trackId
-    : null
-  const hasTracks = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
+    presetKind === "availability"
+      ? parseAvailabilityFieldKey(field.field_key ?? "").trackId
+      : presetKind === "event_preference"
+        ? parseEventPreferenceFieldKey(field.field_key ?? "").trackId
+        : null;
+  const hasTracks =
+    presetKind === "track_status" ||
+    (presetKind === "availability" && !!field.config?.track_status_enabled);
   // tournament null means the entity-backed editor has no scope to fetch
   // shifts/events from — falls through to the read-only preview at the
   // bottom instead (see the tournament prop doc on QuestionRenderer), never
   // the plain freeform OptionsEditor: an availability/event_preference
   // field's options are never TD-typed text, tournament or not.
-  const isEntity = isEntityBackedKind && !!tournament
+  const isEntity = isEntityBackedKind && !!tournament;
 
-  if (!isEntityBackedKind && field.question_type === 'acknowledgment') {
+  if (!isEntityBackedKind && field.question_type === "acknowledgment") {
     // Gated on the current config too, not just the errors snapshot from the
     // last Save attempt — otherwise typing into the field wouldn't clear its
     // own error until the next Save/validate() call re-ran.
-    const confirmError = errors.includes('Confirmation text is required.') && !field.config?.confirm_label?.trim()
-      ? 'Confirmation text is required.' : undefined
-    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />
+    const confirmError =
+      errors.includes("Confirmation text is required.") && !field.config?.confirm_label?.trim()
+        ? "Confirmation text is required."
+        : undefined;
+    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />;
   }
 
-  const usesTrackEditor = hasTracks && !!tournament
+  const usesTrackEditor = hasTracks && !!tournament;
 
   // Archived options reach the editor now that there's something to do with
   // them — OptionsEditor lists them separately with a restore action. They're
   // still never shown to a respondent; that filtering lives in QuestionBody.
   // The submitted list is authoritative, so an archived option dropped here
   // would be deleted outright rather than merely hidden.
-  const allOptions = (field.config?.options as EditableOption[] | undefined) ?? []
-  const liveOptions = allOptions.filter((option) => !option.is_archived)
+  const allOptions = (field.config?.options as EditableOption[] | undefined) ?? [];
+  const liveOptions = allOptions.filter((option) => !option.is_archived);
   const setOptions = (options: EditableOption[]) =>
-    onFieldChange({ config: { ...field.config, options } })
+    onFieldChange({ config: { ...field.config, options } });
 
-  if (isEntity || usesTrackEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
+  if (
+    isEntity ||
+    usesTrackEditor ||
+    (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))
+  ) {
     return (
       <>
         {isEntity || usesTrackEditor ? (
           <EntityOptionsEditor
-            fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
+            fieldKey={presetKind as "availability" | "event_preference" | "track_status"}
             trackId={presetTrackId}
             tournament={tournament!}
             questionType={field.question_type}
@@ -504,67 +635,100 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             event twice is meaningless, and the backend rejects the config
             outright — see validate_event_preference_options), so the toggle
             is hidden rather than shown disabled. */}
-        {field.question_type === 'ranked_choice' && (() => {
-          const options = liveOptions
-          const ranks = field.config?.ranks ?? 1
-          // Same live-data gate as confirmError above — re-check against the
-          // current option count rather than trusting the errors snapshot is
-          // still accurate once ranks or the option list has since changed.
-          const ranksError = errors.includes("Ranks can't exceed the number of options.") && ranks > options.length
-            ? "Can't exceed the number of options." : undefined
-          return (
-          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-end', gap: '20px' }}>
-            <div style={{ width: '100px' }}>
-              <Input
-                label="Ranks"
-                type="number"
-                min={1}
-                value={String(ranks)}
-                onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
-                error={ranksError}
-                size="sm"
-                fullWidth
-              />
-            </div>
-            {presetKind !== 'event_preference' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '9px' }}>
-                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                  Allow duplicate ranks
-                </span>
-                <Switch
-                  checked={!!field.config?.allow_duplicates}
-                  onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
-                />
+        {field.question_type === "ranked_choice" &&
+          (() => {
+            const options = liveOptions;
+            const ranks = field.config?.ranks ?? 1;
+            // Same live-data gate as confirmError above — re-check against the
+            // current option count rather than trusting the errors snapshot is
+            // still accurate once ranks or the option list has since changed.
+            const ranksError =
+              errors.includes("Ranks can't exceed the number of options.") && ranks > options.length
+                ? "Can't exceed the number of options."
+                : undefined;
+            return (
+              <div
+                style={{ marginTop: "12px", display: "flex", alignItems: "flex-end", gap: "20px" }}
+              >
+                <div style={{ width: "100px" }}>
+                  <Input
+                    label="Ranks"
+                    type="number"
+                    min={1}
+                    value={String(ranks)}
+                    onChange={(e) =>
+                      onFieldChange({
+                        config: {
+                          ...field.config,
+                          ranks: Math.max(1, Number(e.target.value) || 1),
+                        },
+                      })
+                    }
+                    error={ranksError}
+                    size="sm"
+                    fullWidth
+                  />
+                </div>
+                {presetKind !== "event_preference" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      paddingBottom: "9px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
+                      Allow duplicate ranks
+                    </span>
+                    <Switch
+                      checked={!!field.config?.allow_duplicates}
+                      onChange={(checked) =>
+                        onFieldChange({ config: { ...field.config, allow_duplicates: checked } })
+                      }
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          )
-        })()}
+            );
+          })()}
       </>
-    )
+    );
   }
 
-  return <QuestionBody field={field} interactive={false} />
+  return <QuestionBody field={field} interactive={false} />;
 }
 
 // Acknowledgment's edit body — the one piece of its config with no default
 // on the backend (AcknowledgmentConfig.confirm_label has no fallback, unlike
 // every other type-specific config key here), so it needs a real editor
 // rather than silently defaulting at save time like ranks/allow_duplicates.
-function AcknowledgmentBody({ field, onFieldChange, error }: {
-  field: QuestionFieldData
-  onFieldChange: (updates: FieldUpdate) => void
-  error?: string
+function AcknowledgmentBody({
+  field,
+  onFieldChange,
+  error,
+}: {
+  field: QuestionFieldData;
+  onFieldChange: (updates: FieldUpdate) => void;
+  error?: string;
 }) {
   return (
     <Input
       label="Confirmation text"
-      value={field.config?.confirm_label ?? ''}
-      onChange={(e) => onFieldChange({ config: { ...field.config, confirm_label: e.target.value } })}
+      value={field.config?.confirm_label ?? ""}
+      onChange={(e) =>
+        onFieldChange({ config: { ...field.config, confirm_label: e.target.value } })
+      }
       placeholder="I understand and agree to the above"
       error={error}
       size="sm"
       fullWidth
     />
-  )
+  );
 }

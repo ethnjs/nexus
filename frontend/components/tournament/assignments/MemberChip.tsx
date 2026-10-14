@@ -1,20 +1,23 @@
 "use client";
 
+import { useDraggable } from "@dnd-kit/core";
 import {
-  memo, useMemo, useState,
-  type PointerEvent as ReactPointerEvent, type ReactNode,
-} from 'react'
-import { useDraggable } from '@dnd-kit/core'
+  memo,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useMemo,
+  useState,
+} from "react";
 
-import { RolePillMenu } from '@/components/tournament/assignments/RolePillMenu'
-import { IconWarning, IconX } from '@/components/ui/Icons'
-import { Tooltip } from '@/components/ui/Tooltip'
-import type { Assignment, Role } from '@/lib/api'
-import { fullName, type ChipHandlers } from '@/lib/assignments/board'
-import type { Flag } from '@/lib/assignments/flags'
-import { laneFlags, type Lane } from '@/lib/assignments/lanes'
+import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
+import { IconWarning, IconX } from "@/components/ui/Icons";
+import { Tooltip } from "@/components/ui/Tooltip";
+import type { Assignment, Role } from "@/lib/api";
+import { type ChipHandlers, fullName } from "@/lib/assignments/board";
+import type { Flag } from "@/lib/assignments/flags";
+import { type Lane, laneFlags } from "@/lib/assignments/lanes";
 
-type DragListeners = ReturnType<typeof useDraggable>['listeners']
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 
 /**
  * `grabbing` from the moment the pointer goes down.
@@ -31,60 +34,80 @@ type DragListeners = ReturnType<typeof useDraggable>['listeners']
  * them in keeps that composition in one place rather than at each call site.
  */
 function useGrabCursor(listeners: DragListeners) {
-  const [pressed, setPressed] = useState(false)
+  const [pressed, setPressed] = useState(false);
 
   function onPointerDown(e: ReactPointerEvent) {
-    setPressed(true)
+    setPressed(true);
     const release = () => {
-      setPressed(false)
-      window.removeEventListener('pointerup', release)
-      window.removeEventListener('pointercancel', release)
-    }
-    window.addEventListener('pointerup', release)
-    window.addEventListener('pointercancel', release)
-    listeners?.onPointerDown?.(e)
+      setPressed(false);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    listeners?.onPointerDown?.(e);
   }
 
-  return { pressed, onPointerDown }
+  return { pressed, onPointerDown };
 }
 
 /** A hover-revealed icon button inside a chip. Hidden from the pointer while
  *  invisible, not merely transparent — otherwise a stray click on a chip you
  *  were only passing over hits a control you cannot see. */
 function ChipAction({
-  hovered, danger, onClick, title, label, children,
+  hovered,
+  danger,
+  onClick,
+  title,
+  label,
+  children,
 }: {
-  hovered: boolean
-  danger?: boolean
-  onClick: () => void
-  title: string
-  label: string
-  children: ReactNode
+  hovered: boolean;
+  danger?: boolean;
+  onClick: () => void;
+  title: string;
+  label: string;
+  children: ReactNode;
 }) {
-  const resting = 'var(--color-text-tertiary)'
-  const active = danger ? 'var(--color-danger)' : 'var(--color-text-primary)'
+  const resting = "var(--color-text-tertiary)";
+  const active = danger ? "var(--color-danger)" : "var(--color-text-primary)";
   return (
     <button
       type="button"
       onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onClick() }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
       title={title}
       aria-label={label}
       style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, padding: 0, width: '14px', height: '14px',
-        border: 'none', background: 'transparent', borderRadius: '3px',
-        color: resting, cursor: 'pointer',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        padding: 0,
+        width: "14px",
+        height: "14px",
+        border: "none",
+        background: "transparent",
+        borderRadius: "3px",
+        color: resting,
+        cursor: "pointer",
         opacity: hovered ? 1 : 0,
-        pointerEvents: hovered ? 'auto' : 'none',
-        transition: 'opacity 120ms ease, color 120ms ease',
+        pointerEvents: hovered ? "auto" : "none",
+        transition: "opacity 120ms ease, color 120ms ease",
       }}
-      onPointerEnter={(e) => { e.currentTarget.style.color = active }}
-      onPointerLeave={(e) => { e.currentTarget.style.color = resting }}
+      onPointerEnter={(e) => {
+        e.currentTarget.style.color = active;
+      }}
+      onPointerLeave={(e) => {
+        e.currentTarget.style.color = resting;
+      }}
     >
       {children}
     </button>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -93,17 +116,17 @@ function ChipAction({
 interface MemberChipProps {
   /** The bar this chip draws — one person on the event, every role they hold
    *  here (a lane is one row per shift *per role*). */
-  lane: Lane
-  eventId: number
+  lane: Lane;
+  eventId: number;
   /** Every role the tournament offers, for the pill's picker. */
-  roleCatalog: Role[]
-  flagsFor: (a: Assignment) => Flag[]
-  handlers: ChipHandlers
+  roleCatalog: Role[];
+  flagsFor: (a: Assignment) => Flag[];
+  handlers: ChipHandlers;
   /** Given, the chip grows its own resize edges — no separate handles. */
-  onResizeStart?: (edge: 'start' | 'end', e: ReactPointerEvent) => void
+  onResizeStart?: (edge: "start" | "end", e: ReactPointerEvent) => void;
   /** Which edge is mid-drag, so its grip stays lit once the cursor has
    *  outrun the chip. */
-  resizingEdge?: 'start' | 'end' | null
+  resizingEdge?: "start" | "end" | null;
 }
 
 /**
@@ -112,13 +135,13 @@ interface MemberChipProps {
  * chip lives in MemberChipBody, the same split MemberCard uses.
  */
 export function MemberChip(props: MemberChipProps) {
-  const [hovered, setHovered] = useState(false)
-  const assignment = props.lane.assignments[0]
+  const [hovered, setHovered] = useState(false);
+  const assignment = props.lane.assignments[0];
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip:${assignment.id}`,
-    data: { kind: 'chip', assignment },
-  })
-  const grab = useGrabCursor(listeners)
+    data: { kind: "chip", assignment },
+  });
+  const grab = useGrabCursor(listeners);
 
   return (
     <div
@@ -130,84 +153,111 @@ export function MemberChip(props: MemberChipProps) {
       onPointerDown={grab.onPointerDown}
       style={{
         minWidth: 0,
-        cursor: grab.pressed || isDragging ? 'grabbing' : 'grab',
+        cursor: grab.pressed || isDragging ? "grabbing" : "grab",
         opacity: isDragging ? 0.4 : 1,
         // dnd-kit makes a draggable focusable, so grabbing one paints the
         // browser's default focus ring — the black outline. Dragging already
         // has its own visual state; the ring only adds a hard edge.
-        outline: 'none',
+        outline: "none",
       }}
     >
       <MemberChipBody {...props} hovered={hovered} />
     </div>
-  )
+  );
 }
 
 const MemberChipBody = memo(function MemberChipBody({
-  lane, eventId, roleCatalog, flagsFor, handlers, onResizeStart, resizingEdge, hovered,
+  lane,
+  eventId,
+  roleCatalog,
+  flagsFor,
+  handlers,
+  onResizeStart,
+  resizingEdge,
+  hovered,
 }: MemberChipProps & { hovered: boolean }) {
-  const assignment = lane.assignments[0]
-  const roles = lane.roles
+  const assignment = lane.assignments[0];
+  const roles = lane.roles;
   // Memoised so a hover toggle doesn't recompute every row's flags.
-  const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor])
+  const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor]);
 
   // The edges live inside the chip and sit above the drag listeners.
   // stopPropagation is what keeps a resize from also starting a drag — the
   // pointerdown would otherwise bubble to the draggable root.
-  const edge = (side: 'start' | 'end') => {
-    const active = resizingEdge === side
+  const edge = (side: "start" | "end") => {
+    const active = resizingEdge === side;
     return (
       <div
-        onPointerDown={(e) => { e.stopPropagation(); onResizeStart?.(side, e) }}
-        title={side === 'start' ? 'Drag to start earlier' : 'Drag to extend'}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onResizeStart?.(side, e);
+        }}
+        title={side === "start" ? "Drag to start earlier" : "Drag to extend"}
         style={{
-          position: 'absolute', top: 0, bottom: 0, width: '12px',
-          [side === 'start' ? 'left' : 'right']: 0,
-          cursor: 'ew-resize',
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: "12px",
+          [side === "start" ? "left" : "right"]: 0,
+          cursor: "ew-resize",
           // Touch hands a horizontal drag to the scroller unless the element
           // claims it, and the resize would never see a pointermove.
-          touchAction: 'none',
-          display: 'flex', alignItems: 'center',
-          justifyContent: side === 'start' ? 'flex-start' : 'flex-end',
-          padding: '0 3px',
+          touchAction: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: side === "start" ? "flex-start" : "flex-end",
+          padding: "0 3px",
         }}
       >
         {/* An invisible hit zone is a feature nobody finds. The grip shows on
             hover only, so a settled board stays quiet. */}
-        <div style={{
-          width: '2px', height: '11px', borderRadius: '1px',
-          background: active ? 'var(--color-accent)' : 'var(--color-border-strong)',
-          opacity: active || hovered ? 1 : 0,
-          transition: 'opacity 120ms ease, background 120ms ease',
-        }} />
+        <div
+          style={{
+            width: "2px",
+            height: "11px",
+            borderRadius: "1px",
+            background: active ? "var(--color-accent)" : "var(--color-border-strong)",
+            opacity: active || hovered ? 1 : 0,
+            transition: "opacity 120ms ease, background 120ms ease",
+          }}
+        />
       </div>
-    )
-  }
+    );
+  };
 
   return (
     <div
       style={{
-        position: 'relative',
-        display: 'flex', alignItems: 'center', gap: '6px',
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
         // Horizontal padding clears the 12px grips, so the name never sits
         // under a hit zone on a chip narrowed to a single shift.
-        padding: '4px 14px', borderRadius: 'var(--radius-md)',
-        border: `1px solid ${flags.length ? 'var(--color-warning)' : 'var(--color-border)'}`,
-        background: flags.length ? 'var(--color-warning-subtle)' : 'var(--color-surface)',
-        fontSize: '12px',
+        padding: "4px 14px",
+        borderRadius: "var(--radius-md)",
+        border: `1px solid ${flags.length ? "var(--color-warning)" : "var(--color-border)"}`,
+        background: flags.length ? "var(--color-warning-subtle)" : "var(--color-surface)",
+        fontSize: "12px",
         // No `overflow: hidden` here — it clipped the warning tooltip, which
         // renders inside the chip. The name below does its own truncating.
         minWidth: 0,
       }}
     >
-      {onResizeStart && edge('start')}
+      {onResizeStart && edge("start")}
       {/* The shift is carried by where the bar sits on the timeline, so
           repeating it here would say the same thing twice and cost the width
           that makes the name readable. */}
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontWeight: 500, whiteSpace: 'nowrap',
-        overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          minWidth: 0,
+        }}
+      >
         {fullName(assignment.member)}
       </span>
       {/* stopPropagation for the same reason the resize edges do it: without
@@ -216,7 +266,7 @@ const MemberChipBody = memo(function MemberChipBody({
           narrowed to one shift eats into the name instead of the control. */}
       <span
         onPointerDown={(e) => e.stopPropagation()}
-        style={{ display: 'flex', flexShrink: 0, cursor: 'default' }}
+        style={{ display: "flex", flexShrink: 0, cursor: "default" }}
       >
         <RolePillMenu
           roles={roles}
@@ -226,8 +276,8 @@ const MemberChipBody = memo(function MemberChipBody({
         />
       </span>
       {flags.length > 0 && (
-        <Tooltip variant="warning" message={flags.map((f) => f.detail).join(' ')} showIcon={false}>
-          <span style={{ display: 'flex', color: 'var(--color-warning)' }}>
+        <Tooltip variant="warning" message={flags.map((f) => f.detail).join(" ")} showIcon={false}>
+          <span style={{ display: "flex", color: "var(--color-warning)" }}>
             <IconWarning size={12} />
           </span>
         </Tooltip>
@@ -244,7 +294,7 @@ const MemberChipBody = memo(function MemberChipBody({
       >
         <IconX size={10} />
       </ChipAction>
-      {onResizeStart && edge('end')}
+      {onResizeStart && edge("end")}
     </div>
-  )
-})
+  );
+});

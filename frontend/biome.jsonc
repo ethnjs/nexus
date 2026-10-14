@@ -1,0 +1,66 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  // Nested under the repo-root biome.jsonc.
+  "root": false,
+  "files": {
+    "ignoreUnknown": false
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // Clickable non-button elements need keyboard support; deferred to an accessibility pass.
+      "a11y": {
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        // Both render a labelable element (a native checkbox, a role="switch" button).
+        "noLabelWithoutControl": {
+          "level": "on",
+          "options": { "inputComponents": ["Checkbox", "Switch"] }
+        }
+      },
+      "correctness": {
+        "useExhaustiveDependencies": {
+          "level": "on",
+          "options": {
+            "reportUnnecessaryDependencies": false
+          }
+        }
+      },
+      "style": {
+        // `!` is how this codebase narrows, like `assert` on the backend.
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // The Google Sheets import is deprecated and unmaintained, as on the backend.
+      "includes": ["**/sheets/**"],
+      "linter": { "enabled": false }
+    }
+  ],
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

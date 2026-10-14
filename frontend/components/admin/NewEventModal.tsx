@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { canonicalEventsApi, CanonicalEvent, EventCategory, ApiError } from "@/lib/api";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, type CanonicalEvent, canonicalEventsApi, type EventCategory } from "@/lib/api";
 import { useActionToast } from "@/lib/useActionToast";
 
-export function NewEventModal({ categories, onClose, onCreated }: {
+export function NewEventModal({
+  categories,
+  onClose,
+  onCreated,
+}: {
   categories: EventCategory[];
   onClose: () => void;
   onCreated: (event: CanonicalEvent) => void;
@@ -30,10 +34,12 @@ export function NewEventModal({ categories, onClose, onCreated }: {
     setError(undefined);
     setSaving(true);
     try {
-      const created = await run(`${name.trim()} added`, () => canonicalEventsApi.create({
-        name: name.trim(),
-        category_id: Number(categoryId),
-      }));
+      const created = await run(`${name.trim()} added`, () =>
+        canonicalEventsApi.create({
+          name: name.trim(),
+          category_id: Number(categoryId),
+        }),
+      );
       onCreated(created);
       onClose();
     } catch (err: unknown) {
@@ -44,7 +50,10 @@ export function NewEventModal({ categories, onClose, onCreated }: {
 
   return (
     <Modal title="Add event" onClose={onClose}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+      >
         <Input
           label="Name"
           placeholder="Anatomy & Physiology"
@@ -68,19 +77,33 @@ export function NewEventModal({ categories, onClose, onCreated }: {
         />
 
         {categories.length === 0 && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
             Add a category first — every event belongs to one.
           </p>
         )}
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Button type="submit" variant="primary" loading={saving} disabled={!canSubmit}>
             Add event
           </Button>

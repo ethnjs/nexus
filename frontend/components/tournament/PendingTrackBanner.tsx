@@ -1,7 +1,7 @@
 "use client";
 
-import type { TournamentTrack } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
+import type { TournamentTrack } from "@/lib/api";
 
 /**
  * Why a pending-delete track is still showing up everywhere.
@@ -19,7 +19,10 @@ export function pendingTracks(tracks: TournamentTrack[]): TournamentTrack[] {
   return tracks.filter((track) => track.is_archived);
 }
 
-export function PendingTrackBanner({ tracks, subject }: {
+export function PendingTrackBanner({
+  tracks,
+  subject,
+}: {
   /** Every track in play on the page — only the pending ones are named. */
   tracks: TournamentTrack[];
   /** What the page lists, for the sentence: "events", "shifts". */

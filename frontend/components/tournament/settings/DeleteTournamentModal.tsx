@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { tournamentsApi, ApiError } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, tournamentsApi } from "@/lib/api";
 
 const CONFIRM_PHRASE = "DELETE";
 
@@ -15,7 +15,12 @@ interface DeleteTournamentModalProps {
   onDeleted: () => void;
 }
 
-export function DeleteTournamentModal({ tournamentId, tournamentName, onClose, onDeleted }: DeleteTournamentModalProps) {
+export function DeleteTournamentModal({
+  tournamentId,
+  tournamentName,
+  onClose,
+  onDeleted,
+}: DeleteTournamentModalProps) {
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -39,8 +44,17 @@ export function DeleteTournamentModal({ tournamentId, tournamentName, onClose, o
 
   return (
     <Modal title="Delete tournament" onClose={onClose} variant="danger">
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           This permanently deletes <strong>{tournamentName}</strong> — every membership, role, sheet
           config, and event tied to it. This cannot be undone.
         </p>
@@ -57,13 +71,21 @@ export function DeleteTournamentModal({ tournamentId, tournamentName, onClose, o
         />
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" variant="danger" loading={loading} disabled={!canSubmit}>
             Delete tournament
           </Button>

@@ -150,7 +150,9 @@
   cursor: pointer;
   background: transparent;
   color: var(--color-text-tertiary);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .row.active {
@@ -208,7 +210,9 @@
   text-decoration: none;
   box-sizing: border-box;
   flex-shrink: 0;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .subRow.active {
@@ -243,16 +247,6 @@
   display: none;
 }
 
-.aside:hover .label,
-.aside.locked .label {
-  display: block;
-}
-
-.aside:hover .chevron,
-.aside.locked .chevron {
-  display: block;
-}
-
 .label {
   font-family: var(--font-sans);
   font-size: 13px;
@@ -270,6 +264,16 @@
 .chevron {
   transition: transform 0.2s ease;
   flex-shrink: 0;
+}
+
+.aside:hover .label,
+.aside.locked .label {
+  display: block;
+}
+
+.aside:hover .chevron,
+.aside.locked .chevron {
+  display: block;
 }
 
 .chevronOpen {

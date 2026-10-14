@@ -1,11 +1,11 @@
 "use client";
 
-import { UserAvatar } from "@/components/ui/UserAvatar";
-import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
-import { TopbarCrumb } from "@/components/layout/TopbarCrumb";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { TopbarCrumb } from "@/components/layout/TopbarCrumb";
+import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import { Button } from "@/components/ui/Button";
 import { IconMenu } from "@/components/ui/Icons";
+import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Topbar.module.css";
 

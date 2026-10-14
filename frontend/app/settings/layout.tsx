@@ -1,9 +1,9 @@
 "use client";
 
 import { Topbar } from "@/components/layout/Topbar";
+import styles from "@/components/settings/Settings.module.css";
 import { SettingsNav } from "@/components/settings/SettingsNav";
 import { NavDrawerProvider } from "@/lib/useNavDrawer";
-import styles from "@/components/settings/Settings.module.css";
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,9 +12,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <Topbar showWordmark showAvatar showNavToggle />
         <div className={styles.container}>
           <SettingsNav />
-          <div className={styles.content}>
-            {children}
-          </div>
+          <div className={styles.content}>{children}</div>
         </div>
       </div>
     </NavDrawerProvider>

@@ -1,21 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { auditLogApi, AuditLogActor, AuditLogEntry, ApiError } from "@/lib/api";
-import { describeAuditLogEntry, ACTION_LABELS, ALL_AUDIT_ACTIONS } from "@/lib/auditLog";
+import { useEffect, useState } from "react";
+import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { IconChevronRight, IconLock } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, type AuditLogActor, type AuditLogEntry, auditLogApi } from "@/lib/api";
+import { ACTION_LABELS, ALL_AUDIT_ACTIONS, describeAuditLogEntry } from "@/lib/auditLog";
 import { personName } from "@/lib/personDisplay";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { IconChevronRight, IconLock } from "@/components/ui/Icons";
 
 const PAGE_SIZE = 50;
 
@@ -31,7 +31,10 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
       onMouseLeave={() => setHovered(false)}
       onClick={() => hasDetails && setExpanded((v) => !v)}
       style={{
-        display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px 12px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "10px",
+        padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
@@ -40,8 +43,12 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
     >
       <div
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: "16px", height: "22px", flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "16px",
+          height: "22px",
+          flexShrink: 0,
           color: "var(--color-text-tertiary)",
         }}
       >
@@ -58,33 +65,71 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
         <AvatarCircle user={entry.actor} size="sm" />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
-          overflow: "hidden", textOverflow: "ellipsis",
-        }}>
-          {hideActor ? summary : <><strong>{personName(entry.actor)}</strong> — {summary}</>}
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-primary)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {hideActor ? (
+            summary
+          ) : (
+            <>
+              <strong>{personName(entry.actor)}</strong> — {summary}
+            </>
+          )}
         </p>
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-          textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)",
-        }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "11px",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           {ACTION_LABELS[entry.action] ?? entry.action}
         </span>
 
         {expanded && hasDetails && (
-          <ol style={{ margin: "8px 0 0", paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "4px" }}>
+          <ol
+            style={{
+              margin: "8px 0 0",
+              paddingLeft: "18px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+            }}
+          >
             {details.map((d, i) => (
-              <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+              <li
+                // biome-ignore lint/suspicious/noArrayIndexKey: an entry's details are static and never reordered
+                key={i}
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
                 {d}
               </li>
             ))}
           </ol>
         )}
       </div>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
-        whiteSpace: "nowrap", flexShrink: 0,
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: "var(--color-text-tertiary)",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
         {formatRelativeTime(entry.created_at)}
       </span>
     </div>
@@ -97,7 +142,8 @@ export default function AuditLogSettingsPage() {
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const canViewAuditLog = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
+  const canViewAuditLog =
+    currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
 
   const [entries, setEntries] = useState<AuditLogEntry[] | null>(null);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
@@ -110,23 +156,29 @@ export default function AuditLogSettingsPage() {
 
   useEffect(() => {
     if (!canViewAuditLog) return;
-    auditLogApi.actors(tournamentId).then(setActors).catch(() => setActors([]));
+    auditLogApi
+      .actors(tournamentId)
+      .then(setActors)
+      .catch(() => setActors([]));
   }, [tournamentId, canViewAuditLog]);
 
   useEffect(() => {
     if (!canViewAuditLog) return;
     setEntries(null);
     setLoadError(null);
-    auditLogApi.list(tournamentId, {
-      limit: PAGE_SIZE,
-      action: actionFilter || undefined,
-      actor_id: userFilter ? Number(userFilter) : undefined,
-    })
+    auditLogApi
+      .list(tournamentId, {
+        limit: PAGE_SIZE,
+        action: actionFilter || undefined,
+        actor_id: userFilter ? Number(userFilter) : undefined,
+      })
       .then((page) => {
         setEntries(page.items);
         setNextBeforeId(page.next_before_id);
       })
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load the audit log."));
+      .catch((e) =>
+        setLoadError(e instanceof ApiError ? e.message : "Failed to load the audit log."),
+      );
   }, [tournamentId, canViewAuditLog, actionFilter, userFilter]);
 
   async function handleLoadMore() {
@@ -207,7 +259,14 @@ export default function AuditLogSettingsPage() {
       </div>
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -237,7 +296,13 @@ export default function AuditLogSettingsPage() {
 
           {nextBeforeId !== null && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: "14px" }}>
-              <Button type="button" variant="secondary" size="sm" loading={loadingMore} onClick={handleLoadMore}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={loadingMore}
+                onClick={handleLoadMore}
+              >
                 Load more
               </Button>
             </div>

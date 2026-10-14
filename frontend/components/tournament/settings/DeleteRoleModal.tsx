@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { rolesApi, ApiError } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, rolesApi } from "@/lib/api";
 
 interface DeleteRoleModalProps {
   tournamentId: number;
@@ -14,7 +14,14 @@ interface DeleteRoleModalProps {
   onDeleted: () => void;
 }
 
-export function DeleteRoleModal({ tournamentId, roleId, roleLabel, membersAffected, onClose, onDeleted }: DeleteRoleModalProps) {
+export function DeleteRoleModal({
+  tournamentId,
+  roleId,
+  roleLabel,
+  membersAffected,
+  onClose,
+  onDeleted,
+}: DeleteRoleModalProps) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +40,13 @@ export function DeleteRoleModal({ tournamentId, roleId, roleLabel, membersAffect
   return (
     <Modal title="Delete role" onClose={onClose} variant="danger">
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           Delete <strong>{roleLabel}</strong>?
           {membersAffected > 0
             ? ` ${membersAffected} member${membersAffected === 1 ? "" : "s"} will lose this role.`
@@ -41,13 +54,21 @@ export function DeleteRoleModal({ tournamentId, roleId, roleLabel, membersAffect
         </p>
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
           <Button type="button" variant="danger" loading={loading} onClick={handleDelete}>
             Delete role
           </Button>

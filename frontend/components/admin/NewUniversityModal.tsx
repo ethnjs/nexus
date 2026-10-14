@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { universitiesApi, University, ApiError } from "@/lib/api";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, type University, universitiesApi } from "@/lib/api";
 import { useActionToast } from "@/lib/useActionToast";
 
-export function NewUniversityModal({ onClose, onCreated }: {
+export function NewUniversityModal({
+  onClose,
+  onCreated,
+}: {
   onClose: () => void;
   onCreated: (university: University) => void;
 }) {
@@ -27,13 +30,15 @@ export function NewUniversityModal({ onClose, onCreated }: {
     setError(undefined);
     setSaving(true);
     try {
-      const created = await run(`${name.trim()} added`, () => universitiesApi.create({
-        name: name.trim(),
-        // Empty means "not set", not an empty string — the column is nullable
-        // and a "" abbreviation would win over the name in placeOfShort.
-        abbreviation: abbreviation.trim() || null,
-        location: location.trim() || null,
-      }));
+      const created = await run(`${name.trim()} added`, () =>
+        universitiesApi.create({
+          name: name.trim(),
+          // Empty means "not set", not an empty string — the column is nullable
+          // and a "" abbreviation would win over the name in placeOfShort.
+          abbreviation: abbreviation.trim() || null,
+          location: location.trim() || null,
+        }),
+      );
       onCreated(created);
       onClose();
     } catch (err: unknown) {
@@ -46,7 +51,10 @@ export function NewUniversityModal({ onClose, onCreated }: {
 
   return (
     <Modal title="Add university" onClose={onClose}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+      >
         <Input
           label="Name"
           placeholder="California Institute of Technology"
@@ -75,13 +83,21 @@ export function NewUniversityModal({ onClose, onCreated }: {
         />
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Button type="submit" variant="primary" loading={saving} disabled={!canSubmit}>
             Add university
           </Button>

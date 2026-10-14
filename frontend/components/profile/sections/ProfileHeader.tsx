@@ -1,9 +1,9 @@
-import { ReactNode } from "react";
 import Link from "next/link";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { formatPhone } from "@/lib/auth";
-import { IconEdit } from "@/components/ui/Icons";
+import type { ReactNode } from "react";
 import styles from "@/components/profile/Profile.module.css";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { IconEdit } from "@/components/ui/Icons";
+import { formatPhone } from "@/lib/auth";
 
 interface ProfileHeaderUser {
   first_name?: string | null;
@@ -27,9 +27,7 @@ interface ProfileHeaderProps {
 
 export function ProfileHeader({ user, showEditButton = false, badges }: ProfileHeaderProps) {
   const fullName =
-    user.first_name && user.last_name
-      ? `${user.first_name} ${user.last_name}`
-      : user.email;
+    user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.email;
 
   return (
     <div className={styles.header}>
@@ -43,9 +41,7 @@ export function ProfileHeader({ user, showEditButton = false, badges }: ProfileH
 
         <div className={styles.nameBlock}>
           <div className={styles.name}>{fullName}</div>
-          {user.pronouns && (
-            <div className={styles.pronouns}>{user.pronouns}</div>
-          )}
+          {user.pronouns && <div className={styles.pronouns}>{user.pronouns}</div>}
         </div>
 
         <div className={styles.contact}>
@@ -58,16 +54,10 @@ export function ProfileHeader({ user, showEditButton = false, badges }: ProfileH
           )}
         </div>
 
-        {badges && (
-          <div className={styles.badges}>{badges}</div>
-        )}
+        {badges && <div className={styles.badges}>{badges}</div>}
 
         {showEditButton && (
-          <Link
-            href="/settings/account"
-            title="Edit account settings"
-            className={styles.editLink}
-          >
+          <Link href="/settings/account" title="Edit account settings" className={styles.editLink}>
             <IconEdit size={13} />
           </Link>
         )}

@@ -1,10 +1,10 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface PanelFieldProps {
-  label:    string;
-  helper?:  string;
+  label: string;
+  helper?: string;
   // Puts a small control (a switch) beside the label instead of under it.
-  inline?:  boolean;
+  inline?: boolean;
   children: ReactNode;
 }
 
@@ -13,14 +13,26 @@ interface PanelFieldProps {
 export function PanelField({ label, helper, inline = false, children }: PanelFieldProps) {
   const heading = (
     <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase",
-        letterSpacing: "0.07em", color: "var(--color-text-tertiary)",
-      }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "11px",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         {label}
       </span>
       {helper && (
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           {helper}
         </span>
       )}
@@ -29,7 +41,14 @@ export function PanelField({ label, helper, inline = false, children }: PanelFie
 
   if (inline) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+        }}
+      >
         {heading}
         {children}
       </div>

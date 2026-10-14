@@ -1,4 +1,4 @@
-import { FormStatus } from "@/lib/api";
+import type { FormStatus } from "@/lib/api";
 
 export type FormStatusAction = "publish" | "unpublish" | "restore" | "archive" | "delete";
 
@@ -23,28 +23,53 @@ export function formStatusActions(
   lockedReason?: string,
 ): FormActionOption[] {
   const options = statusMoves(form);
-  return lockedReason ? options.map((option) => ({ ...option, disabledReason: lockedReason })) : options;
+  return lockedReason
+    ? options.map((option) => ({ ...option, disabledReason: lockedReason }))
+    : options;
 }
 
 function statusMoves(form: { status: FormStatus; response_count: number }): FormActionOption[] {
   const primary: FormActionOption =
     form.status === "draft"
-      ? { action: "publish", label: "Publish", subtitle: "Start accepting responses", target: "published" }
+      ? {
+          action: "publish",
+          label: "Publish",
+          subtitle: "Start accepting responses",
+          target: "published",
+        }
       : form.status === "published"
-        ? { action: "unpublish", label: "Unpublish", subtitle: "Stop accepting responses, back to draft", target: "draft" }
-        : { action: "restore", label: "Restore to draft", subtitle: "Unarchive it for review", target: "draft" };
+        ? {
+            action: "unpublish",
+            label: "Unpublish",
+            subtitle: "Stop accepting responses, back to draft",
+            target: "draft",
+          }
+        : {
+            action: "restore",
+            label: "Restore to draft",
+            subtitle: "Unarchive it for review",
+            target: "draft",
+          };
 
   return [
     primary,
     ...(form.status !== "archived"
-      ? [{ action: "archive", label: "Archive", subtitle: "Stop accepting responses", target: "archived" } as FormActionOption]
+      ? [
+          {
+            action: "archive",
+            label: "Archive",
+            subtitle: "Stop accepting responses",
+            target: "archived",
+          } as FormActionOption,
+        ]
       : []),
     {
       action: "delete",
       label: "Delete",
       subtitle: "Permanently remove this form",
       danger: true,
-      disabledReason: form.response_count > 0 ? "Archive instead — this form already has responses" : undefined,
+      disabledReason:
+        form.response_count > 0 ? "Archive instead — this form already has responses" : undefined,
     },
   ];
 }

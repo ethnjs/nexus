@@ -1,27 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Modal } from "@/components/ui/Modal";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { EditableText } from "@/components/ui/EditableText";
-import { Switch } from "@/components/ui/Switch";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { CheckboxList } from "@/components/ui/CheckboxList";
-import { ChipInput } from "@/components/ui/ChipInput";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { EditableText } from "@/components/ui/EditableText";
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconGripVertical,
+  IconPlus,
+  IconTrash,
+} from "@/components/ui/Icons";
+import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconGripVertical, IconTrash, IconPlus, IconChevronDown, IconChevronRight } from "@/components/ui/Icons";
-import { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
-import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
+import { Switch } from "@/components/ui/Switch";
+import type { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 import {
-  CUSTOM_SECTION_PREFIX, DEFAULT_CUSTOM_SECTION_TITLE, isCustomSection, resolveSections,
+  CUSTOM_SECTION_PREFIX,
+  DEFAULT_CUSTOM_SECTION_TITLE,
+  isCustomSection,
+  resolveSections,
 } from "@/lib/panelSections";
+import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
 
 interface MemberPanelConfigModalProps {
   tournamentId: number;
@@ -47,7 +66,9 @@ const ENTITY_GROUP_LABELS: Record<string, string> = {
 // state (it reserves room for the underline it shows while editing), without
 // which a custom row sits 1px taller than its neighbours.
 const SECTION_LABEL_STYLE = {
-  fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+  fontFamily: "var(--font-sans)",
+  fontSize: "13px",
+  fontWeight: 500,
 } as const;
 
 // Fixed so a row's height never depends on whether its name is an
@@ -60,15 +81,25 @@ const SECTION_ROW_HEIGHT = "38px";
 // click it. A fixed box lets the input overflow imperceptibly instead of
 // moving everything.
 const SECTION_NAME_BOX: React.CSSProperties = {
-  display: "flex", alignItems: "center", height: "20px",
+  display: "flex",
+  alignItems: "center",
+  height: "20px",
 };
 
 function newCustomSectionId(): string {
   return `${CUSTOM_SECTION_PREFIX}${crypto.randomUUID().slice(0, 8)}`;
 }
 
-function SortableSection({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+function SortableSection({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
   // Closed hand from the moment the pointer goes down, not from when the drag
   // actually starts — dnd-kit waits for 4px of travel, and in that gap an
   // open hand reads as a handle that ignored the click. Tracked in state
@@ -104,23 +135,34 @@ function SortableSection({ id, children }: { id: string; children: (handle: Reac
         <span
           {...attributes}
           {...listeners}
-          onPointerDown={(e) => { setPressed(true); listeners?.onPointerDown?.(e); }}
+          onPointerDown={(e) => {
+            setPressed(true);
+            listeners?.onPointerDown?.(e);
+          }}
           style={{
             cursor: pressed || isDragging ? "grabbing" : "grab",
-            display: "flex", alignItems: "center", color: "var(--color-text-tertiary)",
+            display: "flex",
+            alignItems: "center",
+            color: "var(--color-text-tertiary)",
           }}
           title="Drag to reorder"
         >
           <IconGripVertical size={14} />
-        </span>
+        </span>,
       )}
     </div>
   );
 }
 
-export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: MemberPanelConfigModalProps) {
-  const { catalog, draft, setDraft, saving, error, save, loading } =
-    useDisplayConfigDraft(tournamentId, MEMBERS_PANEL);
+export function MemberPanelConfigModal({
+  tournamentId,
+  onClose,
+  onSaved,
+}: MemberPanelConfigModalProps) {
+  const { catalog, draft, setDraft, saving, error, save, loading } = useDisplayConfigDraft(
+    tournamentId,
+    MEMBERS_PANEL,
+  );
   const [expanded, setExpanded] = useState<string | null>(null);
   // The section created by the last "New section" press — it mounts expanded
   // and with its name in edit mode, since naming it is always the next step.
@@ -194,11 +236,13 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
     }
     // A field belongs to at most one section — claiming it here releases it
     // from wherever it was, so it can never render twice.
-    update(sections.map((candidate) => {
-      if (candidate.id === section.id) return { ...candidate, fields: [...assigned, fieldKey] };
-      if (!isCustomSection(candidate.id)) return candidate;
-      return { ...candidate, fields: (candidate.fields ?? []).filter((f) => f !== fieldKey) };
-    }));
+    update(
+      sections.map((candidate) => {
+        if (candidate.id === section.id) return { ...candidate, fields: [...assigned, fieldKey] };
+        if (!isCustomSection(candidate.id)) return candidate;
+        return { ...candidate, fields: (candidate.fields ?? []).filter((f) => f !== fieldKey) };
+      }),
+    );
   }
 
   function addCustomSection() {
@@ -211,7 +255,14 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
   return (
     <Modal title="Configure member panel" onClose={onClose} width={640}>
       {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "12px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "12px",
+          }}
+        >
           {error}
         </p>
       )}
@@ -222,8 +273,15 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
         </div>
       ) : (
         <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={sections.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
               {sections.map((section) => {
                 const meta = catalogById.get(section.id);
                 const custom = isCustomSection(section.id);
@@ -239,20 +297,33 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                     {(handle) => (
                       <>
                         <div
-                          onClick={expandable ? () => setExpanded(isOpen ? null : section.id) : undefined}
+                          onClick={
+                            expandable ? () => setExpanded(isOpen ? null : section.id) : undefined
+                          }
                           style={{
-                            display: "flex", alignItems: "center", gap: "8px",
-                            padding: "0 10px", minHeight: SECTION_ROW_HEIGHT,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "0 10px",
+                            minHeight: SECTION_ROW_HEIGHT,
                             cursor: expandable ? "pointer" : "default",
                           }}
                         >
                           {/* The handle owns drag; the row owns expand. */}
-                          <span onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>{handle}</span>
+                          <span onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>
+                            {handle}
+                          </span>
                           {expandable ? (
                             <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
-                              {isOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+                              {isOpen ? (
+                                <IconChevronDown size={12} />
+                              ) : (
+                                <IconChevronRight size={12} />
+                              )}
                             </span>
-                          ) : <span style={{ width: "12px" }} />}
+                          ) : (
+                            <span style={{ width: "12px" }} />
+                          )}
 
                           {custom ? (
                             // Click-to-edit rather than a permanent field:
@@ -268,12 +339,14 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                               />
                             </span>
                           ) : (
-                            <span style={{
-                              ...SECTION_LABEL_STYLE,
-                              ...SECTION_NAME_BOX,
-                              color: "var(--color-text-primary)",
-                              borderBottom: "1px solid transparent",
-                            }}>
+                            <span
+                              style={{
+                                ...SECTION_LABEL_STYLE,
+                                ...SECTION_NAME_BOX,
+                                color: "var(--color-text-primary)",
+                                borderBottom: "1px solid transparent",
+                              }}
+                            >
                               {meta?.label ?? section.id}
                             </span>
                           )}
@@ -285,7 +358,11 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
 
                           {custom && (
                             <Button
-                              type="button" variant="secondary" size="sm" iconOnly title="Delete section"
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              iconOnly
+                              title="Delete section"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 update(sections.filter((s) => s.id !== section.id));
@@ -305,90 +382,143 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                         {/* 0fr -> 1fr animates to the content's natural
                             height, which a max-height transition can't do
                             without hardcoding a guess per section. */}
-                        <div style={{
-                          display: "grid",
-                          gridTemplateRows: isOpen ? "1fr" : "0fr",
-                          transition: "grid-template-rows 180ms ease",
-                        }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateRows: isOpen ? "1fr" : "0fr",
+                            transition: "grid-template-rows 180ms ease",
+                          }}
+                        >
                           <div style={{ overflow: "hidden" }}>
-                          <div style={{ padding: "0 10px 10px 44px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                            {/* The section's own static fields. */}
-                            <CheckboxList
-                              options={staticFields.map((field) => ({ value: field.key, label: field.label }))}
-                              value={staticFields.filter((field) => fieldIsShown(section, field.key)).map((field) => field.key)}
-                              onChange={(key) => toggleField(section, key)}
-                            />
+                            <div
+                              style={{
+                                padding: "0 10px 10px 44px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
+                              }}
+                            >
+                              {/* The section's own static fields. */}
+                              <CheckboxList
+                                options={staticFields.map((field) => ({
+                                  value: field.key,
+                                  label: field.label,
+                                }))}
+                                value={staticFields
+                                  .filter((field) => fieldIsShown(section, field.key))
+                                  .map((field) => field.key)}
+                                onChange={(key) => toggleField(section, key)}
+                              />
 
-                            {/* Tracks as chips: a tournament can have a dozen,
+                              {/* Tracks as chips: a tournament can have a dozen,
                                 and a chip row reads as "these are shown" far
                                 faster than a column of ticked boxes. */}
-                            {entityFields.length > 0 && (
-                              <span style={{
-                                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                                letterSpacing: "0.06em", textTransform: "uppercase",
-                                color: "var(--color-text-tertiary)",
-                                marginTop: staticFields.length > 0 ? "6px" : 0,
-                              }}>
-                                {ENTITY_GROUP_LABELS[section.id] ?? "Items"}
-                              </span>
-                            )}
-                            {entityFields.length > 0 && (
-                              <ChipInput
-                                value={entityFields.filter((f) => fieldIsShown(section, f.key)).map((f) => f.label)}
-                                onChange={(labels) => {
-                                  const removed = entityFields.find(
-                                    (f) => fieldIsShown(section, f.key) && !labels.includes(f.label),
-                                  );
-                                  if (removed) toggleField(section, removed.key);
-                                }}
-                                variant="transparent"
-                                size="sm"
-                                disableInput
-                                fullWidth
-                                addButton={
-                                  <ChecklistPopover
-                                    trigger={
-                                      <Button type="button" variant="secondary" size="sm" iconOnly title="Edit visible items" style={{ padding: 0, flexShrink: 0 }}>
-                                        <IconPlus size={13} />
-                                      </Button>
-                                    }
-                                    items={entityFields}
-                                    getKey={(field) => field.key}
-                                    renderLabel={(field) => field.label}
-                                    isSelected={(field) => fieldIsShown(section, field.key)}
-                                    onToggle={(field) => toggleField(section, field.key)}
-                                    emptyMessage="Nothing to configure"
-                                  />
-                                }
-                              />
-                            )}
+                              {entityFields.length > 0 && (
+                                <span
+                                  style={{
+                                    fontFamily: "var(--font-sans)",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    letterSpacing: "0.06em",
+                                    textTransform: "uppercase",
+                                    color: "var(--color-text-tertiary)",
+                                    marginTop: staticFields.length > 0 ? "6px" : 0,
+                                  }}
+                                >
+                                  {ENTITY_GROUP_LABELS[section.id] ?? "Items"}
+                                </span>
+                              )}
+                              {entityFields.length > 0 && (
+                                <ChipInput
+                                  value={entityFields
+                                    .filter((f) => fieldIsShown(section, f.key))
+                                    .map((f) => f.label)}
+                                  onChange={(labels) => {
+                                    const removed = entityFields.find(
+                                      (f) =>
+                                        fieldIsShown(section, f.key) && !labels.includes(f.label),
+                                    );
+                                    if (removed) toggleField(section, removed.key);
+                                  }}
+                                  variant="transparent"
+                                  size="sm"
+                                  disableInput
+                                  fullWidth
+                                  addButton={
+                                    <ChecklistPopover
+                                      trigger={
+                                        <Button
+                                          type="button"
+                                          variant="secondary"
+                                          size="sm"
+                                          iconOnly
+                                          title="Edit visible items"
+                                          style={{ padding: 0, flexShrink: 0 }}
+                                        >
+                                          <IconPlus size={13} />
+                                        </Button>
+                                      }
+                                      items={entityFields}
+                                      getKey={(field) => field.key}
+                                      renderLabel={(field) => field.label}
+                                      isSelected={(field) => fieldIsShown(section, field.key)}
+                                      onToggle={(field) => toggleField(section, field.key)}
+                                      emptyMessage="Nothing to configure"
+                                    />
+                                  }
+                                />
+                              )}
 
-                            {/* Custom: which answers this section collects. A
+                              {/* Custom: which answers this section collects. A
                                 field already claimed elsewhere still appears,
                                 so moving one between sections is a single
                                 click rather than an unassign-then-assign. */}
-                            {custom && (catalog?.custom_fields ?? []).map((field) => {
-                              const mine = (section.fields ?? []).includes(field.key);
-                              const takenElsewhere = !mine && assignedFields.has(field.key);
-                              return (
-                                <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                                  <Checkbox checked={mine} onChange={() => toggleAssignment(section, field.key)} />
-                                  <span style={{
-                                    fontFamily: "var(--font-sans)", fontSize: "13px",
-                                    color: takenElsewhere ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-                                  }}>
-                                    {field.label}{takenElsewhere ? " — in another section" : ""}
-                                  </span>
-                                </label>
-                              );
-                            })}
+                              {custom &&
+                                (catalog?.custom_fields ?? []).map((field) => {
+                                  const mine = (section.fields ?? []).includes(field.key);
+                                  const takenElsewhere = !mine && assignedFields.has(field.key);
+                                  return (
+                                    <label
+                                      key={field.key}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      <Checkbox
+                                        checked={mine}
+                                        onChange={() => toggleAssignment(section, field.key)}
+                                      />
+                                      <span
+                                        style={{
+                                          fontFamily: "var(--font-sans)",
+                                          fontSize: "13px",
+                                          color: takenElsewhere
+                                            ? "var(--color-text-tertiary)"
+                                            : "var(--color-text-primary)",
+                                        }}
+                                      >
+                                        {field.label}
+                                        {takenElsewhere ? " — in another section" : ""}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
 
-                            {custom && (catalog?.custom_fields ?? []).length === 0 && (
-                              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-                                No custom form fields yet.
-                              </span>
-                            )}
-                          </div>
+                              {custom && (catalog?.custom_fields ?? []).length === 0 && (
+                                <span
+                                  style={{
+                                    fontFamily: "var(--font-sans)",
+                                    fontSize: "12px",
+                                    color: "var(--color-text-tertiary)",
+                                  }}
+                                >
+                                  No custom form fields yet.
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </>
@@ -406,8 +536,15 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
       )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
-        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button type="button" variant="primary" onClick={() => save(onSaved, onClose)} disabled={saving || !draft}>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => save(onSaved, onClose)}
+          disabled={saving || !draft}
+        >
           Save
         </Button>
       </div>

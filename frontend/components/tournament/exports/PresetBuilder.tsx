@@ -1,29 +1,35 @@
 "use client";
 
-import type { DisplayConfigSort, ExportColumnMode, ExportOutput, ExportPresetColumn, ExportRowType } from "@/lib/api";
-import { ExportColumn, ExportColumnGroup, columnMode } from "@/lib/exports/columns";
 import { PanelField } from "@/components/tournament/exports/PanelField";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
-import { IconX } from "@/components/ui/Icons";
+import type {
+  DisplayConfigSort,
+  ExportColumnMode,
+  ExportOutput,
+  ExportPresetColumn,
+  ExportRowType,
+} from "@/lib/api";
+import { columnMode, type ExportColumn, type ExportColumnGroup } from "@/lib/exports/columns";
 
 /** A custom preset being edited. row_type starts null: there's no default,
  *  the TD picks one before columns are offered. */
 export interface BuilderDraft {
-  name:           string;
-  row_type:       ExportRowType | null;
-  columns:        ExportPresetColumn[];
-  sorts:          DisplayConfigSort[];
+  name: string;
+  row_type: ExportRowType | null;
+  columns: ExportPresetColumn[];
+  sorts: DisplayConfigSort[];
   include_header: boolean;
-  output_type:    ExportOutput;
+  output_type: ExportOutput;
 }
 
 const ROW_TYPE_OPTIONS = [
   { value: "member", label: "Per member", description: "One row per person" },
-  { value: "event",  label: "Per event",  description: "One row per event" },
+  { value: "event", label: "Per event", description: "One row per event" },
 ];
 
 // What identifies a row — added up front when the row type is picked.
@@ -31,37 +37,43 @@ const ROW_TYPE_OPTIONS = [
 // row is meaningless without its event and who's on it.
 const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
   member: ["first_name", "last_name"],
-  event:  ["event", "members"],
+  event: ["event", "members"],
 };
 // UI-only: the backend doesn't enforce it.
 const FIXED_COLUMNS: Record<ExportRowType, ReadonlySet<string>> = {
   member: new Set(),
-  event:  new Set(["event", "members"]),
+  event: new Set(["event", "members"]),
 };
 
 const OUTPUT_OPTIONS = [
   { value: "copy", label: "Copy" },
-  { value: "txt",  label: "TXT" },
-  { value: "csv",  label: "CSV" },
+  { value: "txt", label: "TXT" },
+  { value: "csv", label: "CSV" },
 ];
 
 // "" is the dropdown's "every track"; a track id otherwise.
 const ALL_TRACKS = "";
 
 interface PresetBuilderProps {
-  draft:     BuilderDraft;
-  onChange:  (patch: Partial<BuilderDraft>) => void;
+  draft: BuilderDraft;
+  onChange: (patch: Partial<BuilderDraft>) => void;
   // Columns offered for the draft's row type and the picked track.
   available: ExportColumnGroup[];
   // Resolves a selected column for its header and whether it takes a mode.
-  resolve:   (key: string) => ExportColumn | null;
-  tracks:    { id: number; name: string }[];
-  trackId:   number | null;
+  resolve: (key: string) => ExportColumn | null;
+  tracks: { id: number; name: string }[];
+  trackId: number | null;
   onTrackChange: (trackId: number | null) => void;
 }
 
 export function PresetBuilder({
-  draft, onChange, available, resolve, tracks, trackId, onTrackChange,
+  draft,
+  onChange,
+  available,
+  resolve,
+  tracks,
+  trackId,
+  onTrackChange,
 }: PresetBuilderProps) {
   const selected = new Set(draft.columns.map((c) => c.key));
 
@@ -70,7 +82,9 @@ export function PresetBuilder({
     // Columns that don't apply to the new row type go, and the sorts on them.
     const kept = draft.columns.filter((c) => resolve(c.key)?.rowTypes.includes(rowType));
     const keptKeys = new Set(kept.map((c) => c.key));
-    const defaults = DEFAULT_COLUMNS[rowType].filter((key) => !keptKeys.has(key)).map((key) => ({ key }));
+    const defaults = DEFAULT_COLUMNS[rowType]
+      .filter((key) => !keptKeys.has(key))
+      .map((key) => ({ key }));
     onChange({
       row_type: rowType,
       columns: [...defaults, ...kept],
@@ -92,14 +106,21 @@ export function PresetBuilder({
   const addOptions = available
     .map((group) => ({
       group: group.title,
-      options: group.columns.filter((c) => !selected.has(c.key)).map((c) => ({ value: c.key, label: c.header })),
+      options: group.columns
+        .filter((c) => !selected.has(c.key))
+        .map((c) => ({ value: c.key, label: c.header })),
     }))
     .filter((group) => group.options.length > 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <PanelField label="Name">
-        <Input fullWidth value={draft.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="e.g. Lunch counts" />
+        <Input
+          fullWidth
+          value={draft.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="e.g. Lunch counts"
+        />
       </PanelField>
       <PanelField label="Rows" helper="What one row of the export is.">
         <ButtonGroup
@@ -109,12 +130,18 @@ export function PresetBuilder({
         />
       </PanelField>
       {tracks.length > 1 && (
-        <PanelField label="Track" helper="Narrows the columns offered and the assignments exported. Not saved.">
+        <PanelField
+          label="Track"
+          helper="Narrows the columns offered and the assignments exported. Not saved."
+        >
           <Dropdown
             fullWidth
             value={trackId === null ? ALL_TRACKS : String(trackId)}
             onChange={(value) => onTrackChange(value === ALL_TRACKS ? null : Number(value))}
-            options={[{ value: ALL_TRACKS, label: "All tracks" }, ...tracks.map((t) => ({ value: String(t.id), label: t.name }))]}
+            options={[
+              { value: ALL_TRACKS, label: "All tracks" },
+              ...tracks.map((t) => ({ value: String(t.id), label: t.name })),
+            ]}
           />
         </PanelField>
       )}
@@ -145,7 +172,10 @@ export function PresetBuilder({
             </div>
           </PanelField>
           <PanelField label="Header row" helper="Column names as the first row." inline>
-            <Switch checked={draft.include_header} onChange={(checked) => onChange({ include_header: checked })} />
+            <Switch
+              checked={draft.include_header}
+              onChange={(checked) => onChange({ include_header: checked })}
+            />
           </PanelField>
           <PanelField label="Export type">
             <ButtonGroup
@@ -161,26 +191,41 @@ export function PresetBuilder({
 }
 
 interface ColumnRowProps {
-  column:   ExportPresetColumn;
+  column: ExportPresetColumn;
   // Null when the column no longer resolves (a deleted track or field).
   resolved: ExportColumn | null;
   // Can't be removed for this row type.
-  fixed:    boolean;
-  onMode:   (mode: ExportColumnMode) => void;
+  fixed: boolean;
+  onMode: (mode: ExportColumnMode) => void;
   onRemove: () => void;
 }
 
 function ColumnRow({ column, resolved, fixed, onMode, onRemove }: ColumnRowProps) {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "6px 6px 6px 10px",
-      border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", background: "var(--color-bg)",
-    }}>
-      <span style={{
-        flex: 1, minWidth: 0, fontFamily: "var(--font-sans)", fontSize: "13px",
-        color: resolved ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        flexWrap: "wrap",
+        padding: "6px 6px 6px 10px",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        background: "var(--color-bg)",
+      }}
+    >
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: resolved ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {resolved ? resolved.header : `${column.key} (no longer available — skipped)`}
       </span>
       {resolved && resolved.modes.length > 0 && (
@@ -192,7 +237,14 @@ function ColumnRow({ column, resolved, fixed, onMode, onRemove }: ColumnRowProps
         />
       )}
       {!fixed && (
-        <Button type="button" variant="ghost" size="xs" iconOnly title="Remove column" onClick={onRemove}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          iconOnly
+          title="Remove column"
+          onClick={onRemove}
+        >
           <IconX size={12} />
         </Button>
       )}

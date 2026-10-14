@@ -1,3 +1,6 @@
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+allowBuilds:
+  sharp: false
+# Puts Biome's binary at node_modules/@biomejs/cli-<platform>/, a path without a
+# version, so the VS Code extension can find it from the repo root (.vscode/settings.json).
+publicHoistPattern:
+  - "@biomejs/cli-*"

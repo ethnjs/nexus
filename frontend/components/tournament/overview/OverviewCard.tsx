@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, HTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 
 /** Exported for cards that size themselves for the overview's mosaic. */
@@ -21,23 +21,51 @@ interface OverviewCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"
  * Every overview widget's shell, so their headers match. The header holds a
  * small button's height even without one, so a row of cards lines up.
  */
-export function OverviewCard({ title, titleStyle, meta, action, children, style, ...props }: OverviewCardProps) {
+export function OverviewCard({
+  title,
+  titleStyle,
+  meta,
+  action,
+  children,
+  style,
+  ...props
+}: OverviewCardProps) {
   return (
     <Card
       radius="lg"
-      style={{ padding: `${OVERVIEW_CARD_PADDING}px`, display: "flex", flexDirection: "column", gap: "16px", ...style }}
+      style={{
+        padding: `${OVERVIEW_CARD_PADDING}px`,
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        ...style,
+      }}
       {...props}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px" }}>
-        <span style={{
-          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)",
-          ...titleStyle,
-        }}>
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "var(--color-text-primary)",
+            ...titleStyle,
+          }}
+        >
           {title}
         </span>
         {meta !== undefined && (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
             {meta}
           </span>
         )}

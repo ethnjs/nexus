@@ -1,4 +1,4 @@
-import { FormFieldConfig, FormQuestionType } from "@/lib/api";
+import type { FormFieldConfig, FormQuestionType } from "@/lib/api";
 
 // Plain question_type options — no reserved presets here (see FIELD_KEY_PRESETS in fieldKeyPresets.ts).
 export const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
@@ -16,7 +16,10 @@ export const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[]
 // sourced from real tournament data, not freeform rows) even though they
 // reuse these same question_types — callers gate on !activePreset(field_key).
 export const OPTION_BEARING_TYPES: FormQuestionType[] = [
-  "single_select_radio", "single_select_dropdown", "multi_select_checkbox", "ranked_choice",
+  "single_select_radio",
+  "single_select_dropdown",
+  "multi_select_checkbox",
+  "ranked_choice",
 ];
 
 // Types whose edit-mode body offers per-option branching (Continue / Jump to /
@@ -24,7 +27,10 @@ export const OPTION_BEARING_TYPES: FormQuestionType[] = [
 // Excludes reserved presets (availability, event_preference) even though they
 // share these question_types — their options are entity-backed and
 // auto-generated, not something a TD hand-builds a branch tree over.
-export const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "single_select_dropdown"];
+export const BRANCHING_TYPES: FormQuestionType[] = [
+  "single_select_radio",
+  "single_select_dropdown",
+];
 
 // Types whose config carries display_style — a TD-facing render choice
 // between a plain radio/checkbox list and a ButtonGroup pill layout. Matches
@@ -32,7 +38,10 @@ export const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "sing
 // backend/app/schemas/form.py; single_select_dropdown and ranked_choice have
 // no equivalent (dropdown is always a closed Dropdown control, ranked_choice
 // always a RankedList).
-export const DISPLAY_STYLE_TYPES: FormQuestionType[] = ["single_select_radio", "multi_select_checkbox"];
+export const DISPLAY_STYLE_TYPES: FormQuestionType[] = [
+  "single_select_radio",
+  "multi_select_checkbox",
+];
 
 // Every backend Config schema (backend/app/schemas/form.py) is
 // extra="forbid" and only declares the keys that question_type actually
@@ -54,11 +63,15 @@ const CONFIG_KEYS_BY_TYPE: Record<FormQuestionType, (keyof FormFieldConfig)[]> =
 // new type's schema doesn't declare, which the backend's extra="forbid"
 // rejects wholesale rather than just ignoring. Always call this when
 // question_type changes, not just when seeding new config.
-export function sanitizeConfigForType(config: FormFieldConfig | null | undefined, questionType: FormQuestionType): FormFieldConfig {
+export function sanitizeConfigForType(
+  config: FormFieldConfig | null | undefined,
+  questionType: FormQuestionType,
+): FormFieldConfig {
   const allowedKeys = CONFIG_KEYS_BY_TYPE[questionType];
   const sanitized: FormFieldConfig = {};
   for (const key of allowedKeys) {
-    if (config && config[key] !== undefined) (sanitized as Record<string, unknown>)[key] = config[key];
+    if (config && config[key] !== undefined)
+      (sanitized as Record<string, unknown>)[key] = config[key];
   }
   return sanitized;
 }

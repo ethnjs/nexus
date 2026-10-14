@@ -11,7 +11,9 @@ const MIN_INTERVAL_MS = 1000;
 export function useRefetchOnFocus(refetch: () => void, enabled = true) {
   // Read through a ref so a fresh closure each render doesn't re-subscribe.
   const refetchRef = useRef(refetch);
-  useEffect(() => { refetchRef.current = refetch; });
+  useEffect(() => {
+    refetchRef.current = refetch;
+  });
 
   useEffect(() => {
     if (!enabled) return;

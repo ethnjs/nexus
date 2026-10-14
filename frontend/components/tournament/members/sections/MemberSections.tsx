@@ -1,23 +1,30 @@
 "use client";
 
-import { ReactNode } from "react";
-import {
-  DisplayConfigSection, MembershipFull, MembershipView, Role, TournamentShift,
-  TournamentTrack,
-} from "@/lib/api";
+import type { ReactNode } from "react";
 import { ProfileCard } from "@/components/profile/ProfileCard";
-import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
-import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
+import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
+import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { AssignmentsSection } from "@/components/tournament/members/sections/AssignmentsSection";
 import { AvailabilitySection } from "@/components/tournament/members/sections/AvailabilitySection";
-import { LunchSection } from "@/components/tournament/members/sections/LunchSection";
-import { EventPreferencesSection } from "@/components/tournament/members/sections/EventPreferencesSection";
 import { CustomResponsesSection } from "@/components/tournament/members/sections/CustomResponsesSection";
+import { EventPreferencesSection } from "@/components/tournament/members/sections/EventPreferencesSection";
+import { LunchSection } from "@/components/tournament/members/sections/LunchSection";
 import { MembershipSection } from "@/components/tournament/members/sections/MembershipSection";
+import type {
+  DisplayConfigSection,
+  MembershipFull,
+  MembershipView,
+  Role,
+  TournamentShift,
+  TournamentTrack,
+} from "@/lib/api";
 import {
-  hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
+  hiddenFieldsOf,
+  isCustomSection,
+  orderedSections,
+  splitCustomAnswers,
 } from "@/lib/panelSections";
 
 export interface MemberSectionsProps {
@@ -79,14 +86,15 @@ export function MemberSections(props: MemberSectionsProps) {
     <>
       {sections.map((section) => {
         if (hiddenSections.has(section.id)) return null;
-        const body = isCustomSection(section.id)
-          ? (
-            <CustomResponsesSection
-              title={section.title || "Custom Responses"}
-              customResponses={assigned.get(section.id) ?? []}
-            />
-          )
-          : RENDERERS[section.id]?.(props, hiddenFieldsOf(section));
+        const body = isCustomSection(section.id) ? (
+          // biome-ignore lint/correctness/useJsxKeyInIterable: rendered inside the keyed div below
+          <CustomResponsesSection
+            title={section.title || "Custom Responses"}
+            customResponses={assigned.get(section.id) ?? []}
+          />
+        ) : (
+          RENDERERS[section.id]?.(props, hiddenFieldsOf(section))
+        );
         return body ? <div key={section.id}>{body}</div> : null;
       })}
     </>
@@ -115,7 +123,9 @@ const RENDERERS: Record<
       hiddenFields={hiddenFields}
     />
   ),
-  availability: (p) => <AvailabilitySection availability={p.membership.availability ?? []} allShifts={p.shifts} />,
+  availability: (p) => (
+    <AvailabilitySection availability={p.membership.availability ?? []} allShifts={p.shifts} />
+  ),
   // hiddenFields carries this section's one static field: the shading behind
   // the timeline, which is off by naming it here rather than by a flag of
   // its own.
@@ -143,21 +153,31 @@ const RENDERERS: Record<
       }
     />
   ),
-  event_preferences: (p) => <EventPreferencesSection eventPreferences={p.membership.event_preferences ?? []} />,
+  event_preferences: (p) => (
+    <EventPreferencesSection eventPreferences={p.membership.event_preferences ?? []} />
+  ),
   education: (p, hiddenFields) => (
-    <ProfileCard><EducationCareerSection user={p.membership.user} hiddenFields={hiddenFields} /></ProfileCard>
+    <ProfileCard>
+      <EducationCareerSection user={p.membership.user} hiddenFields={hiddenFields} />
+    </ProfileCard>
   ),
   // The experience sections render whatever the data — each distinguishes
   // "None" (answered, has none) from "No info yet" (never answered), which
   // an absent card can't. No `events`: that's the picker catalog for
   // view-edit mode, and each row already carries its own resolved event.
   competition_experience: (p) => (
-    <ProfileCard><CompetitionExperienceSection user={p.membership.user} mode="view" /></ProfileCard>
+    <ProfileCard>
+      <CompetitionExperienceSection user={p.membership.user} mode="view" />
+    </ProfileCard>
   ),
   volunteer_experience: (p) => (
-    <ProfileCard><VolunteerExperienceSection user={p.membership.user} mode="view" /></ProfileCard>
+    <ProfileCard>
+      <VolunteerExperienceSection user={p.membership.user} mode="view" />
+    </ProfileCard>
   ),
   logistics: (p, hiddenFields) => (
-    <ProfileCard><LogisticsSection user={p.membership.user} hiddenFields={hiddenFields} /></ProfileCard>
+    <ProfileCard>
+      <LogisticsSection user={p.membership.user} hiddenFields={hiddenFields} />
+    </ProfileCard>
   ),
 };

@@ -1,17 +1,19 @@
 "use client";
 
-import { Popover, PopoverProps } from "@/components/ui/Popover";
+import { Popover, type PopoverProps } from "@/components/ui/Popover";
 
-export type ChecklistPopoverProps<T> =
-  Omit<PopoverProps<T>, "checklist" | "onSelect" | "isSelected"> & {
-    /** Required here, unlike on Popover: a checklist row with no checked
-     *  state is a list, not a checklist. */
-    isSelected: (item: T) => boolean;
-    /** May throw/reject — the panel shows the error inline and stays open.
-     *  Called with the clicked item; the add/remove is the caller's, same
-     *  contract as ButtonGroup's multi-select mode. */
-    onToggle: (item: T) => void | Promise<void>;
-  };
+export type ChecklistPopoverProps<T> = Omit<
+  PopoverProps<T>,
+  "checklist" | "onSelect" | "isSelected"
+> & {
+  /** Required here, unlike on Popover: a checklist row with no checked
+   *  state is a list, not a checklist. */
+  isSelected: (item: T) => boolean;
+  /** May throw/reject — the panel shows the error inline and stays open.
+   *  Called with the clicked item; the add/remove is the caller's, same
+   *  contract as ButtonGroup's multi-select mode. */
+  onToggle: (item: T) => void | Promise<void>;
+};
 
 /**
  * A multi-select panel: Popover with checklist mode baked in.

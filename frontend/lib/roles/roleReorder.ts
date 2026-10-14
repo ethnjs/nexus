@@ -1,4 +1,4 @@
-import { Role } from "@/lib/api";
+import type { Role } from "@/lib/api";
 
 export type DropZoneKind = "above" | "below" | "join";
 
@@ -49,7 +49,14 @@ export function groupByRank(roles: Role[]): Role[][] {
 // Identity of an ordering: group boundaries + membership, ignoring rank values.
 // Two orderings with the same signature are the same list to the user.
 function signature(groups: Role[][]): string {
-  return groups.map((g) => [...g].map((r) => r.id).sort((a, b) => a - b).join(",")).join("|");
+  return groups
+    .map((g) =>
+      [...g]
+        .map((r) => r.id)
+        .sort((a, b) => a - b)
+        .join(","),
+    )
+    .join("|");
 }
 
 // Renumbers to RANK_STEP multiples. Groups up to and including the last one
@@ -57,7 +64,9 @@ function signature(groups: Role[][]): string {
 // actor's authority, so writing a new value there would be rejected.
 function renumber(groups: Role[][], isLocked: (role: Role) => boolean): Role[] {
   let lastLocked = -1;
-  groups.forEach((group, i) => { if (group.some(isLocked)) lastLocked = i; });
+  groups.forEach((group, i) => {
+    if (group.some(isLocked)) lastLocked = i;
+  });
 
   // Anchor on the lowest rank already in the renumbered run, not on whichever
   // role currently sits first — otherwise ranks drift upward every drag. The

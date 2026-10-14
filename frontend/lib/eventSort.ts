@@ -1,38 +1,48 @@
-import type { Assignment, TournamentEvent } from '@/lib/api'
-import { unfilledCount } from '@/lib/assignments/staffing'
-import { eventNameWithDivision, trackLocationLabel } from '@/lib/eventDisplay'
-import type { SortFieldOption } from '@/components/ui/SortModal'
-import type { SortRule, SortValue } from '@/lib/sorting'
+import type { SortFieldOption } from "@/components/ui/SortModal";
+import type { Assignment, TournamentEvent } from "@/lib/api";
+import { unfilledCount } from "@/lib/assignments/staffing";
+import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
+import type { SortRule, SortValue } from "@/lib/sorting";
 
 /** Shared by the assignments board and the events table. Mirrors
  *  KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS (and KNOWN_EVENT_SORT_FIELDS) in
  *  display_config.py — the server validates what it stores against them. */
-export const EVENT_SORT_FIELDS = ['name', 'division', 'start', 'staffing', 'category', 'location'] as const
-export type EventSortField = (typeof EVENT_SORT_FIELDS)[number]
+export const EVENT_SORT_FIELDS = [
+  "name",
+  "division",
+  "start",
+  "staffing",
+  "category",
+  "location",
+] as const;
+export type EventSortField = (typeof EVENT_SORT_FIELDS)[number];
 
 export function isEventSortField(field: string): field is EventSortField {
-  return (EVENT_SORT_FIELDS as readonly string[]).includes(field)
+  return (EVENT_SORT_FIELDS as readonly string[]).includes(field);
 }
 
 /** Direction labels say what the order *is*, not which way the arrow points:
  *  "Most short first" is the thing a coordinator wants, and "Descending" makes
  *  them work out what a descending gap means. */
 export const EVENT_SORT_OPTIONS: SortFieldOption[] = [
-  { value: 'name', label: 'Name', ascLabel: 'A → Z', descLabel: 'Z → A' },
-  { value: 'division', label: 'Division', ascLabel: 'A → C', descLabel: 'C → A' },
-  { value: 'start', label: 'Start time', ascLabel: 'Earliest first', descLabel: 'Latest first' },
-  { value: 'staffing', label: 'Staffing gap', ascLabel: 'Filled first', descLabel: 'Most short first' },
-  { value: 'category', label: 'Category', ascLabel: 'A → Z', descLabel: 'Z → A' },
-  { value: 'location', label: 'Location', ascLabel: 'A → Z', descLabel: 'Z → A' },
-]
+  { value: "name", label: "Name", ascLabel: "A → Z", descLabel: "Z → A" },
+  { value: "division", label: "Division", ascLabel: "A → C", descLabel: "C → A" },
+  { value: "start", label: "Start time", ascLabel: "Earliest first", descLabel: "Latest first" },
+  {
+    value: "staffing",
+    label: "Staffing gap",
+    ascLabel: "Filled first",
+    descLabel: "Most short first",
+  },
+  { value: "category", label: "Category", ascLabel: "A → Z", descLabel: "Z → A" },
+  { value: "location", label: "Location", ascLabel: "A → Z", descLabel: "Z → A" },
+];
 
 /** Name A→Z, which is the order you can predict without reading the config. */
-export const DEFAULT_EVENT_SORT: SortRule<EventSortField>[] = [
-  { field: 'name', direction: 'asc' },
-]
+export const DEFAULT_EVENT_SORT: SortRule<EventSortField>[] = [{ field: "name", direction: "asc" }];
 
 /** What the chain falls back to, and the sentence the modal prints. */
-export const EVENT_SORT_TIEBREAK = 'name'
+export const EVENT_SORT_TIEBREAK = "name";
 
 /**
  * What an event is called for the purpose of ordering — eventNameWithDivision,
@@ -42,7 +52,7 @@ export const EVENT_SORT_TIEBREAK = 'name'
  * before "Crime Busters C"). Division is also a key of its own, for grouping
  * every B event together — put it first in the chain to do that.
  */
-const sortName = eventNameWithDivision
+const sortName = eventNameWithDivision;
 
 /**
  * One event's value under one sort field.
@@ -59,27 +69,31 @@ export function eventSortValue(
   showsTrack: (trackId: number) => boolean,
 ): SortValue {
   switch (field) {
-    case 'name': return sortName(event)
+    case "name":
+      return sortName(event);
     // No division (a trial with none) sorts last, like any empty value.
-    case 'division': return event.division
+    case "division":
+      return event.division;
     // The joined canonical event's, since TournamentEvent has no category of
     // its own. A trial event linked to nothing has none, and sorts last.
-    case 'category': return event.event?.category.name ?? null
-    case 'start': {
-      const starts = event.shifts.map((shift) => new Date(shift.start).getTime())
-      return starts.length > 0 ? Math.min(...starts) : null
+    case "category":
+      return event.event?.category.name ?? null;
+    case "start": {
+      const starts = event.shifts.map((shift) => new Date(shift.start).getTime());
+      return starts.length > 0 ? Math.min(...starts) : null;
     }
-    case 'staffing': return unfilledCount(event, rowsFor(event.id), showsTrack)
+    case "staffing":
+      return unfilledCount(event, rowsFor(event.id), showsTrack);
     // The first location the event has on a track that is on screen, by the
     // label itself. An event across two buildings sorts under the earlier of
     // them — it has to be filed *somewhere*, and the alternative is a row
     // that moves depending on which of its tracks was listed first.
-    case 'location': {
+    case "location": {
       const labels = event.track_details
         .filter((detail) => showsTrack(detail.track_id))
         .map((detail) => trackLocationLabel(detail))
-        .filter((label): label is string => label !== null)
-      return labels.length > 0 ? labels.sort()[0] : null
+        .filter((label): label is string => label !== null);
+      return labels.length > 0 ? labels.sort()[0] : null;
     }
   }
 }
@@ -94,6 +108,9 @@ export function eventSortValue(
  * only thing guaranteed unique.
  */
 export function eventSortTiebreak(a: TournamentEvent, b: TournamentEvent): number {
-  const byName = sortName(a).localeCompare(sortName(b), undefined, { numeric: true, sensitivity: 'base' })
-  return byName !== 0 ? byName : a.id - b.id
+  const byName = sortName(a).localeCompare(sortName(b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  return byName !== 0 ? byName : a.id - b.id;
 }

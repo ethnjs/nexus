@@ -2,18 +2,18 @@
 
 import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
+  type ReactNode,
   useCallback,
+  useContext,
+  useEffect,
   useMemo,
-  ReactNode,
+  useState,
 } from "react";
 import {
+  type Tournament,
+  type TournamentSummary,
+  type TournamentTrack,
   tournamentsApi,
-  Tournament,
-  TournamentSummary,
-  TournamentTrack,
 } from "./api";
 
 /**
@@ -69,8 +69,7 @@ const TournamentContext = createContext<TournamentContextValue | null>(null);
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
   const [tournaments, setTournaments] = useState<TournamentSummary[]>([]);
-  const [selectedTournament, setSelectedTournament] =
-    useState<Tournament | null>(null);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Only populates the `tournaments` list (used by the Topbar switcher).
@@ -125,7 +124,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
 export function useTournament() {
   const ctx = useContext(TournamentContext);
-  if (!ctx)
-    throw new Error("useTournament must be used within TournamentProvider");
+  if (!ctx) throw new Error("useTournament must be used within TournamentProvider");
   return ctx;
 }

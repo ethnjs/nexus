@@ -28,11 +28,12 @@ export function AvatarCircle({ user, size = 32 }: AvatarCircleProps) {
   // name at all we show a person glyph rather than "?" — during onboarding
   // the name genuinely isn't set yet, and a question mark reads as an error
   // rather than as "you".
-  const initials = (`${user.first_name?.[0] ?? ""}${user.last_name?.[0] ?? ""}`).toUpperCase();
+  const initials = `${user.first_name?.[0] ?? ""}${user.last_name?.[0] ?? ""}`.toUpperCase();
 
-  const { box, font } = typeof size === "number"
-    ? { box: size, font: Math.max(11, Math.round(size * 0.34)) }
-    : SIZE_MAP[size];
+  const { box, font } =
+    typeof size === "number"
+      ? { box: size, font: Math.max(11, Math.round(size * 0.34)) }
+      : SIZE_MAP[size];
 
   // IconUser is already a filled disc with the figure knocked out of it, so at
   // the avatar's own size it *is* the avatar — no circle wrapped around it.
@@ -48,10 +49,18 @@ export function AvatarCircle({ user, size = 32 }: AvatarCircleProps) {
   return (
     <div
       style={{
-        width: `${box}px`, height: `${box}px`, borderRadius: "50%",
-        background: "var(--color-accent)", color: "var(--color-text-inverse)",
-        fontFamily: "var(--font-sans)", fontSize: `${font}px`, fontWeight: 700,
-        letterSpacing: "0.05em", display: "flex", alignItems: "center", justifyContent: "center",
+        width: `${box}px`,
+        height: `${box}px`,
+        borderRadius: "50%",
+        background: "var(--color-accent)",
+        color: "var(--color-text-inverse)",
+        fontFamily: "var(--font-sans)",
+        fontSize: `${font}px`,
+        fontWeight: 700,
+        letterSpacing: "0.05em",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         flexShrink: 0,
       }}
     >

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
-import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
-import { membersApi, tournamentsApi, MembershipFull, ApiError } from "@/lib/api";
+import { Combobox } from "@/components/ui/Combobox";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, type MembershipFull, membersApi, tournamentsApi } from "@/lib/api";
 
 const CONFIRM_PHRASE = "TRANSFER OWNERSHIP";
 
@@ -21,7 +21,12 @@ function memberLabel(m: MembershipFull) {
   return `${name} — ${m.user.email}`;
 }
 
-export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, onTransferred }: TransferOwnershipModalProps) {
+export function TransferOwnershipModal({
+  tournamentId,
+  currentUserId,
+  onClose,
+  onTransferred,
+}: TransferOwnershipModalProps) {
   const [members, setMembers] = useState<MembershipFull[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<MembershipFull | null>(null);
@@ -30,7 +35,8 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    membersApi.list(tournamentId, { fields: ["contact"] })
+    membersApi
+      .list(tournamentId, { fields: ["contact"] })
       .then((all) => setMembers(all.filter((m) => m.user.id !== currentUserId)))
       .catch(() => {});
   }, [tournamentId, currentUserId]);
@@ -54,8 +60,17 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
 
   return (
     <Modal title="Transfer ownership" onClose={onClose} variant="danger">
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           The new owner gets full permissions over this tournament. You keep whatever roles you
           already hold, but lose owner-level access.
         </p>
@@ -67,7 +82,10 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
           getLabel={memberLabel}
           allowFreeText={false}
           value={query}
-          onChange={(text, matched) => { setQuery(text); setSelected(matched); }}
+          onChange={(text, matched) => {
+            setQuery(text);
+            setSelected(matched);
+          }}
           placeholder="Search by name or email…"
         />
 
@@ -82,13 +100,21 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
         />
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" variant="danger" loading={loading} disabled={!canSubmit}>
             Transfer ownership
           </Button>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ApiError, tournamentOnboardingApi } from "@/lib/api";
+import { useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, tournamentOnboardingApi } from "@/lib/api";
 
 // Resolves the member's stored onboarding state into the next form. This is
 // intentionally separate from /join so returning members can resume the
@@ -15,7 +15,8 @@ export default function TournamentOnboardingPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    tournamentOnboardingApi.progress(tournamentId)
+    tournamentOnboardingApi
+      .progress(tournamentId)
       .then((progress) => {
         if (progress.next_form_id) {
           const redirect = encodeURIComponent(`/tournaments/${tournamentId}/onboarding`);
@@ -24,16 +25,26 @@ export default function TournamentOnboardingPage() {
           router.replace(`/dashboard/tournaments/${tournamentId}/overview`);
         }
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load tournament onboarding."));
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Failed to load tournament onboarding."),
+      );
   }, [router, tournamentId]);
 
   if (error) {
     return (
       <div style={{ padding: "80px 24px", textAlign: "center" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
+          {error}
+        </p>
       </div>
     );
   }
 
-  return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+      <Spinner size="lg" />
+    </div>
+  );
 }

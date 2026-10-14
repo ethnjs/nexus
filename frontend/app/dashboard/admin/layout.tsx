@@ -1,9 +1,9 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
+import { type ReactNode, useEffect } from "react";
 import { Spinner } from "@/components/ui/Spinner";
+import { useAuth } from "@/lib/useAuth";
 
 /**
  * Gate for every /dashboard/admin page.
@@ -24,7 +24,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
+      <div
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}
+      >
         <Spinner />
       </div>
     );

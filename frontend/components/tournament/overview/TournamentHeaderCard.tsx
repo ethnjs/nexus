@@ -1,12 +1,17 @@
 "use client";
 
-import { ReactNode } from "react";
-import type { TournamentTrack } from "@/lib/api";
-import { useTournament } from "@/lib/useTournament";
-import { formatTrackDates, placeOfTrack, primaryTracks, tournamentYear } from "@/lib/tournamentDisplay";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
-import { OverviewCard, OVERVIEW_CARD_PADDING } from "./OverviewCard";
+import type { TournamentTrack } from "@/lib/api";
+import {
+  formatTrackDates,
+  placeOfTrack,
+  primaryTracks,
+  tournamentYear,
+} from "@/lib/tournamentDisplay";
+import { useTournament } from "@/lib/useTournament";
+import { OVERVIEW_CARD_PADDING, OverviewCard } from "./OverviewCard";
 
 const TILE_MIN_WIDTH = 220;
 const TILE_GAP = 8;
@@ -29,7 +34,7 @@ export function TournamentHeaderCard() {
   const tags = [
     tournament.state,
     tournament.level && tournament.level[0].toUpperCase() + tournament.level.slice(1),
-    ...(tracks.length <= 1 ? tournament.division ?? [] : []),
+    ...(tracks.length <= 1 ? (tournament.division ?? []) : []),
   ].filter(Boolean) as string[];
 
   // Tells the mosaic how many columns to span — one tile needs no more than one.
@@ -41,11 +46,20 @@ export function TournamentHeaderCard() {
       title={[year, tournament.name].filter(Boolean).join(" ")}
       // The page's title, so it reads as one: larger, serif, and wrapping
       // rather than truncating a long name.
-      titleStyle={{ fontFamily: "Georgia, serif", fontSize: "28px", fontWeight: 400, lineHeight: 1.2, whiteSpace: "normal" }}
-      data-min-width={across > 1 ? minWidth : undefined}    >
+      titleStyle={{
+        fontFamily: "Georgia, serif",
+        fontSize: "28px",
+        fontWeight: 400,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
+      }}
+      data-min-width={across > 1 ? minWidth : undefined}
+    >
       {tags.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-          {tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}
+          {tags.map((tag) => (
+            <Badge key={tag}>{tag}</Badge>
+          ))}
         </div>
       )}
 
@@ -53,12 +67,16 @@ export function TournamentHeaderCard() {
       {tracks.length === 1 && <TrackFacts track={tracks[0]} />}
 
       {tracks.length > 1 && (
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${TILE_MIN_WIDTH}px), 1fr))`,
-          gap: `${TILE_GAP}px`,
-        }}>
-          {tracks.map((track) => <TrackTile key={track.id} track={track} />)}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${TILE_MIN_WIDTH}px), 1fr))`,
+            gap: `${TILE_GAP}px`,
+          }}
+        >
+          {tracks.map((track) => (
+            <TrackTile key={track.id} track={track} />
+          ))}
         </div>
       )}
     </OverviewCard>
@@ -67,17 +85,33 @@ export function TournamentHeaderCard() {
 
 function TrackTile({ track }: { track: TournamentTrack }) {
   return (
-    <div style={{
-      minWidth: 0, padding: "12px", display: "flex", flexDirection: "column", gap: "6px",
-      borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)",
-    }}>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+    <div
+      style={{
+        minWidth: 0,
+        padding: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--color-border)",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          fontWeight: 600,
+          color: "var(--color-text-primary)",
+        }}
+      >
         {track.name}
       </span>
       <TrackFacts track={track} />
       {!!track.division?.length && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
-          {track.division.map((division) => <Badge key={division}>{division}</Badge>)}
+          {track.division.map((division) => (
+            <Badge key={division}>{division}</Badge>
+          ))}
         </div>
       )}
     </div>
@@ -100,10 +134,16 @@ function TrackFacts({ track }: { track: TournamentTrack }) {
 
 function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <span style={{
-      display: "flex", alignItems: "center", gap: "6px",
-      fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
-    }}>
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
+        color: "var(--color-text-secondary)",
+      }}
+    >
       {icon}
       {children}
     </span>

@@ -1,24 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  ApiError, MembershipView, Role, TournamentShift, TournamentTrack, tournamentTracksApi,
-  asMembershipView, membersApi, rolesApi, tournamentShiftsApi,
-} from "@/lib/api";
-import { useTournament } from "@/lib/useTournament";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { useEffect, useState } from "react";
+import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
+import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Spinner } from "@/components/ui/Spinner";
-import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
-import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
-import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  asMembershipView,
+  type MembershipView,
+  membersApi,
+  type Role,
+  rolesApi,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentShiftsApi,
+  tournamentTracksApi,
+} from "@/lib/api";
 import { ALL_TRACKS_LOCKED_REASON, NO_TRACKS_ANSWERED_REASON } from "@/lib/responseLock";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { useTournament } from "@/lib/useTournament";
 
 /**
  * One member's whole record for this tournament.
@@ -55,24 +63,24 @@ export default function MemberPage() {
   // Bumped after the assignments section writes, so the page re-reads.
   const [reloadKey, setReloadKey] = useState(0);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
-  const [error, setError] = useState<ApiError | null>(null);
+  const [loadError, setLoadError] = useState<ApiError | null>(null);
 
   // Which route answers depends on who is asking, not on which page this is.
   // Wait for the provider before deciding: guessing wrong means a 403 the
   // member would see as "no access" to their own page.
   const isSelf = me?.id === membershipId;
+  // A non-manager gets their own row and nobody else's, so anything but
+  // their own id is refused here rather than fetched — otherwise /me would
+  // happily render the caller's own record under someone else's URL.
+  const forbidden = !membershipLoading && !canManageMembers && !isSelf;
+  const error = forbidden
+    ? new ApiError(403, "You can only view your own member page.")
+    : loadError;
 
   useEffect(() => {
     if (!Number.isFinite(tournamentId) || !Number.isFinite(membershipId)) return;
     if (membershipLoading) return;
-
-    // A non-manager gets their own row and nobody else's, so anything but
-    // their own id is refused here rather than fetched — otherwise /me would
-    // happily render the caller's own record under someone else's URL.
-    if (!canManageMembers && !isSelf) {
-      setError(new ApiError(403, "You can only view your own member page."));
-      return;
-    }
+    if (forbidden) return;
 
     const load = canManageMembers
       ? membersApi.get(tournamentId, membershipId)
@@ -83,22 +91,41 @@ export default function MemberPage() {
         if (view) return setFull(view);
         // getMe answered with no membership row — the caller is not a member
         // of this tournament, so there is nothing of theirs to show.
-        setError(new ApiError(403, "Not a member of this tournament."));
+        setLoadError(new ApiError(403, "Not a member of this tournament."));
       })
-      .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
+      .catch((e) =>
+        setLoadError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")),
+      );
     // Reading the shift catalog only needs a membership now (the member edit
     // page needs it too), and all this sets is the availability timeline's
     // window — so there is no member-facing variant to ask for.
-    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => setShifts([]));
-    tournamentTracksApi.list(tournamentId).then(setTracks).catch(() => setTracks([]));
-  }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf]);
+    tournamentShiftsApi
+      .list(tournamentId)
+      .then(setShifts)
+      .catch(() => setShifts([]));
+    tournamentTracksApi
+      .list(tournamentId)
+      .then(setTracks)
+      .catch(() => setTracks([]));
+  }, [
+    tournamentId,
+    membershipId,
+    canManageMembers,
+    membershipLoading,
+    isSelf,
+    forbidden,
+    reloadKey,
+  ]);
 
   // The catalog is only the *pickable* roles — the ones a member already
   // holds ride on the membership itself. So it's needed only for the edit
   // popover, and the route is manage_members/manage_roles gated anyway.
   useEffect(() => {
     if (!canManageMembers) return;
-    rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
+    rolesApi
+      .list(tournamentId)
+      .then(setAllRoles)
+      .catch(() => setAllRoles([]));
   }, [tournamentId, canManageMembers]);
 
   if (error) {
@@ -136,13 +163,18 @@ export default function MemberPage() {
   // button says why here instead. One writable track — answered and unlocked
   // — is enough to leave it working; the edit page explains the rest in place.
   const liveTracks = (full.track_statuses ?? []).filter((track) => !track.is_archived);
-  const allTracksLocked = liveTracks.length > 0 && liveTracks.every((track) => track.lock_responses);
-  const noneWritable = liveTracks.length > 0
-    && !liveTracks.some((track) => !track.lock_responses && track.status !== "pending");
-  const editLockedReason = isArchived ? ARCHIVED_REASON
-    : allTracksLocked ? ALL_TRACKS_LOCKED_REASON
-    : noneWritable ? NO_TRACKS_ANSWERED_REASON
-    : undefined;
+  const allTracksLocked =
+    liveTracks.length > 0 && liveTracks.every((track) => track.lock_responses);
+  const noneWritable =
+    liveTracks.length > 0 &&
+    !liveTracks.some((track) => !track.lock_responses && track.status !== "pending");
+  const editLockedReason = isArchived
+    ? ARCHIVED_REASON
+    : allTracksLocked
+      ? ALL_TRACKS_LOCKED_REASON
+      : noneWritable
+        ? NO_TRACKS_ANSWERED_REASON
+        : undefined;
 
   return (
     // Same 900px column /profile/[id] reads in: it's the same kind of page —
@@ -154,7 +186,9 @@ export default function MemberPage() {
       {canManageMembers && (
         <div style={{ marginBottom: "16px" }}>
           <Button
-            type="button" variant="ghost" size="sm"
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
           >
             <IconArrowLeft size={14} /> Members
@@ -180,9 +214,7 @@ export default function MemberPage() {
           rolesLocked={rolesLocked}
           collectIsOver18={!!selectedTournament?.collect_is_over_18}
           collectIsOver21={!!selectedTournament?.collect_is_over_21}
-          onRolesUpdated={(updated) =>
-            setFull((f) => (f ? { ...f, roles: updated.roles } : f))
-          }
+          onRolesUpdated={(updated) => setFull((f) => (f ? { ...f, roles: updated.roles } : f))}
         />
       </div>
 

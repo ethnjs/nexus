@@ -4,114 +4,114 @@ import type { ColumnMappingEntry, ParseRule } from "@/lib/api";
 
 export interface MappingRow {
   column_index: number;
-  header:    string;
-  field:     string;
-  type:      string;
-  row_key:   string;
+  header: string;
+  field: string;
+  type: string;
+  row_key: string;
   extra_key: string;
-  delimiter: string;           // only used when type === 'multi_select'; defaults to ''
-  rules:     ParseRule[];      // ordered list; empty array = no rules
+  delimiter: string; // only used when type === 'multi_select'; defaults to ''
+  rules: ParseRule[]; // ordered list; empty array = no rules
 }
 
 export interface MappingsExport {
-  label?:          string;
-  sheet_type?:     string;
-  sheet_name?:     string;
+  label?: string;
+  sheet_type?: string;
+  sheet_name?: string;
   column_mappings: ColumnMappingEntry[];
 }
 
 export interface FieldDiff {
   label: string;
-  from:  string;
-  to:    string;
+  from: string;
+  to: string;
 }
 
 export interface RuleDiff {
-  index:  number;
+  index: number;
   status: "added" | "removed" | "changed" | "unchanged";
-  from?:  ParseRule;
-  to?:    ParseRule;
+  from?: ParseRule;
+  to?: ParseRule;
 }
 
 export interface ImportSummaryEntry {
   column_index: number;
-  header:     string;
-  from:       MappingRow;
-  to:         MappingRow;
+  header: string;
+  from: MappingRow;
+  to: MappingRow;
   fieldDiffs: FieldDiff[];
-  ruleDiffs:  RuleDiff[];
+  ruleDiffs: RuleDiff[];
 }
 
 export interface ImportSummary {
   /** Rows where the mapping changed */
-  updated:    ImportSummaryEntry[];
+  updated: ImportSummaryEntry[];
   /** Count of rows that matched but had no change */
-  unchanged:  number;
+  unchanged: number;
   /** Headers in the file that don't exist in the current sheet — ignored */
   notInSheet: string[];
   /** Headers in the sheet that weren't in the file — untouched */
-  notInFile:  string[];
+  notInFile: string[];
 }
 
 // ─── Labels (mirrored here to avoid circular imports) ─────────────────────────
 
 const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":          "Ignore",
-  "full_name":           "Full Name",
-  "first_name":          "First Name",
-  "last_name":           "Last Name",
-  "email":               "Email",
-  "phone":               "Phone",
-  "shirt_size":          "Shirt Size",
-  "dietary_restriction": "Dietary Restriction",
-  "university":          "University",
-  "major":               "Major",
-  "employer":            "Employer",
-  "student_status":      "Student Status",
-  "competition_exp":     "Competition Experience",
-  "volunteering_exp":    "Volunteering Experience",
-  "role_preference":     "Role Preference",
-  "event_preference":    "Event Preference",
-  "availability":        "Availability",
-  "lunch_order":         "Lunch Order",
-  "notes":               "Notes",
-  "extra_data":          "Extra Data",
+  __ignore__: "Ignore",
+  full_name: "Full Name",
+  first_name: "First Name",
+  last_name: "Last Name",
+  email: "Email",
+  phone: "Phone",
+  shirt_size: "Shirt Size",
+  dietary_restriction: "Dietary Restriction",
+  university: "University",
+  major: "Major",
+  employer: "Employer",
+  student_status: "Student Status",
+  competition_exp: "Competition Experience",
+  volunteering_exp: "Volunteering Experience",
+  role_preference: "Role Preference",
+  event_preference: "Event Preference",
+  availability: "Availability",
+  lunch_order: "Lunch Order",
+  notes: "Notes",
+  extra_data: "Extra Data",
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  string:       "Text",
-  ignore:       "Ignore",
-  boolean:      "Yes/No",
-  integer:      "Number",
+  string: "Text",
+  ignore: "Ignore",
+  boolean: "Yes/No",
+  integer: "Number",
   multi_select: "Multi-select",
-  matrix_row:   "Matrix Row",
+  matrix_row: "Matrix Row",
 };
 
 const CONDITION_LABELS: Record<string, string> = {
-  always:      "Always",
-  contains:    "Contains",
-  equals:      "Equals",
+  always: "Always",
+  contains: "Contains",
+  equals: "Equals",
   starts_with: "Starts with",
-  ends_with:   "Ends with",
-  regex:       "Regex",
+  ends_with: "Ends with",
+  regex: "Regex",
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  set:               "Set to",
-  replace:           "Replace with",
-  prepend:           "Prepend",
-  append:            "Append",
-  discard:           "Discard",
-  parse_time_range:  "Parse time range",
-  parse_availability:"Parse availability",
+  set: "Set to",
+  replace: "Replace with",
+  prepend: "Prepend",
+  append: "Append",
+  discard: "Discard",
+  parse_time_range: "Parse time range",
+  parse_availability: "Parse availability",
 };
 
 // ─── Rule description ─────────────────────────────────────────────────────────
 
 /** Human-readable one-liner for a single ParseRule. */
 export function describeRule(rule: ParseRule): string {
-  const cond   = CONDITION_LABELS[rule.condition] ?? rule.condition;
-  const action = ACTION_LABELS[rule.action]       ?? rule.action;
+  const cond = CONDITION_LABELS[rule.condition] ?? rule.condition;
+  const action = ACTION_LABELS[rule.action] ?? rule.action;
   const parts: string[] = [];
 
   if (rule.condition === "always") {
@@ -134,38 +134,45 @@ export function describeRule(rule: ParseRule): string {
 export function mappingRowsEqual(a: MappingRow, b: MappingRow): boolean {
   if (
     a.column_index !== b.column_index ||
-    a.field     !== b.field     ||
-    a.type      !== b.type      ||
-    a.row_key   !== b.row_key   ||
+    a.field !== b.field ||
+    a.type !== b.type ||
+    a.row_key !== b.row_key ||
     a.extra_key !== b.extra_key ||
     a.delimiter !== b.delimiter
-  ) return false;
+  )
+    return false;
 
   if (a.rules.length !== b.rules.length) return false;
   for (let i = 0; i < a.rules.length; i++) {
     const ra = a.rules[i];
     const rb = b.rules[i];
     if (
-      ra.condition                  !== rb.condition                  ||
-      ra.action                     !== rb.action                     ||
-      (ra.match         ?? "")      !== (rb.match         ?? "")      ||
-      (ra.value         ?? "")      !== (rb.value         ?? "")      ||
-      (ra.case_sensitive ?? false)  !== (rb.case_sensitive ?? false)
-    ) return false;
+      ra.condition !== rb.condition ||
+      ra.action !== rb.action ||
+      (ra.match ?? "") !== (rb.match ?? "") ||
+      (ra.value ?? "") !== (rb.value ?? "") ||
+      (ra.case_sensitive ?? false) !== (rb.case_sensitive ?? false)
+    )
+      return false;
   }
   return true;
 }
 
 function computeFieldDiffs(from: MappingRow, to: MappingRow): FieldDiff[] {
   const checks: Array<{
-    label:   string;
+    label: string;
     fromVal: string;
-    toVal:   string;
-    fmt?:    (v: string) => string;
+    toVal: string;
+    fmt?: (v: string) => string;
   }> = [
-    { label: "Field",     fromVal: from.field,     toVal: to.field,     fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v },
-    { label: "Type",      fromVal: from.type,      toVal: to.type,      fmt: (v) => TYPE_LABELS[v] ?? v },
-    { label: "Row Key",   fromVal: from.row_key,   toVal: to.row_key },
+    {
+      label: "Field",
+      fromVal: from.field,
+      toVal: to.field,
+      fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v,
+    },
+    { label: "Type", fromVal: from.type, toVal: to.type, fmt: (v) => TYPE_LABELS[v] ?? v },
+    { label: "Row Key", fromVal: from.row_key, toVal: to.row_key },
     { label: "Extra Key", fromVal: from.extra_key, toVal: to.extra_key },
     { label: "Delimiter", fromVal: from.delimiter, toVal: to.delimiter },
   ];
@@ -173,7 +180,7 @@ function computeFieldDiffs(from: MappingRow, to: MappingRow): FieldDiff[] {
   const diffs: FieldDiff[] = [];
   for (const chk of checks) {
     const f = chk.fromVal ?? "";
-    const t = chk.toVal   ?? "";
+    const t = chk.toVal ?? "";
     if (f === t) continue;
     const fmt = chk.fmt ?? ((v: string) => v || "—");
     diffs.push({ label: chk.label, from: fmt(f), to: fmt(t) });
@@ -183,23 +190,31 @@ function computeFieldDiffs(from: MappingRow, to: MappingRow): FieldDiff[] {
 
 function rulesEqual(a: ParseRule, b: ParseRule): boolean {
   return (
-    a.condition                  === b.condition                  &&
-    a.action                     === b.action                     &&
-    (a.match         ?? "")      === (b.match         ?? "")      &&
-    (a.value         ?? "")      === (b.value         ?? "")      &&
-    (a.case_sensitive ?? false)  === (b.case_sensitive ?? false)
+    a.condition === b.condition &&
+    a.action === b.action &&
+    (a.match ?? "") === (b.match ?? "") &&
+    (a.value ?? "") === (b.value ?? "") &&
+    (a.case_sensitive ?? false) === (b.case_sensitive ?? false)
   );
 }
 
 function computeRuleDiffs(fromRules: ParseRule[], toRules: ParseRule[]): RuleDiff[] {
-  const len   = Math.max(fromRules.length, toRules.length);
+  const len = Math.max(fromRules.length, toRules.length);
   const diffs: RuleDiff[] = [];
   for (let i = 0; i < len; i++) {
     const from = fromRules[i];
-    const to   = toRules[i];
-    if (!from && to)  { diffs.push({ index: i, status: "added",   to });   continue; }
-    if (from  && !to) { diffs.push({ index: i, status: "removed", from }); continue; }
-    if (from  && to)  { diffs.push({ index: i, status: rulesEqual(from, to) ? "unchanged" : "changed", from, to }); }
+    const to = toRules[i];
+    if (!from && to) {
+      diffs.push({ index: i, status: "added", to });
+      continue;
+    }
+    if (from && !to) {
+      diffs.push({ index: i, status: "removed", from });
+      continue;
+    }
+    if (from && to) {
+      diffs.push({ index: i, status: rulesEqual(from, to) ? "unchanged" : "changed", from, to });
+    }
   }
   return diffs;
 }
@@ -232,19 +247,19 @@ export function parseMappingsJson(text: string): MappingsExport | null {
  */
 export function applyImport(
   currentRows: MappingRow[],
-  parsed:      MappingsExport,
+  parsed: MappingsExport,
 ): { updatedRows: MappingRow[]; summary: ImportSummary } {
   const importedByIndex = new Map<number, ColumnMappingEntry>(
     parsed.column_mappings.map((m) => [m.column_index, m]),
   );
   const currentIndices = new Set(currentRows.map((r) => r.column_index));
 
-  const updated:    ImportSummaryEntry[] = [];
-  let   unchanged   = 0;
-  const notInSheet  = parsed.column_mappings
+  const updated: ImportSummaryEntry[] = [];
+  let unchanged = 0;
+  const notInSheet = parsed.column_mappings
     .filter((m) => !currentIndices.has(m.column_index))
     .map((m) => m.header);
-  const notInFile:  string[] = [];
+  const notInFile: string[] = [];
 
   const updatedRows = currentRows.map((row) => {
     const m = importedByIndex.get(row.column_index);
@@ -255,23 +270,23 @@ export function applyImport(
 
     const next: MappingRow = {
       column_index: row.column_index,
-      header:    row.header,
-      field:     m.field     ?? row.field,
-      type:      m.type      ?? row.type,
-      row_key:   m.row_key   ?? "",
+      header: row.header,
+      field: m.field ?? row.field,
+      type: m.type ?? row.type,
+      row_key: m.row_key ?? "",
       extra_key: m.extra_key ?? "",
-      rules:     m.rules     ?? row.rules,
+      rules: m.rules ?? row.rules,
       delimiter: m.delimiter ?? row.delimiter,
     };
 
     if (!mappingRowsEqual(next, row)) {
       updated.push({
         column_index: row.column_index,
-        header:     row.header,
-        from:       { ...row },
-        to:         next,
+        header: row.header,
+        from: { ...row },
+        to: next,
         fieldDiffs: computeFieldDiffs(row, next),
-        ruleDiffs:  computeRuleDiffs(row.rules ?? [], next.rules ?? []),
+        ruleDiffs: computeRuleDiffs(row.rules ?? [], next.rules ?? []),
       });
     } else {
       unchanged++;

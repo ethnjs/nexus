@@ -1,16 +1,29 @@
 "use client";
 
 import {
-  FilterModal, FilterOption, FilterSectionConfig, FilterState, filterAllows, filterStateFromStored,
-  filterStateToStored, isFilterActive,
+  FilterModal,
+  type FilterOption,
+  type FilterSectionConfig,
+  type FilterState,
+  filterAllows,
+  filterStateFromStored,
+  filterStateToStored,
+  isFilterActive,
 } from "@/components/ui/FilterModal";
-import { Assignment, TournamentEvent } from "@/lib/api";
+import type { Assignment, TournamentEvent } from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
 
 // Shared by the events table and the assignments board — same keys, same
 // meaning, same predicate (eventPassesFilters) on both.
 export const EVENTS_FILTER_KEYS = [
-  "division", "type", "category", "track", "building", "shifts", "shift", "staffing",
+  "division",
+  "type",
+  "category",
+  "track",
+  "building",
+  "shifts",
+  "shift",
+  "staffing",
 ] as const;
 type EventsFilterKey = (typeof EVENTS_FILTER_KEYS)[number];
 
@@ -32,7 +45,9 @@ export function eventCategoryKey(event: TournamentEvent): string {
  *  filtering is client-side over exactly these events anyway. */
 export function eventCategoryOptions(events: TournamentEvent[]): FilterOption[] {
   const names = new Set(events.filter((e) => e.event).map((e) => e.event!.category.name));
-  const options = [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+  const options = [...names]
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ value: name, label: name }));
   return events.some((e) => !e.event)
     ? [...options, { value: EVENT_FILTER_UNSET, label: "No category" }]
     : options;
@@ -85,7 +100,8 @@ export function eventBuildingOptions(events: TournamentEvent[]): FilterOption[] 
   let missing = false;
   for (const e of events) {
     for (const d of e.track_details) {
-      if (d.building_id !== null) names.set(d.building_id, d.building_name ?? `Building ${d.building_id}`);
+      if (d.building_id !== null)
+        names.set(d.building_id, d.building_name ?? `Building ${d.building_id}`);
       else if (e.tracks.some((t) => t.id === d.track_id && t.is_primary)) missing = true;
     }
   }
@@ -102,7 +118,8 @@ export function eventShiftOptions(events: TournamentEvent[]): FilterOption[] {
   const trackNames = new Map<number, string>();
   for (const e of events) {
     for (const t of e.tracks) trackNames.set(t.id, t.name);
-    for (const s of e.shifts) shifts.set(s.id, { label: s.label, trackId: s.track_id, start: s.start });
+    for (const s of e.shifts)
+      shifts.set(s.id, { label: s.label, trackId: s.track_id, start: s.start });
   }
   const multiTrack = new Set([...shifts.values()].map((s) => s.trackId)).size > 1;
   return [...shifts]
@@ -130,7 +147,11 @@ function allowsAny(selected: Set<string>, values: string[]): boolean {
 }
 
 /** This event's staffing answers on the tracks that count. */
-function staffingValues(event: TournamentEvent, rows: readonly Assignment[], showsTrack: (id: number) => boolean): string[] {
+function staffingValues(
+  event: TournamentEvent,
+  rows: readonly Assignment[],
+  showsTrack: (id: number) => boolean,
+): string[] {
   let needed = 0;
   let unfilled = 0;
   for (const detail of event.track_details) {
@@ -148,24 +169,50 @@ function staffingValues(event: TournamentEvent, rows: readonly Assignment[], sho
 }
 
 /** The one predicate both pages filter events with. */
-export function eventPassesFilters(event: TournamentEvent, filters: EventsFilterState, ctx: EventFilterContext): boolean {
+export function eventPassesFilters(
+  event: TournamentEvent,
+  filters: EventsFilterState,
+  ctx: EventFilterContext,
+): boolean {
   if (!filterAllows(filters.division, event.division ?? EVENT_FILTER_UNSET)) return false;
   if (!filterAllows(filters.type, event.event_type)) return false;
   if (!filterAllows(filters.category, eventCategoryKey(event))) return false;
-  if (!allowsAny(ctx.trackOverride ?? filters.track, event.tracks.map((t) => String(t.id)))) return false;
+  if (
+    !allowsAny(
+      ctx.trackOverride ?? filters.track,
+      event.tracks.map((t) => String(t.id)),
+    )
+  )
+    return false;
   if (filters.building.size > 0) {
     // A competition track with no building is what "No location" means.
     const buildings = event.track_details
       .filter((d) => ctx.showsTrack(d.track_id))
-      .flatMap((d) => d.building_id !== null
-        ? [String(d.building_id)]
-        : event.tracks.some((t) => t.id === d.track_id && t.is_primary) ? [EVENT_FILTER_UNSET] : []);
+      .flatMap((d) =>
+        d.building_id !== null
+          ? [String(d.building_id)]
+          : event.tracks.some((t) => t.id === d.track_id && t.is_primary)
+            ? [EVENT_FILTER_UNSET]
+            : [],
+      );
     if (!allowsAny(filters.building, buildings)) return false;
   }
   if (!filterAllows(filters.shifts, event.shifts.length > 0 ? "has" : "none")) return false;
-  if (!allowsAny(filters.shift, event.shifts.map((s) => String(s.id)))) return false;
-  if (filters.staffing.size > 0
-    && !allowsAny(filters.staffing, staffingValues(event, ctx.assignmentsFor(event.id), ctx.showsTrack))) return false;
+  if (
+    !allowsAny(
+      filters.shift,
+      event.shifts.map((s) => String(s.id)),
+    )
+  )
+    return false;
+  if (
+    filters.staffing.size > 0 &&
+    !allowsAny(
+      filters.staffing,
+      staffingValues(event, ctx.assignmentsFor(event.id), ctx.showsTrack),
+    )
+  )
+    return false;
   return true;
 }
 
@@ -183,7 +230,11 @@ export function eventsFilterFromStored(
 ): EventsFilterState {
   // Staffing's values changed (staffed/unstaffed -> four); an old one would
   // match nothing and hide every event.
-  return filterStateFromStored(EVENTS_FILTER_KEYS, stored, (key, v) => key !== "staffing" || STAFFING_VALUES.has(v));
+  return filterStateFromStored(
+    EVENTS_FILTER_KEYS,
+    stored,
+    (key, v) => key !== "staffing" || STAFFING_VALUES.has(v),
+  );
 }
 
 export function eventsFilterToStored(filters: EventsFilterState): Record<string, string[]> {
@@ -209,18 +260,43 @@ interface EventsFilterModalProps {
 // list (checkbox list); Track, Building and Shift are open-ended short names,
 // so chips + a picker beat a checkbox column taller than the rest of the modal.
 export function EventsFilterModal({
-  divisionOptions, typeOptions, categoryOptions, trackOptions, buildingOptions, shiftOptions,
-  filters, onApply, onClose,
+  divisionOptions,
+  typeOptions,
+  categoryOptions,
+  trackOptions,
+  buildingOptions,
+  shiftOptions,
+  filters,
+  onApply,
+  onClose,
 }: EventsFilterModalProps) {
   const sections: FilterSectionConfig<EventsFilterKey>[] = [
     { key: "division", title: "Division", options: divisionOptions, control: "divisions" },
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
-    { key: "track", title: "Track", options: trackOptions ?? [], control: "chips", hidden: (trackOptions?.length ?? 0) < 2 },
-    { key: "building", title: "Building", options: buildingOptions, control: "chips", hidden: buildingOptions.length === 0 },
+    {
+      key: "track",
+      title: "Track",
+      options: trackOptions ?? [],
+      control: "chips",
+      hidden: (trackOptions?.length ?? 0) < 2,
+    },
+    {
+      key: "building",
+      title: "Building",
+      options: buildingOptions,
+      control: "chips",
+      hidden: buildingOptions.length === 0,
+    },
     { key: "staffing", title: "Staffing", options: STAFFING_OPTIONS, control: "buttons" },
     { key: "shifts", title: "Shifts", options: SHIFTS_OPTIONS, control: "buttons" },
-    { key: "shift", title: "Shift", options: shiftOptions, control: "chips", hidden: shiftOptions.length === 0 },
+    {
+      key: "shift",
+      title: "Shift",
+      options: shiftOptions,
+      control: "chips",
+      hidden: shiftOptions.length === 0,
+    },
   ];
 
   return (

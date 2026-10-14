@@ -1,22 +1,29 @@
 "use client";
 
 import { startTransition, useEffect, useState } from "react";
-import {
-  ApiError, DisplayConfigSection, MembershipFull, Role,
-  TournamentShift, TournamentTrack, displayConfigApi, membersApi, tournamentShiftsApi,
-  tournamentTracksApi,
-} from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
-import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
-import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
-import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MemberPanelConfigModal } from "@/components/tournament/members/MemberPanelConfigModal";
+import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  type DisplayConfigSection,
+  displayConfigApi,
+  type MembershipFull,
+  membersApi,
+  type Role,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentShiftsApi,
+  tournamentTracksApi,
+} from "@/lib/api";
+import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -63,11 +70,27 @@ interface MemberPanelProps {
 // page that lists members (roster, event rosters, etc.) behind an
 // "expand" action.
 export function MemberPanel({
-  tournamentId, membershipId, allRoles, shifts: shiftsProp, tracks: tracksProp,
-  canTouchRole, canEditMember,
-  collectIsOver18, collectIsOver21, onClose, onUpdated, onAssignmentsChanged, assignmentsVersion,
-  isArchived, isSelf, onRemove, onSelfRemove,
-  onPrev, onNext, hasPrev, hasNext,
+  tournamentId,
+  membershipId,
+  allRoles,
+  shifts: shiftsProp,
+  tracks: tracksProp,
+  canTouchRole,
+  canEditMember,
+  collectIsOver18,
+  collectIsOver21,
+  onClose,
+  onUpdated,
+  onAssignmentsChanged,
+  assignmentsVersion,
+  isArchived,
+  isSelf,
+  onRemove,
+  onSelfRemove,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
 }: MemberPanelProps) {
   // Read here rather than taken as a prop: every caller already builds its
   // canEditMember from this same hook, so the reason would be the same value
@@ -109,10 +132,17 @@ export function MemberPanel({
     // Superseded responses are dropped: back-to-back writes each trigger a
     // re-read, and an older one landing last would show stale assignments.
     let current = true;
-    membersApi.get(tournamentId, membershipId, MEMBERS_PANEL)
-      .then((data) => { if (current) startTransition(() => setFull(data)); })
-      .catch((e) => { if (current) setError(e instanceof ApiError ? e.message : "Failed to load member."); });
-    return () => { current = false; };
+    membersApi
+      .get(tournamentId, membershipId, MEMBERS_PANEL)
+      .then((data) => {
+        if (current) startTransition(() => setFull(data));
+      })
+      .catch((e) => {
+        if (current) setError(e instanceof ApiError ? e.message : "Failed to load member.");
+      });
+    return () => {
+      current = false;
+    };
   }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion, focusVersion]);
 
   // Keyed on whether the caller supplies them, not on the arrays, so a prop
@@ -120,13 +150,24 @@ export function MemberPanel({
   const ownShifts = shiftsProp === undefined;
   const ownTracks = tracksProp === undefined;
   useEffect(() => {
-    if (ownShifts) tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
-    if (ownTracks) tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
-    displayConfigApi.get(tournamentId)
-      .then((config) => startTransition(() => {
-        setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null);
-        setHiddenItems(config?.[MEMBERS_PANEL]?.hidden ?? []);
-      }))
+    if (ownShifts)
+      tournamentShiftsApi
+        .list(tournamentId)
+        .then((data) => startTransition(() => setShifts(data)))
+        .catch(() => {});
+    if (ownTracks)
+      tournamentTracksApi
+        .list(tournamentId)
+        .then((data) => startTransition(() => setTracks(data)))
+        .catch(() => {});
+    displayConfigApi
+      .get(tournamentId)
+      .then((config) =>
+        startTransition(() => {
+          setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null);
+          setHiddenItems(config?.[MEMBERS_PANEL]?.hidden ?? []);
+        }),
+      )
       .catch(() => {});
   }, [tournamentId, membershipId, reloadKey, ownShifts, ownTracks]);
 
@@ -161,8 +202,19 @@ export function MemberPanel({
               member it applies to. */}
           {full && (onRemove || onSelfRemove) && (
             <Button
-              type="button" variant="secondary" size="sm" iconOnly
-              title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              title={
+                isArchived
+                  ? ARCHIVED_REASON
+                  : isSelf
+                    ? "Leave tournament"
+                    : !canEditMember(full)
+                      ? "You can't remove this member."
+                      : "Remove member"
+              }
               disabled={isArchived || (!isSelf && !canEditMember(full))}
               onClick={() => (isSelf ? onSelfRemove?.(full) : onRemove?.(full))}
             >
@@ -172,17 +224,26 @@ export function MemberPanel({
           {/* The panel is the configurable, skimmable view; the page is the
               whole record with nothing hidden. */}
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
             title="Open full page"
-            onClick={() => window.open(
-              `/dashboard/tournaments/${tournamentId}/members/${membershipId}`,
-              "_blank", "noopener,noreferrer",
-            )}
+            onClick={() =>
+              window.open(
+                `/dashboard/tournaments/${tournamentId}/members/${membershipId}`,
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
           >
             <IconExpand size={14} />
           </Button>
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
             title="Configure panel"
             onClick={() => setShowSectionsModal(true)}
           >
@@ -193,7 +254,15 @@ export function MemberPanel({
     >
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: "20px" }}>
         {error ? (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
+            {error}
+          </p>
         ) : !full ? (
           <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
             <Spinner size="lg" />

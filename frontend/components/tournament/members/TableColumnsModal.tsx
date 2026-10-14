@@ -1,9 +1,13 @@
 "use client";
 
-import {
-  AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
-} from "@/components/tournament/members/memberColumns";
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
+import {
+  AVAILABILITY_TRACK_PREFIX,
+  EVENT_PREF_PREFIX,
+  FORM_FIELD_PREFIX,
+  LUNCH_PREFIX,
+  TRACK_PREFIX,
+} from "@/components/tournament/members/memberColumns";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 
 // A profile field, but it's what a lunch planner reads beside the lunch picks,
@@ -34,9 +38,20 @@ export function TableColumnsModal({ tournamentId, onClose, onSaved }: TableColum
       defaultColumns={DEFAULT_COLUMNS}
       selectColumns={(catalog) => catalog.columns}
       buildGroups={(columns) => [
-        { title: "Member", items: columns.filter((c) => !c.key.includes(":") && c.key !== DIETARY) },
-        { title: "Track status", items: columns.filter((c) => c.key.startsWith(TRACK_PREFIX)), layout: "chips" },
-        { title: "Availability", items: columns.filter((c) => c.key.startsWith(AVAILABILITY_TRACK_PREFIX)), layout: "chips" },
+        {
+          title: "Member",
+          items: columns.filter((c) => !c.key.includes(":") && c.key !== DIETARY),
+        },
+        {
+          title: "Track status",
+          items: columns.filter((c) => c.key.startsWith(TRACK_PREFIX)),
+          layout: "chips",
+        },
+        {
+          title: "Availability",
+          items: columns.filter((c) => c.key.startsWith(AVAILABILITY_TRACK_PREFIX)),
+          layout: "chips",
+        },
         {
           title: "Lunch",
           items: [
@@ -45,8 +60,15 @@ export function TableColumnsModal({ tournamentId, onClose, onSaved }: TableColum
           ],
           layout: "chips",
         },
-        { title: "Event preferences", items: columns.filter((c) => c.key.startsWith(EVENT_PREF_PREFIX)), layout: "chips" },
-        { title: "Custom fields", items: columns.filter((c) => c.key.startsWith(FORM_FIELD_PREFIX)) },
+        {
+          title: "Event preferences",
+          items: columns.filter((c) => c.key.startsWith(EVENT_PREF_PREFIX)),
+          layout: "chips",
+        },
+        {
+          title: "Custom fields",
+          items: columns.filter((c) => c.key.startsWith(FORM_FIELD_PREFIX)),
+        },
       ]}
       onClose={onClose}
       onSaved={onSaved}

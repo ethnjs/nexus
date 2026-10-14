@@ -12,9 +12,7 @@
  * rendering CollapsibleHeader instead of PageHeader, which is the whole of
  * what adopting this costs elsewhere.
  */
-import {
-  createContext, ReactNode, useCallback, useContext, useMemo, useState,
-} from "react";
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 export interface PageCrumbTab {
   key: string;
@@ -67,9 +65,7 @@ export function PageCrumbProvider({ children }: { children: ReactNode }) {
 
   return (
     <PageCrumbSetContext.Provider value={setters}>
-      <PageCrumbContext.Provider value={crumb}>
-        {children}
-      </PageCrumbContext.Provider>
+      <PageCrumbContext.Provider value={crumb}>{children}</PageCrumbContext.Provider>
     </PageCrumbSetContext.Provider>
   );
 }

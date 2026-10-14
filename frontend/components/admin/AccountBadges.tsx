@@ -1,17 +1,18 @@
 import { Badge } from "@/components/ui/Badge";
-import { ROLE, USER_STATUS } from "@/lib/api";
+import type { ROLE, USER_STATUS } from "@/lib/api";
 
 /**
  * Colour per account status. Shared so the users table's Status column and
  * every badge strip agree — a locked account has to look the same wherever
  * it's named.
  */
-export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "removed" | "declined"> = {
-  active:      "confirmed",
-  invited:     "pending",
-  deactivated: "removed",
-  locked:      "declined",
-};
+export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "removed" | "declined"> =
+  {
+    active: "confirmed",
+    invited: "pending",
+    deactivated: "removed",
+    locked: "declined",
+  };
 
 /**
  * Role, status and email verification as one strip — the account state an
@@ -22,7 +23,9 @@ export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "remo
  * account-internal, and /profile/[id] shows the same header to any signed-in
  * viewer.
  */
-export function AccountBadges({ user }: {
+export function AccountBadges({
+  user,
+}: {
   user: { role: ROLE; status: USER_STATUS; email_verified: boolean };
 }) {
   return (

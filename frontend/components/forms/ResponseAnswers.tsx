@@ -1,18 +1,22 @@
 "use client";
 
 import { useMemo } from "react";
-import { FormAnswer, FormField } from "@/lib/api";
-import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import styles from "@/components/forms/FormFlow.module.css";
+import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { Badge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/Card";
+import type { FormAnswer, FormField } from "@/lib/api";
+import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 
 // A submitted response, read-only — one card per live question. Shared by the
 // managers' Responses tab and a member viewing their own, so the two can't
 // drift. QuestionRenderer runs interactive + locked: non-interactive would
 // hide the value entirely.
-export function ResponseAnswers({ fields, answers, flaggedFieldIds }: {
+export function ResponseAnswers({
+  fields,
+  answers,
+  flaggedFieldIds,
+}: {
   /** Live questions only, with option values hydrated (formsApi.get). */
   fields: FormField[];
   answers: FormAnswer[];
@@ -35,14 +39,25 @@ export function ResponseAnswers({ fields, answers, flaggedFieldIds }: {
               </div>
             )}
             <QuestionRenderer
-              field={field} interactive locked
+              field={field}
+              interactive
+              locked
               value={storedAnswerToInput(stored)}
               removedOptions={removedPickedOptions(field, stored)}
-              answerNote={isBlankAnswer(stored) ? (
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontStyle: "italic", color: "var(--color-text-tertiary)" }}>
-                  Not answered
-                </span>
-              ) : undefined}
+              answerNote={
+                isBlankAnswer(stored) ? (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      fontStyle: "italic",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
+                    Not answered
+                  </span>
+                ) : undefined
+              }
             />
           </Card>
         );

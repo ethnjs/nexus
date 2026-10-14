@@ -1,4 +1,4 @@
-import { DisplayConfigSection, MembershipCustomAnswer } from "@/lib/api";
+import type { DisplayConfigSection, MembershipCustomAnswer } from "@/lib/api";
 
 // Mirrors the backend's DEFAULT_SECTION_ORDER (PANEL_SECTIONS) — kept in sync
 // by hand, same as displayConfigSurfaces.ts, since there's no shared codegen.
@@ -44,26 +44,30 @@ export function isCustomSection(id: string): boolean {
  * The editor wants this (a hidden section still has to be reachable to turn
  * back on); the panel wants orderedSections, which drops the hidden ones.
  */
-export function resolveSections(saved: DisplayConfigSection[] | null | undefined): DisplayConfigSection[] {
+export function resolveSections(
+  saved: DisplayConfigSection[] | null | undefined,
+): DisplayConfigSection[] {
   // Nothing saved: the built-ins in default order, plus the seeded catch-all.
   // Deleting it is a real saved state, so an empty saved list is respected.
   const savedList: DisplayConfigSection[] = saved ?? [
-    ...DEFAULT_SECTION_ORDER.map((id) => ({ id } as DisplayConfigSection)),
+    ...DEFAULT_SECTION_ORDER.map((id) => ({ id }) as DisplayConfigSection),
     defaultCustomSection(),
   ];
   const seen = new Set(savedList.map((section) => section.id));
   const known = new Set<string>(DEFAULT_SECTION_ORDER);
 
   const kept = savedList.filter((section) => known.has(section.id) || isCustomSection(section.id));
-  const missing = DEFAULT_SECTION_ORDER
-    .filter((id) => !seen.has(id))
-    .map((id) => ({ id } as DisplayConfigSection));
+  const missing = DEFAULT_SECTION_ORDER.filter((id) => !seen.has(id)).map(
+    (id) => ({ id }) as DisplayConfigSection,
+  );
 
   return [...kept, ...missing];
 }
 
 /** As resolveSections, with the sections the TD turned off dropped. */
-export function orderedSections(saved: DisplayConfigSection[] | null | undefined): DisplayConfigSection[] {
+export function orderedSections(
+  saved: DisplayConfigSection[] | null | undefined,
+): DisplayConfigSection[] {
   return resolveSections(saved).filter((section) => !section.hidden);
 }
 

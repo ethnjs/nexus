@@ -1,16 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+import { InviteFields } from "@/components/tournament/settings/InviteFields";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { Spinner } from "@/components/ui/Spinner";
-import { ChipInput, ChipStatus } from "@/components/ui/ChipInput";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
-import { invitesApi, membersApi, staffInvitesApi, Invite, StaffInviteResponse, ApiError } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  type Invite,
+  invitesApi,
+  membersApi,
+  type StaffInviteResponse,
+  staffInvitesApi,
+} from "@/lib/api";
 import { PRESET_HOURS } from "@/lib/invitePresets";
-import { InviteFields } from "@/components/tournament/settings/InviteFields";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -43,7 +50,8 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
     });
     // manage_invites alone (no manage_members) 403s here — that's fine, we
     // just skip the "already a member" warning entirely in that case.
-    membersApi.list(tournamentId, { fields: ["contact"] })
+    membersApi
+      .list(tournamentId, { fields: ["contact"] })
       .then((members) => setMemberEmails(new Set(members.map((m) => m.user.email.toLowerCase()))))
       .catch(() => setMemberEmails(null));
   }, [tournamentId]);
@@ -55,7 +63,9 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
   }
 
   const hasInvalid = emails.some((e) => !EMAIL_PATTERN.test(e));
-  const hasWarning = emails.some((e) => EMAIL_PATTERN.test(e) && memberEmails?.has(e.toLowerCase()));
+  const hasWarning = emails.some(
+    (e) => EMAIL_PATTERN.test(e) && memberEmails?.has(e.toLowerCase()),
+  );
 
   async function handleSend() {
     setError(undefined);
@@ -88,7 +98,10 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
         joinCodeId = Number(selectedInviteId);
       }
 
-      const response = await staffInvitesApi.send(tournamentId, { join_code_id: joinCodeId, emails: toSend });
+      const response = await staffInvitesApi.send(tournamentId, {
+        join_code_id: joinCodeId,
+        emails: toSend,
+      });
       setResult(response);
       onSent?.(response);
     } catch (err: unknown) {
@@ -103,56 +116,98 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
     return (
       <Modal title="Invite staff" onClose={onClose}>
         <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "4px 0" }}>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: "48px", height: "48px", borderRadius: "50%",
-              background: allSucceeded ? "var(--color-success-subtle)" : "var(--color-warning-subtle)",
-              color: allSucceeded ? "var(--color-success)" : "var(--color-warning)",
-              marginBottom: "12px",
-            }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              padding: "4px 0",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: allSucceeded
+                  ? "var(--color-success-subtle)"
+                  : "var(--color-warning-subtle)",
+                color: allSucceeded ? "var(--color-success)" : "var(--color-warning)",
+                marginBottom: "12px",
+              }}
+            >
               {allSucceeded ? <IconCheckCircle size={26} /> : <IconXCircle size={26} />}
             </div>
-            <p style={{ fontFamily: "var(--font-serif)", fontSize: "19px", color: "var(--color-text-primary)" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "19px",
+                color: "var(--color-text-primary)",
+              }}
+            >
               {result.sent.length} invite{result.sent.length === 1 ? "" : "s"} sent
             </p>
             {!allSucceeded && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                  color: "var(--color-text-secondary)",
+                  marginTop: "4px",
+                }}
+              >
                 {result.failed.length} failed to send
               </p>
             )}
           </div>
 
-          <div style={{
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)",
-            overflow: "hidden",
-          }}>
-            {[...result.sent.map((email) => ({ email, ok: true })), ...result.failed.map((email) => ({ email, ok: false }))]
-              .map(({ email, ok }, i, arr) => (
-                <div
-                  key={email}
+          <div
+            style={{
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-lg)",
+              overflow: "hidden",
+            }}
+          >
+            {[
+              ...result.sent.map((email) => ({ email, ok: true })),
+              ...result.failed.map((email) => ({ email, ok: false })),
+            ].map(({ email, ok }, i, arr) => (
+              <div
+                key={email}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "9px 12px",
+                  borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--color-border)",
+                }}
+              >
+                {ok ? (
+                  <IconCheckCircle size={15} style={{ color: "var(--color-success)" }} />
+                ) : (
+                  <IconXCircle size={15} style={{ color: "var(--color-danger)" }} />
+                )}
+                <span
                   style={{
-                    display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px",
-                    borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--color-border)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "13px",
+                    color: ok ? "var(--color-text-primary)" : "var(--color-danger)",
                   }}
                 >
-                  {ok ? (
-                    <IconCheckCircle size={15} style={{ color: "var(--color-success)" }} />
-                  ) : (
-                    <IconXCircle size={15} style={{ color: "var(--color-danger)" }} />
-                  )}
-                  <span style={{
-                    fontFamily: "var(--font-mono)", fontSize: "13px",
-                    color: ok ? "var(--color-text-primary)" : "var(--color-danger)",
-                  }}>
-                    {email}
-                  </span>
-                </div>
-              ))}
+                  {email}
+                </span>
+              </div>
+            ))}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button type="button" variant="primary" onClick={onClose}>Done</Button>
+            <Button type="button" variant="primary" onClick={onClose}>
+              Done
+            </Button>
           </div>
         </div>
       </Modal>
@@ -196,7 +251,12 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
             fullWidth
           />
         ) : (
-          <InviteFields label={label} onLabelChange={setLabel} preset={preset} onPresetChange={setPreset} />
+          <InviteFields
+            label={label}
+            onLabelChange={setLabel}
+            preset={preset}
+            onPresetChange={setPreset}
+          />
         )}
 
         <ChipInput
@@ -208,19 +268,34 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
           fullWidth
         />
         {hasWarning && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-warning)" }}>
-            Highlighted emails already belong to members of this tournament — they won&rsquo;t be sent an invite.
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-warning)",
+            }}
+          >
+            Highlighted emails already belong to members of this tournament — they won&rsquo;t be
+            sent an invite.
           </p>
         )}
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={sending}>
+            Cancel
+          </Button>
           <Button type="button" variant="primary" loading={sending} onClick={handleSend}>
             Send invites
           </Button>

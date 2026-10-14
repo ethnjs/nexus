@@ -1,5 +1,5 @@
-import { enumerateDays, parseLocalDate } from "./date";
 import type { TournamentPublic, TournamentTrack } from "./api";
+import { enumerateDays, parseLocalDate } from "./date";
 
 // A tournament's `dates` is the list of days it actually runs, not a range —
 // Day 1 on Feb 13 and Day 2 on Feb 20 runs on two days, and rendering
@@ -10,8 +10,8 @@ import type { TournamentPublic, TournamentTrack } from "./api";
 type DateStyle = "short" | "long" | "weekday";
 
 const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
-  short:   { month: "short", day: "numeric" },
-  long:    { month: "long", day: "numeric" },
+  short: { month: "short", day: "numeric" },
+  long: { month: "long", day: "numeric" },
   weekday: { weekday: "long", month: "long", day: "numeric" },
 };
 
@@ -66,7 +66,11 @@ export function formatDates(dates: string[], style: DateStyle = "short"): string
 }
 
 /** An inclusive start/end pair, rendered the same way a day list is. */
-export function formatDayRange(start: string | null, end: string | null, style: DateStyle = "short"): string | null {
+export function formatDayRange(
+  start: string | null,
+  end: string | null,
+  style: DateStyle = "short",
+): string | null {
   if (!start || !end || end < start) return null;
   return formatDates(enumerateDays(start, end), style);
 }
@@ -83,14 +87,20 @@ export function formatDayRange(start: string | null, end: string | null, style: 
 export const TBD = "TBD";
 
 /** A track's own days, for the per-track rows a multi-site tournament shows. */
-export function formatTrackDates(track: TournamentTrack, style: DateStyle = "short"): string | null {
+export function formatTrackDates(
+  track: TournamentTrack,
+  style: DateStyle = "short",
+): string | null {
   const formatted = formatDayRange(track.start_date, track.end_date, style);
   if (formatted) return formatted;
   return track.is_primary ? TBD : null;
 }
 
 /** Where a tournament or track happens — university name wins over free text. */
-export function placeOf(entity: { location: string | null; university: { name: string } | null }): string | null {
+export function placeOf(entity: {
+  location: string | null;
+  university: { name: string } | null;
+}): string | null {
   return entity.university?.name ?? entity.location ?? null;
 }
 
@@ -124,17 +134,54 @@ export function placeOfShort(entity: {
 // Anything unlisted falls back to its own first two letters uppercased, so a
 // new value degrades to something short rather than blowing out the column.
 const STATE_ABBREVIATIONS: Record<string, string> = {
-  Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", Colorado: "CO",
-  Connecticut: "CT", Delaware: "DE", Florida: "FL", Georgia: "GA", Hawaii: "HI",
-  Idaho: "ID", Illinois: "IL", Indiana: "IN", Iowa: "IA", Kansas: "KS",
-  Kentucky: "KY", Louisiana: "LA", Maine: "ME", Maryland: "MD",
-  Massachusetts: "MA", Michigan: "MI", Minnesota: "MN", Mississippi: "MS",
-  Missouri: "MO", Montana: "MT", Nebraska: "NE", Nevada: "NV",
-  "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
-  "North Carolina": "NC", "North Dakota": "ND", Ohio: "OH", Oklahoma: "OK",
-  Oregon: "OR", Pennsylvania: "PA", "Rhode Island": "RI", "South Carolina": "SC",
-  "South Dakota": "SD", Tennessee: "TN", Texas: "TX", Utah: "UT", Vermont: "VT",
-  Virginia: "VA", Washington: "WA", "West Virginia": "WV", Wisconsin: "WI",
+  Alabama: "AL",
+  Alaska: "AK",
+  Arizona: "AZ",
+  Arkansas: "AR",
+  Colorado: "CO",
+  Connecticut: "CT",
+  Delaware: "DE",
+  Florida: "FL",
+  Georgia: "GA",
+  Hawaii: "HI",
+  Idaho: "ID",
+  Illinois: "IL",
+  Indiana: "IN",
+  Iowa: "IA",
+  Kansas: "KS",
+  Kentucky: "KY",
+  Louisiana: "LA",
+  Maine: "ME",
+  Maryland: "MD",
+  Massachusetts: "MA",
+  Michigan: "MI",
+  Minnesota: "MN",
+  Mississippi: "MS",
+  Missouri: "MO",
+  Montana: "MT",
+  Nebraska: "NE",
+  Nevada: "NV",
+  "New Hampshire": "NH",
+  "New Jersey": "NJ",
+  "New Mexico": "NM",
+  "New York": "NY",
+  "North Carolina": "NC",
+  "North Dakota": "ND",
+  Ohio: "OH",
+  Oklahoma: "OK",
+  Oregon: "OR",
+  Pennsylvania: "PA",
+  "Rhode Island": "RI",
+  "South Carolina": "SC",
+  "South Dakota": "SD",
+  Tennessee: "TN",
+  Texas: "TX",
+  Utah: "UT",
+  Vermont: "VT",
+  Virginia: "VA",
+  Washington: "WA",
+  "West Virginia": "WV",
+  Wisconsin: "WI",
   Wyoming: "WY",
   "Southern California": "SoCal",
   "Northern California": "NorCal",
@@ -151,7 +198,9 @@ export function tournamentYear(t: Pick<TournamentPublic, "dates">): number | nul
 }
 
 /** "2027 SoCal Regional" — short_name where the TD set one. */
-export function tournamentDisplayName(t: Pick<TournamentPublic, "dates" | "name" | "short_name">): string {
+export function tournamentDisplayName(
+  t: Pick<TournamentPublic, "dates" | "name" | "short_name">,
+): string {
   const year = tournamentYear(t);
   const name = t.short_name || t.name;
   return year ? `${year} ${name}` : name;
@@ -171,11 +220,11 @@ export function primaryTracks(t: Pick<TournamentPublic, "tracks">): TournamentTr
 
 /** One "where and when" line to render. */
 export interface TournamentFactRow {
-  key:   string | number
+  key: string | number;
   /** The track's name — set only when there is more than one primary track. */
-  name:  string | null
-  place: string | null
-  dates: string | null
+  name: string | null;
+  place: string | null;
+  dates: string | null;
 }
 
 /**
@@ -203,12 +252,14 @@ export function tournamentFactRows(
   // somehow has no primary track at all.
   if (primary.length === 1) {
     const [track] = primary;
-    return [{
-      key: "tournament",
-      name: null,
-      place: placeOfTrack(track),
-      dates: formatTrackDates(track, style),
-    }];
+    return [
+      {
+        key: "tournament",
+        name: null,
+        place: placeOfTrack(track),
+        dates: formatTrackDates(track, style),
+      },
+    ];
   }
   return [{ key: "tournament", name: null, place: placeOf(t), dates: formatDates(t.dates, style) }];
 }

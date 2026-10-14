@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, ReactNode, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useRef, useState } from "react";
 
 interface HoverCardProps {
   /** Rich content shown in the popover — unlike Tooltip, not limited to a plain string. */
@@ -49,18 +49,26 @@ export function HoverCard({ content, children, width = 220, style }: HoverCardPr
     >
       {children}
       {cardPos && (
-        <div style={{
-          position: "fixed", bottom: cardPos.bottom, left: cardPos.left, transform: "translateX(-50%)",
-          zIndex: 400, padding: "10px 12px",
-          // max-content rather than fit-content: the card is position:fixed
-          // with no containing block to fit *to*, so fit-content would
-          // collapse toward zero instead of hugging the text.
-          width: width === "fit" ? "max-content" : `${width}px`,
-          // Even a "fit" card shouldn't run off a narrow viewport.
-          maxWidth: width === "fit" ? "min(90vw, 420px)" : undefined,
-          background: "var(--color-surface)", border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: cardPos.bottom,
+            left: cardPos.left,
+            transform: "translateX(-50%)",
+            zIndex: 400,
+            padding: "10px 12px",
+            // max-content rather than fit-content: the card is position:fixed
+            // with no containing block to fit *to*, so fit-content would
+            // collapse toward zero instead of hugging the text.
+            width: width === "fit" ? "max-content" : `${width}px`,
+            // Even a "fit" card shouldn't run off a narrow viewport.
+            maxWidth: width === "fit" ? "min(90vw, 420px)" : undefined,
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
+          }}
+        >
           {content}
         </div>
       )}

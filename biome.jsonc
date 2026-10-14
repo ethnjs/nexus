@@ -1,0 +1,9 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  // Biome covers the frontend, whose settings are in frontend/biome.jsonc, and the VS Code
+  // settings. This root config lets editors opened at the repo root find it, and owns
+  // .gitignore handling.
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["frontend/**", ".vscode/*.json"] },
+  "formatter": { "indentStyle": "space", "lineWidth": 100 }
+}

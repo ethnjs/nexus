@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { authApi, ApiError } from "@/lib/api";
-import { checkPassword, EMPTY_PASSWORD_CHECKS, validatePassword, PasswordChecks } from "@/lib/auth";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { Banner } from "@/components/ui/Banner";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { useEffect, useState } from "react";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { SessionList } from "@/components/settings/SessionList";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ApiError, authApi } from "@/lib/api";
+import {
+  checkPassword,
+  EMPTY_PASSWORD_CHECKS,
+  type PasswordChecks,
+  validatePassword,
+} from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 
 export default function SecuritySettingsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -138,7 +143,12 @@ export default function SecuritySettingsPage() {
             </div>
           )}
 
-          <Button type="submit" variant="primary" loading={submitting} style={{marginBottom: "20px"}}>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={submitting}
+            style={{ marginBottom: "20px" }}
+          >
             Update password
           </Button>
         </form>

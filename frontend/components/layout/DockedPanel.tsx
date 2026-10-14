@@ -1,9 +1,9 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
-import { Button } from "@/components/ui/Button";
-import { IconX, IconChevronLeft, IconChevronRight } from "@/components/ui/Icons";
+import { type ReactNode, useEffect } from "react";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+import { Button } from "@/components/ui/Button";
+import { IconChevronLeft, IconChevronRight, IconX } from "@/components/ui/Icons";
 
 interface DockedPanelProps {
   /** Omit for a panel that is always open — no close button, and Escape does
@@ -36,7 +36,15 @@ interface DockedPanelProps {
 // than covering it — the page beside it stays fully interactive, which a
 // modal overlay can't offer.
 export function DockedPanel({
-  onClose, children, width = 480, footer, headerActions, onPrev, onNext, prevDisabled, nextDisabled,
+  onClose,
+  children,
+  width = 480,
+  footer,
+  headerActions,
+  onPrev,
+  onNext,
+  prevDisabled,
+  nextDisabled,
 }: DockedPanelProps) {
   const showNav = onPrev !== undefined || onNext !== undefined;
   useEffect(() => {
@@ -55,9 +63,11 @@ export function DockedPanel({
         borderLeft: "1px solid var(--color-border)",
         // Fixed px (not 100%) so the content doesn't reflow while the slot
         // animates its width open/closed around it.
-        width, flexShrink: 0,
+        width,
+        flexShrink: 0,
         height: "100%",
-        display: "flex", flexDirection: "column",
+        display: "flex",
+        flexDirection: "column",
         // No shadow. This panel takes horizontal space rather than covering
         // anything, so there is no depth for one to describe — and with two
         // docked side by side it only ever landed on the neighbour. The
@@ -66,39 +76,67 @@ export function DockedPanel({
     >
       {/* Same height/background as Topbar so this strip's bottom border lines
           up with Topbar's and the two read as one continuous bar. */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
-        height: `${TOPBAR_HEIGHT}px`, padding: "0 12px",
-        background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)",
-      }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+          height: `${TOPBAR_HEIGHT}px`,
+          padding: "0 12px",
+          background: "var(--color-surface)",
+          borderBottom: "1px solid var(--color-border)",
+        }}
+      >
         {showNav ? (
           <div style={{ display: "flex", gap: "4px" }}>
-            <Button type="button" variant="secondary" size="sm" iconOnly disabled={!onPrev || prevDisabled} onClick={onPrev} title="Previous">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              disabled={!onPrev || prevDisabled}
+              onClick={onPrev}
+              title="Previous"
+            >
               <IconChevronLeft size={14} />
             </Button>
-            <Button type="button" variant="secondary" size="sm" iconOnly disabled={!onNext || nextDisabled} onClick={onNext} title="Next">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              disabled={!onNext || nextDisabled}
+              onClick={onNext}
+              title="Next"
+            >
               <IconChevronRight size={14} />
             </Button>
           </div>
-        ) : <span />}
+        ) : (
+          <span />
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           {headerActions}
           {onClose && (
-            <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              onClick={onClose}
+              title="Close"
+            >
               <IconX size={13} />
             </Button>
           )}
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        {children}
-      </div>
+      <div style={{ flex: 1, overflowY: "auto" }}>{children}</div>
       {footer && (
         // Only this slot gets the containing-block trick — see the prop doc
         // above for why it can't be the whole panel.
-        <div style={{ willChange: "transform" }}>
-          {footer}
-        </div>
+        <div style={{ willChange: "transform" }}>{footer}</div>
       )}
     </div>
   );

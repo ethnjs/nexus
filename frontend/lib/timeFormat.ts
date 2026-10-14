@@ -1,29 +1,41 @@
 // Formatters built once and reused: toLocale*String with an options object
 // constructs a fresh Intl.DateTimeFormat on every call, which is slow enough
 // to dominate a render that formats a few hundred times (the assignments board).
-const DATE_FMT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
-const DAY_LABEL_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" })
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const DAY_LABEL_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
 const DATE_TIME_FMT = new Intl.DateTimeFormat("en-US", {
-  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-})
-const TIME_FMT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" })
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+const TIME_FMT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 
 export function formatDate(iso: string): string {
-  return DATE_FMT.format(new Date(iso))
+  return DATE_FMT.format(new Date(iso));
 }
 
 // For binding an ISO datetime to <input type="datetime-local">, whose value
 // format is always "YYYY-MM-DDTHH:mm" in the user's local time, no seconds
 // or timezone offset.
 export function toDatetimeLocal(iso: string | null): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function fromDatetimeLocal(local: string): string | null {
-  return local ? new Date(local).toISOString() : null
+  return local ? new Date(local).toISOString() : null;
 }
 
 // Day-only ("YYYY-MM-DD") and time-only ("HH:mm") halves of a datetime-local
@@ -31,118 +43,120 @@ export function fromDatetimeLocal(local: string): string | null {
 // e.g. an event/shift editor where the day rarely varies (usually locked to
 // the tournament's single day) but the time always does.
 export function toDateInput(iso: string | null): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function toTimeInput(iso: string | null): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function fromDayAndTime(day: string, time: string): string | null {
-  return day && time ? new Date(`${day}T${time}`).toISOString() : null
+  return day && time ? new Date(`${day}T${time}`).toISOString() : null;
 }
 
 // Formats a bare "HH:mm" (a time-input value with no date attached) as
 // "2:30 PM" — for a view-mode row whose day is already shown in its own
 // column, so there's no ISO datetime to format from directly.
 export function formatTimeOfDay(hhmm: string): string {
-  if (!hhmm) return ""
-  const [h, m] = hhmm.split(":").map(Number)
-  const period = h < 12 ? "AM" : "PM"
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 // Loosely typed time → "HH:mm", or null if it can't be read. Takes "930",
 // "9:30a", "14:15", "2pm". An hour of 1–11 with no am/pm keeps `current`'s
 // half of the day ("230" on a 2:00 PM cell is 2:30 PM); a bare 12 is noon.
 export function parseLooseTime(text: string, current: string): string | null {
-  const t = text.trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "")
-  const m = /^(\d{1,2}):(\d{2})([ap]m?)?$/.exec(t) ?? /^(\d{1,4})([ap]m?)?$/.exec(t)
-  if (!m) return null
-  let hour: number
-  let minute: number
-  let suffix: string | undefined
+  const t = text.trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "");
+  const m = /^(\d{1,2}):(\d{2})([ap]m?)?$/.exec(t) ?? /^(\d{1,4})([ap]m?)?$/.exec(t);
+  if (!m) return null;
+  let hour: number;
+  let minute: number;
+  let suffix: string | undefined;
   if (m.length === 4) {
-    hour = Number(m[1]); minute = Number(m[2]); suffix = m[3]
+    hour = Number(m[1]);
+    minute = Number(m[2]);
+    suffix = m[3];
   } else {
     // Bare digits: the last two are minutes once there are more than two.
-    const digits = m[1]
-    hour = Number(digits.length > 2 ? digits.slice(0, -2) : digits)
-    minute = digits.length > 2 ? Number(digits.slice(-2)) : 0
-    suffix = m[2]
+    const digits = m[1];
+    hour = Number(digits.length > 2 ? digits.slice(0, -2) : digits);
+    minute = digits.length > 2 ? Number(digits.slice(-2)) : 0;
+    suffix = m[2];
   }
-  if (minute > 59) return null
+  if (minute > 59) return null;
   if (suffix) {
-    if (hour < 1 || hour > 12) return null
-    hour = suffix.startsWith("p") ? (hour % 12) + 12 : hour % 12
+    if (hour < 1 || hour > 12) return null;
+    hour = suffix.startsWith("p") ? (hour % 12) + 12 : hour % 12;
   } else {
-    if (hour > 23) return null
-    const currentIsPm = Number(current.split(":")[0]) >= 12
-    if (hour >= 1 && hour <= 11 && currentIsPm) hour += 12
+    if (hour > 23) return null;
+    const currentIsPm = Number(current.split(":")[0]) >= 12;
+    if (hour >= 1 && hour <= 11 && currentIsPm) hour += 12;
   }
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 // "Wed, Mar 14" — weekday alongside the date so same-named shifts/events on
 // different days of a multi-day tournament aren't ambiguous in a picker.
 export function formatDayLabel(dayISO: string): string {
-  return DAY_LABEL_FMT.format(new Date(`${dayISO}T00:00:00`))
+  return DAY_LABEL_FMT.format(new Date(`${dayISO}T00:00:00`));
 }
 
 // Date + time, for a tooltip pinning down the exact moment behind a coarse
 // label like formatDuration's "3d" or "Today".
 export function formatDateTime(iso: string): string {
-  return DATE_TIME_FMT.format(new Date(iso))
+  return DATE_TIME_FMT.format(new Date(iso));
 }
 
 // Time only, no date — for compact display where the date is already
 // established by context (e.g. a shift chip inside an event whose own
 // start/end date is already shown above it).
 export function formatTime(iso: string): string {
-  return TIME_FMT.format(new Date(iso))
+  return TIME_FMT.format(new Date(iso));
 }
 
 export function parseUserAgent(ua: string | null): string {
-  if (!ua) return "Unknown device"
+  if (!ua) return "Unknown device";
 
-  let os = "Unknown OS"
-  if (/Windows/.test(ua)) os = "Windows"
-  else if (/Mac OS X|Macintosh/.test(ua)) os = "macOS"
-  else if (/Android/.test(ua)) os = "Android"
-  else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS"
-  else if (/Linux/.test(ua)) os = "Linux"
+  let os = "Unknown OS";
+  if (/Windows/.test(ua)) os = "Windows";
+  else if (/Mac OS X|Macintosh/.test(ua)) os = "macOS";
+  else if (/Android/.test(ua)) os = "Android";
+  else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+  else if (/Linux/.test(ua)) os = "Linux";
 
-  let browser = "Unknown browser"
-  if (/Edg\//.test(ua)) browser = "Edge"
-  else if (/OPR\//.test(ua)) browser = "Opera"
-  else if (/Chrome\//.test(ua)) browser = "Chrome"
-  else if (/Firefox\//.test(ua)) browser = "Firefox"
-  else if (/Safari\//.test(ua)) browser = "Safari"
+  let browser = "Unknown browser";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/OPR\//.test(ua)) browser = "Opera";
+  else if (/Chrome\//.test(ua)) browser = "Chrome";
+  else if (/Firefox\//.test(ua)) browser = "Firefox";
+  else if (/Safari\//.test(ua)) browser = "Safari";
 
-  return `${browser} on ${os}`
+  return `${browser} on ${os}`;
 }
 
 export function formatRelativeTime(iso: string | null): string {
-  if (!iso) return "Unknown"
+  if (!iso) return "Unknown";
 
-  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diffSec < 60) return "Just now"
+  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return "Just now";
 
-  const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin}m ago`
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
 
-  const diffHr = Math.floor(diffMin / 60)
-  if (diffHr < 24) return `${diffHr}h ago`
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
 
-  const diffDay = Math.floor(diffHr / 24)
-  return `${diffDay}d ago`
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
 }
 
 // Coarser than formatRelativeTime — days/weeks/months/years once at least a
@@ -151,43 +165,46 @@ export function formatRelativeTime(iso: string | null): string {
 // a precise-to-the-minute figure past the first day (account age,
 // membership tenure).
 export function formatDuration(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const days = Math.floor(ms / 86400000)
+  const ms = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(ms / 86400000);
   if (days < 1) {
-    const hours = Math.floor(ms / 3600000)
-    if (hours < 1) return `${Math.max(1, Math.floor(ms / 60000))}m`
-    return `${hours}h`
+    const hours = Math.floor(ms / 3600000);
+    if (hours < 1) return `${Math.max(1, Math.floor(ms / 60000))}m`;
+    return `${hours}h`;
   }
-  if (days < 7) return `${days}d`
-  if (days < 30) return `${Math.floor(days / 7)}w`
-  if (days < 365) return `${Math.floor(days / 30)}mo`
-  return `${Math.floor(days / 365)}y`
+  if (days < 7) return `${days}d`;
+  if (days < 30) return `${Math.floor(days / 7)}w`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
 }
 
 // Counts down to a future point (e.g. an invite's expiry) — "2d 4h 13m 45s".
 // Never collapses away smaller units once a larger one is showing.
 export function formatCountdown(msRemaining: number): string {
-  if (msRemaining <= 0) return "Expired"
-  const totalSeconds = Math.floor(msRemaining / 1000)
-  const days = Math.floor(totalSeconds / 86400)
-  const hours = Math.floor((totalSeconds % 86400) / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  if (msRemaining <= 0) return "Expired";
+  const totalSeconds = Math.floor(msRemaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  const parts: string[] = []
-  if (days > 0) parts.push(`${days}d`)
-  if (days > 0 || hours > 0) parts.push(`${hours}h`)
-  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`)
-  parts.push(`${seconds}s`)
-  return parts.join(" ")
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (days > 0 || hours > 0) parts.push(`${hours}h`);
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
 }
 
 // How long a start→end window lasts: "45m", "2h", "1h 30m". Not
 // formatDuration, which is how long *ago* something was.
 export function formatSpan(startIso: string, endIso: string): string {
-  const minutes = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000))
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}m`
-  return m === 0 ? `${h}h` : `${h}h ${m}m`
+  const minutes = Math.max(
+    0,
+    Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000),
+  );
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }

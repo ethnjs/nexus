@@ -1,21 +1,21 @@
-'use client'
+"use client";
 
-import { Input } from "@/components/ui/Input"
-import { Dropdown } from "@/components/ui/Dropdown"
-import { ButtonGroup } from "@/components/ui/ButtonGroup"
-import { Combobox } from "@/components/ui/Combobox"
-import { Textarea } from "@/components/ui/Textarea"
-import { STUDENT_STATUS, SHIRT_SIZE, University } from "@/lib/api"
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Combobox } from "@/components/ui/Combobox";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import type { SHIRT_SIZE, STUDENT_STATUS, University } from "@/lib/api";
 
 // -------------------------------------------------------------------------
 // Pronouns
 // -------------------------------------------------------------------------
-const COMMON_PRONOUNS = ["he/him", "she/her", "they/them", "prefer not to say"]
+const COMMON_PRONOUNS = ["he/him", "she/her", "they/them", "prefer not to say"];
 
 interface PronounsFieldProps {
-  value: string
-  onChange: (value: string) => void
-  error?: string
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
 }
 
 export function PronounsField({ value, onChange, error }: PronounsFieldProps) {
@@ -30,21 +30,21 @@ export function PronounsField({ value, onChange, error }: PronounsFieldProps) {
       error={error}
       onChange={(text) => onChange(text)}
     />
-  )
+  );
 }
 
 // -------------------------------------------------------------------------
 // Student status
 // -------------------------------------------------------------------------
 interface StudentStatusFieldProps {
-  value: STUDENT_STATUS | undefined
-  onChange: (value: STUDENT_STATUS) => void
+  value: STUDENT_STATUS | undefined;
+  onChange: (value: STUDENT_STATUS) => void;
 }
 
 export function StudentStatusField({ value, onChange }: StudentStatusFieldProps) {
   return (
     <Dropdown
-      value={value ?? ''}
+      value={value ?? ""}
       onChange={(v) => onChange(v as STUDENT_STATUS)}
       options={[
         { value: "Undergraduate", label: "Undergraduate" },
@@ -54,68 +54,76 @@ export function StudentStatusField({ value, onChange }: StudentStatusFieldProps)
       variant="primary"
       fullWidth
     />
-  )
+  );
 }
 
 // -------------------------------------------------------------------------
 // Education (university / major / year level / graduation year)
 // -------------------------------------------------------------------------
 export interface EducationDraft {
-  university_id?: number
-  major?: string
-  year_level?: number
-  graduation_year?: number
+  university_id?: number;
+  major?: string;
+  year_level?: number;
+  graduation_year?: number;
 }
 
 export interface EducationErrors {
-  university?: string
-  major?: string
-  year_level?: string
-  graduation_year?: string
+  university?: string;
+  major?: string;
+  year_level?: string;
+  graduation_year?: string;
 }
 
 interface UniversityFieldProps {
-  universities: University[]
-  value: string
-  onChange: (text: string, universityId: number | null) => void
-  error?: string
+  universities: University[];
+  value: string;
+  onChange: (text: string, universityId: number | null) => void;
+  error?: string;
 }
 
 export function UniversityField({ universities, value, onChange, error }: UniversityFieldProps) {
   return (
     <Combobox
       options={universities}
-      getId={u => u.id}
-      getLabel={u => u.name}
-      getSearchText={u => `${u.name} ${u.abbreviation ?? ''}`}
+      getId={(u) => u.id}
+      getLabel={(u) => u.name}
+      getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
       value={value}
       allowFreeText={false}
       error={error}
       onChange={(text, matched) => onChange(text, matched ? matched.id : null)}
     />
-  )
+  );
 }
 
 interface MajorFieldProps {
-  value: string | undefined
-  onChange: (value: string) => void
-  error?: string
+  value: string | undefined;
+  onChange: (value: string) => void;
+  error?: string;
 }
 
 export function MajorField({ value, onChange, error }: MajorFieldProps) {
-  return <Input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} error={error} fullWidth />
+  return (
+    <Input
+      type="text"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      error={error}
+      fullWidth
+    />
+  );
 }
 
 interface YearLevelFieldProps {
-  value: number | undefined
-  onChange: (value: number) => void
-  error?: string
+  value: number | undefined;
+  onChange: (value: number) => void;
+  error?: string;
 }
 
 export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) {
   return (
     <Dropdown
-      value={value !== undefined ? String(value) : ''}
+      value={value !== undefined ? String(value) : ""}
       onChange={(v) => onChange(Number(v))}
       options={[
         { value: "1", label: "1st Year" },
@@ -128,54 +136,67 @@ export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) 
       variant="primary"
       fullWidth
     />
-  )
+  );
 }
 
 interface GraduationYearFieldProps {
-  value: number | undefined
-  onChange: (value: number | undefined) => void
-  error?: string
-  onValidate?: (error: string | undefined) => void
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  error?: string;
+  onValidate?: (error: string | undefined) => void;
 }
 
-export function GraduationYearField({ value, onChange, error, onValidate }: GraduationYearFieldProps) {
+export function GraduationYearField({
+  value,
+  onChange,
+  error,
+  onValidate,
+}: GraduationYearFieldProps) {
   return (
     <Input
       type="text"
       charset="numeric"
       maxLength={4}
-      value={value ?? ''}
+      value={value ?? ""}
       onChange={(e) => {
-        const raw = e.target.value
-        onValidate?.(raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined)
-        onChange(raw ? Number(raw) : undefined)
+        const raw = e.target.value;
+        onValidate?.(raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined);
+        onChange(raw ? Number(raw) : undefined);
       }}
       error={error}
       fullWidth
     />
-  )
+  );
 }
 
 // -------------------------------------------------------------------------
 // Employer
 // -------------------------------------------------------------------------
 interface EmployerFieldProps {
-  value: string | undefined
-  onChange: (value: string) => void
-  error?: string
+  value: string | undefined;
+  onChange: (value: string) => void;
+  error?: string;
 }
 
 export function EmployerField({ value, onChange, error }: EmployerFieldProps) {
-  return <Input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} error={error} fullWidth />
+  return (
+    <Input
+      type="text"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      error={error}
+      fullWidth
+    />
+  );
 }
 
 // -------------------------------------------------------------------------
 // Yes/No toggle (used for competed-before / volunteered-before / has-dietary)
 // -------------------------------------------------------------------------
 interface YesNoFieldProps {
-  value: boolean | null
-  onChange: (value: boolean) => void
-  locked?: boolean
+  value: boolean | null;
+  onChange: (value: boolean) => void;
+  locked?: boolean;
 }
 
 export function YesNoField({ value, onChange, locked }: YesNoFieldProps) {
@@ -189,15 +210,15 @@ export function YesNoField({ value, onChange, locked }: YesNoFieldProps) {
       onChange={(v) => onChange(v === "yes")}
       locked={locked}
     />
-  )
+  );
 }
 
 // -------------------------------------------------------------------------
 // Shirt size
 // -------------------------------------------------------------------------
 interface ShirtSizeFieldProps {
-  value: SHIRT_SIZE | undefined
-  onChange: (value: SHIRT_SIZE) => void
+  value: SHIRT_SIZE | undefined;
+  onChange: (value: SHIRT_SIZE) => void;
 }
 
 export function ShirtSizeField({ value, onChange }: ShirtSizeFieldProps) {
@@ -207,18 +228,18 @@ export function ShirtSizeField({ value, onChange }: ShirtSizeFieldProps) {
       value={value ?? ""}
       onChange={(v) => onChange(v as SHIRT_SIZE)}
     />
-  )
+  );
 }
 
 // -------------------------------------------------------------------------
 // Dietary restriction text
 // -------------------------------------------------------------------------
 interface DietaryRestrictionFieldProps {
-  value: string | undefined
-  onChange: (value: string) => void
-  error?: string
+  value: string | undefined;
+  onChange: (value: string) => void;
+  error?: string;
 }
 
 export function DietaryRestrictionField({ value, onChange, error }: DietaryRestrictionFieldProps) {
-  return <Textarea value={value ?? ''} onChange={(e) => onChange(e.target.value)} error={error} />
+  return <Textarea value={value ?? ""} onChange={(e) => onChange(e.target.value)} error={error} />;
 }

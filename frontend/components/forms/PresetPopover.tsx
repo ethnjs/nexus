@@ -1,30 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
+import { IconPresets, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
-import { IconPresets, IconX } from "@/components/ui/Icons";
-import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
-import { TrackPicker } from "@/components/tournament/TrackPicker";
-import { FormQuestionType, TournamentTrack } from "@/lib/api";
-import { EditableField, cleanOption, hasCustomValues } from "@/lib/forms/editableField";
+import type { FormQuestionType, TournamentTrack } from "@/lib/api";
+import { cleanOption, type EditableField, hasCustomValues } from "@/lib/forms/editableField";
 import {
-  PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError, isFieldKeyError,
+  activePresetKind,
+  buildAvailabilityFieldKey,
+  buildEventPreferenceFieldKey,
+  buildLunchFieldKey,
+  buildTrackStatusFieldKey,
+  isEntityBackedPreset,
+  isFieldKeyError,
+  isPresetError,
+  PRESETS,
+  type PresetKind,
+  parseAvailabilityFieldKey,
+  parseEventPreferenceFieldKey,
+  parseLunchFieldKey,
+  parseTrackStatusFieldKey,
   presetIncompleteMessage,
-  parseAvailabilityFieldKey, buildAvailabilityFieldKey,
-  parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
-  parseLunchFieldKey, buildLunchFieldKey,
-  parseTrackStatusFieldKey, buildTrackStatusFieldKey,
+  slugifyFieldKey,
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
 
 function isAssignmentList(value: unknown): boolean {
-  return Array.isArray(value) && value.every((item) => typeof item === "object" && item !== null && "id" in item && "status" in item);
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => typeof item === "object" && item !== null && "id" in item && "status" in item,
+    )
+  );
 }
 
 // The option rows a field keeps when its preset changes — including changing
@@ -34,7 +49,11 @@ function isAssignmentList(value: unknown): boolean {
 // value that can't carry into the new shape falls back to the row's own
 // label (freeform) or an empty selection (entity/track), never to a dropped
 // row. Returns a single starter row only when there was nothing to keep.
-function carryOptions(field: EditableField, kind: PresetKind | null, questionType: FormQuestionType): EditableOption[] {
+function carryOptions(
+  field: EditableField,
+  kind: PresetKind | null,
+  questionType: FormQuestionType,
+): EditableOption[] {
   if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
   const existing = field.config?.options ?? [];
   if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
@@ -44,10 +63,16 @@ function carryOptions(field: EditableField, kind: PresetKind | null, questionTyp
   return existing.map((option) => ({
     ...cleanOption(option, questionType),
     value: isEntityBackedPreset(kind)
-      ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
+      ? Array.isArray(option.value) && option.value.every((value) => typeof value === "number")
+        ? option.value
+        : []
       : kind === "track_status"
-        ? (isAssignmentList(option.value) ? option.value : [])
-        : typeof option.value === "string" ? option.value : option.label,
+        ? isAssignmentList(option.value)
+          ? option.value
+          : []
+        : typeof option.value === "string"
+          ? option.value
+          : option.label,
   }));
 }
 
@@ -66,7 +91,15 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 // preset here keeps the TD's option rows and their branch targets — only each
 // value's *shape* is rewritten to fit the new kind (see reshapeOptions).
 export function PresetPopover({
-  field, onFieldChange, tracks, onOpen, errors, saveAttempt, demandComplete, open, onOpenChange,
+  field,
+  onFieldChange,
+  tracks,
+  onOpen,
+  errors,
+  saveAttempt,
+  demandComplete,
+  open,
+  onOpenChange,
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
@@ -94,8 +127,9 @@ export function PresetPopover({
   onOpenChange: (open: boolean) => void;
 }) {
   const presetKind = activePresetKind(field.field_key);
-  const incompleteError = errors.find(isPresetError)
-    ?? (demandComplete && presetKind && field.field_key.endsWith("_")
+  const incompleteError =
+    errors.find(isPresetError) ??
+    (demandComplete && presetKind && field.field_key.endsWith("_")
       ? presetIncompleteMessage(presetKind)
       : undefined);
   // A field_key collision with another form's field is only ever caught at
@@ -112,19 +146,24 @@ export function PresetPopover({
   // dismissed the same way FieldKeyPopover clears its own localError: on the
   // next field_key change, not on the next validate() pass.
   const [dupDismissed, setDupDismissed] = useState(false);
-  const prevFieldKeyRef = useRef(field.field_key);
-  useEffect(() => {
-    if (field.field_key !== prevFieldKeyRef.current) {
-      prevFieldKeyRef.current = field.field_key;
-      setDupDismissed(true);
-    }
-  }, [field.field_key]);
+  const [prevFieldKey, setPrevFieldKey] = useState(field.field_key);
+  if (field.field_key !== prevFieldKey) {
+    setPrevFieldKey(field.field_key);
+    setDupDismissed(true);
+  }
   const duplicateError = dupDismissed ? undefined : rawDuplicateError;
   const keyError = incompleteError ?? duplicateError;
 
+  const attemptFailed = saveAttempt > 0 && !!(incompleteError || rawDuplicateError);
+  // Starts at 0, not saveAttempt: a popover mounted after a failed Save still shows its error.
+  const [seenAttempt, setSeenAttempt] = useState(0);
+  if (saveAttempt !== seenAttempt) {
+    setSeenAttempt(saveAttempt);
+    if (attemptFailed) setDupDismissed(false);
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each save attempt, not on every input change
   useEffect(() => {
-    if (saveAttempt > 0 && (incompleteError || rawDuplicateError)) { onOpenChange(true); setDupDismissed(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (attemptFailed) onOpenChange(true);
   }, [saveAttempt]);
 
   function applyPresetKind(kind: PresetKind | null) {
@@ -151,7 +190,9 @@ export function PresetPopover({
       return;
     }
     const meta = PRESETS[kind];
-    const questionType = meta.allowedQuestionTypes.includes(field.question_type) ? field.question_type : meta.defaultQuestionType;
+    const questionType = meta.allowedQuestionTypes.includes(field.question_type)
+      ? field.question_type
+      : meta.defaultQuestionType;
     // A tournament with exactly one track has nothing to actually choose, so
     // it's filled in immediately rather than leaving a "pick the one option
     // you have" control behind. Availability is the exception: only a
@@ -160,10 +201,13 @@ export function PresetPopover({
     const soleTrack = tracks.length === 1 ? tracks[0] : undefined;
     const soleAvailabilityTrack = soleTrack?.is_primary ? soleTrack : undefined;
     const fieldKey =
-      kind === "availability" ? buildAvailabilityFieldKey(soleAvailabilityTrack?.id ?? null)
-      : kind === "lunch" ? buildLunchFieldKey(soleTrack?.id ?? null, "")
-      : kind === "event_preference" ? buildEventPreferenceFieldKey(soleTrack?.id ?? null)
-      : "track_status_";
+      kind === "availability"
+        ? buildAvailabilityFieldKey(soleAvailabilityTrack?.id ?? null)
+        : kind === "lunch"
+          ? buildLunchFieldKey(soleTrack?.id ?? null, "")
+          : kind === "event_preference"
+            ? buildEventPreferenceFieldKey(soleTrack?.id ?? null)
+            : "track_status_";
     // Seeds one starter row for the option-bearing types — entity-shaped (an
     // empty id array to fill in via the picker) for availability/
     // event_preference, plain freeform for lunch — rather than leaving the TD
@@ -178,11 +222,12 @@ export function PresetPopover({
       customValuesEnabled: hasCustomValues(options),
       config: {
         ...sanitizeConfigForType(field.config, questionType),
-        required: kind === "track_status" ? true : field.config?.required ?? false,
+        required: kind === "track_status" ? true : (field.config?.required ?? false),
         // Only availability opts into track statuses via this flag; every
         // other kind (track_status included — its key alone enables them)
         // must not carry it over.
-        track_status_enabled: kind === "availability" ? field.config?.track_status_enabled : undefined,
+        track_status_enabled:
+          kind === "availability" ? field.config?.track_status_enabled : undefined,
         ...(OPTION_BEARING_TYPES.includes(questionType) ? { options } : {}),
       },
     });
@@ -192,7 +237,11 @@ export function PresetPopover({
     <FormPopover
       trigger={
         <Button
-          type="button" variant={keyError ? "danger" : open ? "primary" : "secondary"} size="sm" iconOnly title="Presets"
+          type="button"
+          variant={keyError ? "danger" : open ? "primary" : "secondary"}
+          size="sm"
+          iconOnly
+          title="Presets"
         >
           <IconPresets size={14} />
         </Button>
@@ -200,17 +249,27 @@ export function PresetPopover({
       width={250}
       side="right"
       open={open}
-      onOpenChange={(next) => { onOpenChange(next); if (next) onOpen?.(); }}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (next) onOpen?.();
+      }}
       closeOnOutsideClick={false}
     >
       {() => (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <div>
-            <span style={{
-              display: "block", marginBottom: "8px",
-              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)",
-            }}>
+            <span
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontFamily: "var(--font-sans)",
+                fontSize: "11px",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
               Preset
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -224,7 +283,10 @@ export function PresetPopover({
               />
               {presetKind && (
                 <Button
-                  type="button" variant="ghost" size="sm" iconOnly
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
                   title="Clear preset"
                   onClick={() => applyPresetKind(null)}
                   style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0 }}
@@ -235,47 +297,95 @@ export function PresetPopover({
             </div>
           </div>
           {duplicateError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-danger)",
+              }}
+            >
               {duplicateError}
             </p>
           )}
           {presetKind === "availability" && (
             <>
-              <AvailabilityParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
+              <AvailabilityParams
+                field={field}
+                onFieldChange={onFieldChange}
+                tracks={tracks}
+                showErrors={!!incompleteError}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "12px",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  Also update track status
+                </span>
                 <Switch
                   checked={!!field.config?.track_status_enabled}
-                  onChange={(checked) => onFieldChange({
-                    config: {
-                      ...field.config,
-                      track_status_enabled: checked,
-                      options: field.config?.options?.map((option) => {
-                        if (checked && Array.isArray(option.value)) {
-                          const shiftIds = option.value.every((value) => typeof value === "number")
-                            ? option.value as number[]
-                            : [];
-                          return { ...option, value: { shift_ids: shiftIds, track_status: "" } };
-                        }
-                        if (!checked && typeof option.value === "object" && !Array.isArray(option.value)) {
-                          return { ...option, value: option.value.shift_ids ?? [] };
-                        }
-                        return option;
-                      }),
-                    },
-                  })}
+                  onChange={(checked) =>
+                    onFieldChange({
+                      config: {
+                        ...field.config,
+                        track_status_enabled: checked,
+                        options: field.config?.options?.map((option) => {
+                          if (checked && Array.isArray(option.value)) {
+                            const shiftIds = option.value.every(
+                              (value) => typeof value === "number",
+                            )
+                              ? (option.value as number[])
+                              : [];
+                            return { ...option, value: { shift_ids: shiftIds, track_status: "" } };
+                          }
+                          if (
+                            !checked &&
+                            typeof option.value === "object" &&
+                            !Array.isArray(option.value)
+                          ) {
+                            return { ...option, value: option.value.shift_ids ?? [] };
+                          }
+                          return option;
+                        }),
+                      },
+                    })
+                  }
                 />
               </div>
             </>
           )}
           {presetKind === "event_preference" && (
-            <EventPreferenceParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
+            <EventPreferenceParams
+              field={field}
+              onFieldChange={onFieldChange}
+              tracks={tracks}
+              showErrors={!!incompleteError}
+            />
           )}
           {presetKind === "lunch" && (
-            <LunchParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
+            <LunchParams
+              field={field}
+              onFieldChange={onFieldChange}
+              tracks={tracks}
+              showErrors={!!incompleteError}
+            />
           )}
           {presetKind === "track_status" && (
-            <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!incompleteError} />
+            <TrackStatusParams
+              field={field}
+              onFieldChange={onFieldChange}
+              showErrors={!!incompleteError}
+            />
           )}
         </div>
       )}
@@ -283,8 +393,14 @@ export function PresetPopover({
   );
 }
 
-function TrackStatusParams({ field, onFieldChange, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
+function TrackStatusParams({
+  field,
+  onFieldChange,
+  showErrors,
+}: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  showErrors: boolean;
 }) {
   const { suffix: parsedSuffix } = parseTrackStatusFieldKey(field.field_key);
   const [suffix, setSuffix] = useState(parsedSuffix);
@@ -292,7 +408,18 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
     setSuffix(value);
     onFieldChange({ field_key: buildTrackStatusFieldKey(value) });
   }
-  return <Input label="Key" required placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
+  return (
+    <Input
+      label="Key"
+      required
+      placeholder="e.g. volunteer interest"
+      value={suffix}
+      onChange={(e) => handleChange(e.target.value)}
+      size="sm"
+      fullWidth
+      error={showErrors && !parsedSuffix ? "Key is required." : undefined}
+    />
+  );
 }
 
 // Local suffix state, synced FROM field_key but not read straight back out
@@ -300,8 +427,16 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
 // Unlike lunch's category, the suffix here is optional: it only exists to
 // disambiguate two fields sharing a date across different forms, so leaving
 // it blank is a valid, complete field_key on its own.
-function AvailabilityParams({ field, onFieldChange, tracks, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
+function AvailabilityParams({
+  field,
+  onFieldChange,
+  tracks,
+  showErrors,
+}: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  tracks: TournamentTrack[];
+  showErrors: boolean;
 }) {
   const parsed = parseAvailabilityFieldKey(field.field_key);
   const [suffix, setSuffixState] = useState(parsed.suffix);
@@ -321,7 +456,10 @@ function AvailabilityParams({ field, onFieldChange, tracks, showErrors }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <TrackPicker
-        label="Track" required size="sm" fullWidth
+        label="Track"
+        required
+        size="sm"
+        fullWidth
         emptyPlaceholder="Loading tracks…"
         value={parsed.trackId}
         tracks={shiftTracks}
@@ -340,14 +478,25 @@ function AvailabilityParams({ field, onFieldChange, tracks, showErrors }: {
   );
 }
 
-function EventPreferenceParams({ field, onFieldChange, tracks, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
+function EventPreferenceParams({
+  field,
+  onFieldChange,
+  tracks,
+  showErrors,
+}: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  tracks: TournamentTrack[];
+  showErrors: boolean;
 }) {
   const { trackId } = parseEventPreferenceFieldKey(field.field_key);
 
   return (
     <TrackPicker
-      label="Track" required size="sm" fullWidth
+      label="Track"
+      required
+      size="sm"
+      fullWidth
       emptyPlaceholder="Loading tracks…"
       value={trackId}
       tracks={tracks}
@@ -365,8 +514,16 @@ function EventPreferenceParams({ field, onFieldChange, tracks, showErrors }: {
 // character typed until a date happens to already be set too. Local state
 // lets each half hold what was actually typed regardless of whether the
 // other one is filled in yet.
-function LunchParams({ field, onFieldChange, tracks, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
+function LunchParams({
+  field,
+  onFieldChange,
+  tracks,
+  showErrors,
+}: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  tracks: TournamentTrack[];
+  showErrors: boolean;
 }) {
   const parsed = parseLunchFieldKey(field.field_key);
   const [trackId, setTrackIdState] = useState(parsed.trackId);
@@ -385,7 +542,10 @@ function LunchParams({ field, onFieldChange, tracks, showErrors }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <TrackPicker
-        label="Track" required size="sm" fullWidth
+        label="Track"
+        required
+        size="sm"
+        fullWidth
         emptyPlaceholder="Loading tracks…"
         value={trackId}
         tracks={tracks}

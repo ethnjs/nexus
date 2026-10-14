@@ -1,18 +1,22 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import type {
-  EventStaffingNeed, EventTrackDetail, Role, TournamentBuilding, TournamentTrack,
-} from "@/lib/api";
-import { Combobox } from "@/components/ui/Combobox";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { ChipInput } from "@/components/ui/ChipInput";
-import { Button } from "@/components/ui/Button";
+import { type ReactNode, useState } from "react";
 import styles from "@/components/settings/Settings.module.css";
+import { Button } from "@/components/ui/Button";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { Combobox } from "@/components/ui/Combobox";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { IconLocation, IconPlus, IconTrash } from "@/components/ui/Icons";
-import { placeOfTrack } from "@/lib/tournamentDisplay";
+import { Input } from "@/components/ui/Input";
+import type {
+  EventStaffingNeed,
+  EventTrackDetail,
+  Role,
+  TournamentBuilding,
+  TournamentTrack,
+} from "@/lib/api";
 import { derivedFloor } from "@/lib/eventTrackDetails";
+import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
  * Where an event happens and how many of each role it wants, per track.
@@ -31,7 +35,14 @@ import { derivedFloor } from "@/lib/eventTrackDetails";
 export type DraftTrackDetail = EventTrackDetail & { new_building_name?: string | null };
 
 export function EventTrackDetails({
-  details, hiddenTrackIds, tracks, buildings, roles, locked, simple, onChange,
+  details,
+  hiddenTrackIds,
+  tracks,
+  buildings,
+  roles,
+  locked,
+  simple,
+  onChange,
 }: {
   details: DraftTrackDetail[];
   /** Tracks this viewer hid from the section (the event_panel display
@@ -56,12 +67,21 @@ export function EventTrackDetails({
   // Day 1, Day 2 rather than by whenever each link happened to be created.
   const ordered = tracks
     .map((track) => ({ track, detail: details.find((d) => d.track_id === track.id) }))
-    .filter((entry): entry is { track: TournamentTrack; detail: DraftTrackDetail } => !!entry.detail);
+    .filter(
+      (entry): entry is { track: TournamentTrack; detail: DraftTrackDetail } => !!entry.detail,
+    );
   const visible = ordered.filter(({ track }) => !hiddenTrackIds.has(track.id));
 
   if (ordered.length === 0) {
     return (
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", margin: "12px 0" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+          margin: "12px 0",
+        }}
+      >
         Add a track above to say where this event happens and who it needs.
       </p>
     );
@@ -94,20 +114,38 @@ export function EventTrackDetails({
             }}
           >
             {!simple && (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "4px" }}>
-                <span style={{
-                  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.07em",
-                  color: "var(--color-text-tertiary)",
-                }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                  marginBottom: "4px",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.07em",
+                    color: "var(--color-text-tertiary)",
+                  }}
+                >
                   {track.name}
                 </span>
                 {venue && (
-                  <span style={{
-                    display: "flex", alignItems: "center", gap: "4px",
-                    fontFamily: "var(--font-sans)", fontSize: "11px",
-                    color: "var(--color-text-tertiary)",
-                  }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "11px",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
                     <IconLocation size={12} />
                     {venue}
                   </span>
@@ -126,19 +164,27 @@ export function EventTrackDetails({
                   buildings={buildings}
                   locked={locked}
                   onPick={(buildingId) => {
-                    if (buildingId === (detail.building_id ?? null) && !detail.new_building_name) return;
+                    if (buildingId === (detail.building_id ?? null) && !detail.new_building_name)
+                      return;
                     // Floor and rooms describe a place inside the old building,
                     // so they go with it — same rule as the buildings board.
-                    patchTrack(track.id, { building_id: buildingId, new_building_name: null, floor: null, rooms: [] });
+                    patchTrack(track.id, {
+                      building_id: buildingId,
+                      new_building_name: null,
+                      floor: null,
+                      rooms: [],
+                    });
                   }}
-                  onPickNew={(name) => patchTrack(track.id, {
-                    building_id: null,
-                    new_building_name: name,
-                    // Cleared only when leaving a real building — not on every
-                    // keystroke of the new name, which would wipe a floor typed
-                    // while the name was still pending.
-                    ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
-                  })}
+                  onPickNew={(name) =>
+                    patchTrack(track.id, {
+                      building_id: null,
+                      new_building_name: name,
+                      // Cleared only when leaving a real building — not on every
+                      // keystroke of the new name, which would wipe a floor typed
+                      // while the name was still pending.
+                      ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
+                    })
+                  }
                 />
               </StackedField>
 
@@ -150,7 +196,9 @@ export function EventTrackDetails({
                   (see derivedFloor), which the placeholder shows. */}
               <StackedField label="Floor" basis="80px" grow={0.5}>
                 <Input
-                  size="sm" font="mono" fullWidth
+                  size="sm"
+                  font="mono"
+                  fullWidth
                   placeholder={derivedFloor(detail.rooms) ?? "Auto"}
                   title="Taken from the first room unless you type one"
                   locked={locked || !hasBuilding}
@@ -178,13 +226,27 @@ export function EventTrackDetails({
             </div>
 
             <DetailRow label="Staffing">
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                  alignItems: "flex-end",
+                }}
+              >
                 {needs.map((need, i) => (
-                  <div key={need.role_id} style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%" }}>
+                  <div
+                    key={need.role_id}
+                    style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%" }}
+                  >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Dropdown
                         value={String(need.role_id)}
-                        onChange={(v) => setNeeds(needs.map((n, j) => (j === i ? { ...n, role_id: Number(v) } : n)))}
+                        onChange={(v) =>
+                          setNeeds(
+                            needs.map((n, j) => (j === i ? { ...n, role_id: Number(v) } : n)),
+                          )
+                        }
                         // The role it already holds, plus the unused ones —
                         // the same role twice on one track is a 422.
                         options={roles
@@ -198,11 +260,16 @@ export function EventTrackDetails({
                     <CountInput
                       value={need.count}
                       locked={locked}
-                      onCommit={(count) => setNeeds(needs.map((n, j) => (j === i ? { ...n, count } : n)))}
+                      onCommit={(count) =>
+                        setNeeds(needs.map((n, j) => (j === i ? { ...n, count } : n)))
+                      }
                     />
                     {!locked && (
                       <Button
-                        type="button" variant="ghost" size="xs" iconOnly
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        iconOnly
                         aria-label="Remove"
                         onClick={() => setNeeds(needs.filter((_, j) => j !== i))}
                       >
@@ -213,7 +280,9 @@ export function EventTrackDetails({
                 ))}
                 {!locked && spare.length > 0 && (
                   <Button
-                    type="button" variant="secondary" size="xs"
+                    type="button"
+                    variant="secondary"
+                    size="xs"
                     style={{ whiteSpace: "nowrap" }}
                     onClick={() => setNeeds([...needs, { role_id: spare[0].id, count: 1 }])}
                   >
@@ -238,7 +307,13 @@ export function EventTrackDetails({
  * building id to point at, which is why the name rides alongside instead.
  */
 function BuildingPicker({
-  trackId, buildingId, pendingName, buildings, locked, onPick, onPickNew,
+  trackId,
+  buildingId,
+  pendingName,
+  buildings,
+  locked,
+  onPick,
+  onPickNew,
 }: {
   trackId: number;
   buildingId: number | null;
@@ -286,7 +361,13 @@ function BuildingPicker({
         size="sm"
       />
       {pendingName?.trim() && (
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           New building — created when you save
         </span>
       )}
@@ -300,7 +381,11 @@ function BuildingPicker({
  * there was no way to type a "2" over it. Only a valid count (1 or more)
  * reaches the draft; blurring an empty field restores the last one.
  */
-function CountInput({ value, locked, onCommit }: {
+function CountInput({
+  value,
+  locked,
+  onCommit,
+}: {
   value: number;
   locked: boolean;
   onCommit: (count: number) => void;
@@ -316,14 +401,18 @@ function CountInput({ value, locked, onCommit }: {
 
   return (
     <Input
-      size="sm" charset="numeric" locked={locked}
+      size="sm"
+      charset="numeric"
+      locked={locked}
       value={text}
       onChange={(e) => {
         setText(e.target.value);
         const next = Number(e.target.value);
         if (next >= 1) onCommit(next);
       }}
-      onBlur={() => { if (!(Number(text) >= 1)) setText(String(value)); }}
+      onBlur={() => {
+        if (!(Number(text) >= 1)) setText(String(value));
+      }}
       style={{ width: "56px" }}
     />
   );
@@ -335,14 +424,27 @@ function CountInput({ value, locked, onCommit }: {
  * Flex rather than grid so a narrow panel wraps the fields instead of
  * squeezing a building name down to an ellipsis.
  */
-function StackedField({ label, basis, grow, children }: {
+function StackedField({
+  label,
+  basis,
+  grow,
+  children,
+}: {
   label: string;
   basis: string;
   grow: number;
   children: ReactNode;
 }) {
   return (
-    <div style={{ flex: `${grow} 1 ${basis}`, minWidth: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div
+      style={{
+        flex: `${grow} 1 ${basis}`,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+      }}
+    >
       <div className={styles.rowLabelText}>{label}</div>
       {children}
     </div>

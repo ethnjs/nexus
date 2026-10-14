@@ -1,13 +1,22 @@
 import type {
-  Assignment, DisplayConfigCatalog, ExportColumnMode, ExportRowType, MembershipField,
-  MembershipFull, TournamentEvent,
+  Assignment,
+  DisplayConfigCatalog,
+  ExportColumnMode,
+  ExportRowType,
+  MembershipField,
+  MembershipFull,
+  TournamentEvent,
 } from "@/lib/api";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
+import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 import {
-  AVAILABILITY_TRACK_PREFIX, EVENT_PREF_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
+  AVAILABILITY_TRACK_PREFIX,
+  EVENT_PREF_PREFIX,
+  FORM_FIELD_PREFIX,
+  LUNCH_PREFIX,
+  TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
 import { userName } from "@/lib/personDisplay";
-import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 
 // The export column registry. Column names are the members table's
 // ("email", "track:3", "form_field:12") plus export-only ones, so a name
@@ -15,15 +24,15 @@ import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 
 /** A member and their assignments, trimmed to the export's track and events. */
 export interface MemberRow {
-  kind:        "member";
-  member:      MembershipFull;
+  kind: "member";
+  member: MembershipFull;
   assignments: Assignment[];
 }
 
 /** An event and everyone assigned to it, alphabetical. */
 export interface EventRow {
-  kind:    "event";
-  event:   TournamentEvent;
+  kind: "event";
+  event: TournamentEvent;
   members: MembershipFull[];
   // The export's track, if one was picked — the location is that track's.
   trackId: number | null;
@@ -33,15 +42,17 @@ export type ExportRow = MemberRow | EventRow;
 
 export interface ExportContext {
   // Shift times are written in the tournament's zone, not the viewer's.
-  timezone:   string;
+  timezone: string;
   // Catalog key -> label ("track:3" -> "Day 1"); also names the track families.
-  labels:     Map<string, string>;
+  labels: Map<string, string>;
   trackNames: Map<number, string>;
 }
 
 /** A cell list that spreads across columns (Pref 1, Pref 2, …) instead of
  *  being joined into one cell. */
-export interface Spread { spread: string[] }
+export interface Spread {
+  spread: string[];
+}
 
 export type CellValue = string | string[] | Spread;
 
@@ -51,14 +62,14 @@ export interface ColumnModeOption {
 }
 
 export interface ExportColumn {
-  key:      string;
-  header:   string;
+  key: string;
+  header: string;
   // Roster field groups this column reads, so the fetch asks for no more.
-  groups:   MembershipField[];
+  groups: MembershipField[];
   rowTypes: readonly ExportRowType[];
   // The ways this column can write its values; the first is the default.
-  modes:    readonly ColumnModeOption[];
-  value:    (row: ExportRow, mode: ExportColumnMode) => CellValue;
+  modes: readonly ColumnModeOption[];
+  value: (row: ExportRow, mode: ExportColumnMode) => CellValue;
   // A spread column whose cells interleave with another spread's, one pair
   // per person, written where that column sits.
   pairsWith?: string;
@@ -78,8 +89,11 @@ const SHIFT_MODES: readonly ColumnModeOption[] = [
 ];
 
 /** The mode a column uses when the preset doesn't name one it offers. */
-export function columnMode(column: ExportColumn, mode: ExportColumnMode | null | undefined): ExportColumnMode {
-  return column.modes.some((m) => m.value === mode) ? mode! : column.modes[0]?.value ?? "names";
+export function columnMode(
+  column: ExportColumn,
+  mode: ExportColumnMode | null | undefined,
+): ExportColumnMode {
+  return column.modes.some((m) => m.value === mode) ? mode! : (column.modes[0]?.value ?? "names");
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +120,10 @@ function hhmm(iso: string, timezone: string): string {
   let format = timeFormats.get(timezone);
   if (!format) {
     format = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: timezone,
     });
     timeFormats.set(timezone, format);
   }
@@ -114,14 +131,21 @@ function hhmm(iso: string, timezone: string): string {
 }
 
 // What both an assigned shift and an availability row can be read as.
-interface ShiftLike { id: number; label: string; start: string; end: string }
+interface ShiftLike {
+  id: number;
+  label: string;
+  start: string;
+  end: string;
+}
 
 /** Each shift once, in time order, as names or "08:00-12:00" ranges. */
 function shiftTexts(shifts: ShiftLike[], mode: ExportColumnMode, timezone: string): string[] {
   const byId = new Map(shifts.map((s) => [s.id, s]));
   return [...byId.values()]
     .sort((a, b) => a.start.localeCompare(b.start))
-    .map((s) => (mode === "times" ? `${hhmm(s.start, timezone)}-${hhmm(s.end, timezone)}` : s.label));
+    .map((s) =>
+      mode === "times" ? `${hhmm(s.start, timezone)}-${hhmm(s.end, timezone)}` : s.label,
+    );
 }
 
 /** A select answer is stored as an option snapshot, not a bare string. */
@@ -132,7 +156,8 @@ function optionText(value: unknown): string {
     if ("option_id" in record) return String(record.value ?? record.label ?? "");
     return Object.values(record).map(optionText).filter(Boolean).join(MULTI_VALUE_SEPARATOR);
   }
-  if (Array.isArray(value)) return value.map(optionText).filter(Boolean).join(MULTI_VALUE_SEPARATOR);
+  if (Array.isArray(value))
+    return value.map(optionText).filter(Boolean).join(MULTI_VALUE_SEPARATOR);
   return String(value);
 }
 
@@ -142,11 +167,13 @@ function trackIdOf(key: string, prefix: string): number {
 
 /** A member-row value; an event row never reaches it (rowTypes keeps it off). */
 function ofMember(fn: (row: MemberRow, mode: ExportColumnMode) => CellValue) {
-  return (row: ExportRow, mode: ExportColumnMode): CellValue => (row.kind === "member" ? fn(row, mode) : "");
+  return (row: ExportRow, mode: ExportColumnMode): CellValue =>
+    row.kind === "member" ? fn(row, mode) : "";
 }
 
 function ofEvent(fn: (row: EventRow, mode: ExportColumnMode) => CellValue) {
-  return (row: ExportRow, mode: ExportColumnMode): CellValue => (row.kind === "event" ? fn(row, mode) : "");
+  return (row: ExportRow, mode: ExportColumnMode): CellValue =>
+    row.kind === "event" ? fn(row, mode) : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -155,49 +182,76 @@ function ofEvent(fn: (row: EventRow, mode: ExportColumnMode) => CellValue) {
 
 type FixedDef = Omit<ExportColumn, "key" | "value" | "modes"> & {
   modes?: readonly ColumnModeOption[];
-  value:  (ctx: ExportContext) => ExportColumn["value"];
+  value: (ctx: ExportContext) => ExportColumn["value"];
 };
 
-const memberFixed = (header: string, groups: MembershipField[], fn: (row: MemberRow) => CellValue): FixedDef => ({
-  header, groups, rowTypes: MEMBER_ROWS, value: () => ofMember(fn),
+const memberFixed = (
+  header: string,
+  groups: MembershipField[],
+  fn: (row: MemberRow) => CellValue,
+): FixedDef => ({
+  header,
+  groups,
+  rowTypes: MEMBER_ROWS,
+  value: () => ofMember(fn),
 });
 
 const FIXED: Record<string, FixedDef> = {
-  first_name:          memberFixed("First name", [], (r) => r.member.user.first_name ?? ""),
-  last_name:           memberFixed("Last name", [], (r) => r.member.user.last_name ?? ""),
-  email:               memberFixed("Email", ["contact"], (r) => r.member.user.email),
-  phone:               memberFixed("Phone", ["contact"], (r) => r.member.user.phone ?? ""),
-  shirt_size:          memberFixed("Shirt size", ["profile"], (r) => r.member.user.shirt_size ?? ""),
-  dietary_restriction: memberFixed("Dietary restriction", ["profile"], (r) => r.member.user.dietary_restriction ?? ""),
+  first_name: memberFixed("First name", [], (r) => r.member.user.first_name ?? ""),
+  last_name: memberFixed("Last name", [], (r) => r.member.user.last_name ?? ""),
+  email: memberFixed("Email", ["contact"], (r) => r.member.user.email),
+  phone: memberFixed("Phone", ["contact"], (r) => r.member.user.phone ?? ""),
+  shirt_size: memberFixed("Shirt size", ["profile"], (r) => r.member.user.shirt_size ?? ""),
+  dietary_restriction: memberFixed(
+    "Dietary restriction",
+    ["profile"],
+    (r) => r.member.user.dietary_restriction ?? "",
+  ),
   // Every role held tournament-wide, not just the ones staffed.
-  roles:               memberFixed("Roles", ["roles"], (r) => unique((r.member.roles ?? []).map((role) => role.label))),
+  roles: memberFixed("Roles", ["roles"], (r) =>
+    unique((r.member.roles ?? []).map((role) => role.label)),
+  ),
   // Blank when the member withheld consent or the tournament doesn't ask.
-  over_18:             memberFixed("Over 18", ["age"], (r) => yesNo(r.member.is_over_18)),
-  over_21:             memberFixed("Over 21", ["age"], (r) => yesNo(r.member.is_over_21)),
+  over_18: memberFixed("Over 18", ["age"], (r) => yesNo(r.member.is_over_18)),
+  over_21: memberFixed("Over 21", ["age"], (r) => yesNo(r.member.is_over_21)),
   // The tracks this member is staffed on.
-  tracks:              memberFixed("Tracks", ["assignments"], (r) => unique(r.assignments.map((a) => a.track.name))),
+  tracks: memberFixed("Tracks", ["assignments"], (r) =>
+    unique(r.assignments.map((a) => a.track.name)),
+  ),
 
   event: {
-    header: "Event", groups: [], rowTypes: EVENT_ROWS,
+    header: "Event",
+    groups: [],
+    rowTypes: EVENT_ROWS,
     value: () => ofEvent((r) => eventNameWithDivision(r.event)),
   },
   // "Kerckhoff 101, 103" on the export's track; every track's, when none is picked.
   location: {
-    header: "Location", groups: [], rowTypes: EVENT_ROWS,
-    value: () => ofEvent((r) => unique(
-      r.event.track_details
-        .filter((d) => r.trackId === null || d.track_id === r.trackId)
-        .map((d) => trackLocationLabel(d) ?? ""),
-    )),
+    header: "Location",
+    groups: [],
+    rowTypes: EVENT_ROWS,
+    value: () =>
+      ofEvent((r) =>
+        unique(
+          r.event.track_details
+            .filter((d) => r.trackId === null || d.track_id === r.trackId)
+            .map((d) => trackLocationLabel(d) ?? ""),
+        ),
+      ),
   },
   // Everyone assigned, one per column, after the event's own columns.
   members: {
-    header: "Member", groups: ["assignments"], rowTypes: EVENT_ROWS,
+    header: "Member",
+    groups: ["assignments"],
+    rowTypes: EVENT_ROWS,
     value: () => ofEvent((r) => ({ spread: r.members.map((m) => userName(m.user)) })),
   },
   // Each member's email beside their name: Member 1, Email 1, …
   member_emails: {
-    header: "Email", groups: ["assignments", "contact"], rowTypes: EVENT_ROWS, pairsWith: "members",
+    header: "Email",
+    groups: ["assignments", "contact"],
+    rowTypes: EVENT_ROWS,
+    pairsWith: "members",
     value: () => ofEvent((r) => ({ spread: r.members.map((m) => m.user.email) })),
   },
 };
@@ -207,7 +261,9 @@ const FIXED: Record<string, FixedDef> = {
 // ---------------------------------------------------------------------------
 
 function memberColumn(
-  key: string, header: string, groups: MembershipField[],
+  key: string,
+  header: string,
+  groups: MembershipField[],
   fn: (row: MemberRow, mode: ExportColumnMode) => CellValue,
   modes: readonly ColumnModeOption[] = NO_MODES,
 ): ExportColumn {
@@ -221,21 +277,29 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     const trackId = trackIdOf(key, TRACK_PREFIX);
     const name = ctx.trackNames.get(trackId);
     if (!name) return null;
-    return memberColumn(key, `${name} status`, ["tracks"], (r) => (
-      capitalize((r.member.track_statuses ?? []).find((t) => t.track_id === trackId)?.status ?? "")
-    ));
+    return memberColumn(key, `${name} status`, ["tracks"], (r) =>
+      capitalize((r.member.track_statuses ?? []).find((t) => t.track_id === trackId)?.status ?? ""),
+    );
   }
 
   if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
     const trackId = trackIdOf(key, AVAILABILITY_TRACK_PREFIX);
     const name = ctx.trackNames.get(trackId);
     if (!name) return null;
-    return memberColumn(key, `${name} availability`, ["availability"], (r, mode) => shiftTexts(
-      (r.member.availability ?? [])
-        .filter((s) => s.track_id === trackId)
-        .map((s) => ({ id: s.shift_id, label: s.label, start: s.start, end: s.end })),
-      mode, ctx.timezone,
-    ), SHIFT_MODES);
+    return memberColumn(
+      key,
+      `${name} availability`,
+      ["availability"],
+      (r, mode) =>
+        shiftTexts(
+          (r.member.availability ?? [])
+            .filter((s) => s.track_id === trackId)
+            .map((s) => ({ id: s.shift_id, label: s.label, start: s.start, end: s.end })),
+          mode,
+          ctx.timezone,
+        ),
+      SHIFT_MODES,
+    );
   }
 
   if (key.startsWith(LUNCH_PREFIX)) {
@@ -244,9 +308,11 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     const separator = rest.indexOf(":");
     const trackId = Number(rest.slice(0, separator));
     const category = rest.slice(separator + 1);
-    return memberColumn(key, label, ["lunch"], (r) => (r.member.lunch ?? [])
-      .filter((row) => row.track_id === trackId && row.category === category)
-      .map((row) => row.value));
+    return memberColumn(key, label, ["lunch"], (r) =>
+      (r.member.lunch ?? [])
+        .filter((row) => row.track_id === trackId && row.category === category)
+        .map((row) => row.value),
+    );
   }
 
   if (key.startsWith(EVENT_PREF_PREFIX)) {
@@ -256,14 +322,16 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     return memberColumn(key, `${name} pref`, ["event_prefs"], (r) => {
       const answer = (r.member.event_preferences ?? []).find((p) => p.track_id === trackId);
       // Rank order; unranked picks (a checkbox question) after the ranked ones.
-      const options = [...(answer?.options ?? [])].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+      const options = [...(answer?.options ?? [])].sort(
+        (a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity),
+      );
       // A grouped option is written as the events inside it.
       return {
-        spread: options.map((option) => (
+        spread: options.map((option) =>
           option.events.length > 0
             ? option.events.map(eventNameWithDivision).join(MULTI_VALUE_SEPARATOR)
-            : option.label
-        )),
+            : option.label,
+        ),
       };
     });
   }
@@ -298,14 +366,27 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     const onTrack = (r: MemberRow) => r.assignments.filter((a) => a.track.id === trackId);
     const header = `${name} ${trackFamily.noun}`;
     if (trackFamily.prefix === TRACK_EVENTS_PREFIX) {
-      return memberColumn(key, header, ["assignments"], (r) => unique(onTrack(r).map((a) => eventNameWithDivision(a.event))));
+      return memberColumn(key, header, ["assignments"], (r) =>
+        unique(onTrack(r).map((a) => eventNameWithDivision(a.event))),
+      );
     }
     if (trackFamily.prefix === TRACK_ROLES_PREFIX) {
-      return memberColumn(key, header, ["assignments"], (r) => unique(onTrack(r).map((a) => a.role.label)));
+      return memberColumn(key, header, ["assignments"], (r) =>
+        unique(onTrack(r).map((a) => a.role.label)),
+      );
     }
-    return memberColumn(key, header, ["assignments"], (r, mode) => shiftTexts(
-      onTrack(r).flatMap((a) => (a.shift ? [a.shift] : [])), mode, ctx.timezone,
-    ), SHIFT_MODES);
+    return memberColumn(
+      key,
+      header,
+      ["assignments"],
+      (r, mode) =>
+        shiftTexts(
+          onTrack(r).flatMap((a) => (a.shift ? [a.shift] : [])),
+          mode,
+          ctx.timezone,
+        ),
+      SHIFT_MODES,
+    );
   }
 
   return null;
@@ -334,7 +415,7 @@ export function resolveExportColumn(key: string, ctx: ExportContext): ExportColu
 // ---------------------------------------------------------------------------
 
 export interface ExportColumnGroup {
-  title:   string;
+  title: string;
   columns: { key: string; header: string }[];
 }
 
@@ -349,28 +430,59 @@ export function availableExportColumns(
   const tracks = catalog.tracks
     .map((t) => trackIdOf(t.key, TRACK_PREFIX))
     .filter((id) => trackId === null || id === trackId);
-  const keepTrack = (key: string, prefix: string) => trackId === null || trackIdOf(key, prefix) === trackId;
+  const keepTrack = (key: string, prefix: string) =>
+    trackId === null || trackIdOf(key, prefix) === trackId;
   const lunchTrack = (key: string) => Number(key.slice(LUNCH_PREFIX.length).split(":")[0]);
 
   const groups: { title: string; keys: string[] }[] = [
     { title: "Event", keys: ["event", "location", "members", "member_emails"] },
     {
       title: "Member",
-      keys: ["first_name", "last_name", "email", "phone", "shirt_size", "dietary_restriction", "roles", "over_18", "over_21"],
+      keys: [
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "shirt_size",
+        "dietary_restriction",
+        "roles",
+        "over_18",
+        "over_21",
+      ],
     },
     {
       title: "Assignments",
       keys: [
         "tracks",
         ...tracks.flatMap((id) => [
-          `${TRACK_EVENTS_PREFIX}${id}`, `${TRACK_ROLES_PREFIX}${id}`, `${TRACK_SHIFTS_PREFIX}${id}`,
+          `${TRACK_EVENTS_PREFIX}${id}`,
+          `${TRACK_ROLES_PREFIX}${id}`,
+          `${TRACK_SHIFTS_PREFIX}${id}`,
         ]),
       ],
     },
-    { title: "Track status", keys: catalog.tracks.map((t) => t.key).filter((k) => keepTrack(k, TRACK_PREFIX)) },
-    { title: "Availability", keys: catalog.availability.map((t) => t.key).filter((k) => keepTrack(k, AVAILABILITY_TRACK_PREFIX)) },
-    { title: "Lunch", keys: catalog.lunch_categories.map((t) => t.key).filter((k) => trackId === null || lunchTrack(k) === trackId) },
-    { title: "Event preferences", keys: catalog.event_preferences.map((t) => t.key).filter((k) => keepTrack(k, EVENT_PREF_PREFIX)) },
+    {
+      title: "Track status",
+      keys: catalog.tracks.map((t) => t.key).filter((k) => keepTrack(k, TRACK_PREFIX)),
+    },
+    {
+      title: "Availability",
+      keys: catalog.availability
+        .map((t) => t.key)
+        .filter((k) => keepTrack(k, AVAILABILITY_TRACK_PREFIX)),
+    },
+    {
+      title: "Lunch",
+      keys: catalog.lunch_categories
+        .map((t) => t.key)
+        .filter((k) => trackId === null || lunchTrack(k) === trackId),
+    },
+    {
+      title: "Event preferences",
+      keys: catalog.event_preferences
+        .map((t) => t.key)
+        .filter((k) => keepTrack(k, EVENT_PREF_PREFIX)),
+    },
     { title: "Form responses", keys: catalog.custom_fields.map((t) => t.key) },
   ];
 
@@ -379,7 +491,7 @@ export function availableExportColumns(
       title,
       columns: keys
         .map((key) => resolveExportColumn(key, ctx))
-        .filter((c): c is ExportColumn => c !== null && c.rowTypes.includes(rowType))
+        .filter((c): c is ExportColumn => c?.rowTypes.includes(rowType) ?? false)
         .map((c) => ({ key: c.key, header: c.header })),
     }))
     .filter((group) => group.columns.length > 0);
@@ -388,7 +500,13 @@ export function availableExportColumns(
 /** The context the registry needs, from the display-config catalog. */
 export function exportContext(catalog: DisplayConfigCatalog, timezone: string): ExportContext {
   const labels = new Map<string, string>();
-  for (const items of [catalog.tracks, catalog.availability, catalog.lunch_categories, catalog.event_preferences, catalog.custom_fields]) {
+  for (const items of [
+    catalog.tracks,
+    catalog.availability,
+    catalog.lunch_categories,
+    catalog.event_preferences,
+    catalog.custom_fields,
+  ]) {
     for (const item of items) labels.set(item.key, item.label);
   }
   const trackNames = new Map(catalog.tracks.map((t) => [trackIdOf(t.key, TRACK_PREFIX), t.label]));

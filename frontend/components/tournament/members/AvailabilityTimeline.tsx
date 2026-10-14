@@ -153,7 +153,14 @@ function timeRange(span: Span): string {
   return `${formatTime(new Date(span.start).toISOString())}–${formatTime(new Date(span.end).toISOString())}`;
 }
 
-export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover, fullWidth }: AvailabilityTimelineProps) {
+export function AvailabilityTimeline({
+  dayStart,
+  dayEnd,
+  shifts,
+  hoveredId,
+  onHover,
+  fullWidth,
+}: AvailabilityTimelineProps) {
   // Above the early return below — a hook cannot be called conditionally.
   const { ref: barRef, width: barWidth } = useBarWidth();
   const total = dayEnd - dayStart;
@@ -169,41 +176,64 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
   const hovered = clamped.find((s) => s.id === hoveredId) ?? null;
 
   return (
-    <div style={{
-      position: "relative", alignSelf: "stretch",
-      // A flex-basis would size the height in a column, so stacked callers get a width.
-      ...(fullWidth ? { width: "100%" } : { flex: "0 0 220px" }),
-      display: "flex", flexDirection: "column", justifyContent: "center", gap: "3px",
-    }}>
+    <div
+      style={{
+        position: "relative",
+        alignSelf: "stretch",
+        // A flex-basis would size the height in a column, so stacked callers get a width.
+        ...(fullWidth ? { width: "100%" } : { flex: "0 0 220px" }),
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: "3px",
+      }}
+    >
       {/* Hour ruler — every other line is labelled, so a dense window stays
           readable while the unlabelled lines are still placeable. */}
-      <div style={{
-        position: "relative", height: "11px",
-        fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-text-tertiary)",
-      }}>
-        {[dayStart, ...hours].map((t, i) => i % 2 === 0 && (
-          <span
-            key={t}
-            style={{
-              position: "absolute", left: pct(t - dayStart),
-              transform: t === dayStart ? "none" : "translateX(-50%)",
-            }}
-          >
-            {new Date(t).getHours() % 12 === 0 ? 12 : new Date(t).getHours() % 12}
-          </span>
-        ))}
+      <div
+        style={{
+          position: "relative",
+          height: "11px",
+          fontFamily: "var(--font-mono)",
+          fontSize: "9px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        {[dayStart, ...hours].map(
+          (t, i) =>
+            i % 2 === 0 && (
+              <span
+                key={t}
+                style={{
+                  position: "absolute",
+                  left: pct(t - dayStart),
+                  transform: t === dayStart ? "none" : "translateX(-50%)",
+                }}
+              >
+                {new Date(t).getHours() % 12 === 0 ? 12 : new Date(t).getHours() % 12}
+              </span>
+            ),
+        )}
       </div>
 
-      <div ref={barRef} style={{
-        position: "relative", height: "22px",
-        borderRadius: "var(--radius-sm)", overflow: "hidden",
-        border: "1px solid var(--color-border-strong)", background: RED,
-      }}>
+      <div
+        ref={barRef}
+        style={{
+          position: "relative",
+          height: "22px",
+          borderRadius: "var(--radius-sm)",
+          overflow: "hidden",
+          border: "1px solid var(--color-border-strong)",
+          background: RED,
+        }}
+      >
         {mergeSpans(clamped).map((span) => (
           <div
             key={span.start}
             style={{
-              position: "absolute", top: 0, bottom: 0,
+              position: "absolute",
+              top: 0,
+              bottom: 0,
               // A block touching an end of the bar also takes that end's
               // corners: the bar is square-cornered content behind a rounded,
               // clipping frame, so otherwise the corner arcs clip the green
@@ -218,11 +248,13 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
           <div
             key={t}
             style={{
-              position: "absolute", top: 0, bottom: 0,
-              left: barWidth
-                ? `${snap(((t - dayStart) / total) * barWidth)}px`
-                : pct(t - dayStart),
-              width: "1px", background: "var(--color-border-strong)", pointerEvents: "none",
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: barWidth ? `${snap(((t - dayStart) / total) * barWidth)}px` : pct(t - dayStart),
+              width: "1px",
+              background: "var(--color-border-strong)",
+              pointerEvents: "none",
             }}
           />
         ))}
@@ -234,7 +266,9 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
             onMouseEnter={() => onHover(shift.id)}
             onMouseLeave={() => onHover(null)}
             style={{
-              position: "absolute", top: 0, bottom: 0,
+              position: "absolute",
+              top: 0,
+              bottom: 0,
               ...blockEdges(shift.start, shift.end, dayStart, dayEnd),
               background: hoveredId === shift.id ? GREEN_HOVER : "transparent",
               transition: "background 120ms ease",
@@ -246,15 +280,31 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
       {/* Anchored to the right edge so it grows back into the card rather than
           off the panel — the bar sits at the far right of the row. */}
       {hovered && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 10,
-          display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
-          padding: "4px 8px", borderRadius: "var(--radius-sm)",
-          background: "var(--color-surface)", border: "1px solid var(--color-border-strong)",
-          boxShadow: "var(--shadow-md)",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            whiteSpace: "nowrap",
+            padding: "4px 8px",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border-strong)",
+            boxShadow: "var(--shadow-md)",
+          }}
+        >
           <Badge variant="default">{hovered.label}</Badge>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
             {timeRange(hovered)}
           </span>
         </div>

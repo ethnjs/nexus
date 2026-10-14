@@ -1,4 +1,4 @@
-import { PendingUpdateReason } from "@/lib/api";
+import type { PendingUpdateReason } from "@/lib/api";
 
 // Copy for the pending-update reasons the server produces. The rules
 // themselves live in backend/app/core/form/changes.py and are read via
@@ -19,6 +19,5 @@ export const REASON_LABELS: Record<PendingUpdateReason, string> = {
 export const REASON_CONSEQUENCES: Partial<Record<PendingUpdateReason, string>> = {
   key_changed:
     "Their answers won't reach availability, lunch or track status unless they resubmit.",
-  text_changed:
-    "Only ask again if the new wording changes what you're asking for.",
+  text_changed: "Only ask again if the new wording changes what you're asking for.",
 };

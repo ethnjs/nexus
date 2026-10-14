@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 /** A circular completed/total meter. `children` render centered over the ring
  *  (a big label at dashboard size); a small ring usually takes none and puts
@@ -34,8 +34,19 @@ export function ProgressRing({
       aria-valuemax={total}
       style={{ position: "relative", width: size, height: size, flexShrink: 0 }}
     >
-      <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-        <circle cx={50} cy={50} r={radius} fill="none" stroke="var(--color-accent-subtle)" strokeWidth={strokeWidth} />
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 100"
+        style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}
+      >
+        <circle
+          cx={50}
+          cy={50}
+          r={radius}
+          fill="none"
+          stroke="var(--color-accent-subtle)"
+          strokeWidth={strokeWidth}
+        />
         <circle
           cx={50}
           cy={50}
@@ -50,10 +61,17 @@ export function ProgressRing({
         />
       </svg>
       {children && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "4px",
+          }}
+        >
           {children}
         </div>
       )}

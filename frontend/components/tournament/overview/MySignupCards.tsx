@@ -1,21 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  MembershipAvailability, MembershipEventPreference, MembershipField, MembershipLunch,
-  MembershipMe, MembershipTrackStatus, TournamentShift, membersApi, tournamentShiftsApi,
-} from "@/lib/api";
-import { useArchiveLock } from "@/lib/useArchiveLock";
-import { TRACK_LOCKED_REASON } from "@/lib/responseLock";
-import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { useEffect, useState } from "react";
+import { FieldList, FieldValue, PanelField } from "@/components/profile/PanelField";
+import { AvailabilityDays } from "@/components/tournament/members/sections/AvailabilitySection";
+import { LunchCategoryRows } from "@/components/tournament/members/sections/LunchSection";
+import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconLock } from "@/components/ui/Icons";
-import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
-import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelField";
-import { LunchCategoryRows } from "@/components/tournament/members/sections/LunchSection";
-import { AvailabilityDays } from "@/components/tournament/members/sections/AvailabilitySection";
+import {
+  type MembershipAvailability,
+  type MembershipEventPreference,
+  type MembershipField,
+  type MembershipLunch,
+  type MembershipMe,
+  type MembershipTrackStatus,
+  membersApi,
+  type TournamentShift,
+  tournamentShiftsApi,
+} from "@/lib/api";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { TRACK_LOCKED_REASON } from "@/lib/responseLock";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 
 // Its own getMe rather than widening useMyMembership's: that provider loads
 // on every page, and only this card needs availability and lunch.
@@ -34,8 +41,14 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
 
   useEffect(() => {
-    membersApi.getMe(tournamentId, FIELDS).then(setMe).catch(() => setMe(null));
-    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => setShifts([]));
+    membersApi
+      .getMe(tournamentId, FIELDS)
+      .then(setMe)
+      .catch(() => setMe(null));
+    tournamentShiftsApi
+      .list(tournamentId)
+      .then(setShifts)
+      .catch(() => setShifts([]));
   }, [tournamentId]);
 
   // No row (e.g. a site admin who never joined) — nothing of theirs to show.
@@ -60,7 +73,9 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
           onEdit={() => router.push(`${memberPath}/edit`)}
           // A locked track still shows everything the member answered — only
           // changing it is closed, and the card says who to ask.
-          lockedReason={isArchived ? archivedReason : track.lock_responses ? TRACK_LOCKED_REASON : undefined}
+          lockedReason={
+            isArchived ? archivedReason : track.lock_responses ? TRACK_LOCKED_REASON : undefined
+          }
         />
       ))}
     </>
@@ -68,7 +83,14 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
 }
 
 function TrackSignupCard({
-  track, availability, shifts, lunch, eventPreference, onView, onEdit, lockedReason,
+  track,
+  availability,
+  shifts,
+  lunch,
+  eventPreference,
+  onView,
+  onEdit,
+  lockedReason,
 }: {
   track: MembershipTrackStatus;
   availability: MembershipAvailability[];
@@ -93,7 +115,6 @@ function TrackSignupCard({
 
   return (
     <OverviewCard title={track.name} action={<Badge variant={track.status}>{track.status}</Badge>}>
-
       {/* Spelled out rather than left to the button's `title`: a disabled
           button fires no mouse events, so that tooltip never opens. Above any
           answers, which are still worth reading on a locked track. */}
@@ -107,14 +128,18 @@ function TrackSignupCard({
         <>
           <PanelField label="Availability">
             {/* The member panel's timeline, stacked under its badges to fit the card. */}
-            {availability.length === 0
-              ? <FieldValue muted>No info yet</FieldValue>
-              : <AvailabilityDays availability={availability} allShifts={shifts} stacked />}
+            {availability.length === 0 ? (
+              <FieldValue muted>No info yet</FieldValue>
+            ) : (
+              <AvailabilityDays availability={availability} allShifts={shifts} stacked />
+            )}
           </PanelField>
           <PanelField label="Lunch">
-            {lunch.length === 0
-              ? <FieldValue muted>No info yet</FieldValue>
-              : <LunchCategoryRows selections={lunch} />}
+            {lunch.length === 0 ? (
+              <FieldValue muted>No info yet</FieldValue>
+            ) : (
+              <LunchCategoryRows selections={lunch} />
+            )}
           </PanelField>
           <PanelField label="Event Preferences">
             <EventPreferenceSummary pref={eventPreference} />
@@ -122,10 +147,26 @@ function TrackSignupCard({
         </>
       )}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-        <Button type="button" variant="ghost" size="sm" onClick={onView}>View all</Button>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: "8px",
+          flexWrap: "wrap",
+        }}
+      >
+        <Button type="button" variant="ghost" size="sm" onClick={onView}>
+          View all
+        </Button>
         {/* Only ever an edit: there is no answering from here (see summary). */}
-        <Button type="button" variant="secondary" size="sm" onClick={onEdit} disabled={locked || pending}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onEdit}
+          disabled={locked || pending}
+        >
           Edit
         </Button>
       </div>
@@ -138,16 +179,31 @@ function TrackSignupCard({
  *  card that otherwise holds two lines. */
 function LockNotice({ reason }: { reason: string }) {
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", gap: "8px",
-      padding: "16px", textAlign: "center",
-      border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)",
-      background: "var(--color-surface)",
-    }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "8px",
+        padding: "16px",
+        textAlign: "center",
+        border: "1px dashed var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        background: "var(--color-surface)",
+      }}
+    >
       <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
         <IconLock size={20} />
       </span>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", maxWidth: "300px", margin: 0 }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          maxWidth: "300px",
+          margin: 0,
+        }}
+      >
         {reason}
       </p>
     </div>
@@ -163,12 +219,19 @@ function EventPreferenceSummary({ pref }: { pref: MembershipEventPreference | nu
   return (
     <FieldList>
       {shown.map((option, i) => (
-        <div key={option.option_id ?? `orphan-${i}`} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div
+          key={option.option_id ?? `orphan-${i}`}
+          style={{ display: "flex", alignItems: "center", gap: "6px" }}
+        >
           {option.rank !== null && (
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500 }}>{option.rank}.</span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500 }}>
+              {option.rank}.
+            </span>
           )}
           {/* Same rule as the member page: a single-event option is just that event. */}
-          <Badge>{option.events.length === 1 ? eventNameWithDivision(option.events[0]) : option.label}</Badge>
+          <Badge>
+            {option.events.length === 1 ? eventNameWithDivision(option.events[0]) : option.label}
+          </Badge>
           {option.is_archived && <Badge variant="warning">Out of date</Badge>}
         </div>
       ))}

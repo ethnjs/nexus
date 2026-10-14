@@ -1,60 +1,92 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExportButton } from "@/components/tournament/exports/ExportButton";
+import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
 import {
-  membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
-  DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface, FilterOptionGroup,
-} from "@/lib/api";
-import { persistSurfaceView } from "@/lib/persistSurfaceView";
-import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+  MEMBERS_FILTER_KEYS,
+  MembersFilterModal,
+  type MembersFilterState,
+  membersFilterFromStored,
+  membersFilterParams,
+  membersFilterToStored,
+} from "@/components/tournament/members/MembersFilterModal";
+import styles from "@/components/tournament/members/MembersTable.module.css";
 import {
-  DEFAULT_MEMBER_SORT, MEMBER_SORT_TIEBREAK, isMemberSortField, legacyMemberSortRules, memberSortDataKey,
-  memberSortOptions, memberSortTiebreak, memberSortValue, type MemberSortField,
-} from "@/lib/memberSort";
-import {
-  cycleSortRule, sameSortRules, sortRows, sortRulesFromStored, sortRulesToStored, type SortRule,
-} from "@/lib/sorting";
-import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
-import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
-import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
-import { usePanelSelection } from "@/lib/usePanelSelection";
-import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
-import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
-import { FilterButton } from "@/components/ui/FilterButton";
-import { DisplayButton } from "@/components/ui/DisplayButton";
-import { SortButton } from "@/components/ui/SortButton";
-import { SortModal } from "@/components/ui/SortModal";
-import { SortableHeader } from "@/components/ui/SortableHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { Input } from "@/components/ui/Input";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { RolesCell } from "@/components/tournament/roles/RolesCell";
-import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/members/MemberPanel";
-import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/roles/MassRoleEditor";
+  COLUMN_WIDTHS,
+  compactTrack,
+  type MemberColumn,
+  resolveColumns,
+} from "@/components/tournament/members/memberColumns";
 import { RemoveMemberModal } from "@/components/tournament/members/RemoveMemberModal";
 import { RemoveMembersModal } from "@/components/tournament/members/RemoveMembersModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/members/SelfRemoveRedirectModal";
-import { SelectionBar } from "@/components/ui/SelectionBar";
-import {
-  MembersFilterModal, MembersFilterState, MEMBERS_FILTER_KEYS, membersFilterParams,
-  membersFilterFromStored, membersFilterToStored,
-} from "@/components/tournament/members/MembersFilterModal";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { TableColumnsModal } from "@/components/tournament/members/TableColumnsModal";
-import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns } from "@/components/tournament/members/memberColumns";
-import styles from "@/components/tournament/members/MembersTable.module.css";
-import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { rowActivation } from "@/lib/rowActivation";
+import {
+  MASS_ROLE_EDITOR_WIDTH,
+  MassRoleEditor,
+} from "@/components/tournament/roles/MassRoleEditor";
+import { RolesCell } from "@/components/tournament/roles/RolesCell";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
+import { DisplayButton } from "@/components/ui/DisplayButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
+import { IconLock, IconMembers, IconSearch, IconTrash } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { SelectionBar } from "@/components/ui/SelectionBar";
+import { SortableHeader } from "@/components/ui/SortableHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
+import { Spinner } from "@/components/ui/Spinner";
+import {
+  ApiError,
+  type DisplayConfig,
+  type DisplayConfigCatalogItem,
+  type DisplayConfigSurface,
+  displayConfigApi,
+  type FilterOptionGroup,
+  type MembershipFull,
+  membersApi,
+  type Role,
+  rolesApi,
+} from "@/lib/api";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
-import { IconLock, IconSearch, IconTrash, IconMembers } from "@/components/ui/Icons";
-import { ExportButton } from "@/components/tournament/exports/ExportButton";
+import {
+  DEFAULT_MEMBER_SORT,
+  isMemberSortField,
+  legacyMemberSortRules,
+  MEMBER_SORT_TIEBREAK,
+  type MemberSortField,
+  memberSortDataKey,
+  memberSortOptions,
+  memberSortTiebreak,
+  memberSortValue,
+} from "@/lib/memberSort";
+import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { rowActivation } from "@/lib/rowActivation";
+import {
+  cycleSortRule,
+  type SortRule,
+  sameSortRules,
+  sortRows,
+  sortRulesFromStored,
+  sortRulesToStored,
+} from "@/lib/sorting";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { useAuth } from "@/lib/useAuth";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { useTournament } from "@/lib/useTournament";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -107,8 +139,25 @@ function memberName(m: MembershipFull): string {
 // callback props below are id-based and reference-stable in the parent, which
 // is what makes the memo actually hold.
 const MemberRow = memo(function MemberRow({
-  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove,
-  selectMode, selected, selectionLocked, onToggleSelect, focused, rolesReadOnly, panelOpen,
+  tournamentId,
+  membership,
+  allRoles,
+  canTouchRole,
+  locked,
+  lockedReason,
+  isSelf,
+  isArchived,
+  onUpdated,
+  onFocus,
+  onRemove,
+  onSelfRemove,
+  selectMode,
+  selected,
+  selectionLocked,
+  onToggleSelect,
+  focused,
+  rolesReadOnly,
+  panelOpen,
   columns,
 }: {
   tournamentId: number;
@@ -148,7 +197,9 @@ const MemberRow = memo(function MemberRow({
   // opens (or switches) the panel otherwise. Frozen while the panel is dirty.
   const handleRowClick = selectionLocked
     ? undefined
-    : selectMode ? () => onToggleSelect(membership.id) : () => onFocus(membership.id);
+    : selectMode
+      ? () => onToggleSelect(membership.id)
+      : () => onFocus(membership.id);
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? DIRTY_TITLE : undefined;
 
@@ -168,14 +219,24 @@ const MemberRow = memo(function MemberRow({
         style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Checkbox checked={selected} locked={selectionLocked} onChange={() => onToggleSelect(membership.id)} />
+        <Checkbox
+          checked={selected}
+          locked={selectionLocked}
+          onChange={() => onToggleSelect(membership.id)}
+        />
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="sm" />
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {name}
         </span>
       </div>
@@ -183,7 +244,8 @@ const MemberRow = memo(function MemberRow({
         <div
           key={column.key}
           style={{
-            minWidth: 0, display: "flex",
+            minWidth: 0,
+            display: "flex",
             justifyContent: column.align === "start" ? "flex-start" : "center",
           }}
         >
@@ -202,7 +264,8 @@ const MemberRow = memo(function MemberRow({
       <div
         className={styles.rolesCell}
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest("[data-chip], [data-popover-panel], button")) e.stopPropagation();
+          if ((e.target as HTMLElement).closest("[data-chip], [data-popover-panel], button"))
+            e.stopPropagation();
         }}
       >
         <RolesCell
@@ -224,8 +287,19 @@ const MemberRow = memo(function MemberRow({
         onClick={(e) => e.stopPropagation()}
       >
         <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title={
+            isArchived
+              ? ARCHIVED_REASON
+              : isSelf
+                ? "Leave tournament"
+                : locked
+                  ? "You can't remove this member."
+                  : "Remove member"
+          }
           disabled={isArchived || (!isSelf && locked)}
           onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
         >
@@ -246,7 +320,14 @@ export default function MembersPage() {
 
   const { user: currentUser } = useAuth();
   const { selectedTournament } = useTournament();
-  const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember, memberLockReason } = useMemberRoleLock();
+  const {
+    canManageMembers,
+    isArchived,
+    membershipLoading,
+    canTouchRole,
+    canEditMember,
+    memberLockReason,
+  } = useMemberRoleLock();
 
   const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -262,7 +343,9 @@ export default function MembersPage() {
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
   // so they arrive in the one GET below and are written back by persistView.
-  const [filters, setFilters] = useState<MembersFilterState>(() => emptyFilterState(MEMBERS_FILTER_KEYS));
+  const [filters, setFilters] = useState<MembersFilterState>(() =>
+    emptyFilterState(MEMBERS_FILTER_KEYS),
+  );
   // The whole config as last read, so a write can lay this surface's view
   // state over the other surfaces instead of replacing them.
   const [viewReady, setViewReady] = useState(false);
@@ -294,9 +377,21 @@ export default function MembersPage() {
   // Events tab. No "creating new" flow here: members join via invite/join
   // code, so there's nothing to create from this page.
   const {
-    focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
-    setPanelDirty, focusItem, toggleSelectMode, toggleSelected, toggleSelectAll,
-    openMassPanel, clearFocus, clearSelection, forgetItem, getPrevNext,
+    focusedId,
+    selectMode,
+    selectedIds,
+    massPanelOpen,
+    panelDirty,
+    setPanelDirty,
+    focusItem,
+    toggleSelectMode,
+    toggleSelected,
+    toggleSelectAll,
+    openMassPanel,
+    clearFocus,
+    clearSelection,
+    forgetItem,
+    getPrevNext,
   } = usePanelSelection({ initialFocusedId: initialMemberId });
 
   usePanelUrlSync("member", focusedId);
@@ -305,18 +400,31 @@ export default function MembersPage() {
   // re-register the docked panel in a loop if they went straight into the
   // effect's deps. These wrappers are stable and read the latest ones.
   const roleLockRef = useRef({ canTouchRole, canEditMember });
-  useEffect(() => { roleLockRef.current = { canTouchRole, canEditMember }; });
-  const canTouchRoleStable = useCallback((role: Role) => roleLockRef.current.canTouchRole(role), []);
-  const canEditMemberStable = useCallback((target: MembershipFull) => roleLockRef.current.canEditMember(target), []);
+  useEffect(() => {
+    roleLockRef.current = { canTouchRole, canEditMember };
+  });
+  const canTouchRoleStable = useCallback(
+    (role: Role) => roleLockRef.current.canTouchRole(role),
+    [],
+  );
+  const canEditMemberStable = useCallback(
+    (target: MembershipFull) => roleLockRef.current.canEditMember(target),
+    [],
+  );
 
   // Same ref trick, for a different reason: toggleSelected's identity changes
   // every time the selection does, and focusItem's whenever the dirty flag
   // does. Handed straight to a memo'd MemberRow those would defeat the memo
   // and re-render every row on each checkbox click.
   const selectionRef = useRef({ focusItem, toggleSelected });
-  useEffect(() => { selectionRef.current = { focusItem, toggleSelected }; });
+  useEffect(() => {
+    selectionRef.current = { focusItem, toggleSelected };
+  });
   const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
-  const toggleSelectedStable = useCallback((id: number) => selectionRef.current.toggleSelected(id), []);
+  const toggleSelectedStable = useCallback(
+    (id: number) => selectionRef.current.toggleSelected(id),
+    [],
+  );
 
   // Held until the saved filters have been read: filtering runs server-side,
   // so firing on the initial empty state would put an unfiltered request in
@@ -327,24 +435,41 @@ export default function MembersPage() {
     // A filter change mid-flight has the same race on a smaller scale, so a
     // superseded response is dropped rather than allowed to overwrite.
     let current = true;
-    membersApi.list(tournamentId, {
-      surface: MEMBERS_TABLE,
-      filters: membersFilterParams(filters),
-    })
-      .then((rows) => { if (current) setMembers(rows); })
-      .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });
-    rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
-    return () => { current = false; };
+    membersApi
+      .list(tournamentId, {
+        surface: MEMBERS_TABLE,
+        filters: membersFilterParams(filters),
+      })
+      .then((rows) => {
+        if (current) setMembers(rows);
+      })
+      .catch((e) => {
+        if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members.");
+      });
+    rolesApi
+      .list(tournamentId)
+      .then((roles) => {
+        if (current) setAllRoles(roles);
+      })
+      .catch(() => setAllRoles([]));
+    return () => {
+      current = false;
+    };
   }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters, refreshKey]);
 
   // Identity-only (fields: []) since only the length is used.
   useEffect(() => {
     if (!canManageMembers) return;
     let current = true;
-    membersApi.list(tournamentId, { fields: [] })
-      .then((rows) => { if (current) setTotalMembers(rows.length); })
+    membersApi
+      .list(tournamentId, { fields: [] })
+      .then((rows) => {
+        if (current) setTotalMembers(rows.length);
+      })
       .catch(() => {});
-    return () => { current = false; };
+    return () => {
+      current = false;
+    };
   }, [tournamentId, canManageMembers, refreshKey]);
 
   // This viewer's saved view of the table — columns, filters and sort — plus
@@ -354,7 +479,7 @@ export default function MembersPage() {
   useEffect(() => {
     if (!canManageMembers) return;
     Promise.all([
-      displayConfigApi.get(tournamentId).catch(() => ({} as DisplayConfig)),
+      displayConfigApi.get(tournamentId).catch(() => ({}) as DisplayConfig),
       displayConfigApi.getCatalog(tournamentId).catch(() => null),
     ]).then(([config, catalog]) => {
       const surface = config?.[MEMBERS_TABLE];
@@ -366,10 +491,14 @@ export default function MembersPage() {
         if (already) return true;
         setFilters(membersFilterFromStored(surface?.filters));
         // A chain whose every field has since been dropped is no chain.
-        const stored = surface?.sorts ? sortRulesFromStored(surface.sorts, isMemberSortField) : null;
-        setSortRules(stored && stored.length > 0
-          ? stored
-          : legacyMemberSortRules(surface?.sort) ?? DEFAULT_MEMBER_SORT);
+        const stored = surface?.sorts
+          ? sortRulesFromStored(surface.sorts, isMemberSortField)
+          : null;
+        setSortRules(
+          stored && stored.length > 0
+            ? stored
+            : (legacyMemberSortRules(surface?.sort) ?? DEFAULT_MEMBER_SORT),
+        );
         return true;
       });
     });
@@ -378,37 +507,48 @@ export default function MembersPage() {
   // Write-back for the view state this page owns (filters, sort, a reset of
   // columns) — see persistSurfaceView for why it re-reads first.
   const persistView = useCallback(
-    (patch: Partial<DisplayConfigSurface>) => persistSurfaceView(tournamentId, MEMBERS_TABLE, patch),
+    (patch: Partial<DisplayConfigSurface>) =>
+      persistSurfaceView(tournamentId, MEMBERS_TABLE, patch),
     [tournamentId],
   );
 
-  const applyFilters = useCallback((next: MembersFilterState) => {
-    setFilters(next);
-    // Not membersFilterParams: that drops `assigned`, which the roster query
-    // sends as its own bool param — saved state has no such split, and
-    // persisting the query shape lost the Assigned filter on every reload.
-    persistView({ filters: membersFilterToStored(next) });
-  }, [persistView]);
+  const applyFilters = useCallback(
+    (next: MembersFilterState) => {
+      setFilters(next);
+      // Not membersFilterParams: that drops `assigned`, which the roster query
+      // sends as its own bool param — saved state has no such split, and
+      // persisting the query shape lost the Assigned filter on every reload.
+      persistView({ filters: membersFilterToStored(next) });
+    },
+    [persistView],
+  );
 
   // Clears the legacy `sort` as it writes the chain, so the two never disagree.
   // The roster only carries the data its saved columns and sorts need, so a
   // sort by something the rows lack (onboarding with no Onboarding column)
   // reloads them once the server has the new sort to read.
-  const applySort = useCallback((next: SortRule<MemberSortField>[]) => {
-    setSortRules(next);
-    const sample = members?.[0];
-    const missing = !!sample && next.some((rule) => {
-      const key = memberSortDataKey(rule.field);
-      return key !== null && sample[key] === undefined;
-    });
-    persistView({ sorts: sortRulesToStored(next), sort: null })
-      .then((saved) => { if (saved && missing) setRefreshKey((k) => k + 1); });
-  }, [persistView, members]);
+  const applySort = useCallback(
+    (next: SortRule<MemberSortField>[]) => {
+      setSortRules(next);
+      const sample = members?.[0];
+      const missing =
+        !!sample &&
+        next.some((rule) => {
+          const key = memberSortDataKey(rule.field);
+          return key !== null && sample[key] === undefined;
+        });
+      persistView({ sorts: sortRulesToStored(next), sort: null }).then((saved) => {
+        if (saved && missing) setRefreshKey((k) => k + 1);
+      });
+    },
+    [persistView, members],
+  );
 
   const openSortModal = useCallback(() => {
     setShowSortModal(true);
     if (eventPrefGroups === null) {
-      membersApi.filterOptions(tournamentId)
+      membersApi
+        .filterOptions(tournamentId)
         .then((options) => setEventPrefGroups(options.event_preferences))
         .catch(() => setEventPrefGroups([]));
     }
@@ -425,7 +565,8 @@ export default function MembersPage() {
     // the defaults, which is why null and [] are kept apart.
     const keys = columnKeys ?? DEFAULT_TABLE_COLUMNS;
     return resolveColumns(
-      keys, labels,
+      keys,
+      labels,
       !!selectedTournament?.collect_is_over_18,
       !!selectedTournament?.collect_is_over_21,
     );
@@ -434,9 +575,15 @@ export default function MembersPage() {
   // Off-default is what the Display button reports, compared after resolving
   // so a saved copy of the defaults doesn't read as a change.
   const displayActive = useMemo(() => {
-    const keys = (cols: string[]) => resolveColumns(
-      cols, new Map(), !!selectedTournament?.collect_is_over_18, !!selectedTournament?.collect_is_over_21,
-    ).map((c) => c.key).join();
+    const keys = (cols: string[]) =>
+      resolveColumns(
+        cols,
+        new Map(),
+        !!selectedTournament?.collect_is_over_18,
+        !!selectedTournament?.collect_is_over_21,
+      )
+        .map((c) => c.key)
+        .join();
     return keys(columnKeys ?? DEFAULT_TABLE_COLUMNS) !== keys(DEFAULT_TABLE_COLUMNS);
   }, [columnKeys, selectedTournament]);
   const resetDisplay = useCallback(() => {
@@ -448,7 +595,8 @@ export default function MembersPage() {
     if (!members) return [];
     const q = search.trim().toLowerCase();
     const filtered = members.filter((m) => {
-      if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q)) return false;
+      if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q))
+        return false;
       // Filtering is the server's job now — every filter matches against
       // data the roster doesn't carry. Only search stays here, since it
       // reads fields already on the row.
@@ -459,13 +607,16 @@ export default function MembersPage() {
 
   const roleFilterOptions = useMemo(
     () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),
-    [allRoles]
+    [allRoles],
   );
 
   // Roles only — every caller is a roles PATCH, whose response carries none of
   // the built groups; swapping the whole row would blank the row's columns.
   const handleMemberUpdated = useCallback((updated: MembershipFull) => {
-    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)));
+    setMembers(
+      (prev) =>
+        prev?.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)) ?? null,
+    );
   }, []);
 
   // Either flow narrows the table for a docked panel — drop the Roles
@@ -499,7 +650,7 @@ export default function MembersPage() {
   // checked (see massPanelOpen).
   const selectedMembers = useMemo(
     () => (members ?? []).filter((m) => selectedIds.has(m.id)),
-    [members, selectedIds]
+    [members, selectedIds],
   );
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
@@ -515,7 +666,10 @@ export default function MembersPage() {
       // treating "not in an empty list" as "gone" would drop it every time.
       if (members === null) return;
       const membership = members.find((m) => m.id === focusedId);
-      if (!membership) { clearFocus(); return; }
+      if (!membership) {
+        clearFocus();
+        return;
+      }
       setPanel(
         <MemberPanel
           key={`${membership.id}-${displayConfigVersion}`}
@@ -585,10 +739,30 @@ export default function MembersPage() {
 
     clearPanel();
   }, [
-    focusedId, members, massPanelOpen, selectedMembers, tournamentId, allRoles,
-    prevId, nextId, hasPrev, hasNext, focusItem, setPanelDirty, displayConfigVersion,
-    canTouchRoleStable, canEditMemberStable, handleMemberUpdated, isArchived, currentUser?.id,
-    clearFocus, clearSelection, setPanel, clearPanel,
+    focusedId,
+    members,
+    massPanelOpen,
+    selectedMembers,
+    tournamentId,
+    allRoles,
+    prevId,
+    nextId,
+    hasPrev,
+    hasNext,
+    focusItem,
+    setPanelDirty,
+    displayConfigVersion,
+    canTouchRoleStable,
+    canEditMemberStable,
+    handleMemberUpdated,
+    isArchived,
+    currentUser?.id,
+    clearFocus,
+    clearSelection,
+    setPanel,
+    clearPanel,
+    selectedTournament?.collect_is_over_18,
+    selectedTournament?.collect_is_over_21,
   ]);
 
   // Unmount only (e.g. navigating off the Members page) — clearing in the
@@ -633,7 +807,9 @@ export default function MembersPage() {
   // The toolbar's Remove skips yourself (leaving has its own flow) and
   // anyone the per-row Remove would refuse.
   const selfSelected = selectedMembers.some((m) => m.user.id === currentUser?.id);
-  const removableSelected = selectedMembers.filter((m) => m.user.id !== currentUser?.id && canEditMember(m));
+  const removableSelected = selectedMembers.filter(
+    (m) => m.user.id !== currentUser?.id && canEditMember(m),
+  );
   const isFiltered = search.trim() !== "" || isFilterActive(filters);
 
   // The default chain isn't shown as a header state — it's the absence of a
@@ -645,7 +821,9 @@ export default function MembersPage() {
       <SortableHeader
         label={label}
         align={align}
-        rule={index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }}
+        rule={
+          index < 0 ? null : { direction: headerSortRules[index].direction, position: index + 1 }
+        }
         showPosition={headerSortRules.length > 1}
         onClick={() => applySort(cycleSortRule(sortRules, field, DEFAULT_MEMBER_SORT))}
       />
@@ -657,7 +835,14 @@ export default function MembersPage() {
       <CollapsibleHeader heading="Members" />
 
       {loadError && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-danger)",
+            marginBottom: "10px",
+          }}
+        >
           {loadError}
         </p>
       )}
@@ -672,7 +857,16 @@ export default function MembersPage() {
         </Card>
       ) : (
         <>
-          <div ref={toolbarRef} style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+          <div
+            ref={toolbarRef}
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "10px",
+              marginBottom: "12px",
+              flexWrap: "wrap",
+            }}
+          >
             {/* Grows into the room the toolbar leaves and is the first thing to
                 give it back — a small basis with grow narrows the search before
                 anything else has to wrap. */}
@@ -719,7 +913,9 @@ export default function MembersPage() {
             )}
             {canManageMembers && (
               <Button
-                type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+                type="button"
+                variant={selectMode ? "primary" : "secondary"}
+                size="md"
                 onClick={toggleSelectMode}
                 disabled={panelDirty || isArchived}
                 title={isArchived ? ARCHIVED_REASON : panelDirty ? DIRTY_TITLE : undefined}
@@ -747,32 +943,56 @@ export default function MembersPage() {
                   title={panelDirty ? DIRTY_TITLE : undefined}
                 >
                   <Checkbox
-                    checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
+                    checked={
+                      visibleMembers.length > 0 &&
+                      visibleMembers.every((m) => selectedIds.has(m.id))
+                    }
                     locked={panelDirty}
-                    onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
+                    onChange={(checked) =>
+                      toggleSelectAll(
+                        visibleMembers.map((m) => m.id),
+                        checked,
+                      )
+                    }
                   />
                 </span>
-                {sortableHeader("first_name", `Members — ${isFiltered ? `${visibleMembers.length} of ${total}` : total}`, "start")}
-                {tableColumns.map((column) => column.sortField ? (
-                  <span
-                    key={column.key}
-                    // Same alignment as the column's cells, so the header sits over them.
-                    style={{ display: "flex", minWidth: 0, justifyContent: column.align === "start" ? "flex-start" : "center" }}
-                  >
-                    {sortableHeader(column.sortField, column.label, column.align === "start" ? "start" : "center")}
-                  </span>
-                ) : (
-                  <span
-                    key={column.key}
-                    style={{
-                      textAlign: column.align === "start" ? "left" : "center",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}
-                    title={column.label}
-                  >
-                    {column.label}
-                  </span>
-                ))}
+                {sortableHeader(
+                  "first_name",
+                  `Members — ${isFiltered ? `${visibleMembers.length} of ${total}` : total}`,
+                  "start",
+                )}
+                {tableColumns.map((column) =>
+                  column.sortField ? (
+                    <span
+                      key={column.key}
+                      // Same alignment as the column's cells, so the header sits over them.
+                      style={{
+                        display: "flex",
+                        minWidth: 0,
+                        justifyContent: column.align === "start" ? "flex-start" : "center",
+                      }}
+                    >
+                      {sortableHeader(
+                        column.sortField,
+                        column.label,
+                        column.align === "start" ? "start" : "center",
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      key={column.key}
+                      style={{
+                        textAlign: column.align === "start" ? "left" : "center",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={column.label}
+                    >
+                      {column.label}
+                    </span>
+                  ),
+                )}
                 <span className={styles.rolesCell}>Roles</span>
                 {/* Ellipses like every other header rather than spilling past
                     the card edge if the grid is ever squeezed past its floors. */}
@@ -810,7 +1030,10 @@ export default function MembersPage() {
             </div>
 
             {visibleMembers.length === 0 && (
-              <EmptyState title="No matching members" description="Try adjusting your search or filters." />
+              <EmptyState
+                title="No matching members"
+                description="Try adjusting your search or filters."
+              />
             )}
           </Card>
         </>
@@ -858,7 +1081,10 @@ export default function MembersPage() {
         onCancel={toggleSelectMode}
         actions={
           <Button
-            type="button" variant="secondary" size="sm" iconOnly
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
             title={isArchived ? ARCHIVED_REASON : "Remove selected"}
             disabled={isArchived || removableSelected.length === 0}
             onClick={() => setBulkRemoveOpen(true)}
@@ -877,7 +1103,7 @@ export default function MembersPage() {
           onClose={() => setBulkRemoveOpen(false)}
           onRemoved={(ids) => {
             const gone = new Set(ids);
-            setMembers((prev) => prev && prev.filter((m) => !gone.has(m.id)));
+            setMembers((prev) => prev?.filter((m) => !gone.has(m.id)) ?? null);
             setTotalMembers((n) => (n === null ? n : n - ids.length));
             forgetItem(ids);
           }}
@@ -891,7 +1117,7 @@ export default function MembersPage() {
           memberName={memberName(removeTarget)}
           onClose={() => setRemoveTarget(null)}
           onRemoved={() => {
-            setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            setMembers((prev) => prev?.filter((m) => m.id !== removeTarget.id) ?? null);
             setTotalMembers((n) => (n === null ? n : n - 1));
             // Otherwise a removed-but-still-selected/focused row would keep a
             // panel open against a member who no longer exists.

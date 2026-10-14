@@ -1,16 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { formsApi, Form, ApiError } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
+import { ApiError, type Form, formsApi } from "@/lib/api";
 
 // Respondent-facing title/description — the first, most prominent card in
 // the field list. Always editable-looking (not click-to-reveal like the
 // sub-header's dashboard-facing name), using the app's standard Input/
 // Textarea rather than an underline-only Google-Forms-style treatment.
-export function TitleCard({ form, onUpdated, locked = false }: {
+export function TitleCard({
+  form,
+  onUpdated,
+  locked = false,
+}: {
   form: Form;
   onUpdated: (form: Form) => void;
   locked?: boolean;
@@ -40,7 +44,16 @@ export function TitleCard({ form, onUpdated, locked = false }: {
   }
 
   return (
-    <Card radius="lg" style={{ padding: "24px", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+    <Card
+      radius="lg"
+      style={{
+        padding: "24px",
+        marginBottom: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
       <Input
         label="Title"
         value={title}
@@ -62,7 +75,9 @@ export function TitleCard({ form, onUpdated, locked = false }: {
         locked={locked}
       />
       {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}
+        >
           {error}
         </p>
       )}

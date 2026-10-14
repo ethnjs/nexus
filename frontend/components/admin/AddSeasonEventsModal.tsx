@@ -1,16 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  seasonEventsApi, CanonicalEvent, EventCategory, SeasonEvent,
-  TournamentDivision, TOURNAMENT_DIVISIONS, ApiError,
-} from "@/lib/api";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { IconSearch, IconPlus, IconX } from "@/components/ui/Icons";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { IconPlus, IconSearch, IconX } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import {
+  ApiError,
+  type CanonicalEvent,
+  type EventCategory,
+  type SeasonEvent,
+  seasonEventsApi,
+  TOURNAMENT_DIVISIONS,
+  type TournamentDivision,
+} from "@/lib/api";
 import { useToast } from "@/lib/useToast";
 
 const ALL_CATEGORIES = "__all__";
@@ -30,7 +35,12 @@ interface Staged {
  * here to set, and a single global choice would force a second pass for them.
  */
 export function AddSeasonEventsModal({
-  year, events, categories, existing, onClose, onAdded,
+  year,
+  events,
+  categories,
+  existing,
+  onClose,
+  onAdded,
 }: {
   year: number;
   events: CanonicalEvent[];
@@ -79,14 +89,18 @@ export function AddSeasonEventsModal({
 
   function toggleDivision(eventId: number, value: string) {
     const division = value as TournamentDivision;
-    setStaged((prev) => prev.map((s) =>
-      s.event.id !== eventId ? s : {
-        ...s,
-        divisions: s.divisions.includes(division)
-          ? s.divisions.filter((d) => d !== division)
-          : [...s.divisions, division],
-      }
-    ));
+    setStaged((prev) =>
+      prev.map((s) =>
+        s.event.id !== eventId
+          ? s
+          : {
+              ...s,
+              divisions: s.divisions.includes(division)
+                ? s.divisions.filter((d) => d !== division)
+                : [...s.divisions, division],
+            },
+      ),
+    );
   }
 
   // One row per (event, division) the commit will create.
@@ -96,7 +110,10 @@ export function AddSeasonEventsModal({
   );
 
   async function handleDone() {
-    if (pairs.length === 0) { onClose(); return; }
+    if (pairs.length === 0) {
+      onClose();
+      return;
+    }
     setError(undefined);
     setSaving(true);
 
@@ -104,8 +121,8 @@ export function AddSeasonEventsModal({
     // shouldn't discard the rest.
     const outcomes = await Promise.allSettled(
       pairs.map(({ event, division }) =>
-        seasonEventsApi.create({ event_id: event.id, year, division, is_active: true })
-      )
+        seasonEventsApi.create({ event_id: event.id, year, division, is_active: true }),
+      ),
     );
     const created = outcomes
       .filter((o): o is PromiseFulfilledResult<SeasonEvent> => o.status === "fulfilled")
@@ -116,14 +133,18 @@ export function AddSeasonEventsModal({
     const failed = outcomes.length - created.length;
     if (failed === 0) {
       // One toast for the batch — a toast per pair would stack a dozen deep.
-      show(`Added ${created.length} entr${created.length === 1 ? "y" : "ies"} to ${year}`, "success");
+      show(
+        `Added ${created.length} entr${created.length === 1 ? "y" : "ies"} to ${year}`,
+        "success",
+      );
       onClose();
       return;
     }
     show(`${failed} of ${outcomes.length} couldn't be added`, "error");
 
     const first = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
-    const reason = first?.reason instanceof ApiError ? first.reason.message : "Something went wrong.";
+    const reason =
+      first?.reason instanceof ApiError ? first.reason.message : "Something went wrong.";
     setError(`${failed} of ${outcomes.length} couldn't be added: ${reason}`);
     setSaving(false);
   }
@@ -134,24 +155,40 @@ export function AddSeasonEventsModal({
         {/* Staged first — it's the thing being built, and pushing it below the
             catalog would put it off-screen once the list scrolls. */}
         {staged.length > 0 && (
-          <div style={{
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-            padding: "4px 12px", background: "var(--color-bg)",
-          }}>
+          <div
+            style={{
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "4px 12px",
+              background: "var(--color-bg)",
+            }}
+          >
             {staged.map((row, i) => {
               const available = availableDivisions(row.event);
               return (
                 <div
                   key={row.event.id}
                   style={{
-                    display: "flex", alignItems: "center", gap: "10px", padding: "10px 0",
-                    borderBottom: i === staged.length - 1 ? "none" : "1px solid var(--color-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 0",
+                    borderBottom:
+                      i === staged.length - 1 ? "none" : "1px solid var(--color-border)",
                   }}
                 >
-                  <span style={{
-                    fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     {row.event.name}
                   </span>
                   <ButtonGroup
@@ -160,8 +197,12 @@ export function AddSeasonEventsModal({
                     onChange={(v) => toggleDivision(row.event.id, v)}
                   />
                   <Button
-                    type="button" variant="secondary" size="sm" iconOnly
-                    title="Remove" onClick={() => unstage(row.event.id)}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    iconOnly
+                    title="Remove"
+                    onClick={() => unstage(row.event.id)}
                   >
                     <IconX size={13} />
                   </Button>
@@ -198,13 +239,24 @@ export function AddSeasonEventsModal({
         </div>
 
         {/* Scrolls rather than growing the modal — the catalog is ~180 rows. */}
-        <div style={{
-          maxHeight: "280px", overflowY: "auto",
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-          padding: "4px 12px",
-        }}>
+        <div
+          style={{
+            maxHeight: "280px",
+            overflowY: "auto",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "4px 12px",
+          }}
+        >
           {visible.length === 0 ? (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", padding: "10px 0" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-tertiary)",
+                padding: "10px 0",
+              }}
+            >
               No events match.
             </p>
           ) : (
@@ -215,21 +267,46 @@ export function AddSeasonEventsModal({
                 <div
                   key={event.id}
                   style={{
-                    display: "flex", alignItems: "center", gap: "10px", padding: "8px 0",
-                    borderBottom: i === visible.length - 1 ? "none" : "1px solid var(--color-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "8px 0",
+                    borderBottom:
+                      i === visible.length - 1 ? "none" : "1px solid var(--color-border)",
                     opacity: full || alreadyStaged ? 0.5 : 1,
                   }}
                 >
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
                     {event.name}
                   </span>
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "11px",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
                     {event.category.name}
                   </span>
                   <Button
-                    type="button" variant="secondary" size="sm"
+                    type="button"
+                    variant="secondary"
+                    size="sm"
                     disabled={full || alreadyStaged}
-                    title={full ? `Already in every division for ${year}` : alreadyStaged ? "Already added below" : "Add"}
+                    title={
+                      full
+                        ? `Already in every division for ${year}`
+                        : alreadyStaged
+                          ? "Already added below"
+                          : "Add"
+                    }
                     onClick={() => stage(event)}
                   >
                     <IconPlus size={13} /> Add
@@ -241,21 +318,37 @@ export function AddSeasonEventsModal({
         </div>
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "6px" }}>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
             {staged.length === 0
               ? "Nothing added yet"
               : `${staged.length} event${staged.length === 1 ? "" : "s"} · ${pairs.length} division entr${pairs.length === 1 ? "y" : "ies"}`}
           </span>
           <span style={{ marginLeft: "auto", display: "flex", gap: "10px" }}>
-            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
             <Button
-              type="button" variant="primary" loading={saving}
+              type="button"
+              variant="primary"
+              loading={saving}
               disabled={pairs.length === 0}
               onClick={handleDone}
             >

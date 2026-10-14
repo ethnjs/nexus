@@ -14,7 +14,14 @@
  * own local state instead.
  */
 import {
-  createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore,
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
 } from "react";
 import { displayConfigApi } from "@/lib/api";
 import { PAGE_HEADER } from "@/lib/displayConfigSurfaces";
@@ -54,11 +61,21 @@ function writeCache(tournamentId: number, collapsed: boolean) {
   }
 }
 
-export function HeaderCollapseProvider({ tournamentId, children }: { tournamentId: number; children: ReactNode }) {
+export function HeaderCollapseProvider({
+  tournamentId,
+  children,
+}: {
+  tournamentId: number;
+  children: ReactNode;
+}) {
   // Read as an external store rather than into useState: the server render
   // has no localStorage (null there), and the store hands the client its own
   // value without a hydration mismatch.
-  const cached = useSyncExternalStore(subscribeStorage, () => readCache(tournamentId), () => null);
+  const cached = useSyncExternalStore(
+    subscribeStorage,
+    () => readCache(tournamentId),
+    () => null,
+  );
   // What the server said, or what was just set here — either outranks the cache.
   const [known, setKnown] = useState<boolean | null>(null);
   const collapsed = known ?? cached ?? false;
@@ -67,7 +84,8 @@ export function HeaderCollapseProvider({ tournamentId, children }: { tournamentI
   // can't read the config at all, and keeps the cached value.
   useEffect(() => {
     let current = true;
-    displayConfigApi.get(tournamentId)
+    displayConfigApi
+      .get(tournamentId)
       .then((config) => {
         const saved = config?.[PAGE_HEADER]?.collapsed;
         if (!current || typeof saved !== "boolean") return;
@@ -75,14 +93,19 @@ export function HeaderCollapseProvider({ tournamentId, children }: { tournamentI
         writeCache(tournamentId, saved);
       })
       .catch(() => {});
-    return () => { current = false; };
+    return () => {
+      current = false;
+    };
   }, [tournamentId]);
 
-  const setCollapsed = useCallback((next: boolean) => {
-    setKnown(next);
-    writeCache(tournamentId, next);
-    void persistSurfaceView(tournamentId, PAGE_HEADER, { collapsed: next });
-  }, [tournamentId]);
+  const setCollapsed = useCallback(
+    (next: boolean) => {
+      setKnown(next);
+      writeCache(tournamentId, next);
+      void persistSurfaceView(tournamentId, PAGE_HEADER, { collapsed: next });
+    },
+    [tournamentId],
+  );
 
   const value = useMemo(() => ({ collapsed, setCollapsed }), [collapsed, setCollapsed]);
   return <HeaderCollapseContext.Provider value={value}>{children}</HeaderCollapseContext.Provider>;

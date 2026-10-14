@@ -1,13 +1,27 @@
 "use client";
 
-import { ComponentProps, CSSProperties, useCallback, useMemo, useRef, useState } from "react";
 import {
-  DndContext, DragEndEvent, DragMoveEvent, PointerSensor,
-  closestCenter, useDraggable, useDroppable, useSensor, useSensors,
+  closestCenter,
+  type DndContext,
+  type DragEndEvent,
+  type DragMoveEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { ApiError, Role, rolesApi } from "@/lib/api";
-import { DropZoneKind, applyDrop, groupByRank, rankChanges } from "@/lib/roles/roleReorder";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ApiError, type Role, rolesApi } from "@/lib/api";
+import { applyDrop, type DropZoneKind, groupByRank, rankChanges } from "@/lib/roles/roleReorder";
 
 export type DividerState = "success" | "noop" | null;
 
@@ -47,9 +61,18 @@ export interface RoleReorder {
   dividerStateFor: (prev: Role | null, next: Role | null) => DividerState;
 }
 
-export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRoleReorderOptions): RoleReorder {
+export function useRoleReorder({
+  tournamentId,
+  roles,
+  isLocked,
+  onSaved,
+}: UseRoleReorderOptions): RoleReorder {
   const [draft, setDraft] = useState<Role[]>(roles ?? []);
-  const [dropZone, setDropZone] = useState<{ id: number; zone: DropZoneKind; noop: boolean } | null>(null);
+  const [dropZone, setDropZone] = useState<{
+    id: number;
+    zone: DropZoneKind;
+    noop: boolean;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -73,7 +96,10 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   // a ref flipped here would be consumed by the first call, leaving the second
   // to take the merge branch and win. State is the same value in both calls,
   // so the branch taken is stable.
-  const [synced, setSynced] = useState<{ roles: Role[] | null; reset: boolean }>({ roles, reset: true });
+  const [synced, setSynced] = useState<{ roles: Role[] | null; reset: boolean }>({
+    roles,
+    reset: true,
+  });
   if (roles !== synced.roles) {
     setSynced({ roles, reset: false });
     const source = roles ?? [];
@@ -109,17 +135,24 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   // unreachable, since nothing is ever crossed into there.
   const handleDragOver = useCallback((event: DragMoveEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) { setDropZone(null); return; }
+    if (!over || active.id === over.id) {
+      setDropZone(null);
+      return;
+    }
 
     const rect = active.rect.current.translated;
-    if (!rect) { setDropZone(null); return; }
+    if (!rect) {
+      setDropZone(null);
+      return;
+    }
 
     const centerY = rect.top + rect.height / 2;
     const relative = (centerY - over.rect.top) / over.rect.height;
     const zone: DropZoneKind = relative < 0.3 ? "above" : relative > 0.7 ? "below" : "join";
 
     const targetId = Number(over.id);
-    const noop = applyDrop(draftRef.current, Number(active.id), targetId, zone, lockedRef.current) === null;
+    const noop =
+      applyDrop(draftRef.current, Number(active.id), targetId, zone, lockedRef.current) === null;
     // Runs on every pointer move — keep the object identity stable when nothing
     // changed so memoized rows and dividers don't re-render.
     setDropZone((prev) =>
@@ -135,18 +168,27 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     if (!zone) return;
     // Target comes from the previewed zone, not the event's `over`, so what
     // gets applied is always what the indicator was showing.
-    const next = applyDrop(draftRef.current, Number(event.active.id), zone.id, zone.zone, lockedRef.current);
+    const next = applyDrop(
+      draftRef.current,
+      Number(event.active.id),
+      zone.id,
+      zone.zone,
+      lockedRef.current,
+    );
     if (next) setDraft(next);
   }, []);
 
-  const dndProps = useMemo<DndProps>(() => ({
-    sensors,
-    collisionDetection: closestCenter,
-    onDragMove: handleDragOver,
-    onDragOver: handleDragOver,
-    onDragEnd: handleDragEnd,
-    onDragCancel: () => setDropZone(null),
-  }), [sensors, handleDragOver, handleDragEnd]);
+  const dndProps = useMemo<DndProps>(
+    () => ({
+      sensors,
+      collisionDetection: closestCenter,
+      onDragMove: handleDragOver,
+      onDragOver: handleDragOver,
+      onDragEnd: handleDragEnd,
+      onDragCancel: () => setDropZone(null),
+    }),
+    [sensors, handleDragOver, handleDragEnd],
+  );
 
   const groups = useMemo(() => groupByRank(draft), [draft]);
 
@@ -155,23 +197,28 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     return key(roles ?? []) !== key(draft);
   }, [roles, draft]);
 
-  const dropIndicatorFor = useCallback((role: Role) => (
-    dropZone?.id === role.id && dropZone.zone === "join" ? { noop: dropZone.noop } : null
-  ), [dropZone]);
+  const dropIndicatorFor = useCallback(
+    (role: Role) =>
+      dropZone?.id === role.id && dropZone.zone === "join" ? { noop: dropZone.noop } : null,
+    [dropZone],
+  );
 
   // A divider between `prev` and `next` lights up if the drop zone points at
   // either side of that same boundary — hovering the bottom of `prev` and the
   // top of `next` mean the same insertion point.
-  const dividerStateFor = useCallback((prev: Role | null, next: Role | null): DividerState => {
-    if (!dropZone) return null;
-    // Never light a boundary internal to a tie group.
-    if (prev && next && prev.rank === next.rank) return null;
-    const matches =
-      (prev && dropZone.id === prev.id && dropZone.zone === "below") ||
-      (next && dropZone.id === next.id && dropZone.zone === "above");
-    if (!matches) return null;
-    return dropZone.noop ? "noop" : "success";
-  }, [dropZone]);
+  const dividerStateFor = useCallback(
+    (prev: Role | null, next: Role | null): DividerState => {
+      if (!dropZone) return null;
+      // Never light a boundary internal to a tie group.
+      if (prev && next && prev.rank === next.rank) return null;
+      const matches =
+        (prev && dropZone.id === prev.id && dropZone.zone === "below") ||
+        (next && dropZone.id === next.id && dropZone.zone === "above");
+      if (!matches) return null;
+      return dropZone.noop ? "noop" : "success";
+    },
+    [dropZone],
+  );
 
   const save = useCallback(async () => {
     const changes = rankChanges(roles ?? [], draftRef.current);
@@ -183,10 +230,12 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
       // Adopt the server's ranks as the new baseline instead of re-GETting.
       setSynced((cur) => ({ ...cur, reset: true }));
       const ranks = new Map(updated.map((r) => [r.id, r.rank]));
-      onSaved?.(draftRef.current.map((r) => {
-        const rank = ranks.get(r.id);
-        return rank === undefined ? r : { ...r, rank };
-      }));
+      onSaved?.(
+        draftRef.current.map((r) => {
+          const rank = ranks.get(r.id);
+          return rank === undefined ? r : { ...r, rank };
+        }),
+      );
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Failed to save role order.");
     } finally {
@@ -207,13 +256,31 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     setSynced((cur) => (cur.reset ? cur : { ...cur, reset: true }));
   }, []);
 
-  return { draft, groups, isDirty, saving, error, save, cancel, resetOnNextRoles, dndProps, dropIndicatorFor, dividerStateFor };
+  return {
+    draft,
+    groups,
+    isDirty,
+    saving,
+    error,
+    save,
+    cancel,
+    resetOnNextRoles,
+    dndProps,
+    dropIndicatorFor,
+    dividerStateFor,
+  };
 }
 
 // Per-row drag/drop wiring. Kept separate because useDraggable/useDroppable
 // must run inside the row component itself, not the list that owns the state.
 export function useRoleRowDrag(roleId: number, locked: boolean) {
-  const { attributes, listeners, setNodeRef: setGripRef, transform, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setGripRef,
+    transform,
+    isDragging,
+  } = useDraggable({
     id: roleId,
     disabled: locked,
   });
@@ -222,8 +289,19 @@ export function useRoleRowDrag(roleId: number, locked: boolean) {
   // Only the dragged row moves — siblings never shift to preview a reorder the
   // way a sortable list would.
   const dragStyle: CSSProperties = isDragging
-    ? { transform: CSS.Translate.toString(transform), opacity: 0.5, position: "relative", zIndex: 1 }
+    ? {
+        transform: CSS.Translate.toString(transform),
+        opacity: 0.5,
+        position: "relative",
+        zIndex: 1,
+      }
     : {};
 
-  return { setGripRef, gripProps: { ...attributes, ...listeners }, setDropRef, dragStyle, isDragging };
+  return {
+    setGripRef,
+    gripProps: { ...attributes, ...listeners },
+    setDropRef,
+    dragStyle,
+    isDragging,
+  };
 }

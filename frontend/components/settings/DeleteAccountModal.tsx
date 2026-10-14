@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { usersApi, ApiError } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, usersApi } from "@/lib/api";
 
 const CONFIRM_PHRASE = "DELETE";
 
@@ -42,17 +42,35 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
     return (
       <Modal title="Delete account" onClose={onClose} variant="danger">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
             This permanently deletes your account and everything tied to it. It cannot be undone.
           </p>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            If you&rsquo;re currently part of any tournaments, deleting your account will also remove
-            you from them.
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            If you&rsquo;re currently part of any tournaments, deleting your account will also
+            remove you from them.
           </p>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={() => setStep("confirm")}>Continue</Button>
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}
+          >
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={() => setStep("confirm")}>
+              Continue
+            </Button>
           </div>
         </div>
       </Modal>
@@ -61,9 +79,19 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
 
   return (
     <Modal title="Delete account" onClose={onClose} variant="danger">
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-          Enter your password and type <strong>{CONFIRM_PHRASE}</strong> to permanently delete your account.
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+      >
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          Enter your password and type <strong>{CONFIRM_PHRASE}</strong> to permanently delete your
+          account.
         </p>
 
         <Input
@@ -88,13 +116,21 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
         />
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={() => setStep("warning")}>Back</Button>
+          <Button type="button" variant="secondary" onClick={() => setStep("warning")}>
+            Back
+          </Button>
           <Button type="submit" variant="danger" loading={loading} disabled={!canSubmit}>
             Delete account
           </Button>

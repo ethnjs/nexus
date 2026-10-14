@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 
 interface MasonryGridProps {
   children: ReactNode;
@@ -46,7 +46,7 @@ export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: Masonr
     // children even when nothing inside them resized.
     const resize = new ResizeObserver((entries) => {
       if (entries.some((entry) => entry.target === grid)) fitAll();
-      else entries.forEach((entry) => fit(entry.target));
+      else for (const entry of entries) fit(entry.target);
     });
 
     // DOM children, not React children: a component rendering several cards

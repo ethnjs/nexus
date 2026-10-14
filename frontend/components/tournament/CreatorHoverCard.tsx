@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import { CSSProperties } from "react";
-import { PersonRef } from "@/lib/api";
-import { personName, personRoles } from "@/lib/personDisplay";
+import type { CSSProperties } from "react";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { HoverCard } from "@/components/ui/HoverCard";
 import { Badge } from "@/components/ui/Badge";
+import { HoverCard } from "@/components/ui/HoverCard";
+import type { PersonRef } from "@/lib/api";
+import { personName, personRoles } from "@/lib/personDisplay";
 
 interface CreatorHoverCardProps {
   creator: PersonRef;
@@ -20,16 +20,27 @@ interface CreatorHoverCardProps {
 // Shared "who did this" cell — avatar + name, hover for roles. No contact
 // details: a reference carries a name and roles and nothing else.
 // Used anywhere a row surfaces a PersonRef (Invite.creator, FormListItem.creator, ...).
-export function CreatorHoverCard({ creator, noMembershipLabel = "No membership", style }: CreatorHoverCardProps) {
+export function CreatorHoverCard({
+  creator,
+  noMembershipLabel = "No membership",
+  style,
+}: CreatorHoverCardProps) {
   return (
     <HoverCard
       style={style}
       content={
         <>
-          <p style={{
-            fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {personName(creator)}
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}>
@@ -37,30 +48,60 @@ export function CreatorHoverCard({ creator, noMembershipLabel = "No membership",
               const roles = personRoles(creator);
               if (roles === null) {
                 return (
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "12px",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
                     {noMembershipLabel}
                   </span>
                 );
               }
               if (roles.length === 0) {
                 return (
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "12px",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
                     No roles
                   </span>
                 );
               }
-              return roles.map((role) => <Badge key={role.id} variant="default">{role.label}</Badge>);
+              return roles.map((role) => (
+                <Badge key={role.id} variant="default">
+                  {role.label}
+                </Badge>
+              ));
             })()}
           </div>
         </>
       }
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minWidth: 0, cursor: "default" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          minWidth: 0,
+          cursor: "default",
+        }}
+      >
         <AvatarCircle user={creator} size="xs" />
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {personName(creator)}
         </span>
       </div>

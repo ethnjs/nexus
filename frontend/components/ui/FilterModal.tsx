@@ -1,14 +1,14 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { CheckboxList } from "@/components/ui/CheckboxList";
-import { ChipInput } from "@/components/ui/ChipInput";
-import { IconPlus } from "@/components/ui/Icons";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
+import { IconPlus } from "@/components/ui/Icons";
+import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 
 export interface FilterOption {
@@ -66,7 +66,9 @@ export function filterStateFromStored<K extends string>(
   for (const key of keys) {
     const values = stored?.[key];
     if (Array.isArray(values)) {
-      state[key] = new Set(values.filter((v): v is string => typeof v === "string" && keep(key, v)));
+      state[key] = new Set(
+        values.filter((v): v is string => typeof v === "string" && keep(key, v)),
+      );
     }
   }
   return state;
@@ -142,7 +144,12 @@ interface FilterBodyProps {
  * would write out every option to mean exactly what an empty set already
  * means, and would then quietly exclude any option added afterwards.
  */
-function FilterSection({ title, active, onClear, children }: {
+function FilterSection({
+  title,
+  active,
+  onClear,
+  children,
+}: {
   title: string;
   active: boolean;
   onClear: () => void;
@@ -150,11 +157,24 @@ function FilterSection({ title, active, onClear, children }: {
 }) {
   return (
     <div style={{ marginBottom: "20px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-          letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "8px",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "11px",
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
           {title}
         </span>
         {/* Always rendered, hidden when there's nothing to clear: the button
@@ -162,7 +182,9 @@ function FilterSection({ title, active, onClear, children }: {
             selection grew the header and shifted every section below. Hidden
             rather than just invisible — out of the tab order and inert too. */}
         <Button
-          type="button" variant="ghost" size="sm"
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={onClear}
           disabled={!active}
           aria-hidden={!active}
@@ -230,7 +252,9 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
       // chip is matched back by label rather than parsed out of its text.
       value={[...selected].map((value) => labelFor.get(value) ?? value)}
       onChange={(labels) => {
-        const removed = [...selected].find((value) => !labels.includes(labelFor.get(value) ?? value));
+        const removed = [...selected].find(
+          (value) => !labels.includes(labelFor.get(value) ?? value),
+        );
         if (removed) onChange(toggled(selected, removed));
       }}
       variant="transparent"
@@ -242,7 +266,10 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
         <ChecklistPopover
           trigger={
             <Button
-              type="button" variant="secondary" size="sm" iconOnly
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
               title={`Filter by ${title.toLowerCase()}`}
               style={{ padding: 0, flexShrink: 0 }}
             >
@@ -302,7 +329,14 @@ interface FilterModalProps<K extends string> {
 // so the draft is re-seeded from the applied filters on every open rather than
 // resuming a stale one.
 export function FilterModal<K extends string>({
-  title, sections, filters, defaults, onApply, onClose, loading = false, width = 380,
+  title,
+  sections,
+  filters,
+  defaults,
+  onApply,
+  onClose,
+  loading = false,
+  width = 380,
 }: FilterModalProps<K>) {
   const [draft, setDraft] = useState<FilterState<K>>(filters);
 
@@ -337,49 +371,64 @@ export function FilterModal<K extends string>({
         // Fills the viewport minus the title and footer, so it only scrolls
         // on a short window or a long filter list.
         <div style={{ maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: "4px" }}>
-          {sections.filter((section) => !isHidden(section)).map((section) => {
-            // Falls back rather than indexing blind: the sections are the
-            // caller's, so a key its filter state doesn't carry yet — one
-            // added after a stored config was written — would otherwise
-            // reach the control as undefined and crash on `.size`.
-            const selected = draft[section.key] ?? new Set<string>();
-            const onChange = (next: Set<string>) => setField(section.key, next);
-            let control: ReactNode;
-            if (section.control === "custom") {
-              control = section.render(selected, onChange);
-            } else {
-              const Body = LIST_BODIES[section.control];
-              control = (
-                <Body
+          {sections
+            .filter((section) => !isHidden(section))
+            .map((section) => {
+              // Falls back rather than indexing blind: the sections are the
+              // caller's, so a key its filter state doesn't carry yet — one
+              // added after a stored config was written — would otherwise
+              // reach the control as undefined and crash on `.size`.
+              const selected = draft[section.key] ?? new Set<string>();
+              const onChange = (next: Set<string>) => setField(section.key, next);
+              let control: ReactNode;
+              if (section.control === "custom") {
+                control = section.render(selected, onChange);
+              } else {
+                const Body = LIST_BODIES[section.control];
+                control = (
+                  <Body
+                    title={section.title}
+                    options={section.options}
+                    selected={selected}
+                    onChange={onChange}
+                    searchable={section.searchable}
+                  />
+                );
+              }
+              return (
+                <FilterSection
+                  key={section.key}
                   title={section.title}
-                  options={section.options}
-                  selected={selected}
-                  onChange={onChange}
-                  searchable={section.searchable}
-                />
+                  active={selected.size > 0}
+                  onClear={() => onChange(new Set())}
+                >
+                  {control}
+                </FilterSection>
               );
-            }
-            return (
-              <FilterSection
-                key={section.key}
-                title={section.title}
-                active={selected.size > 0}
-                onClear={() => onChange(new Set())}
-              >
-                {control}
-              </FilterSection>
-            );
-          })}
+            })}
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "4px" }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "4px" }}
+      >
         <Button type="button" variant="ghost" onClick={clearAll}>
           {defaults ? "Reset" : "Clear all"}
         </Button>
         <div style={{ display: "flex", gap: "8px" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={() => { onApply(draft); onClose(); }}>Apply</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              onApply(draft);
+              onClose();
+            }}
+          >
+            Apply
+          </Button>
         </div>
       </div>
     </Modal>

@@ -1,6 +1,12 @@
 import type {
-  FormField, FormFieldOption, MembershipTrackStatus, MyEventPreferenceSelection,
-  MyTrackOptions, ResolvedEventOption, ResolvedShiftOption, TrackStatus,
+  FormField,
+  FormFieldOption,
+  MembershipTrackStatus,
+  MyEventPreferenceSelection,
+  MyTrackOptions,
+  ResolvedEventOption,
+  ResolvedShiftOption,
+  TrackStatus,
 } from "./api";
 import { membersApi } from "./api";
 
@@ -64,7 +70,7 @@ function availabilityAnswer(field: FormField, selectedShiftIds: number[]): unkno
       return ids.length > 0 && ids.every((id) => selected.has(id));
     })
     .map((option) => option.option_id);
-  return field.question_type === "multi_select_checkbox" ? picked : picked[0] ?? "";
+  return field.question_type === "multi_select_checkbox" ? picked : (picked[0] ?? "");
 }
 
 /**
@@ -72,17 +78,23 @@ function availabilityAnswer(field: FormField, selectedShiftIds: number[]): unkno
  * label rather than an option id, so they are matched back by value first —
  * `value` is the canonical short form the row was written with.
  */
-function lunchAnswer(field: FormField & { category: string }, selections: MyTrackOptions["lunch_selections"]): unknown {
+function lunchAnswer(
+  field: FormField & { category: string },
+  selections: MyTrackOptions["lunch_selections"],
+): unknown {
   const mine = selections.filter((selection) => selection.category === field.category);
   if (field.question_type === "short_text" || field.question_type === "long_text") {
     return mine[0]?.value ?? "";
   }
   const picked = mine
-    .map((selection) => liveOptions(field).find(
-      (option) => option.value === selection.value || option.label === selection.label,
-    )?.option_id)
+    .map(
+      (selection) =>
+        liveOptions(field).find(
+          (option) => option.value === selection.value || option.label === selection.label,
+        )?.option_id,
+    )
     .filter((id): id is string => !!id);
-  return field.question_type === "multi_select_checkbox" ? picked : picked[0] ?? "";
+  return field.question_type === "multi_select_checkbox" ? picked : (picked[0] ?? "");
 }
 
 /**
@@ -91,17 +103,27 @@ function lunchAnswer(field: FormField & { category: string }, selections: MyTrac
  * when any of its events is — write-through expands the option into exactly
  * those rows, so they can't disagree in practice.
  */
-function eventPreferenceAnswer(field: FormField, selections: MyTrackOptions["event_preference_selections"]): unknown {
-  const rankByEvent = new Map(selections.map((selection) => [selection.tournament_event_id, selection.rank]));
+function eventPreferenceAnswer(
+  field: FormField,
+  selections: MyTrackOptions["event_preference_selections"],
+): unknown {
+  const rankByEvent = new Map(
+    selections.map((selection) => [selection.tournament_event_id, selection.rank]),
+  );
   const picked = liveOptions(field)
-    .map((option) => ({ option, rank: optionEventIds(option).map((id) => rankByEvent.get(id)).find((r) => r !== undefined) }))
+    .map((option) => ({
+      option,
+      rank: optionEventIds(option)
+        .map((id) => rankByEvent.get(id))
+        .find((r) => r !== undefined),
+    }))
     .filter((entry) => entry.rank !== undefined);
 
   if (field.question_type === "ranked_choice") {
     return Object.fromEntries(picked.map(({ option, rank }) => [String(rank), option.option_id]));
   }
   const ids = picked.map(({ option }) => option.option_id);
-  return field.question_type === "multi_select_checkbox" ? ids : ids[0] ?? "";
+  return field.question_type === "multi_select_checkbox" ? ids : (ids[0] ?? "");
 }
 
 /**
@@ -117,33 +139,45 @@ function eventPreferenceAnswer(field: FormField, selections: MyTrackOptions["eve
  * A track with nothing left still appears — its status is always the member's
  * to set, regardless of any form.
  */
-export function editableTracks(tracks: MyTrackOptions[], completedFormIds: Set<string>): MyTrackOptions[] {
+export function editableTracks(
+  tracks: MyTrackOptions[],
+  completedFormIds: Set<string>,
+): MyTrackOptions[] {
   return tracks.map((track) => ({
     ...track,
     availability: track.availability.filter((field) => completedFormIds.has(field.form_id)),
     lunch: track.lunch.filter((field) => completedFormIds.has(field.form_id)),
-    event_preferences: track.event_preferences && completedFormIds.has(track.event_preferences.form_id)
-      ? track.event_preferences
-      : null,
+    event_preferences:
+      track.event_preferences && completedFormIds.has(track.event_preferences.form_id)
+        ? track.event_preferences
+        : null,
   }));
 }
 
 export function toDraft(tracks: MyTrackOptions[]): MemberEditDraft {
-  return Object.fromEntries(tracks.map((track) => [track.track_id, {
-    status: track.status,
-    // Declined with nothing selected is exactly what the "Not available"
-    // control writes, so that is how it reads back.
-    notAvailable: track.status === "declined" && track.selected_shift_ids.length === 0,
-    availability: Object.fromEntries(
-      track.availability.map((field) => [field.id, availabilityAnswer(field, track.selected_shift_ids)]),
-    ),
-    lunch: Object.fromEntries(
-      track.lunch.map((field) => [field.id, lunchAnswer(field, track.lunch_selections)]),
-    ),
-    eventPreference: track.event_preferences
-      ? eventPreferenceAnswer(track.event_preferences, track.event_preference_selections)
-      : undefined,
-  }]));
+  return Object.fromEntries(
+    tracks.map((track) => [
+      track.track_id,
+      {
+        status: track.status,
+        // Declined with nothing selected is exactly what the "Not available"
+        // control writes, so that is how it reads back.
+        notAvailable: track.status === "declined" && track.selected_shift_ids.length === 0,
+        availability: Object.fromEntries(
+          track.availability.map((field) => [
+            field.id,
+            availabilityAnswer(field, track.selected_shift_ids),
+          ]),
+        ),
+        lunch: Object.fromEntries(
+          track.lunch.map((field) => [field.id, lunchAnswer(field, track.lunch_selections)]),
+        ),
+        eventPreference: track.event_preferences
+          ? eventPreferenceAnswer(track.event_preferences, track.event_preference_selections)
+          : undefined,
+      },
+    ]),
+  );
 }
 
 /** Which statuses this member may set on a track — see backend/docs/track-status-rules.md. */
@@ -178,7 +212,10 @@ function draftShiftIds(track: MyTrackOptions, draft: TrackDraft): number[] {
   return [...ids].sort((a, b) => a - b);
 }
 
-function eventPreferenceSelections(field: FormField, answer: unknown): MyEventPreferenceSelection[] {
+function eventPreferenceSelections(
+  field: FormField,
+  answer: unknown,
+): MyEventPreferenceSelection[] {
   if (field.question_type === "ranked_choice") {
     // The widget keys by rank; the route wants the pair the other way round.
     return Object.entries((answer as Record<string, string> | undefined) ?? {})
@@ -203,7 +240,10 @@ export interface SaveResult {
  * failure reports the first thing that went wrong rather than a pile.
  */
 export async function saveDraft(
-  tournamentId: number, tracks: MyTrackOptions[], draft: MemberEditDraft, baseline: MemberEditDraft,
+  tournamentId: number,
+  tracks: MyTrackOptions[],
+  draft: MemberEditDraft,
+  baseline: MemberEditDraft,
 ): Promise<SaveResult> {
   const statuses: MembershipTrackStatus[] = [];
 
@@ -220,7 +260,7 @@ export async function saveDraft(
     // together, so the member can never be left declined with shifts still
     // selected (or opted back in with none).
     const statusWithShifts = next.notAvailable
-      ? "declined" as TrackStatus
+      ? ("declined" as TrackStatus)
       : before.notAvailable && shiftIds.length > 0
         ? optedInStatus(track.allow_confirm)
         : undefined;
@@ -235,20 +275,31 @@ export async function saveDraft(
     // The status control's own change, only when availability didn't already
     // carry one — two writes would make the later one the winner by accident.
     if (statusWithShifts === undefined && next.status && next.status !== before.status) {
-      statuses.push(await membersApi.updateMyTrackStatus(tournamentId, track.track_id, next.status));
+      statuses.push(
+        await membersApi.updateMyTrackStatus(tournamentId, track.track_id, next.status),
+      );
     }
 
     for (const field of track.lunch) {
       if (JSON.stringify(next.lunch[field.id]) === JSON.stringify(before.lunch[field.id])) continue;
       const answer = next.lunch[field.id];
       const freeText = field.question_type === "short_text" || field.question_type === "long_text";
-      await membersApi.updateMyLunch(tournamentId, track.track_id, field.category,
-        freeText ? { text: (answer as string) || null } : { option_ids: answerOptionIds(answer) });
+      await membersApi.updateMyLunch(
+        tournamentId,
+        track.track_id,
+        field.category,
+        freeText ? { text: (answer as string) || null } : { option_ids: answerOptionIds(answer) },
+      );
     }
 
-    if (track.event_preferences && JSON.stringify(next.eventPreference) !== JSON.stringify(before.eventPreference)) {
+    if (
+      track.event_preferences &&
+      JSON.stringify(next.eventPreference) !== JSON.stringify(before.eventPreference)
+    ) {
       await membersApi.updateMyEventPreferences(
-        tournamentId, track.track_id, eventPreferenceSelections(track.event_preferences, next.eventPreference),
+        tournamentId,
+        track.track_id,
+        eventPreferenceSelections(track.event_preferences, next.eventPreference),
       );
     }
   }

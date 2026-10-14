@@ -1,16 +1,24 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { ApiError } from "@/lib/api";
 
 /** Confirm-and-delete for one row or a whole selection. Deletes run in
  *  parallel; on a partial failure the modal stays open saying how many failed. */
 export function BulkDeleteModal<T extends { id: number | string }>({
-  items, noun, description, onDelete, onClose, onDeleted, confirmPhrase, notReady = false,
-  verb = "Delete", verbPast = "deleted",
+  items,
+  noun,
+  description,
+  onDelete,
+  onClose,
+  onDeleted,
+  confirmPhrase,
+  notReady = false,
+  verb = "Delete",
+  verbPast = "deleted",
 }: {
   items: T[];
   /** Singular — "shift", "event". Becomes "3 shifts" for several. */
@@ -38,13 +46,25 @@ export function BulkDeleteModal<T extends { id: number | string }>({
     setError(undefined);
     setLoading(true);
     const outcomes = await Promise.allSettled(items.map(onDelete));
-    const deleted = items.filter((_, i) => outcomes[i].status === "fulfilled").map((item) => item.id);
+    const deleted = items
+      .filter((_, i) => outcomes[i].status === "fulfilled")
+      .map((item) => item.id);
     if (deleted.length > 0) onDeleted(deleted);
 
     const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
-    if (!failure) { onClose(); return; }
-    const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong. Try again.";
-    setError(items.length === 1 ? reason : `${items.length - deleted.length} couldn't be ${verbPast}: ${reason}`);
+    if (!failure) {
+      onClose();
+      return;
+    }
+    const reason =
+      failure.reason instanceof ApiError
+        ? failure.reason.message
+        : "Something went wrong. Try again.";
+    setError(
+      items.length === 1
+        ? reason
+        : `${items.length - deleted.length} couldn't be ${verbPast}: ${reason}`,
+    );
     setLoading(false);
   }
 
@@ -52,7 +72,13 @@ export function BulkDeleteModal<T extends { id: number | string }>({
     <Modal title={`${verb} ${label}`} onClose={onClose} variant="danger">
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {/* div, not p — a description can carry a list. */}
-        <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        <div
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           {description}
         </div>
 
@@ -69,14 +95,28 @@ export function BulkDeleteModal<T extends { id: number | string }>({
         )}
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button type="button" variant="danger" loading={loading} disabled={notReady || !confirmed} onClick={handleDelete}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            loading={loading}
+            disabled={notReady || !confirmed}
+            onClick={handleDelete}
+          >
             {verb} {label}
           </Button>
         </div>

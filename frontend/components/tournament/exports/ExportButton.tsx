@@ -1,21 +1,28 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { ExportOutput, ExportPreset, TorusRole, Tournament, exportPresetsApi } from "@/lib/api";
-import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
-import { copyText, downloadText } from "@/lib/exports/output";
-import { ExportChoice, exportFilenameFor, runExport, trackNamesOf } from "@/lib/exports/run";
-import { useToast } from "@/lib/useToast";
-import { membersFilterFromStored } from "@/components/tournament/members/MembersFilterModal";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { eventsFilterFromStored } from "@/components/tournament/events/EventsFilterModal";
 import { ALL_DUOSMIUM_ROLES, ExportModal } from "@/components/tournament/exports/ExportModal";
+import { membersFilterFromStored } from "@/components/tournament/members/MembersFilterModal";
 import { Button } from "@/components/ui/Button";
+import { IconChevronLeft, IconChevronRight, IconExport } from "@/components/ui/Icons";
 import { SplitButton } from "@/components/ui/SplitButton";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconChevronLeft, IconChevronRight, IconExport } from "@/components/ui/Icons";
+import {
+  type ExportOutput,
+  type ExportPreset,
+  exportPresetsApi,
+  type TorusRole,
+  type Tournament,
+} from "@/lib/api";
+import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
+import { copyText, downloadText } from "@/lib/exports/output";
+import { type ExportChoice, exportFilenameFor, runExport, trackNamesOf } from "@/lib/exports/run";
+import { useToast } from "@/lib/useToast";
 
-const TORUS_OPTIONS = Object.entries(EXTERNAL_SYSTEMS.find((s) => s.field === "torus_role")!.roles)
-  .map(([value, info]) => ({ value: value as TorusRole, label: info.label }));
+const TORUS_OPTIONS = Object.entries(
+  EXTERNAL_SYSTEMS.find((s) => s.field === "torus_role")!.roles,
+).map(([value, info]) => ({ value: value as TorusRole, label: info.label }));
 
 const MENU_WIDTH = 260;
 
@@ -41,7 +48,11 @@ interface ExportButtonProps {
 }
 
 export function ExportButton({
-  tournament, trackId, lockedReason, size = "md", iconOnly = false,
+  tournament,
+  trackId,
+  lockedReason,
+  size = "md",
+  iconOnly = false,
 }: ExportButtonProps) {
   const { show } = useToast();
   const tracks = tournament.tracks;
@@ -53,7 +64,10 @@ export function ExportButton({
   const [panels, setPanels] = useState<Panel[]>([{ id: "root" }]);
 
   const refreshPresets = useCallback(() => {
-    exportPresetsApi.list(tournament.id).then(setPresets).catch(() => setPresets([]));
+    exportPresetsApi
+      .list(tournament.id)
+      .then(setPresets)
+      .catch(() => setPresets([]));
   }, [tournament.id]);
 
   useEffect(() => {
@@ -70,8 +84,10 @@ export function ExportButton({
       // Never the page's — what's exported shouldn't depend on where you are.
       const custom = choice.kind === "custom" ? choice.shape : null;
       const result = await runExport(
-        tournament, choice,
-        membersFilterFromStored(custom?.member_filters), eventsFilterFromStored(custom?.event_filters),
+        tournament,
+        choice,
+        membersFilterFromStored(custom?.member_filters),
+        eventsFilterFromStored(custom?.event_filters),
       );
       if (result.rows.length === 0) {
         show("Nothing to export.", "error");
@@ -101,7 +117,16 @@ export function ExportButton({
 
   function pickDuosmiumTrack(nextTrackId: number, close: () => void) {
     if (tournament.division.length > 1) push({ id: "duosmium_division", trackId: nextTrackId });
-    else finish({ kind: "duosmium", trackId: nextTrackId, division: tournament.division[0] ?? "", roles: ALL_DUOSMIUM_ROLES }, close);
+    else
+      finish(
+        {
+          kind: "duosmium",
+          trackId: nextTrackId,
+          division: tournament.division[0] ?? "",
+          roles: ALL_DUOSMIUM_ROLES,
+        },
+        close,
+      );
   }
 
   function finish(choice: ExportChoice, close: () => void) {
@@ -118,12 +143,24 @@ export function ExportButton({
         return (
           <>
             <MenuHeading>Built-in</MenuHeading>
-            <MenuItem chevron onClick={() => (soleTrackId === null ? push({ id: "torus_track" }) : push({ id: "torus_role", trackId: soleTrackId }))}>
+            <MenuItem
+              chevron
+              onClick={() =>
+                soleTrackId === null
+                  ? push({ id: "torus_track" })
+                  : push({ id: "torus_role", trackId: soleTrackId })
+              }
+            >
               TORUS
             </MenuItem>
-            <MenuItem chevron={soleTrackId === null || tournament.division.length > 1} onClick={() => (
-              soleTrackId === null ? push({ id: "duosmium_track" }) : pickDuosmiumTrack(soleTrackId, close)
-            )}>
+            <MenuItem
+              chevron={soleTrackId === null || tournament.division.length > 1}
+              onClick={() =>
+                soleTrackId === null
+                  ? push({ id: "duosmium_track" })
+                  : pickDuosmiumTrack(soleTrackId, close)
+              }
+            >
               Duosmium
             </MenuItem>
             <MenuItem onClick={() => finish({ kind: "email_list" }, close)}>Email list</MenuItem>
@@ -132,11 +169,18 @@ export function ExportButton({
               <MenuNote>Loading…</MenuNote>
             ) : presets.length === 0 ? (
               <MenuNote>None yet</MenuNote>
-            ) : presets.map((preset) => (
-              <MenuItem key={preset.id} onClick={() => finish({ kind: "custom", presetId: preset.id, shape: preset, trackId }, close)}>
-                {preset.name}
-              </MenuItem>
-            ))}
+            ) : (
+              presets.map((preset) => (
+                <MenuItem
+                  key={preset.id}
+                  onClick={() =>
+                    finish({ kind: "custom", presetId: preset.id, shape: preset, trackId }, close)
+                  }
+                >
+                  {preset.name}
+                </MenuItem>
+              ))
+            )}
           </>
         );
       case "torus_track":
@@ -145,14 +189,23 @@ export function ExportButton({
           <MenuItem
             key={track.id}
             chevron={panel.id === "torus_track" || tournament.division.length > 1}
-            onClick={() => (panel.id === "torus_track" ? pickTorusTrack(track.id) : pickDuosmiumTrack(track.id, close))}
+            onClick={() =>
+              panel.id === "torus_track"
+                ? pickTorusTrack(track.id)
+                : pickDuosmiumTrack(track.id, close)
+            }
           >
             {track.name}
           </MenuItem>
         ));
       case "torus_role":
         return TORUS_OPTIONS.map((option) => (
-          <MenuItem key={option.value} onClick={() => finish({ kind: "torus", trackId: panel.trackId, role: option.value }, close)}>
+          <MenuItem
+            key={option.value}
+            onClick={() =>
+              finish({ kind: "torus", trackId: panel.trackId, role: option.value }, close)
+            }
+          >
             {option.label}
           </MenuItem>
         ));
@@ -160,7 +213,12 @@ export function ExportButton({
         return tournament.division.map((division) => (
           <MenuItem
             key={division}
-            onClick={() => finish({ kind: "duosmium", trackId: panel.trackId, division, roles: ALL_DUOSMIUM_ROLES }, close)}
+            onClick={() =>
+              finish(
+                { kind: "duosmium", trackId: panel.trackId, division, roles: ALL_DUOSMIUM_ROLES },
+                close,
+              )
+            }
           >
             Division {division}
           </MenuItem>
@@ -181,19 +239,47 @@ export function ExportButton({
       <div style={{ display: "flex", flexDirection: "column" }}>
         <div style={{ overflow: "hidden" }}>
           {/* Every open step side by side; the strip slides one panel left per step. */}
-          <div style={{
-            display: "flex", width: `${panels.length * 100}%`,
-            transform: `translateX(-${(depth * 100) / panels.length}%)`,
-            transition: "transform 200ms ease",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              width: `${panels.length * 100}%`,
+              transform: `translateX(-${(depth * 100) / panels.length}%)`,
+              transition: "transform 200ms ease",
+            }}
+          >
             {panels.map((panel, i) => (
-              <div key={`${panel.id}-${i}`} style={{ width: `${100 / panels.length}%`, flexShrink: 0 }}>
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: a stack that is only pushed and popped at the end
+                key={`${panel.id}-${i}`}
+                style={{ width: `${100 / panels.length}%`, flexShrink: 0 }}
+              >
                 {panel.id !== "root" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 6px 2px" }}>
-                    <Button type="button" variant="ghost" size="xs" iconOnly title="Back" onClick={back}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "6px 6px 2px",
+                    }}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      iconOnly
+                      title="Back"
+                      onClick={back}
+                    >
                       <IconChevronLeft size={12} />
                     </Button>
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-text-secondary)" }}>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
                       {PANEL_TITLES[panel.id]}
                     </span>
                   </div>
@@ -206,7 +292,16 @@ export function ExportButton({
           </div>
         </div>
         <div style={{ borderTop: "1px solid var(--color-border)", padding: "6px" }}>
-          <Button type="button" variant="ghost" size="sm" fullWidth onClick={() => { close(); setModalOpen(true); }}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            fullWidth
+            onClick={() => {
+              close();
+              setModalOpen(true);
+            }}
+          >
             Edit presets
           </Button>
         </div>
@@ -228,7 +323,9 @@ export function ExportButton({
         width: MENU_WIDTH,
         render: renderMenu,
         // However it closes (a pick or an outside click), it reopens at the top.
-        onOpenChange: (open) => { if (!open) setPanels([{ id: "root" }]); },
+        onOpenChange: (open) => {
+          if (!open) setPanels([{ id: "root" }]);
+        },
       }}
     />
   );
@@ -236,8 +333,12 @@ export function ExportButton({
   return (
     <>
       {lockedReason ? (
-        <Tooltip variant="info" message={lockedReason} showIcon={false}>{button}</Tooltip>
-      ) : button}
+        <Tooltip variant="info" message={lockedReason} showIcon={false}>
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
       {modalOpen && (
         <ExportModal
           tournament={tournament}
@@ -252,10 +353,17 @@ export function ExportButton({
 
 function MenuHeading({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      padding: "8px 10px 4px", fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
-      letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-    }}>
+    <div
+      style={{
+        padding: "8px 10px 4px",
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {children}
     </div>
   );
@@ -263,13 +371,28 @@ function MenuHeading({ children }: { children: ReactNode }) {
 
 function MenuNote({ children }: { children: ReactNode }) {
   return (
-    <div style={{ padding: "4px 10px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+    <div
+      style={{
+        padding: "4px 10px",
+        fontFamily: "var(--font-sans)",
+        fontSize: "12px",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
       {children}
     </div>
   );
 }
 
-function MenuItem({ children, chevron = false, onClick }: { children: ReactNode; chevron?: boolean; onClick: () => void }) {
+function MenuItem({
+  children,
+  chevron = false,
+  onClick,
+}: {
+  children: ReactNode;
+  chevron?: boolean;
+  onClick: () => void;
+}) {
   return (
     <Button
       type="button"
@@ -279,7 +402,9 @@ function MenuItem({ children, chevron = false, onClick }: { children: ReactNode;
       onClick={onClick}
       style={{ justifyContent: "space-between", fontWeight: 500 }}
     >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{children}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {children}
+      </span>
       {chevron && <IconChevronRight size={12} />}
     </Button>
   );

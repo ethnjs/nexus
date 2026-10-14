@@ -1,14 +1,14 @@
 "use client";
 
-import { ReactNode, useState } from "react";
 import { usePathname } from "next/navigation";
+import { type ReactNode, useState } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { Topbar } from "@/components/layout/Topbar";
-import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
-import { useAuth } from "@/lib/useAuth";
-import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
+import { Topbar } from "@/components/layout/Topbar";
+import { useAuth } from "@/lib/useAuth";
+import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
 
 /**
  * Shell for the dashboard root and the admin pages under it. Same structure
@@ -58,9 +58,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               sidebarExpanded={sidebarExpanded}
               showNavToggle={showRail}
             />
-            <main className={styles.main}>
-              {children}
-            </main>
+            <main className={styles.main}>{children}</main>
           </div>
           {/* Third flex sibling, not an overlay: it shrinks the column above
               instead of covering it, so the table stays live beside it. */}

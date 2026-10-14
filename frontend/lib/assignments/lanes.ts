@@ -1,5 +1,5 @@
-import { Assignment } from "@/lib/api";
-import { Flag } from "@/lib/assignments/flags";
+import type { Assignment } from "@/lib/api";
+import type { Flag } from "@/lib/assignments/flags";
 
 /**
  * Turning assignment rows into the bars a timeline draws.
@@ -82,9 +82,9 @@ export function buildLanes(
       key,
       assignments: group,
       // Distinct, because the same shift appears once per role.
-      covered: [...new Set(
-        group.map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1)),
-      )].filter((i) => i >= 0),
+      covered: [
+        ...new Set(group.map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))),
+      ].filter((i) => i >= 0),
       roles: rolesOf(group),
     }));
 

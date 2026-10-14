@@ -5,13 +5,13 @@ import type { TournamentDivision, TournamentTrack, TournamentTrackCreate } from 
 // university's name — and `university_id` is non-null only when it matched,
 // exactly as the tournament's own location field works.
 export interface TrackDraft {
-  name:          string;
-  is_primary:    boolean;
-  start_date:    string;
-  end_date:      string;
-  location:      string;
+  name: string;
+  is_primary: boolean;
+  start_date: string;
+  end_date: string;
+  location: string;
   university_id: number | null;
-  division:      TournamentDivision[];
+  division: TournamentDivision[];
   allow_confirm: boolean;
   lock_responses: boolean;
   default_role_id: number | null;
@@ -20,35 +20,44 @@ export interface TrackDraft {
   // to tell "the TD hasn't filled this in yet" (a validation error) from "the
   // TD says it isn't decided" (a deliberate save) — and an empty input alone
   // can't say which. `trackDraftPayload` turns them back into nulls.
-  dates_tbd:     boolean;
-  location_tbd:  boolean;
+  dates_tbd: boolean;
+  location_tbd: boolean;
 }
 
 export const EMPTY_TRACK_DRAFT: TrackDraft = {
-  name: "", is_primary: false, start_date: "", end_date: "",
-  location: "", university_id: null, division: [], allow_confirm: false,
+  name: "",
+  is_primary: false,
+  start_date: "",
+  end_date: "",
+  location: "",
+  university_id: null,
+  division: [],
+  allow_confirm: false,
   // Locked from the start, matching the backend's create default: a TD opens
   // member editing on purpose rather than closing it after the fact.
-  lock_responses: true, default_role_id: null, dates_tbd: false, location_tbd: false,
+  lock_responses: true,
+  default_role_id: null,
+  dates_tbd: false,
+  location_tbd: false,
 };
 
 export function trackToDraft(track: TournamentTrack): TrackDraft {
   return {
-    name:          track.name,
-    is_primary:    track.is_primary,
-    start_date:    track.start_date ?? "",
-    end_date:      track.end_date ?? "",
-    location:      track.location ?? track.university?.name ?? "",
+    name: track.name,
+    is_primary: track.is_primary,
+    start_date: track.start_date ?? "",
+    end_date: track.end_date ?? "",
+    location: track.location ?? track.university?.name ?? "",
     university_id: track.university?.id ?? null,
-    division:      track.division ?? [],
+    division: track.division ?? [],
     allow_confirm: track.allow_confirm,
     lock_responses: track.lock_responses,
     default_role_id: track.default_role_id,
     // On a track that has already been saved, absent *is* TBD — there is no
     // half-filled state to preserve. Cosmetic tracks are never TBD: they have
     // no dates or venue by definition, and the editor hides the fields.
-    dates_tbd:     track.is_primary && !track.start_date,
-    location_tbd:  track.is_primary && !track.location && !track.university,
+    dates_tbd: track.is_primary && !track.start_date,
+    location_tbd: track.is_primary && !track.location && !track.university,
   };
 }
 
@@ -61,14 +70,21 @@ export function trackToDraft(track: TournamentTrack): TrackDraft {
  */
 export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
   const base = {
-    name:          draft.name.trim(),
-    is_primary:    draft.is_primary,
+    name: draft.name.trim(),
+    is_primary: draft.is_primary,
     allow_confirm: draft.allow_confirm,
     lock_responses: draft.lock_responses,
     default_role_id: draft.default_role_id,
   };
   if (!draft.is_primary) {
-    return { ...base, start_date: null, end_date: null, location: null, university_id: null, division: null };
+    return {
+      ...base,
+      start_date: null,
+      end_date: null,
+      location: null,
+      university_id: null,
+      division: null,
+    };
   }
   return {
     ...base,
@@ -94,7 +110,10 @@ export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
  * payload nulls them, so the "only a primary track can have..." error is
  * unreachable from the UI.
  */
-export function validateTrackDraft(draft: TrackDraft, otherNames: string[]): Record<string, string> {
+export function validateTrackDraft(
+  draft: TrackDraft,
+  otherNames: string[],
+): Record<string, string> {
   const errors: Record<string, string> = {};
   const name = draft.name.trim();
   if (!name) errors.name = "Cannot be empty.";
@@ -107,7 +126,8 @@ export function validateTrackDraft(draft: TrackDraft, otherNames: string[]): Rec
     if (!draft.dates_tbd) {
       if (!draft.start_date) errors.start_date = "Required, or mark the date TBD.";
       if (!draft.end_date) errors.end_date = "Required, or mark the date TBD.";
-      else if (draft.start_date && draft.end_date < draft.start_date) errors.end_date = "Cannot be before start date.";
+      else if (draft.start_date && draft.end_date < draft.start_date)
+        errors.end_date = "Cannot be before start date.";
     }
     if (!draft.location_tbd && !draft.university_id && !draft.location.trim()) {
       errors.location = "Required, or mark the venue TBD.";

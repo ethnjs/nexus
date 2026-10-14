@@ -1,11 +1,11 @@
 "use client";
 
-import { MembershipLunch } from "@/lib/api";
-import { unslug } from "@/lib/textFormat";
-import { Badge } from "@/components/ui/Badge";
+import { FieldValue, PanelField } from "@/components/profile/PanelField";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField, FieldValue } from "@/components/profile/PanelField";
+import { Badge } from "@/components/ui/Badge";
+import type { MembershipLunch } from "@/lib/api";
+import { unslug } from "@/lib/textFormat";
 
 // lunch_{date}_{category} allows these alongside the option-based types —
 // see LUNCH_QUESTION_TYPES.
@@ -27,7 +27,10 @@ interface LunchSectionProps {
   dietaryRestriction?: string | null;
 }
 
-function groupBy(lunch: MembershipLunch[], key: (sel: MembershipLunch) => string): [string, MembershipLunch[]][] {
+function groupBy(
+  lunch: MembershipLunch[],
+  key: (sel: MembershipLunch) => string,
+): [string, MembershipLunch[]][] {
   const groups = new Map<string, MembershipLunch[]>();
   for (const sel of lunch) groups.set(key(sel), [...(groups.get(key(sel)) ?? []), sel]);
   return Array.from(groups.entries());
@@ -39,20 +42,33 @@ export function LunchCategoryRows({ selections }: { selections: MembershipLunch[
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       {groupBy(selections, (sel) => sel.category).map(([category, rows]) => (
-        <div key={category} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
-          <span style={{
-            fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-            color: "var(--color-text-secondary)",
-          }}>
+        <div
+          key={category}
+          style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "var(--color-text-secondary)",
+            }}
+          >
             {unslug(category)}
           </span>
           {/* A typed answer is a sentence — an uppercase badge
               would mangle it, so it renders as prose. */}
-          {rows.map((sel, i) => (
-            isFreeText(sel)
-              ? <FieldValue key={i}>{sel.value}</FieldValue>
-              : <Badge key={i} variant="default">{sel.value}</Badge>
-          ))}
+          {rows.map((sel, i) =>
+            isFreeText(sel) ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
+              <FieldValue key={i}>{sel.value}</FieldValue>
+            ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
+              <Badge key={i} variant="default">
+                {sel.value}
+              </Badge>
+            ),
+          )}
         </div>
       ))}
     </div>

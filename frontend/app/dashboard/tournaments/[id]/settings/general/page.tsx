@@ -1,39 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
-import { useMyMembership } from "@/lib/useMyMembership";
-import {
-  tournamentsApi, Tournament,
-  TournamentState, TournamentLevel,
-  TOURNAMENT_STATES, TOURNAMENT_LEVELS,
-  ApiError,
-} from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
+import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
+import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
+import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
 import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
-import { Combobox } from "@/components/ui/Combobox";
+import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
+import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
+import { TransferOwnershipModal } from "@/components/tournament/settings/TransferOwnershipModal";
+import { TrackFields } from "@/components/tournament/TrackFields";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Badge } from "@/components/ui/Badge";
-import { Switch } from "@/components/ui/Switch";
+import { Combobox } from "@/components/ui/Combobox";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { Spinner } from "@/components/ui/Spinner";
-import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
-import { TransferOwnershipModal } from "@/components/tournament/settings/TransferOwnershipModal";
-import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
-import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
-import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
-import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
-import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
-import { TrackFields } from "@/components/tournament/TrackFields";
-import { EMPTY_TRACK_DRAFT } from "@/lib/trackDraft";
 import { IconPlus } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Spinner } from "@/components/ui/Spinner";
+import { Switch } from "@/components/ui/Switch";
+import {
+  ApiError,
+  TOURNAMENT_LEVELS,
+  TOURNAMENT_STATES,
+  type Tournament,
+  type TournamentLevel,
+  type TournamentState,
+  tournamentsApi,
+} from "@/lib/api";
+import { EMPTY_TRACK_DRAFT } from "@/lib/trackDraft";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
+import { useTournament } from "@/lib/useTournament";
 
-interface LevelOption { value: TournamentLevel; label: string }
-const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
+interface LevelOption {
+  value: TournamentLevel;
+  label: string;
+}
+const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({
+  value: l,
+  label: l[0].toUpperCase() + l.slice(1),
+}));
 const STATE_OPTIONS: TournamentState[] = [...TOURNAMENT_STATES];
 
 // Dates, venue and divisions are absent by design — they belong to the
@@ -62,7 +71,8 @@ export default function GeneralSettingsPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const { user: currentUser } = useAuth();
-  const { selectedTournament, setSelectedTournament, isArchived, isSimple, soleTrack } = useTournament();
+  const { selectedTournament, setSelectedTournament, isArchived, isSimple, soleTrack } =
+    useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
@@ -77,7 +87,9 @@ export default function GeneralSettingsPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [pendingAgeToggle, setPendingAgeToggle] = useState<"collect_is_over_18" | "collect_is_over_21" | null>(null);
+  const [pendingAgeToggle, setPendingAgeToggle] = useState<
+    "collect_is_over_18" | "collect_is_over_21" | null
+  >(null);
   const [ageToggleError, setAgeToggleError] = useState<string | undefined>(undefined);
   // Reserved as bottom padding so the fixed save bar never covers the last
   // row — a track row scrolling itself into view has to land above it.
@@ -104,7 +116,10 @@ export default function GeneralSettingsPage() {
   // The tournament's own dates, location and division are derived from its
   // tracks, so any track write changes the header — refetch it.
   const refetch = useCallback(() => {
-    tournamentsApi.get(tournamentId).then(setSelectedTournament).catch(() => {});
+    tournamentsApi
+      .get(tournamentId)
+      .then(setSelectedTournament)
+      .catch(() => {});
   }, [tournamentId, setSelectedTournament]);
   const trackEditor = useTrackEditor(tournamentId, refetch);
 
@@ -137,7 +152,10 @@ export default function GeneralSettingsPage() {
   // Turning collection ON needs the type-to-confirm modal (real
   // consequences for existing members); turning it OFF applies immediately —
   // nothing is destroyed and no one loses access.
-  async function handleAgeToggleChange(flag: "collect_is_over_18" | "collect_is_over_21", checked: boolean) {
+  async function handleAgeToggleChange(
+    flag: "collect_is_over_18" | "collect_is_over_21",
+    checked: boolean,
+  ) {
     if (checked) {
       setPendingAgeToggle(flag);
       return;
@@ -183,13 +201,15 @@ export default function GeneralSettingsPage() {
 
     try {
       if (detailsDirty) {
-        setSelectedTournament(await tournamentsApi.update(tournamentId, {
-          name: draft.name.trim(),
-          short_name: draft.short_name.trim() || null,
-          state: draft.state,
-          level: draft.level,
-          is_public: draft.is_public,
-        }));
+        setSelectedTournament(
+          await tournamentsApi.update(tournamentId, {
+            name: draft.name.trim(),
+            short_name: draft.short_name.trim() || null,
+            state: draft.state,
+            level: draft.level,
+            is_public: draft.is_public,
+          }),
+        );
       }
       // Tracks are separate resources with their own writes — the bar is
       // shared, the requests aren't. A track failure leaves the details
@@ -243,7 +263,10 @@ export default function GeneralSettingsPage() {
               getLabel={(s) => s}
               allowFreeText={false}
               value={stateText}
-              onChange={(text, matched) => { setStateText(text); setDraft((d) => d && { ...d, state: matched ?? "" }); }}
+              onChange={(text, matched) => {
+                setStateText(text);
+                setDraft((d) => d && { ...d, state: matched ?? "" });
+              }}
               locked={isArchived}
               error={errors.state}
             />
@@ -255,7 +278,10 @@ export default function GeneralSettingsPage() {
               getLabel={(o) => o.label}
               allowFreeText={false}
               value={levelText}
-              onChange={(text, matched) => { setLevelText(text); setDraft((d) => d && { ...d, level: matched?.value ?? "" }); }}
+              onChange={(text, matched) => {
+                setLevelText(text);
+                setDraft((d) => d && { ...d, level: matched?.value ?? "" });
+              }}
               locked={isArchived}
               error={errors.level}
             />
@@ -287,7 +313,13 @@ export default function GeneralSettingsPage() {
               contentStyle={{ display: "flex", justifyContent: "flex-end" }}
               last
             >
-              <Button type="button" variant="secondary" size="md" disabled={isArchived} onClick={handleAddTrack}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled={isArchived}
+                onClick={handleAddTrack}
+              >
                 <IconPlus size={14} /> Add track
               </Button>
             </SettingsRow>
@@ -307,7 +339,13 @@ export default function GeneralSettingsPage() {
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last
           >
-            <Button type="button" variant="secondary" size="md" disabled={isArchived} onClick={() => setShowInviteModal(true)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              disabled={isArchived}
+              onClick={() => setShowInviteModal(true)}
+            >
               Invite staff
             </Button>
           </SettingsRow>
@@ -316,9 +354,15 @@ export default function GeneralSettingsPage() {
 
       {canEdit && (
         <SettingsSection title="Visibility">
-          <SettingsRow label="Visibility" helper="Public tournaments are discoverable and joinable without an invite.">
+          <SettingsRow
+            label="Visibility"
+            helper="Public tournaments are discoverable and joinable without an invite."
+          >
             <ButtonGroup
-              options={[{ value: "public", label: "Public" }, { value: "private", label: "Private" }]}
+              options={[
+                { value: "public", label: "Public" },
+                { value: "private", label: "Private" },
+              ]}
               value={draft.is_public ? "public" : "private"}
               onChange={(v) => setDraft((d) => d && { ...d, is_public: v === "public" })}
               locked={isArchived}
@@ -365,7 +409,14 @@ export default function GeneralSettingsPage() {
             />
           </SettingsRow>
           {ageToggleError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-danger)",
+                marginTop: "6px",
+              }}
+            >
               {ageToggleError}
             </p>
           )}
@@ -403,7 +454,13 @@ export default function GeneralSettingsPage() {
             helper="Give another member full ownership of this tournament."
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Button type="button" variant="danger" size="md" disabled={isArchived} onClick={() => setShowTransferModal(true)}>
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              disabled={isArchived}
+              onClick={() => setShowTransferModal(true)}
+            >
               Transfer
             </Button>
           </SettingsRow>
@@ -412,11 +469,21 @@ export default function GeneralSettingsPage() {
         {isOwnerOrAdmin && (
           <SettingsRow
             label="Delete tournament"
-            helper={isArchived ? "Unarchive first to delete this tournament." : "Permanently delete this tournament and everything in it."}
+            helper={
+              isArchived
+                ? "Unarchive first to delete this tournament."
+                : "Permanently delete this tournament and everything in it."
+            }
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last={!membership || membership.is_owner}
           >
-            <Button type="button" variant="danger" size="md" disabled={isArchived} onClick={() => setShowDeleteModal(true)}>
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              disabled={isArchived}
+              onClick={() => setShowDeleteModal(true)}
+            >
               Delete
             </Button>
           </SettingsRow>
@@ -428,7 +495,12 @@ export default function GeneralSettingsPage() {
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last
           >
-            <Button type="button" variant="danger" size="md" onClick={() => setShowLeaveModal(true)}>
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              onClick={() => setShowLeaveModal(true)}
+            >
               Leave
             </Button>
           </SettingsRow>
@@ -437,8 +509,11 @@ export default function GeneralSettingsPage() {
 
       {canEdit && (
         <FloatingSaveBar
-          visible={isDirty} saving={saving} error={saveError}
-          onSave={handleSave} onCancel={handleCancel}
+          visible={isDirty}
+          saving={saving}
+          error={saveError}
+          onSave={handleSave}
+          onCancel={handleCancel}
           onHeightChange={setSaveBarHeight}
         />
       )}
@@ -457,7 +532,9 @@ export default function GeneralSettingsPage() {
           tournamentId={tournamentId}
           currentUserId={currentUser.id}
           onClose={() => setShowTransferModal(false)}
-          onTransferred={() => { window.location.href = window.location.pathname; }}
+          onTransferred={() => {
+            window.location.href = window.location.pathname;
+          }}
         />
       )}
 
@@ -476,15 +553,15 @@ export default function GeneralSettingsPage() {
           tournamentName={selectedTournament.name}
           mode={selectedTournament.is_archived ? "unarchive" : "archive"}
           onClose={() => setShowArchiveModal(false)}
-          onDone={(updated) => { setSelectedTournament(updated); setShowArchiveModal(false); }}
+          onDone={(updated) => {
+            setSelectedTournament(updated);
+            setShowArchiveModal(false);
+          }}
         />
       )}
 
       {showInviteModal && (
-        <StaffInviteModal
-          tournamentId={tournamentId}
-          onClose={() => setShowInviteModal(false)}
-        />
+        <StaffInviteModal tournamentId={tournamentId} onClose={() => setShowInviteModal(false)} />
       )}
 
       {pendingAgeToggle && (
@@ -493,7 +570,10 @@ export default function GeneralSettingsPage() {
           flag={pendingAgeToggle}
           thresholdLabel={pendingAgeToggle === "collect_is_over_18" ? "18+" : "21+"}
           onClose={() => setPendingAgeToggle(null)}
-          onDone={(updated) => { setSelectedTournament(updated); setPendingAgeToggle(null); }}
+          onDone={(updated) => {
+            setSelectedTournament(updated);
+            setPendingAgeToggle(null);
+          }}
         />
       )}
     </div>

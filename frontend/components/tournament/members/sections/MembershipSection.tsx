@@ -1,15 +1,15 @@
 "use client";
 
-import { MembershipFull, MembershipView, Role } from "@/lib/api";
-import { formatDate } from "@/lib/timeFormat";
-import { Badge } from "@/components/ui/Badge";
+import { FieldGrid, FieldList, FieldValue, PanelField } from "@/components/profile/PanelField";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField, FieldValue, FieldList, FieldGrid } from "@/components/profile/PanelField";
-import { RolesCell } from "@/components/tournament/roles/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/members/JoinMethodCell";
-import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
 import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
+import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
+import { RolesCell } from "@/components/tournament/roles/RolesCell";
+import { Badge } from "@/components/ui/Badge";
+import type { MembershipFull, MembershipView, Role } from "@/lib/api";
+import { formatDate } from "@/lib/timeFormat";
 
 interface MembershipSectionProps {
   tournamentId: number;
@@ -34,8 +34,16 @@ interface MembershipSectionProps {
 // signed up for, and what they can do. Split out of MemberPanel so the panel
 // can order it against the other sections and hide its fields individually.
 export function MembershipSection({
-  tournamentId, membership, allRoles, canTouchRole, locked, lockedReason,
-  collectIsOver18, collectIsOver21, onRolesUpdated, hiddenFields,
+  tournamentId,
+  membership,
+  allRoles,
+  canTouchRole,
+  locked,
+  lockedReason,
+  collectIsOver18,
+  collectIsOver21,
+  onRolesUpdated,
+  hiddenFields,
 }: MembershipSectionProps) {
   const shows = (field: string) => !hiddenFields.has(field);
 
@@ -53,7 +61,8 @@ export function MembershipSection({
 
   // Every field off leaves an empty card, which reads as a rendering fault
   // rather than a deliberate choice — hide the section instead.
-  if (!showJoined && !showMethod && !showTracks && !showRoles && !showAge && !showOnboarding) return null;
+  if (!showJoined && !showMethod && !showTracks && !showRoles && !showAge && !showOnboarding)
+    return null;
 
   return (
     <ProfileCard>
@@ -63,7 +72,9 @@ export function MembershipSection({
             <FieldGrid>
               {showJoined && (
                 <PanelField label="Joined">
-                  <FieldValue>{membership.created_at ? formatDate(membership.created_at) : "—"}</FieldValue>
+                  <FieldValue>
+                    {membership.created_at ? formatDate(membership.created_at) : "—"}
+                  </FieldValue>
                 </PanelField>
               )}
               {showMethod && (
@@ -89,13 +100,18 @@ export function MembershipSection({
                       <div
                         key={ts.track_id}
                         style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "8px",
                           opacity: ts.is_archived ? 0.55 : undefined,
                         }}
                         title={ts.is_archived ? "Archived track" : undefined}
                       >
                         <FieldValue>{ts.name}</FieldValue>
-                        <Badge variant={ts.status === "pending" ? "pending" : ts.status}>{ts.status}</Badge>
+                        <Badge variant={ts.status === "pending" ? "pending" : ts.status}>
+                          {ts.status}
+                        </Badge>
                       </div>
                     ))}
                   </FieldList>

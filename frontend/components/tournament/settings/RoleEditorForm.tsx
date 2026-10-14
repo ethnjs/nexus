@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ALL_PERMISSIONS, PERMISSION_INFO, Permission, Role } from "@/lib/api";
-import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
-import { Switch } from "@/components/ui/Switch";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { EXTERNAL_SYSTEMS, ExternalRoleValues } from "@/lib/exports/externalSystems";
-import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
+import { Input } from "@/components/ui/Input";
+import { Switch } from "@/components/ui/Switch";
+import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission, type Role } from "@/lib/api";
+import { EXTERNAL_SYSTEMS, type ExternalRoleValues } from "@/lib/exports/externalSystems";
 
 export interface RoleDraft extends ExternalRoleValues {
-  label:       string;
+  label: string;
   permissions: Permission[];
 }
 
@@ -20,17 +20,26 @@ const NONE = "";
 
 interface RoleEditorFormProps {
   tournamentId: number;
-  role:         Role;
-  draft:        RoleDraft;
-  setDraft:     (roleId: number, patch: Partial<RoleDraft>) => void;
-  locked:       boolean;
-  memberCount:  number;
-  onDeleted:    () => void;
+  role: Role;
+  draft: RoleDraft;
+  setDraft: (roleId: number, patch: Partial<RoleDraft>) => void;
+  locked: boolean;
+  memberCount: number;
+  onDeleted: () => void;
   /** Set for a role that hasn't been created yet — removing it is local, so no modal and no DELETE. */
-  onDiscard?:   () => void;
+  onDiscard?: () => void;
 }
 
-export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, memberCount, onDeleted, onDiscard }: RoleEditorFormProps) {
+export function RoleEditorForm({
+  tournamentId,
+  role,
+  draft,
+  setDraft,
+  locked,
+  memberCount,
+  onDeleted,
+  onDiscard,
+}: RoleEditorFormProps) {
   const [showDelete, setShowDelete] = useState(false);
 
   function togglePermission(p: Permission) {
@@ -45,7 +54,13 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
     <div>
       <SettingsSection title="Details">
         <SettingsRow label="Name" last>
-          <Input fullWidth charset="alpha" locked={locked} value={draft.label} onChange={(e) => setDraft(role.id, { label: e.target.value })} />
+          <Input
+            fullWidth
+            charset="alpha"
+            locked={locked}
+            value={draft.label}
+            onChange={(e) => setDraft(role.id, { label: e.target.value })}
+          />
         </SettingsRow>
       </SettingsSection>
 
@@ -58,7 +73,11 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
             last={i === ALL_PERMISSIONS.length - 1}
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Switch checked={draft.permissions.includes(p)} onChange={() => togglePermission(p)} locked={locked} />
+            <Switch
+              checked={draft.permissions.includes(p)}
+              onChange={() => togglePermission(p)}
+              locked={locked}
+            />
           </SettingsRow>
         ))}
       </SettingsSection>
@@ -77,7 +96,10 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
               onChange={(value) => setDraft(role.id, { [system.field]: value || null })}
               options={[
                 { value: NONE, label: "None" },
-                ...Object.entries(system.roles).map(([value, info]) => ({ value, label: info.label })),
+                ...Object.entries(system.roles).map(([value, info]) => ({
+                  value,
+                  label: info.label,
+                })),
               ]}
             />
           </SettingsRow>
@@ -99,7 +121,9 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
             <Button
-              type="button" variant="secondary" size="md"
+              type="button"
+              variant="secondary"
+              size="md"
               onClick={() => (onDiscard ? onDiscard() : setShowDelete(true))}
               style={{ color: "var(--color-danger)" }}
             >

@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  IconHome,
-  IconTrophy,
-  IconMembers,
-  IconEvents,
-  IconSchool,
-} from "@/components/ui/Icons";
-import { Sidebar, SidebarItem } from "@/components/layout/Sidebar";
+import { Sidebar, type SidebarItem } from "@/components/layout/Sidebar";
+import { IconEvents, IconHome, IconMembers, IconSchool, IconTrophy } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/useAuth";
 
 interface AdminSidebarProps {
@@ -15,10 +9,20 @@ interface AdminSidebarProps {
 }
 
 const ADMIN_ITEMS: SidebarItem[] = [
-  { key: "tournaments",  href: "/dashboard/admin/tournaments",  icon: <IconTrophy />,  label: "Tournaments" },
-  { key: "users",        href: "/dashboard/admin/users",        icon: <IconMembers />, label: "Users" },
-  { key: "events",       href: "/dashboard/admin/events",       icon: <IconEvents />,  label: "Events" },
-  { key: "universities", href: "/dashboard/admin/universities", icon: <IconSchool />,  label: "Universities" },
+  {
+    key: "tournaments",
+    href: "/dashboard/admin/tournaments",
+    icon: <IconTrophy />,
+    label: "Tournaments",
+  },
+  { key: "users", href: "/dashboard/admin/users", icon: <IconMembers />, label: "Users" },
+  { key: "events", href: "/dashboard/admin/events", icon: <IconEvents />, label: "Events" },
+  {
+    key: "universities",
+    href: "/dashboard/admin/universities",
+    icon: <IconSchool />,
+    label: "Universities",
+  },
 ];
 
 /**

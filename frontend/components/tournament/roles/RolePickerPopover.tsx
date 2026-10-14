@@ -1,9 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Role } from "@/lib/api";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { SEARCHABLE_ABOVE } from "@/components/ui/FilterModal";
+import type { Role } from "@/lib/api";
 
 /**
  * The tournament's roles as a checklist, with the ones already held ticked and
@@ -14,7 +14,13 @@ import { SEARCHABLE_ABOVE } from "@/components/ui/FilterModal";
  * rank rule, and only what "ticked" means differs.
  */
 export function RolePickerPopover({
-  trigger, roles, isSelected, isDisabled, disabledReason, onToggle, emptyMessage,
+  trigger,
+  roles,
+  isSelected,
+  isDisabled,
+  disabledReason,
+  onToggle,
+  emptyMessage,
 }: {
   trigger: ReactNode;
   roles: Role[];

@@ -1,23 +1,32 @@
 "use client";
 
-import { useEffect, useRef, useState, MouseEvent as ReactMouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import { type BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Textarea } from "@/components/ui/Textarea";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
 import { Switch } from "@/components/ui/Switch";
+import { Textarea } from "@/components/ui/Textarea";
+import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
+import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import {
-  IconGripVertical, IconCopy, IconTrash,
-} from "@/components/ui/Icons";
-import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+  activePresetKind,
+  effectiveFieldKey,
+  isEntityBackedPreset,
+  isFieldKeyError,
+  isPresetError,
+  PRESETS,
+} from "@/lib/forms/fieldKeyPresets";
+import {
+  OPTION_BEARING_TYPES,
+  QUESTION_TYPE_OPTIONS,
+  sanitizeConfigForType,
+} from "@/lib/forms/fieldTypes";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
-import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
-import { EditableField, cleanOption } from "@/lib/forms/editableField";
-import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
-import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
 // How long to keep waiting for the clicked input to exist. The entity-backed
@@ -64,8 +73,10 @@ function resolveTarget(root: HTMLElement, target: NonNullable<FocusIntent>["targ
   // A description that's empty isn't rendered on the collapsed card at all, so
   // its intent can only arrive when the editor has the field — but fall back
   // rather than no-op if that ever stops holding.
-  return root.querySelector<HTMLElement>(`[data-focus="${target}"]`)
-    ?? root.querySelector<HTMLElement>('[data-focus="label"]');
+  return (
+    root.querySelector<HTMLElement>(`[data-focus="${target}"]`) ??
+    root.querySelector<HTMLElement>('[data-focus="label"]')
+  );
 }
 
 // Resolves an intent against an expanded card's DOM and drops the caret in.
@@ -93,8 +104,10 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
     // selectionStart is null on input types that don't support selection
     // (checkbox, radio, ...) — reading it is the sanctioned way to ask,
     // and calling setSelectionRange on one throws InvalidStateError.
-    if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)
-      && target.selectionStart !== null) {
+    if (
+      (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) &&
+      target.selectionStart !== null
+    ) {
       // Where you clicked, clamped to what the editor actually holds — an
       // entity-backed option's preview text ("Crime Busters B, 9:00–11:00")
       // is longer than the label the editor is editing.
@@ -116,8 +129,22 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, usedFieldKeys, errors,
-  allowArchive = false, onRequireTrack, locked = false,
+  field,
+  expanded,
+  onExpand,
+  focusIntent,
+  focusNonce,
+  onFieldChange,
+  onDuplicate,
+  onDelete,
+  tournament,
+  shifts,
+  allFields,
+  usedFieldKeys,
+  errors,
+  allowArchive = false,
+  onRequireTrack,
+  locked = false,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -168,15 +195,18 @@ export function FieldCard({
   // border, and every error message routed off of it below, disappear the
   // moment the underlying problem is actually fixed, rather than waiting on
   // the next Save/validate() call.
-  const liveNonKeyErrors = nonKeyErrors.length > 0
-    ? issuesFor(field).filter((e) => !isFieldKeyError(e) && !isPresetError(e))
-    : [];
+  const liveNonKeyErrors =
+    nonKeyErrors.length > 0
+      ? issuesFor(field).filter((e) => !isFieldKeyError(e) && !isPresetError(e))
+      : [];
   // Routed straight onto the label Textarea's own error prop below, rather
   // than a shared list — the rest of liveNonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
   // QuestionRenderer's edit body.
-  const labelError = liveNonKeyErrors.includes('Question text is required.') ? 'Question text is required.' : undefined;
-  const bodyErrors = liveNonKeyErrors.filter((e) => e !== 'Question text is required.');
+  const labelError = liveNonKeyErrors.includes("Question text is required.")
+    ? "Question text is required."
+    : undefined;
+  const bodyErrors = liveNonKeyErrors.filter((e) => e !== "Question text is required.");
   // Key/preset errors themselves still surface only through FieldToolbar's
   // popovers (danger-colored trigger + inline message) — this doesn't
   // duplicate that message here, it just decides whether the card border
@@ -186,7 +216,7 @@ export function FieldCard({
   // field, then re-derives it from live data so fixing it via either popover
   // clears the border immediately.
   const hadKeyOrPresetError = errors.some((e) => isFieldKeyError(e) || isPresetError(e));
-  const presetIncomplete = !!presetKind && field.field_key.endsWith('_');
+  const presetIncomplete = !!presetKind && field.field_key.endsWith("_");
   const effKey = effectiveFieldKey(field);
   // A same-form collision is checked live against the other staged fields; a
   // preset key can also collide with a *different* form's field, which only
@@ -198,10 +228,10 @@ export function FieldCard({
   // field as a duplicate of itself. Both halves are naturally self-correcting
   // as the TD edits: once the key changes, it just stops matching either
   // check, no stale-error bookkeeping required.
-  const duplicateKey = !!effKey && (
-    allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey)
-    || (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey))
-  );
+  const duplicateKey =
+    !!effKey &&
+    (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
+      (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey)));
   const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
   const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
   const branchTargets: BranchTarget[] = allFields
@@ -211,7 +241,10 @@ export function FieldCard({
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
   // interfere with dragging an option within it.
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey, disabled: locked });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({
+    id: field.clientKey,
+    disabled: locked,
+  });
   // Translate, not Transform: dnd-kit's transforms carry scaleX/scaleY (the
   // ratio of another card's rect to this one's), so CSS.Transform would
   // squish/stretch cards to match whatever they pass over.
@@ -221,21 +254,28 @@ export function FieldCard({
   // rather than the full card: a tall question left a slot taller than the
   // viewport, so you couldn't see the gap you were aiming at. FieldList's
   // MeasuringStrategy.Always keeps dnd-kit's rects honest as that collapses.
-  const sortableStyle = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0 : 1 };
+  const sortableStyle = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0 : 1,
+  };
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
-  const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
+  const gripProps = {
+    ...attributes,
+    ...listeners,
+    onClick: (e: ReactMouseEvent) => e.stopPropagation(),
+  };
 
   const rootRef = useRef<HTMLDivElement>(null);
   // Skipped mid-drag: the card swaps to the compressed placeholder then back,
   // and animating that would fight dnd-kit's continuous rect measuring.
   useCardHeight(rootRef, expanded, isDragging);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per expand; focusIntent only rides along
   useEffect(() => {
     if (!focusNonce || !rootRef.current) return;
     return applyFocusIntent(rootRef.current, focusIntent);
     // Once per expand — focusNonce is the edge, focusIntent just rides along.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
 
   // Reads the click's position in the preview off the data attributes the
@@ -247,7 +287,9 @@ export function FieldCard({
     const offset = caretOffsetFromPoint(e.clientX, e.clientY);
     const optionRow = el?.closest<HTMLElement>("[data-option-value]");
     if (optionRow) {
-      const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>("[data-option-value]") ?? [])];
+      const rows = [
+        ...(rootRef.current?.querySelectorAll<HTMLElement>("[data-option-value]") ?? []),
+      ];
       onExpand({ target: `option:${rows.indexOf(optionRow)}`, offset });
       return;
     }
@@ -269,8 +311,10 @@ export function FieldCard({
     const config = sanitizeConfigForType(field.config, questionType);
     // Per-option keys too — sanitizeConfigForType only knows config-level
     // ones, and a radio's branch keys on a checkbox option 422 the save.
-    if (config.options) config.options = config.options.map((option) => cleanOption(option, questionType));
-    const needsStarterOption = OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
+    if (config.options)
+      config.options = config.options.map((option) => cleanOption(option, questionType));
+    const needsStarterOption =
+      OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
     onFieldChange({
       question_type: questionType,
@@ -293,13 +337,29 @@ export function FieldCard({
             borderColor={hasCardError ? undefined : "var(--color-border-strong)"}
             style={{ padding: "28px 24px 20px", position: "relative" }}
           >
-            <div {...gripProps} style={{
-              position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-              display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
-            }}>
+            <div
+              {...gripProps}
+              style={{
+                position: "absolute",
+                top: "6px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                display: "flex",
+                color: "var(--color-text-tertiary)",
+                cursor: "grab",
+                touchAction: "none",
+              }}
+            >
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                marginBottom: field.showDescription ? "10px" : "16px",
+              }}
+            >
               <Textarea
                 data-focus="label"
                 value={field.label}
@@ -309,12 +369,22 @@ export function FieldCard({
                 autoGrow
                 fullWidth
                 error={labelError}
-                style={{ padding: "7px 16px", lineHeight: "20px", borderRadius: "var(--radius-md)" }}
+                style={{
+                  padding: "7px 16px",
+                  lineHeight: "20px",
+                  borderRadius: "var(--radius-md)",
+                }}
               />
               <Dropdown
                 value={field.question_type}
                 onChange={(v) => handleQuestionTypeChange(v as FormQuestionType)}
-                options={presetKind ? QUESTION_TYPE_OPTIONS.filter((o) => PRESETS[presetKind].allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
+                options={
+                  presetKind
+                    ? QUESTION_TYPE_OPTIONS.filter((o) =>
+                        PRESETS[presetKind].allowedQuestionTypes.includes(o.value),
+                      )
+                    : QUESTION_TYPE_OPTIONS
+                }
                 width={220}
               />
             </div>
@@ -329,7 +399,11 @@ export function FieldCard({
                   autoGrow
                   size="sm"
                   fullWidth
-                  style={{ padding: "5px 10px", lineHeight: "16px", borderRadius: "var(--radius-md)" }}
+                  style={{
+                    padding: "5px 10px",
+                    lineHeight: "16px",
+                    borderRadius: "var(--radius-md)",
+                  }}
                 />
               </div>
             )}
@@ -347,23 +421,48 @@ export function FieldCard({
               onRequireTrack={onRequireTrack}
             />
 
-            <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />
+            <div
+              style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }}
+            />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "13px",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
                   Required
                 </span>
                 <Switch
                   checked={!!field.config?.required}
-                  onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
+                  onChange={(checked) =>
+                    onFieldChange({ config: { ...field.config, required: checked } })
+                  }
                   locked={presetKind === "track_status"}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-                <Button type="button" variant="ghost" size="sm" iconOnly title="Duplicate question" onClick={onDuplicate}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  title="Duplicate question"
+                  onClick={onDuplicate}
+                >
                   <IconCopy size={14} />
                 </Button>
-                <Button type="button" variant="ghost" size="sm" iconOnly title="Delete question" onClick={onDelete} style={{ color: "var(--color-danger)" }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  title="Delete question"
+                  onClick={onDelete}
+                  style={{ color: "var(--color-danger)" }}
+                >
                   <IconTrash size={14} />
                 </Button>
               </div>
@@ -373,16 +472,29 @@ export function FieldCard({
           <Card
             radius="lg"
             variant={hasCardError ? "danger" : "normal"}
-            style={{ padding: "20px 24px", cursor: locked ? "default" : "pointer", position: "relative" }}
+            style={{
+              padding: "20px 24px",
+              cursor: locked ? "default" : "pointer",
+              position: "relative",
+            }}
             onClick={locked ? undefined : handleCollapsedClick}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
           >
-            <div {...gripProps} style={{
-              position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-              display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
-              opacity: hovered && !locked ? 1 : 0,
-            }}>
+            <div
+              {...gripProps}
+              style={{
+                position: "absolute",
+                top: "6px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                display: "flex",
+                color: "var(--color-text-tertiary)",
+                cursor: "grab",
+                touchAction: "none",
+                opacity: hovered && !locked ? 1 : 0,
+              }}
+            >
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
             {/* field-preview turns the pieces that map to an editor input
@@ -411,24 +523,39 @@ export function FieldCardDragPreview({ field }: { field: EditableField }) {
       radius="lg"
       borderColor="var(--color-border-strong)"
       style={{
-        padding: "20px 20px 12px", cursor: "grabbing", boxShadow: "var(--shadow-md)", position: "relative",
+        padding: "20px 20px 12px",
+        cursor: "grabbing",
+        boxShadow: "var(--shadow-md)",
+        position: "relative",
       }}
     >
       {/* Same top-center placement as the expanded/collapsed card's own grip
           (FieldCard below) — keeps the drag handle's position consistent
           across the whole drag, not just while dragging. */}
-      <div style={{
-        position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-        display: "flex", color: "var(--color-text-tertiary)",
-      }}>
+      <div
+        style={{
+          position: "absolute",
+          top: "6px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
         <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
       </div>
-      <span style={{
-        display: "block",
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 600,
-        color: "var(--color-text-primary)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+      <span
+        style={{
+          display: "block",
+          fontFamily: "var(--font-sans)",
+          fontSize: "15px",
+          fontWeight: 600,
+          color: "var(--color-text-primary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {field.label.trim() || "Untitled question"}
       </span>
     </Card>

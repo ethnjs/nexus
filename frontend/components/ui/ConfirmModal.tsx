@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { ApiError } from "@/lib/api";
 
 /**
@@ -15,7 +15,13 @@ import { ApiError } from "@/lib/api";
  * leaving the caller to surface the error somewhere the reader isn't looking.
  */
 export function ConfirmModal({
-  title, description, confirmLabel, variant = "danger", onConfirm, onClose, onConfirmed,
+  title,
+  description,
+  confirmLabel,
+  variant = "danger",
+  onConfirm,
+  onClose,
+  onConfirmed,
 }: {
   title: string;
   description: ReactNode;
@@ -46,18 +52,32 @@ export function ConfirmModal({
   return (
     <Modal title={title} onClose={onClose} variant={variant === "danger" ? "danger" : "normal"}>
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           {description}
         </p>
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
           <Button type="button" variant={variant} loading={loading} onClick={handleConfirm}>
             {confirmLabel}
           </Button>

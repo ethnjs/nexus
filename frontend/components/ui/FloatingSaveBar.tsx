@@ -16,27 +16,60 @@ interface FloatingSaveBarProps {
   onHeightChange?: (px: number) => void;
 }
 
-export function FloatingSaveBar({ visible, saving, error, onSave, onCancel, stayWithin, onHeightChange }: FloatingSaveBarProps) {
+export function FloatingSaveBar({
+  visible,
+  saving,
+  error,
+  onSave,
+  onCancel,
+  stayWithin,
+  onHeightChange,
+}: FloatingSaveBarProps) {
   // Wherever this bar is shown for unsaved changes, leaving the page should
   // prompt — no page-specific wiring required.
   useBlockNavigation(visible, stayWithin);
 
   return (
     <FloatingBar visible={visible} onHeightChange={onHeightChange}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "16px",
+        }}
+      >
         <div>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+            }}
+          >
             You have unsaved changes
           </span>
           {error && (
-            <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "2px" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-danger)",
+                marginTop: "2px",
+              }}
+            >
               {error}
             </div>
           )}
         </div>
         <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-          <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={onSave} loading={saving}>Save</Button>
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={onSave} loading={saving}>
+            Save
+          </Button>
         </div>
       </div>
     </FloatingBar>

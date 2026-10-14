@@ -1,20 +1,20 @@
-'use client'
+"use client";
 
-import { ToolbarConfigButton } from '@/components/ui/ToolbarConfigButton'
-import { IconEye } from '@/components/ui/Icons'
+import { IconEye } from "@/components/ui/Icons";
+import { ToolbarConfigButton } from "@/components/ui/ToolbarConfigButton";
 
 interface DisplayButtonProps {
   /** Whether what is shown differs from this surface's default view. */
-  active: boolean
+  active: boolean;
   /** Opens the display config modal. */
-  onOpen: () => void
+  onOpen: () => void;
   /** Puts the view back to its default in one press. */
-  onReset: () => void
-  size?: 'sm' | 'md'
+  onReset: () => void;
+  size?: "sm" | "md";
   /** Eye only, no label — for a panel header. */
-  iconOnly?: boolean
+  iconOnly?: boolean;
   /** Label, and the tooltip when iconOnly. */
-  label?: string
+  label?: string;
 }
 
 /**
@@ -27,12 +27,17 @@ interface DisplayButtonProps {
  * view changed.
  */
 export function DisplayButton({
-  active, onOpen, onReset, size = 'md', iconOnly = false, label = 'Display',
+  active,
+  onOpen,
+  onReset,
+  size = "md",
+  iconOnly = false,
+  label = "Display",
 }: DisplayButtonProps) {
   return (
     <ToolbarConfigButton
       active={active}
-      icon={<IconEye size={size === 'sm' ? 14 : 16} />}
+      icon={<IconEye size={size === "sm" ? 14 : 16} />}
       label={label}
       actionLabel="Reset display"
       onOpen={onOpen}
@@ -40,5 +45,5 @@ export function DisplayButton({
       size={size}
       iconOnly={iconOnly}
     />
-  )
+  );
 }

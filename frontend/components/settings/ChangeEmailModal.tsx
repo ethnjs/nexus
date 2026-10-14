@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { authApi, ApiError, EmailPendingChange } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, authApi, type EmailPendingChange } from "@/lib/api";
 import { validateEmail } from "@/lib/auth";
 
 interface ChangeEmailModalProps {
@@ -14,7 +14,12 @@ interface ChangeEmailModalProps {
   onClose: () => void;
 }
 
-export function ChangeEmailModal({ currentEmail, pendingChange, onChange, onClose }: ChangeEmailModalProps) {
+export function ChangeEmailModal({
+  currentEmail,
+  pendingChange,
+  onChange,
+  onClose,
+}: ChangeEmailModalProps) {
   const [newEmail, setNewEmail] = useState(pendingChange.new_email ?? "");
   const [error, setError] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -25,7 +30,9 @@ export function ChangeEmailModal({ currentEmail, pendingChange, onChange, onClos
     return () => clearInterval(id);
   }, []);
 
-  const canResendAt = pendingChange.can_resend_at ? new Date(pendingChange.can_resend_at).getTime() : null;
+  const canResendAt = pendingChange.can_resend_at
+    ? new Date(pendingChange.can_resend_at).getTime()
+    : null;
   const onCooldown = canResendAt !== null && now < canResendAt;
   const cooldownSeconds = onCooldown ? Math.ceil((canResendAt! - now) / 1000) : 0;
 
@@ -55,9 +62,16 @@ export function ChangeEmailModal({ currentEmail, pendingChange, onChange, onClos
   return (
     <Modal title="Change email" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "6px" }}>
-          Currently <strong>{currentEmail}</strong>. We'll send a confirmation link to the new address —
-          your email won't change until you click it.
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+            marginBottom: "6px",
+          }}
+        >
+          Currently <strong>{currentEmail}</strong>. We'll send a confirmation link to the new
+          address — your email won't change until you click it.
         </p>
 
         <Input
@@ -89,7 +103,14 @@ export function ChangeEmailModal({ currentEmail, pendingChange, onChange, onClos
         </div>
 
         {pendingChange.new_email && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              color: "var(--color-text-tertiary)",
+              marginTop: "8px",
+            }}
+          >
             {onCooldown
               ? `Verification sent to ${pendingChange.new_email}. Didn't receive it? Try again in ${cooldownSeconds}s.`
               : `Verification sent to ${pendingChange.new_email}. Didn't receive it? You can resend now.`}

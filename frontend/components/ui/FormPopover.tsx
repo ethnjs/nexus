@@ -1,6 +1,13 @@
 "use client";
 
-import { CSSProperties, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 interface FormPopoverProps {
   /** The element that toggles the panel — an icon button, a chip, whatever. */
@@ -43,8 +50,15 @@ const PANEL_MAX_HEIGHT = 400;
 // isn't clipped by a scrollable ancestor like a side panel; flips above the
 // trigger when there's no room below).
 export function FormPopover({
-  trigger, children, width = 260, side = "bottom", align = "right",
-  open: controlledOpen, onOpenChange, closeOnOutsideClick = true, panelStyle,
+  trigger,
+  children,
+  width = 260,
+  side = "bottom",
+  align = "right",
+  open: controlledOpen,
+  onOpenChange,
+  closeOnOutsideClick = true,
+  panelStyle,
 }: FormPopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
@@ -123,18 +137,30 @@ export function FormPopover({
   // real height and writes the real position immediately — otherwise that
   // first frame would flash at the fallback spot and get corrected visibly
   // a moment later.
+  // Closing forgets the position, so the next opening measures afresh.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (!open) setPositioned(false);
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: positioned once per opening
   useLayoutEffect(() => {
-    if (!open) { setPositioned(false); return; }
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- marks the panel measured, from the DOM, before paint
     updatePanelPos();
     let raf: number;
     function loop() {
-      raf = requestAnimationFrame(() => { updatePanelPos(); loop(); });
+      raf = requestAnimationFrame(() => {
+        updatePanelPos();
+        loop();
+      });
     }
     loop();
     return () => cancelAnimationFrame(raf);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is recreated each render
   useEffect(() => {
     if (!open || !closeOnOutsideClick) return;
     function handleClick(e: MouseEvent) {
@@ -142,31 +168,40 @@ export function FormPopover({
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closeOnOutsideClick]);
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div ref={triggerRef} onClick={() => setOpen(!open)}>{trigger}</div>
+      <div ref={triggerRef} onClick={() => setOpen(!open)}>
+        {trigger}
+      </div>
 
       {open && (
-        <div ref={panelRef} style={{
-          position: "fixed",
-          // Mounted the instant `open` flips true, before a position is
-          // known — the layout effect above measures this element and
-          // writes its real position synchronously on that same first pass,
-          // before the browser ever paints, so this fallback spot is never
-          // actually visible. `positioned` just gates the reveal; the actual
-          // left/top/bottom values from then on are written directly to
-          // this element's style in updatePanelPos, not through React.
-          ...(!positioned && { top: -9999, left: -9999, visibility: "hidden" as const }),
-          zIndex: 300,
-          width: `${width}px`, maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto",
-          boxSizing: "border-box", padding: "14px",
-          background: "var(--color-surface)", border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-          ...panelStyle,
-        }}>
+        <div
+          ref={panelRef}
+          style={{
+            position: "fixed",
+            // Mounted the instant `open` flips true, before a position is
+            // known — the layout effect above measures this element and
+            // writes its real position synchronously on that same first pass,
+            // before the browser ever paints, so this fallback spot is never
+            // actually visible. `positioned` just gates the reveal; the actual
+            // left/top/bottom values from then on are written directly to
+            // this element's style in updatePanelPos, not through React.
+            ...(!positioned && { top: -9999, left: -9999, visibility: "hidden" as const }),
+            zIndex: 300,
+            width: `${width}px`,
+            maxHeight: `${PANEL_MAX_HEIGHT}px`,
+            overflowY: "auto",
+            boxSizing: "border-box",
+            padding: "14px",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
+            ...panelStyle,
+          }}
+        >
           {children(() => setOpen(false))}
         </div>
       )}

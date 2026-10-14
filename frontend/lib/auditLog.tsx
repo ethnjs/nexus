@@ -1,7 +1,7 @@
-import { ReactNode } from "react";
-import { externalRoleLabel, externalSystemFor } from "@/lib/exports/externalSystems";
-import { AuditLogEntry } from "@/lib/api";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
+import type { AuditLogEntry } from "@/lib/api";
+import { externalRoleLabel, externalSystemFor } from "@/lib/exports/externalSystems";
 
 // Mirrors backend/app/core/tournament/audit.py's ALL_ACTIONS — kept in sync
 // by hand since there's no shared codegen between the two.
@@ -50,7 +50,11 @@ function fmtDuration(hours: number): string {
 }
 
 function CodeBadge({ code }: { code: string }) {
-  return <Badge variant="default" className="font-mono">{code}</Badge>;
+  return (
+    <Badge variant="default" className="font-mono">
+      {code}
+    </Badge>
+  );
 }
 
 function RoleBadge({ label }: { label: string }) {
@@ -64,13 +68,20 @@ function PermissionDiff({ added, removed }: { added: string[]; removed: string[]
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         Updated permissions
-        <Badge variant="confirmed">+{added.length}</Badge>
-        /
+        <Badge variant="confirmed">+{added.length}</Badge>/
         <Badge variant="declined">-{removed.length}</Badge>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
-        {added.map((p) => <Badge key={`+${p}`} variant="confirmed">+ {p}</Badge>)}
-        {removed.map((p) => <Badge key={`-${p}`} variant="declined">- {p}</Badge>)}
+        {added.map((p) => (
+          <Badge key={`+${p}`} variant="confirmed">
+            + {p}
+          </Badge>
+        ))}
+        {removed.map((p) => (
+          <Badge key={`-${p}`} variant="declined">
+            - {p}
+          </Badge>
+        ))}
       </div>
     </div>
   );
@@ -80,30 +91,50 @@ function PermissionDiff({ added, removed }: { added: string[]; removed: string[]
 type RoleTier = string[];
 
 const TIER_LABEL_STYLE = {
-  fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-  textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)",
+  fontFamily: "var(--font-sans)",
+  fontSize: "10px",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: "var(--color-text-tertiary)",
 } as const;
 
 // One side of the order diff: tiers top-to-bottom, each prefixed by its
 // position number. Tied roles share a number, which is what communicates
 // "these are equal" without ever printing a rank value.
 function RoleOrderColumn({
-  heading, tiers, movers, moverVariant,
-}: { heading: string; tiers: RoleTier[]; movers: Set<string>; moverVariant: "declined" | "confirmed" }) {
+  heading,
+  tiers,
+  movers,
+  moverVariant,
+}: {
+  heading: string;
+  tiers: RoleTier[];
+  movers: Set<string>;
+  moverVariant: "declined" | "confirmed";
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "5px", minWidth: 0 }}>
       <span style={TIER_LABEL_STYLE}>{heading}</span>
       {tiers.map((labels, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: tiers are positional
         <div key={i} style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
-          <span style={{
-            fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: "18px",
-            color: "var(--color-text-tertiary)", flexShrink: 0,
-          }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              lineHeight: "18px",
+              color: "var(--color-text-tertiary)",
+              flexShrink: 0,
+            }}
+          >
             {i + 1}
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", minWidth: 0 }}>
             {labels.map((label) => (
-              <Badge key={label} variant={movers.has(label) ? moverVariant : "default"}>{label}</Badge>
+              <Badge key={label} variant={movers.has(label) ? moverVariant : "default"}>
+                {label}
+              </Badge>
             ))}
           </div>
         </div>
@@ -117,12 +148,25 @@ function RoleOrderColumn({
 // colored (red where they left, green where they landed) — coloring every
 // badge would imply every role was touched, when the rest are just
 // renumbering or untouched anchors.
-function RoleOrderDiff({ before, after, movers }: { before: RoleTier[]; after: RoleTier[]; movers: Set<string> }) {
+function RoleOrderDiff({
+  before,
+  after,
+  movers,
+}: {
+  before: RoleTier[];
+  after: RoleTier[];
+  movers: Set<string>;
+}) {
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-      gap: "8px", alignItems: "start", marginTop: "2px",
-    }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+        gap: "8px",
+        alignItems: "start",
+        marginTop: "2px",
+      }}
+    >
       <RoleOrderColumn heading="Before" tiers={before} movers={movers} moverVariant="declined" />
       <RoleOrderColumn heading="After" tiers={after} movers={movers} moverVariant="confirmed" />
     </div>
@@ -139,7 +183,10 @@ type BulkReorderExtra =
   | { before: RoleSnapshot[]; after: RoleSnapshot[] }
   | { role_id: number; label: string; old: number; new: number }[];
 
-function normalizeBulkReorder(raw: BulkReorderExtra): { before: RoleSnapshot[]; after: RoleSnapshot[] } {
+function normalizeBulkReorder(raw: BulkReorderExtra): {
+  before: RoleSnapshot[];
+  after: RoleSnapshot[];
+} {
   if (Array.isArray(raw)) {
     return {
       before: raw.map((r) => ({ role_id: r.role_id, label: r.label, rank: r.old })),
@@ -237,18 +284,34 @@ function findMovers(before: RoleSnapshot[], after: RoleSnapshot[]): Set<number> 
 //
 // Rank numbers are internal spacing (10/20/30, rebalanced on every reorder)
 // — never surfaced to the user, here or anywhere else in these renderers.
-const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLogEntry) => AuditLogDescription> = {
+const DESCRIBERS: Record<
+  string,
+  (extra: Record<string, unknown>, entry: AuditLogEntry) => AuditLogDescription
+> = {
   role_created: (e, entry) => {
     const permissions = entry.role?.permissions ?? (e.permissions as string[] | undefined) ?? [];
     return {
-      summary: <>Created role <RoleBadge label={entry.role?.label ?? (e.label as string)} /></>,
+      summary: (
+        <>
+          Created role <RoleBadge label={entry.role?.label ?? (e.label as string)} />
+        </>
+      ),
       details: [
-        permissions.length === 0
-          ? "No permissions"
-          : <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-              Permissions
-              {permissions.map((p) => <Badge key={p} variant="default">{p}</Badge>)}
-            </span>,
+        permissions.length === 0 ? (
+          "No permissions"
+        ) : (
+          <span
+            key="permissions"
+            style={{ display: "inline-flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
+          >
+            Permissions
+            {permissions.map((p) => (
+              <Badge key={p} variant="default">
+                {p}
+              </Badge>
+            ))}
+          </span>
+        ),
       ],
     };
   },
@@ -265,21 +328,38 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
       const movers = new Set(moved.map((r) => r.label));
 
       return {
-        summary: moved.length > 0
-          ? (
+        summary:
+          moved.length > 0 ? (
             <>
-              Moved {moved.map((r, i) => (
-                <span key={r.role_id}>{i > 0 ? ", " : ""}<RoleBadge label={r.label} /></span>
+              Moved{" "}
+              {moved.map((r, i) => (
+                <span key={r.role_id}>
+                  {i > 0 ? ", " : ""}
+                  <RoleBadge label={r.label} />
+                </span>
               ))}
             </>
-          )
-          : "Reordered roles",
+          ) : (
+            "Reordered roles"
+          ),
         details: [
-          <RoleOrderDiff before={orderedTiers(snapshot.before)} after={orderedTiers(snapshot.after)} movers={movers} />,
+          <RoleOrderDiff
+            key="order"
+            before={orderedTiers(snapshot.before)}
+            after={orderedTiers(snapshot.after)}
+            movers={movers}
+          />,
         ],
       };
     }
-    const changes = (e.changes as { field: string; old?: unknown; new?: unknown; added?: string[]; removed?: string[] }[]) ?? [];
+    const changes =
+      (e.changes as {
+        field: string;
+        old?: unknown;
+        new?: unknown;
+        added?: string[];
+        removed?: string[];
+      }[]) ?? [];
     // entry.role is a LIVE server-side lookup by target_id, so it's null once
     // the role has been deleted. The rename recorded in `changes` still names
     // it, and is what the role was called after this very entry — a better
@@ -287,12 +367,16 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     const renamedTo = changes.find((c) => c.field === "label")?.new as string | undefined;
     const shownLabel = entry.role?.label ?? renamedTo;
     return {
-      summary: shownLabel
-        ? <>Updated role <RoleBadge label={shownLabel} /></>
-        : "Updated a role",
+      summary: shownLabel ? (
+        <>
+          Updated role <RoleBadge label={shownLabel} />
+        </>
+      ) : (
+        "Updated a role"
+      ),
       details: changes.map((c) => {
         if (c.field === "permissions") {
-          return <PermissionDiff added={c.added ?? []} removed={c.removed ?? []} />;
+          return <PermissionDiff key={c.field} added={c.added ?? []} removed={c.removed ?? []} />;
         }
         if (c.field === "rank") return "Rank changed";
         if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;
@@ -312,7 +396,9 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     summary: (
       <>
         Deleted role <RoleBadge label={e.label as string} />
-        {(e.members_affected as number) > 0 ? ` — ${e.members_affected} member${e.members_affected === 1 ? "" : "s"} affected` : ""}
+        {(e.members_affected as number) > 0
+          ? ` — ${e.members_affected} member${e.members_affected === 1 ? "" : "s"} affected`
+          : ""}
       </>
     ),
   }),
@@ -323,7 +409,11 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     const hours = e.expires_in_hours as number | null;
     details.push(hours === null ? "Never expires" : `Expires in ${fmtDuration(hours)}`);
     return {
-      summary: <>Created invite <CodeBadge code={e.code as string} /></>,
+      summary: (
+        <>
+          Created invite <CodeBadge code={e.code as string} />
+        </>
+      ),
       details,
     };
   },
@@ -331,13 +421,18 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
   join_code_updated: (e) => {
     const details: string[] = [];
     const changes = e.changes as { label?: { old: string | null; new: string | null } } | undefined;
-    if (changes?.label) details.push(`Label: ${changes.label.old ?? "—"} → ${changes.label.new ?? "—"}`);
+    if (changes?.label)
+      details.push(`Label: ${changes.label.old ?? "—"} → ${changes.label.new ?? "—"}`);
     if (typeof e.add_hours === "number") details.push(`Extended by ${e.add_hours}h`);
     return { summary: "Updated an invite", details: details.length > 0 ? details : undefined };
   },
 
   join_code_deactivated: (e) => ({
-    summary: <>Deactivated invite <CodeBadge code={e.code as string} /></>,
+    summary: (
+      <>
+        Deactivated invite <CodeBadge code={e.code as string} />
+      </>
+    ),
   }),
 
   staff_invite_sent: (e) => {
@@ -346,7 +441,8 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     return {
       summary: (
         <>
-          Sent {emails.length} staff invite{emails.length === 1 ? "" : "s"} via <CodeBadge code={e.join_code as string} />
+          Sent {emails.length} staff invite{emails.length === 1 ? "" : "s"} via{" "}
+          <CodeBadge code={e.join_code as string} />
           {failed.size > 0 ? ` (${failed.size} failed)` : ""}
         </>
       ),
@@ -358,13 +454,12 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     summary: e.is_verified ? "Marked tournament verified" : "Marked tournament unverified",
   }),
 
-  tournament_archived: (e) => (
+  tournament_archived: (e) =>
     // The auto-archive job logs under the owner's actor_id (a real user row
     // is required), but they didn't take this action — don't attribute it.
     e?.auto_archived
       ? { summary: "Tournament was automatically archived after it ended", hideActor: true }
-      : { summary: "Archived tournament" }
-  ),
+      : { summary: "Archived tournament" },
 
   tournament_unarchived: () => ({
     summary: "Unarchived tournament",

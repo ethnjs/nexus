@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 
 /** Something about a row worth saying besides saved/failed. `danger` for a
@@ -25,11 +25,17 @@ export function MassResultsCard({ results }: { results: MassResult[] }) {
   const successCount = results.length - failureCount;
   return (
     <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        marginBottom: "10px",
-      }}>
+      <div
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "11px",
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--color-text-tertiary)",
+          marginBottom: "10px",
+        }}
+      >
         {successCount} saved, {failureCount} failed
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -41,14 +47,20 @@ export function MassResultsCard({ results }: { results: MassResult[] }) {
             ) : (
               <span style={{ color: "var(--color-success)" }}>— saved</span>
             )}
-            {!r.error && (r.notes ?? []).map((note, i) => (
-              <span
-                key={i}
-                style={{ color: note.tone === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)" }}
-              >
-                {" · "}{note.text}
-              </span>
-            ))}
+            {!r.error &&
+              (r.notes ?? []).map((note, i) => (
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
+                  key={i}
+                  style={{
+                    color:
+                      note.tone === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)",
+                  }}
+                >
+                  {" · "}
+                  {note.text}
+                </span>
+              ))}
           </p>
         ))}
       </div>

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { eventCategoriesApi, EventCategory, ApiError } from "@/lib/api";
-import { Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { EditableText } from "@/components/ui/EditableText";
 import { IconPlus, IconTrash } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { ApiError, type EventCategory, eventCategoriesApi } from "@/lib/api";
 import { useActionToast } from "@/lib/useActionToast";
 
 /**
@@ -18,7 +18,11 @@ import { useActionToast } from "@/lib/useActionToast";
  * needs the updated list either way since the events table renders category
  * names.
  */
-export function CategoriesModal({ categories, onChanged, onClose }: {
+export function CategoriesModal({
+  categories,
+  onChanged,
+  onClose,
+}: {
   categories: EventCategory[];
   /** Fires after every successful write, with the new full list. */
   onChanged: (categories: EventCategory[]) => void;
@@ -78,7 +82,13 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <div style={{ display: "flex", flexDirection: "column" }}>
           {categories.length === 0 ? (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
               No categories yet.
             </p>
           ) : (
@@ -86,21 +96,31 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
               <div
                 key={category.id}
                 style={{
-                  display: "flex", alignItems: "center", gap: "10px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
                   padding: "10px 0",
-                  borderBottom: i === categories.length - 1 ? "none" : "1px solid var(--color-border)",
+                  borderBottom:
+                    i === categories.length - 1 ? "none" : "1px solid var(--color-border)",
                 }}
               >
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <EditableText
                     value={category.name}
-                    textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+                    textStyle={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                    }}
                     title="Click to rename"
                     onSave={(name) => handleRename(category.id, name)}
                   />
                 </span>
                 <Button
-                  type="button" variant="secondary" size="sm" iconOnly
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  iconOnly
                   title="Delete category"
                   loading={deletingId === category.id}
                   onClick={() => handleDelete(category)}
@@ -121,19 +141,33 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
             size="sm"
             fullWidth
           />
-          <Button type="submit" variant="secondary" size="sm" loading={adding} disabled={!newName.trim()}>
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            loading={adding}
+            disabled={!newName.trim()}
+          >
             <IconPlus size={13} /> Add
           </Button>
         </form>
 
         {error && (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+            }}
+          >
             {error}
           </p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Button type="button" variant="secondary" onClick={onClose}>Done</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Done
+          </Button>
         </div>
       </div>
     </Modal>

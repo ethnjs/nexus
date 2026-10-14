@@ -1,12 +1,15 @@
 "use client";
 
-import { ReactNode, useCallback } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useCallback } from "react";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 
 // Module-level so its identity is stable — CollapsibleHeader re-registers the
 // Topbar's copy of the tabs whenever this changes.
-const FORMS_TABS = [{ key: "forms", label: "All Forms" }, { key: "onboarding", label: "Onboarding" }];
+const FORMS_TABS = [
+  { key: "forms", label: "All Forms" },
+  { key: "onboarding", label: "Onboarding" },
+];
 
 export default function FormsLayout({ children }: { children: ReactNode }) {
   const params = useParams();

@@ -1,16 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { joinApi, membersApi, JoinPreviewTournament, ApiError } from "@/lib/api";
-import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { Spinner } from "@/components/ui/Spinner";
-import { IconCalendar, IconLocation } from "@/components/ui/Icons";
+import { Suspense, useEffect, useState } from "react";
 import styles from "@/components/layout/CenteredCard.module.css";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { IconCalendar, IconLocation } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
+import { ApiError, type JoinPreviewTournament, joinApi, membersApi } from "@/lib/api";
+import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
+import { useAuth } from "@/lib/useAuth";
 
 // Copy varies by which threshold(s) this tournament actually collects — a
 // TD who only cares about 21+ shouldn't see 18+ language.
@@ -28,9 +28,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.page}>
       <section className={`${styles.card} ${styles.cardWide}`}>
-        <h1 className={`${styles.wordmark} ${styles.wordmarkSm}`}>
-          NEXUS
-        </h1>
+        <h1 className={`${styles.wordmark} ${styles.wordmarkSm}`}>NEXUS</h1>
         {children}
       </section>
     </div>
@@ -42,28 +40,92 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
   const year = tournamentYear(preview);
 
   return (
-    <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        marginBottom: "28px",
+      }}
+    >
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-tertiary)",
+          textAlign: "center",
+        }}
+      >
         You&rsquo;re invited to join
       </p>
-      <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)", textAlign: "center" }}>
+      <h2
+        style={{
+          fontFamily: "var(--font-serif)",
+          fontSize: "24px",
+          color: "var(--color-text-primary)",
+          textAlign: "center",
+        }}
+      >
         {year} {preview.name}
       </h2>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "6px" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+          alignItems: "center",
+          marginTop: "6px",
+        }}
+      >
         {rows.map((row) => (
-          <span key={row.key} style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            {row.name && <span style={{ fontWeight: 600, color: "var(--color-text-tertiary)" }}>{row.name}</span>}
-            {row.place && <><IconLocation />{row.place}</>}
-            {row.dates && <><IconCalendar />{row.dates}</>}
+          <span
+            key={row.key}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            {row.name && (
+              <span style={{ fontWeight: 600, color: "var(--color-text-tertiary)" }}>
+                {row.name}
+              </span>
+            )}
+            {row.place && (
+              <>
+                <IconLocation />
+                {row.place}
+              </>
+            )}
+            {row.dates && (
+              <>
+                <IconCalendar />
+                {row.dates}
+              </>
+            )}
           </span>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap", marginTop: "6px" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          marginTop: "6px",
+        }}
+      >
         <Badge>{preview.state}</Badge>
         <Badge>{preview.level[0].toUpperCase() + preview.level.slice(1)}</Badge>
-        {preview.division.map((d) => <Badge key={d}>{d}</Badge>)}
+        {preview.division.map((d) => (
+          <Badge key={d}>{d}</Badge>
+        ))}
       </div>
     </div>
   );
@@ -72,10 +134,26 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
 function InvalidState() {
   return (
     <>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "18px", fontWeight: 600, color: "var(--color-text-primary)", textAlign: "center", marginBottom: "8px" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "18px",
+          fontWeight: 600,
+          color: "var(--color-text-primary)",
+          textAlign: "center",
+          marginBottom: "8px",
+        }}
+      >
         This invite is no longer valid
       </p>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "14px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
         It may have expired or been deactivated. Ask whoever invited you for a new link.
       </p>
     </>
@@ -84,7 +162,13 @@ function InvalidState() {
 
 export default function JoinPage() {
   return (
-    <Suspense fallback={<Shell><Spinner size="lg" /></Shell>}>
+    <Suspense
+      fallback={
+        <Shell>
+          <Spinner size="lg" />
+        </Shell>
+      }
+    >
       <JoinPageContent />
     </Suspense>
   );
@@ -97,7 +181,8 @@ function JoinPageContent() {
   const { user, loading: authLoading } = useAuth();
 
   const [preview, setPreview] = useState<JoinPreviewTournament | "chapter" | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const previewError = !code || previewFailed;
 
   const [membershipChecked, setMembershipChecked] = useState(false);
   const [alreadyMember, setAlreadyMember] = useState(false);
@@ -110,16 +195,18 @@ function JoinPageContent() {
   const [ageConsent, setAgeConsent] = useState(false);
 
   useEffect(() => {
-    if (!code) { setPreviewError(true); return; }
-    joinApi.preview(code)
+    if (!code) return;
+    joinApi
+      .preview(code)
       .then((res) => setPreview(res.type === "tournament" ? res : "chapter"))
-      .catch(() => setPreviewError(true));
+      .catch(() => setPreviewFailed(true));
   }, [code]);
 
   useEffect(() => {
     if (authLoading || !user || !user.is_onboarding_complete) return;
     if (!preview || preview === "chapter") return;
-    membersApi.getMe(preview.target_id, [])
+    membersApi
+      .getMe(preview.target_id, [])
       .then((me) => setAlreadyMember(me.id !== null))
       .catch(() => setAlreadyMember(false))
       .finally(() => setMembershipChecked(true));
@@ -140,20 +227,44 @@ function JoinPageContent() {
   const redirectParam = `?redirect=${encodeURIComponent(`/join?code=${code}`)}`;
 
   if (previewError) {
-    return <Shell><InvalidState /></Shell>;
+    return (
+      <Shell>
+        <InvalidState />
+      </Shell>
+    );
   }
 
   if (preview === null) {
-    return <Shell><Spinner size="lg" /></Shell>;
+    return (
+      <Shell>
+        <Spinner size="lg" />
+      </Shell>
+    );
   }
 
   if (preview === "chapter") {
     return (
       <Shell>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "18px", fontWeight: 600, color: "var(--color-text-primary)", textAlign: "center", marginBottom: "8px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "18px",
+            fontWeight: 600,
+            color: "var(--color-text-primary)",
+            textAlign: "center",
+            marginBottom: "8px",
+          }}
+        >
           Chapter invites aren&rsquo;t supported yet
         </p>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            textAlign: "center",
+          }}
+        >
           This invite is for a chapter, which NEXUS doesn&rsquo;t support joining yet.
         </p>
       </Shell>
@@ -168,7 +279,11 @@ function JoinPageContent() {
         <Spinner size="lg" />
       ) : !user ? (
         <div style={{ width: "100%", display: "flex", gap: "10px" }}>
-          <Button fullWidth variant="secondary" onClick={() => router.push(`/sign-up${redirectParam}`)}>
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => router.push(`/sign-up${redirectParam}`)}
+          >
             Create account
           </Button>
           <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
@@ -176,8 +291,23 @@ function JoinPageContent() {
           </Button>
         </div>
       ) : !user.is_onboarding_complete ? (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+              textAlign: "center",
+            }}
+          >
             You need to complete the required fields of onboarding first.
           </p>
           <Button fullWidth onClick={() => router.push(`/onboarding${redirectParam}`)}>
@@ -187,31 +317,80 @@ function JoinPageContent() {
       ) : !membershipChecked ? (
         <Spinner size="lg" />
       ) : alreadyMember ? (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+              textAlign: "center",
+            }}
+          >
             You&rsquo;re already a member of this tournament.
           </p>
-          <Button fullWidth onClick={() => router.push(`/tournaments/${preview.target_id}/onboarding`)}>
+          <Button
+            fullWidth
+            onClick={() => router.push(`/tournaments/${preview.target_id}/onboarding`)}
+          >
             Continue onboarding
           </Button>
         </div>
       ) : (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-            Joining as {user.first_name ? `${user.first_name} ${user.last_name ?? ""}`.trim() : user.email}
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+              textAlign: "center",
+            }}
+          >
+            Joining as{" "}
+            {user.first_name ? `${user.first_name} ${user.last_name ?? ""}`.trim() : user.email}
           </p>
 
           {(preview.collect_is_over_18 || preview.collect_is_over_21) && (
-            <label style={{
-              display: "flex", alignItems: "flex-start", gap: "8px", width: "100%",
-              padding: "12px", borderRadius: "8px", background: "var(--color-bg)", cursor: "pointer",
-            }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+                width: "100%",
+                padding: "12px",
+                borderRadius: "8px",
+                background: "var(--color-bg)",
+                cursor: "pointer",
+              }}
+            >
               <span style={{ marginTop: "2px" }}>
                 <Checkbox checked={ageConsent} onChange={setAgeConsent} />
               </span>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
-                {ageDisclosureCopy(preview)} I consent to sharing this with the tournament.
-                My date of birth is never shared.
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {ageDisclosureCopy(preview)} I consent to sharing this with the tournament. My date
+                of birth is never shared.
               </span>
             </label>
           )}
@@ -225,12 +404,26 @@ function JoinPageContent() {
             Confirm &amp; Join
           </Button>
           {(preview.collect_is_over_18 || preview.collect_is_over_21) && !ageConsent && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+                textAlign: "center",
+              }}
+            >
               You must consent to age disclosure to join this tournament.
             </p>
           )}
           {joinError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", textAlign: "center" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-danger)",
+                textAlign: "center",
+              }}
+            >
               {joinError}
             </p>
           )}

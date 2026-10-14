@@ -1,0 +1,44 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [staging, main]
+    paths:
+      - "frontend/**"
+      - "biome.jsonc"
+      - ".github/workflows/frontend.yml"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      # pnpm's version comes from frontend/package.json's packageManager.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+          cache: true
+          cache_dependency_path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # No next build: Vercel builds every PR.
+      - name: Lint and check formatting
+        run: pnpm exec biome ci
+
+      - name: React Compiler rules
+        run: pnpm lint:react
+
+      - name: Type check
+        run: pnpm typecheck

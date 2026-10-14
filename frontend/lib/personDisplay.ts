@@ -1,4 +1,4 @@
-import { PersonRef, UserSlim } from "@/lib/api";
+import type { PersonRef, UserSlim } from "@/lib/api";
 
 // How the backend credits an action — a join code's creator, an audit log's
 // actor, a form's author. It carries a name and roles and nothing else: the

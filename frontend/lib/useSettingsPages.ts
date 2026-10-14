@@ -36,7 +36,9 @@ export function useSettingsPages(tournamentId: string | number): SettingsPage[] 
       { key: "general", label: "General", href: `${base}/general` },
       ...(roles ? [{ key: "roles" as const, label: "Roles", href: `${base}/roles` }] : []),
       ...(invites ? [{ key: "invites" as const, label: "Invites", href: `${base}/invites` }] : []),
-      ...(auditLog ? [{ key: "audit-log" as const, label: "Audit Log", href: `${base}/audit-log` }] : []),
+      ...(auditLog
+        ? [{ key: "audit-log" as const, label: "Audit Log", href: `${base}/audit-log` }]
+        : []),
     ];
   }, [tournamentId, roles, invites, auditLog]);
 }

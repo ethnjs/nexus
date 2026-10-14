@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ApiError, Form, FormResponse, formsApi } from "@/lib/api";
-import { formatDateTime } from "@/lib/timeFormat";
-import { ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
+import { useEffect, useMemo, useState } from "react";
+import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
+import styles from "@/components/forms/FormFlow.module.css";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
-import { Banner } from "@/components/ui/Banner";
 import { Badge } from "@/components/ui/Badge";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { IconEdit, IconLock } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconEdit, IconLock } from "@/components/ui/Icons";
-import styles from "@/components/forms/FormFlow.module.css";
+import { ApiError, type Form, type FormResponse, formsApi } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
+import { formatDateTime } from "@/lib/timeFormat";
 
 // Respondent-facing form page, one URL for every state of a member's response:
 // - no response yet: fill the form
@@ -46,14 +46,18 @@ export default function FormViewPage() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    formsApi.get(formId)
+    formsApi
+      .get(formId)
       .then(setForm)
-      .catch((error) => setLoadError(error instanceof ApiError ? error.message : "Failed to load form."));
+      .catch((error) =>
+        setLoadError(error instanceof ApiError ? error.message : "Failed to load form."),
+      );
   }, [formId]);
 
   useEffect(() => {
     // 404 is the ordinary "hasn't answered yet" case, not a failure.
-    formsApi.getMyResponse(formId)
+    formsApi
+      .getMyResponse(formId)
       .then(setExisting)
       .catch(() => setExisting(null))
       .finally(() => setCheckedExisting(true));
@@ -121,13 +125,21 @@ export default function FormViewPage() {
   if (loadError) {
     return (
       <div style={{ padding: "80px 24px", textAlign: "center" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{loadError}</p>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}
+        >
+          {loadError}
+        </p>
       </div>
     );
   }
 
   if (!form || !checkedExisting) {
-    return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   if (existing && existingResponse && editing) {
@@ -138,14 +150,18 @@ export default function FormViewPage() {
         key={existing.updated_at}
         form={form}
         existing={existingResponse}
-        banner={flaggedCount > 0 ? (
-          <Banner
-            variant="warning"
-            message={flaggedCount === 1
-              ? "One question changed since you answered. Please take another look."
-              : `${flaggedCount} questions changed since you answered. Please take another look.`}
-          />
-        ) : undefined}
+        banner={
+          flaggedCount > 0 ? (
+            <Banner
+              variant="warning"
+              message={
+                flaggedCount === 1
+                  ? "One question changed since you answered. Please take another look."
+                  : `${flaggedCount} questions changed since you answered. Please take another look.`
+              }
+            />
+          ) : undefined
+        }
         successMessage="Your changes were saved."
         onComplete={patchResponse}
       />
@@ -161,24 +177,61 @@ export default function FormViewPage() {
         {(form.title || form.description) && (
           <Card radius="lg" className={styles.card}>
             {form.title && (
-              <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)" }}>
+              <h1
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: "24px",
+                  color: "var(--color-text-primary)",
+                }}
+              >
                 {form.title}
               </h1>
             )}
             {form.description && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "14px",
+                  color: "var(--color-text-secondary)",
+                  marginTop: "8px",
+                }}
+              >
                 {form.description}
               </p>
             )}
           </Card>
         )}
 
-        <Card radius="lg" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 20px", flexWrap: "wrap" }}>
+        <Card
+          radius="lg"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "14px 20px",
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "var(--color-text-primary)",
+              }}
+            >
               Your response
             </div>
-            <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+                marginTop: "2px",
+              }}
+            >
               Submitted {formatDateTime(existing.submitted_at)}
               {wasEdited(existing) && ` · Updated ${formatDateTime(existing.updated_at)}`}
             </div>
@@ -186,14 +239,21 @@ export default function FormViewPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {editLockedReason && (
               <Tooltip variant="info" message={editLockedReason} showIcon={false}>
-                <Badge variant="removed"><IconLock size={11} /> Locked</Badge>
+                <Badge variant="removed">
+                  <IconLock size={11} /> Locked
+                </Badge>
               </Tooltip>
             )}
             <Button
-              type="button" variant="secondary" size="md"
+              type="button"
+              variant="secondary"
+              size="md"
               disabled={!!editLockedReason}
               title={editLockedReason}
-              onClick={() => { setSavedMessage(null); router.push(`/forms/${formId}/view?edit=true`); }}
+              onClick={() => {
+                setSavedMessage(null);
+                router.push(`/forms/${formId}/view?edit=true`);
+              }}
             >
               <IconEdit size={14} /> Edit response
             </Button>
@@ -211,7 +271,13 @@ export default function FormViewPage() {
   if (form.status !== "published" || form.tournament_is_archived) {
     return (
       <div style={{ padding: "80px 24px", textAlign: "center" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
           This form isn&rsquo;t accepting responses right now.
         </p>
       </div>

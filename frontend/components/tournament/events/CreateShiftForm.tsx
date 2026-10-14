@@ -1,12 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { tournamentShiftsApi, TournamentShift, TournamentTrack, ApiError } from "@/lib/api";
-import { fromDayAndTime } from "@/lib/timeFormat";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
-import { TrackPicker, soleTrackId } from "@/components/tournament/TrackPicker";
+import { soleTrackId, TrackPicker } from "@/components/tournament/TrackPicker";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import {
+  ApiError,
+  type TournamentShift,
+  type TournamentTrack,
+  tournamentShiftsApi,
+} from "@/lib/api";
+import { fromDayAndTime } from "@/lib/timeFormat";
 
 interface CreateShiftFormProps {
   tournamentId: number;
@@ -22,7 +27,12 @@ interface CreateShiftFormProps {
   onCancel: () => void;
 }
 
-export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: CreateShiftFormProps) {
+export function CreateShiftForm({
+  tournamentId,
+  tracks,
+  onCreated,
+  onCancel,
+}: CreateShiftFormProps) {
   const [trackId, setTrackId] = useState<number | null>(soleTrackId(tracks));
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -44,12 +54,18 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
   }
 
   async function handleSubmit() {
-    if (trackId === null) { setError("Pick a track."); return; }
+    if (trackId === null) {
+      setError("Pick a track.");
+      return;
+    }
     if (!label.trim() || !resolvedDay || !startTime || !endTime) {
       setError("Track, day, label, start and end are all required.");
       return;
     }
-    if (endTime <= startTime) { setError("End must be after the start."); return; }
+    if (endTime <= startTime) {
+      setError("End must be after the start.");
+      return;
+    }
     setSaving(true);
     setError(undefined);
     try {
@@ -70,30 +86,64 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <Input
-        label="Label" required font="sans" size="sm" fullWidth
-        value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Morning"
+        label="Label"
+        required
+        font="sans"
+        size="sm"
+        fullWidth
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="Morning"
       />
       <TrackPicker
-        label="Track" required size="sm" fullWidth
+        label="Track"
+        required
+        size="sm"
+        fullWidth
         value={trackId}
         onChange={pickTrack}
         tracks={tracks}
       />
       <TrackDayPicker
-        label="Day" required size="sm" fullWidth
+        label="Day"
+        required
+        size="sm"
+        fullWidth
         track={track}
         value={resolvedDay}
         onChange={setDay}
       />
       <div style={{ display: "flex", gap: "8px" }}>
-        <Input label="Start" required type="time" size="sm" fullWidth value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <Input label="End" required type="time" size="sm" fullWidth value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        <Input
+          label="Start"
+          required
+          type="time"
+          size="sm"
+          fullWidth
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+        />
+        <Input
+          label="End"
+          required
+          type="time"
+          size="sm"
+          fullWidth
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+        />
       </div>
       {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{error}</p>
+        <p
+          style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}
+        >
+          {error}
+        </p>
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "2px" }}>
-        <Button type="button" variant="secondary" size="xs" onClick={onCancel} disabled={saving}>Cancel</Button>
+        <Button type="button" variant="secondary" size="xs" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
         <Button type="button" variant="primary" size="xs" onClick={handleSubmit} loading={saving}>
           Create
         </Button>
