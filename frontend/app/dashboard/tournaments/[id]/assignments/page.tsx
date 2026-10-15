@@ -1134,6 +1134,22 @@ export default function AssignmentsPage() {
       reassign_assignments: affected.length > 0,
     });
     setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)));
+    // The track headers read each event's own copy of the track, not the
+    // catalog above.
+    setEvents((current) =>
+      current === null
+        ? null
+        : current.map((e) =>
+            e.tracks.some((t) => t.id === track.id)
+              ? {
+                  ...e,
+                  tracks: e.tracks.map((t) =>
+                    t.id === track.id ? { ...t, default_role_id: updated.default_role_id } : t,
+                  ),
+                }
+              : e,
+          ),
+    );
     if (affected.length > 0) {
       // Mirrors reassign_track_role: someone who already holds the new role
       // in that cell loses the old row instead of gaining a duplicate.
