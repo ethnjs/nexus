@@ -48,6 +48,22 @@ class AssignmentUpdate(BaseModel):
     tournament_track_id: int | None = None
 
 
+class PlacementCell(BaseModel):
+    # Null is the row with no shift.
+    tournament_shift_id: int | None = None
+    role_id: int
+
+
+class AssignmentPlacement(BaseModel):
+    """Every row one member should have on one event and track. An empty
+    `cells` clears the placement."""
+
+    membership_id: int
+    tournament_event_id: int
+    tournament_track_id: int
+    cells: list[PlacementCell]
+
+
 # ---------------------------------------------------------------------------
 # Read schema
 #
