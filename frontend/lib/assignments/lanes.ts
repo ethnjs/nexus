@@ -25,6 +25,21 @@ export function sameRole(a: AssignmentRole, b: AssignmentRole): boolean {
   return roleKey(a) === roleKey(b);
 }
 
+/** `rows` with every row matching `isReplaced` swapped for `replacement`, put
+ *  where the first replaced row was. Lanes are drawn in the order their rows
+ *  first appear, so appending instead moves the edited bar to the bottom, and
+ *  moving it mid-resize drops the pointer capture. */
+export function replaceInPlace(
+  rows: Assignment[],
+  isReplaced: (row: Assignment) => boolean,
+  replacement: Assignment[],
+): Assignment[] {
+  const at = rows.findIndex(isReplaced);
+  const kept = rows.filter((row) => !isReplaced(row));
+  if (at === -1) return [...kept, ...replacement];
+  return [...kept.slice(0, at), ...replacement, ...kept.slice(at)];
+}
+
 /** The distinct roles a set of rows carries, in a stable order so the pill's
  *  summary doesn't reshuffle every time rows are rebuilt. */
 export function rolesOf(rows: Assignment[]): AssignmentRole[] {

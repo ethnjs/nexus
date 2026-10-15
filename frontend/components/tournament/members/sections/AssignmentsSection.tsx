@@ -44,6 +44,7 @@ import {
   buildLanes,
   type Lane,
   laneFlags,
+  replaceInPlace,
   rolesOf,
   sameRole,
 } from "@/lib/assignments/lanes";
@@ -230,7 +231,7 @@ export function AssignmentsSection({
     assignmentsApi
       .setPlacements(tournamentId, placements)
       .then((fresh) => {
-        setRows((current) => [...current.filter((row) => !inScope(row)), ...fresh]);
+        setRows((current) => replaceInPlace(current, inScope, fresh));
         onChanged?.();
       })
       .catch((err: unknown) => {

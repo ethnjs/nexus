@@ -118,7 +118,13 @@ import {
   type Flag,
   memberFacts,
 } from "@/lib/assignments/flags";
-import { type AssignmentRole, roleKey, rolesOf, sameRole } from "@/lib/assignments/lanes";
+import {
+  type AssignmentRole,
+  replaceInPlace,
+  roleKey,
+  rolesOf,
+  sameRole,
+} from "@/lib/assignments/lanes";
 import { persistDisplayConfigSurface } from "@/lib/displayConfig";
 import { eventName } from "@/lib/eventDisplay";
 import {
@@ -811,10 +817,8 @@ export default function AssignmentsPage() {
     });
     const settle = (source: Assignment[]) => {
       const owned = new Set(keys.filter((key) => latestWriteRef.current.get(key) === seq));
-      setRows((current) => [
-        ...current.filter((row) => !owned.has(placementKeyOf(row))),
-        ...source.filter((row) => owned.has(placementKeyOf(row))),
-      ]);
+      const isOwned = (row: Assignment) => owned.has(placementKeyOf(row));
+      setRows((current) => replaceInPlace(current, isOwned, source.filter(isOwned)));
     };
 
     try {
@@ -967,7 +971,7 @@ export default function AssignmentsPage() {
     }
     const nextIds = new Set(next.map((row) => row.id));
     return {
-      rows: [...current.filter((row) => !laneIds.has(row.id)), ...parked, ...next],
+      rows: replaceInPlace(current, (row) => laneIds.has(row.id), [...parked, ...next]),
       added: next.filter((row) => !laneIds.has(row.id)),
       removed: inLane.filter((row) => !nextIds.has(row.id)),
     };
@@ -1618,7 +1622,11 @@ export default function AssignmentsPage() {
       // Put back exactly where it came from.
       if (added.length === 0 && removed.length === 0) return;
 
-      const next = [...rows.filter((row) => !movingIds.has(row.id)), ...kept, ...added];
+      // A bar moved to another event joins the bottom of it; one edited within
+      // its event keeps its place.
+      const next = sameEvent
+        ? replaceInPlace(rows, (row) => movingIds.has(row.id), [...kept, ...added])
+        : [...rows.filter((row) => !movingIds.has(row.id)), ...kept, ...added];
       setRows(next);
       syncPlacements([...removed, ...added], rows, next);
       return;
