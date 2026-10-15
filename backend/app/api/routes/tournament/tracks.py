@@ -5,13 +5,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.assignments import reassign_track_role
 from app.core.tournament.audit import (
     TRACK_DELETE_CANCELLED,
     TRACK_DELETE_PENDING,
     log_action,
 )
 from app.core.tournament.permissions import (
+    MANAGE_MEMBERS,
     MANAGE_TOURNAMENT,
+    has_permission,
     require_catalog_read,
     require_permission,
 )
@@ -23,7 +26,7 @@ from app.core.tournament.tracks import (
     track_shift_count,
 )
 from app.db.session import get_db
-from app.models.models import TournamentRole, TournamentTrack, User
+from app.models.models import Tournament, TournamentRole, TournamentTrack, User
 from app.schemas.tournament.track import (
     TournamentTrackCreate,
     TournamentTrackDeleteResult,
@@ -51,6 +54,32 @@ def _check_default_role(db: Session, tournament_id: int, role_id: int | None) ->
     if role_id is None:
         return
     get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
+
+
+def _reassign_default_role(
+    db: Session,
+    tournament: Tournament,
+    track: TournamentTrack,
+    updates: dict,
+    actor: User,
+) -> None:
+    """Move the track's event assignments in its current default role to the
+    new one. Runs before the new default is set on the row."""
+    if not has_permission(actor, tournament.id, MANAGE_MEMBERS, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
+    new_role_id = updates.get("default_role_id")
+    if new_role_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="reassign_assignments needs a new default_role_id",
+        )
+    old_role_id = track.default_role_id
+    if old_role_id is None or old_role_id == new_role_id:
+        return
+    new_role = get_scoped_or_404(db, TournamentRole, new_role_id, tournament.id, "Role")
+    reassign_track_role(db, tournament, track.id, old_role_id, new_role, actor)
 
 
 def _validate_state(track: TournamentTrack) -> None:
@@ -125,7 +154,10 @@ def create_track(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/tracks/{track_id}/ — edit a track's name,
-# schedule, venue, divisions or self-confirm flag.
+# schedule, venue, divisions, default role or self-confirm flag.
+#
+# `reassign_assignments` moves the people staffed in the old default role to
+# the new one in the same commit, so the setting and the rows can't disagree.
 #
 # `is_archived` is not editable here: pending-delete is set by DELETE and
 # cleared by /restore/, never by a TD toggling a field.
@@ -142,7 +174,7 @@ def update_track(
     require_not_archived(tournament)
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
 
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, exclude={"reassign_assignments"})
     if "name" in updates and _name_taken(db, tournament_id, updates["name"], excluding_id=track.id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
@@ -176,6 +208,9 @@ def update_track(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A tournament needs at least one primary track; make another track primary first",
             )
+
+    if payload.reassign_assignments:
+        _reassign_default_role(db, tournament, track, updates, current_user)
 
     for field, value in updates.items():
         setattr(track, field, value)

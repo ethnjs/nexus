@@ -3,9 +3,13 @@ from datetime import date, timedelta
 from app.models.models import (
     Form,
     FormField,
+    TournamentEvent,
+    TournamentEventTrack,
     TournamentMembership,
     TournamentMembershipTrackStatus,
+    TournamentRole,
     TournamentTrack,
+    TournamentTrackAssignment,
     University,
 )
 from tests.conftest import grant_role, login
@@ -550,3 +554,176 @@ def test_deleting_down_to_one_track_renames_it(client, db, td_user, td_tournamen
         client.delete(f"/tournaments/{td_tournament.id}/tracks/{extra['id']}/").status_code == 200
     )
     assert _sole_track(db, td_tournament.id).name == td_tournament.name
+
+
+# ---------------------------------------------------------------------------
+# reassign_assignments: changing a track's default role moves the people
+# staffed in the old one, in the same commit.
+# ---------------------------------------------------------------------------
+def _role(db, tournament, label) -> TournamentRole:
+    return db.query(TournamentRole).filter_by(tournament_id=tournament.id, label=label).one()
+
+
+def _event_on(db, tournament, track_id, name="Anatomy") -> TournamentEvent:
+    event = TournamentEvent(tournament_id=tournament.id, name=name, division="C")
+    db.add(event)
+    db.flush()
+    db.add(TournamentEventTrack(tournament_event_id=event.id, track_id=track_id))
+    db.flush()
+    return event
+
+
+def _staff(db, membership, event, track_id, role) -> TournamentTrackAssignment:
+    row = TournamentTrackAssignment(
+        membership_id=membership.id,
+        role_id=role.id,
+        tournament_event_id=event.id,
+        tournament_track_id=track_id,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _track_with_default(db, tournament, label="Volunteer") -> TournamentTrack:
+    track = _sole_track(db, tournament.id)
+    track.default_role_id = _role(db, tournament, label).id
+    db.commit()
+    return track
+
+
+def _reassign(client, tournament, track, role, **extra):
+    return client.patch(
+        f"/tournaments/{tournament.id}/tracks/{track.id}/",
+        json={"default_role_id": role.id, "reassign_assignments": True, **extra},
+    )
+
+
+def test_reassign_moves_only_the_old_default_on_this_track(
+    client, db, td_user, td_tournament, other_user
+):
+    track = _track_with_default(db, td_tournament)
+    other_track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(other_track)
+    db.flush()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    volunteer = _role(db, td_tournament, "Volunteer")
+    runner = _role(db, td_tournament, "Runner")
+    event = _event_on(db, td_tournament, track.id)
+    elsewhere = _event_on(db, td_tournament, other_track.id, name="Astronomy")
+    moved = _staff(db, membership, event, track.id, volunteer)
+    other_role = _staff(db, membership, event, track.id, runner)
+    other_track_row = _staff(db, membership, elsewhere, other_track.id, volunteer)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = _reassign(client, td_tournament, track, _role(db, td_tournament, "Test Writer"))
+
+    assert response.status_code == 200
+    assert response.json()["default_role_id"] == _role(db, td_tournament, "Test Writer").id
+    db.expire_all()
+    assert moved.role.label == "Test Writer"
+    assert other_role.role.label == "Runner"
+    assert other_track_row.role.label == "Volunteer"
+
+
+def test_reassign_merges_into_a_row_already_in_the_new_role(
+    client, db, td_user, td_tournament, other_user
+):
+    track = _track_with_default(db, td_tournament)
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    event = _event_on(db, td_tournament, track.id)
+    _staff(db, membership, event, track.id, _role(db, td_tournament, "Volunteer"))
+    _staff(db, membership, event, track.id, _role(db, td_tournament, "Runner"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = _reassign(client, td_tournament, track, _role(db, td_tournament, "Runner"))
+
+    assert response.status_code == 200
+    rows = db.query(TournamentTrackAssignment).filter_by(tournament_event_id=event.id).all()
+    assert [row.role.label for row in rows] == ["Runner"]
+
+
+def test_without_the_flag_assignments_keep_their_role(
+    client, db, td_user, td_tournament, other_user
+):
+    track = _track_with_default(db, td_tournament)
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    event = _event_on(db, td_tournament, track.id)
+    row = _staff(db, membership, event, track.id, _role(db, td_tournament, "Volunteer"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track.id}/",
+        json={"default_role_id": _role(db, td_tournament, "Runner").id},
+    )
+
+    assert response.status_code == 200
+    db.expire_all()
+    assert row.role.label == "Volunteer"
+
+
+def test_reassign_needs_manage_members(client, db, td_tournament, other_user):
+    db.add(
+        TournamentRole(
+            tournament_id=td_tournament.id,
+            label="Settings Only",
+            permissions=["manage_tournament"],
+            rank=25,
+        )
+    )
+    db.commit()
+    track = _track_with_default(db, td_tournament)
+    membership = grant_role(db, td_tournament, other_user, "Settings Only")
+    event = _event_on(db, td_tournament, track.id)
+    row = _staff(db, membership, event, track.id, _role(db, td_tournament, "Volunteer"))
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+
+    response = _reassign(client, td_tournament, track, _role(db, td_tournament, "Runner"))
+
+    assert response.status_code == 403
+    db.expire_all()
+    assert track.default_role_id == _role(db, td_tournament, "Volunteer").id
+    assert row.role.label == "Volunteer"
+
+
+def test_reassign_is_rank_checked_before_anything_changes(client, db, td_tournament, other_user):
+    db.add(
+        TournamentRole(
+            tournament_id=td_tournament.id,
+            label="Track Manager",
+            permissions=["manage_tournament", "manage_members"],
+            rank=25,
+        )
+    )
+    db.commit()
+    track = _track_with_default(db, td_tournament)
+    membership = grant_role(db, td_tournament, other_user, "Track Manager")
+    event = _event_on(db, td_tournament, track.id)
+    row = _staff(db, membership, event, track.id, _role(db, td_tournament, "Volunteer"))
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+
+    response = _reassign(
+        client, td_tournament, track, _role(db, td_tournament, "Tournament Director")
+    )
+
+    assert response.status_code == 403
+    db.expire_all()
+    assert track.default_role_id == _role(db, td_tournament, "Volunteer").id
+    assert row.role.label == "Volunteer"
+
+
+def test_reassign_needs_a_new_default_role(client, db, td_user, td_tournament):
+    track = _track_with_default(db, td_tournament)
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track.id}/",
+        json={"reassign_assignments": True},
+    )
+
+    assert response.status_code == 422

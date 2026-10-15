@@ -1,7 +1,8 @@
 """Resolution and validation for tournament event assignments.
 
-Kept out of the route module because the events route needs
-detach_shifts_from_assignments when a shift leaves an event.
+Kept out of the route module because other routes need parts of it: the
+events route detaches shifts that leave an event, and the tracks route
+reassigns a track's default role.
 
 The line this module holds is that **only structural errors raise**. An
 assignment that contradicts what a member said about their availability, their
@@ -13,7 +14,7 @@ there makes the tool unusable (issue #70).
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.tournament import get_scoped_or_404
 from app.core.tournament.roles import validate_role_action
@@ -131,6 +132,52 @@ def resolve_assignment_track(
         )
     get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     return track_id
+
+
+def reassign_track_role(
+    db: Session,
+    tournament: Tournament,
+    track_id: int,
+    old_role_id: int,
+    new_role: TournamentRole,
+    actor: User,
+) -> None:
+    """Move every event assignment on this track from `old_role_id` to
+    `new_role`, without committing.
+
+    A member who already holds `new_role` in the same cell loses the old row
+    instead, since the unique indexes allow only one. Every member is
+    rank-checked before any row changes, so a refusal leaves them all alone.
+    """
+    rows = (
+        db.query(TournamentTrackAssignment)
+        .options(
+            selectinload(TournamentTrackAssignment.membership).selectinload(
+                TournamentMembership.track_assignments
+            )
+        )
+        .filter(
+            TournamentTrackAssignment.tournament_track_id == track_id,
+            TournamentTrackAssignment.tournament_event_id.isnot(None),
+            TournamentTrackAssignment.role_id.in_((old_role_id, new_role.id)),
+        )
+        .all()
+    )
+    moving = [row for row in rows if row.role_id == old_role_id]
+    taken = {
+        (row.membership_id, row.tournament_event_id, row.tournament_shift_id)
+        for row in rows
+        if row.role_id == new_role.id
+    }
+
+    for membership in {row.membership for row in moving}:
+        authorize_role_grant(db, tournament, membership, new_role, actor)
+
+    for row in moving:
+        if (row.membership_id, row.tournament_event_id, row.tournament_shift_id) in taken:
+            db.delete(row)
+        else:
+            row.role_id = new_role.id
 
 
 def detach_shifts_from_assignments(
