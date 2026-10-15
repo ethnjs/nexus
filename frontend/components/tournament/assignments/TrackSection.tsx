@@ -43,9 +43,9 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
 }
 
 /** A track's default role, as a pill menu — picking a new role hands the
- *  change to the caller rather than writing anything itself, since applying
- *  it means both a track PATCH and a bulk assignment rewrite that only the
- *  page has the state for. Shared by the timeline header and a cosmetic
+ *  change to the caller rather than writing anything itself, since only the
+ *  page knows who holds the old default and has to confirm moving them.
+ *  Shared by the timeline header and a cosmetic
  *  track's column header — same field, same control, wherever it shows. */
 function DefaultRolePillMenu({
   track,

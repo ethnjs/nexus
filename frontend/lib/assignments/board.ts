@@ -87,6 +87,13 @@ export function laneKeyOf(assignment: Assignment) {
     : `${member}:track:${assignment.track.id}`;
 }
 
+/** The placement a row belongs to: one member on one event and track, which
+ *  is what a single entry of assignmentsApi.setPlacements rewrites. Wider
+ *  than a lane, since a pinned and an unpinned bar can share a track. */
+export function placementKeyOf(assignment: Assignment) {
+  return `${assignment.member.membership_id}:${assignment.event.id}:${assignment.track.id}`;
+}
+
 /** The board's bars: one per member on the event, across its shifts. */
 export function buildLanes(rowAssignments: Assignment[], shiftIds: number[]) {
   return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf);

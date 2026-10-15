@@ -29,6 +29,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
   type Assignment,
+  type AssignmentPlacement,
   assignmentsApi,
   type MembershipView,
   type Role,
@@ -43,7 +44,6 @@ import {
   buildLanes,
   type Lane,
   laneFlags,
-  roleKey,
   rolesOf,
   sameRole,
 } from "@/lib/assignments/lanes";
@@ -67,13 +67,21 @@ interface AssignmentsSectionProps {
   /** The "Availability shading" field of this section. */
   showAvailability: boolean;
   locked: boolean;
-  /** Fires after every write, failed or not, so the panel can re-read the member. */
+  /** Fires after every successful write, so the panel can re-read the member. */
   onChanged?: () => void;
 }
 
 /** A bar here is one event, not one person — the inverse of the board's key. */
 function laneKeyOf(assignment: Assignment) {
   return String(assignment.event.id);
+}
+
+function cellKey(eventId: number, trackId: number, shiftId: number | null, roleId: number | null) {
+  return `${eventId}|${trackId}|${shiftId ?? "none"}|${roleId}`;
+}
+
+function cellKeyOf(row: Assignment) {
+  return cellKey(row.event.id, row.track.id, row.shift?.id ?? null, row.role.id);
 }
 
 export function AssignmentsSection({
@@ -161,79 +169,84 @@ export function AssignmentsSection({
   }, [member, rows]);
 
   // ── writes ──────────────────────────────────────────────────────────────
-  // Every one of these is a small diff against the lane's current rows rather
-  // than a delete-and-recreate: the same reason the board diffs, which is
-  // that recreating a cell races the delete of the row already holding it.
-
-  async function runWrite(work: () => Promise<void>, previous: Assignment[]) {
-    try {
-      await work();
-    } catch (err) {
-      setRows(previous);
-      show(err instanceof ApiError ? err.message : "That change didn't save.", "error");
-    } finally {
-      // Even on failure: a multi-row write can half-land, and only a re-read
-      // knows which half.
-      onChanged?.();
-    }
-  }
+  // Every gesture is one setPlacements request, so it lands entirely or not
+  // at all.
 
   /**
-   * Make this event's placement on `track` be exactly `shifts` × `roles`.
-   *
-   * Every write in this section is this one call: a drop, a resize, and a
-   * role change differ only in which of the three arguments moved. Scoped to
-   * one track, because the same event can be staffed on Day 1 *and* on Test
-   * Writing — those are separate placements and editing one must not touch
-   * the other.
-   *
-   * Diffed cell by cell rather than deleted and recreated: recreating a cell
-   * races the delete of the row already holding it, which is how you lose a
-   * shift nobody asked to remove.
+   * The placement that makes this event's rows on `track` exactly `shifts` ×
+   * `roles`, or null when they already are. Scoped to one track, because the
+   * same event can be staffed on Day 1 *and* on Test Writing, and editing one
+   * must not touch the other.
    */
+  function lanePlacement(
+    eventId: number,
+    track: TournamentTrack,
+    shifts: TournamentShift[],
+    roles: AssignmentRole[],
+  ): AssignmentPlacement | null {
+    if (roles.length === 0) return null;
+    const wanted = shifts.length > 0 ? shifts.map((s) => s.id) : [null];
+    const cells = wanted.flatMap((shiftId) =>
+      roles.map((role) => ({ tournament_shift_id: shiftId, role_id: role.id! })),
+    );
+    const have = new Set(
+      rows.filter((row) => row.event.id === eventId && row.track.id === track.id).map(cellKeyOf),
+    );
+    const want = new Set(
+      cells.map((cell) => cellKey(eventId, track.id, cell.tournament_shift_id, cell.role_id)),
+    );
+    if (have.size === want.size && [...want].every((key) => have.has(key))) return null;
+    return {
+      membership_id: membershipId,
+      tournament_event_id: eventId,
+      tournament_track_id: track.id,
+      cells,
+    };
+  }
+
+  function writePlacements(placements: AssignmentPlacement[]) {
+    if (placements.length === 0) return;
+    const previous = rows;
+    const inScope = (row: Assignment) =>
+      placements.some(
+        (p) => p.tournament_event_id === row.event.id && p.tournament_track_id === row.track.id,
+      );
+    const wanted = new Set(
+      placements.flatMap((p) =>
+        p.cells.map((cell) =>
+          cellKey(
+            p.tournament_event_id,
+            p.tournament_track_id,
+            cell.tournament_shift_id,
+            cell.role_id,
+          ),
+        ),
+      ),
+    );
+    // The removals show at once; the new cells arrive with the response,
+    // since only the server can hand them their ids.
+    setRows((current) => current.filter((row) => !inScope(row) || wanted.has(cellKeyOf(row))));
+
+    assignmentsApi
+      .setPlacements(tournamentId, placements)
+      .then((fresh) => {
+        setRows((current) => [...current.filter((row) => !inScope(row)), ...fresh]);
+        onChanged?.();
+      })
+      .catch((err: unknown) => {
+        setRows(previous);
+        show(err instanceof ApiError ? err.message : "That change didn't save.", "error");
+      });
+  }
+
   function syncLane(
     eventId: number,
     track: TournamentTrack,
     shifts: TournamentShift[],
     roles: AssignmentRole[],
   ) {
-    if (roles.length === 0) return;
-    const previous = rows;
-    const lane = rows.filter((row) => row.event.id === eventId && row.track.id === track.id);
-    const cellKey = (shiftId: number | null, role: AssignmentRole) =>
-      `${shiftId ?? "none"}|${roleKey(role)}`;
-    const have = new Map(lane.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]));
-
-    const wanted = shifts.length > 0 ? shifts.map((s) => s.id) : [null];
-    const keptIds = new Set<number>();
-    const missing: { shiftId: number | null; role: AssignmentRole }[] = [];
-    for (const shiftId of wanted) {
-      for (const role of roles) {
-        const found = have.get(cellKey(shiftId, role));
-        if (found) keptIds.add(found.id);
-        else missing.push({ shiftId, role });
-      }
-    }
-    const removed = lane.filter((row) => !keptIds.has(row.id));
-    if (missing.length === 0 && removed.length === 0) return;
-
-    // The removals show at once; the new cells arrive with the re-read, since
-    // only the server can hand them their ids.
-    const goneIds = new Set(removed.map((row) => row.id));
-    setRows((current) => current.filter((row) => !goneIds.has(row.id)));
-
-    runWrite(async () => {
-      for (const cell of missing) {
-        await assignmentsApi.create(tournamentId, {
-          tournament_event_id: eventId,
-          membership_id: membershipId,
-          role_id: cell.role.id!,
-          tournament_shift_id: cell.shiftId,
-          tournament_track_id: cell.shiftId === null ? track.id : null,
-        });
-      }
-      for (const row of removed) await assignmentsApi.delete(tournamentId, row.id);
-    }, previous);
+    const placement = lanePlacement(eventId, track, shifts, roles);
+    if (placement) writePlacements([placement]);
   }
 
   /** The track a lane sits on, as the catalog knows it — the row carries a
@@ -253,12 +266,21 @@ export function AssignmentsSection({
   }
 
   function removeLane(lane: Lane) {
-    const previous = rows;
-    const ids = new Set(lane.assignments.map((row) => row.id));
-    setRows((current) => current.filter((row) => !ids.has(row.id)));
-    runWrite(async () => {
-      for (const row of lane.assignments) await assignmentsApi.delete(tournamentId, row.id);
-    }, previous);
+    const eventId = Number(lane.key);
+    const laneIds = new Set(lane.assignments.map((row) => row.id));
+    const trackIds = new Set(lane.assignments.map((row) => row.track.id));
+    writePlacements(
+      [...trackIds].map((trackId) => ({
+        membership_id: membershipId,
+        tournament_event_id: eventId,
+        tournament_track_id: trackId,
+        cells: rows
+          .filter(
+            (row) => row.event.id === eventId && row.track.id === trackId && !laneIds.has(row.id),
+          )
+          .map((row) => ({ tournament_shift_id: row.shift?.id ?? null, role_id: row.role.id! })),
+      })),
+    );
   }
 
   /** Swap every role for this one — the menu's default. */
@@ -316,15 +338,18 @@ export function AssignmentsSection({
       return;
     }
 
+    const placements: AssignmentPlacement[] = [];
     if (fromTrackId !== undefined && fromTrackId !== track.id) {
-      const previous = rows;
-      const goneIds = new Set(carried.map((row) => row.id));
-      setRows((current) => current.filter((row) => !goneIds.has(row.id)));
-      runWrite(async () => {
-        for (const row of carried) await assignmentsApi.delete(tournamentId, row.id);
-      }, previous);
+      placements.push({
+        membership_id: membershipId,
+        tournament_event_id: eventId,
+        tournament_track_id: fromTrackId,
+        cells: [],
+      });
     }
-    syncLane(eventId, track, shifts, roles);
+    const placement = lanePlacement(eventId, track, shifts, roles);
+    if (placement) placements.push(placement);
+    writePlacements(placements);
     setPending((current) => current.filter((e) => e.id !== eventId));
   }
 

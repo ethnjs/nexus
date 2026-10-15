@@ -490,7 +490,11 @@ export interface TournamentTrackCreate {
   default_role_id?: number | null;
 }
 
-export type TournamentTrackUpdate = Partial<TournamentTrackCreate>;
+export type TournamentTrackUpdate = Partial<TournamentTrackCreate> & {
+  /** With a new default_role_id, also moves the track's assignments in the old
+   *  default role to the new one, in the same request. Needs manage_members. */
+  reassign_assignments?: boolean;
+};
 
 // What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
 // purged: false means the track is now pending-delete and `blocked_by`
@@ -788,6 +792,15 @@ export interface AssignmentInput {
   tournament_track_id?: number | null;
 }
 
+/** Every row one member should have on one event and track. Empty `cells`
+ *  clears the placement. */
+export interface AssignmentPlacement {
+  membership_id: number;
+  tournament_event_id: number;
+  tournament_track_id: number;
+  cells: { tournament_shift_id: number | null; role_id: number }[];
+}
+
 export const assignmentsApi = {
   // Both filters optional and composable: no args reads the whole tournament
   // (what the board wants), eventId reads one event's staffing, membershipId
@@ -820,6 +833,10 @@ export const assignmentsApi = {
   // wide grant is a row of its own and is never touched by this.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/assignments/${id}/`),
+  /** Sets every placement in one transaction: all of them land or none do.
+   *  Returns the rows the placements now hold; unchanged rows keep their ids. */
+  setPlacements: (tournamentId: number, placements: AssignmentPlacement[]) =>
+    api.put<Assignment[]>(`/tournaments/${tournamentId}/assignments/placements/`, placements),
 };
 
 export const tournamentEventsApi = {
