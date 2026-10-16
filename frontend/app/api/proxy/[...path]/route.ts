@@ -26,14 +26,13 @@ async function proxy(
       ...(userAgent ? { "User-Agent": userAgent } : {}),
       ...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
     },
-    body: method !== "GET" && method !== "DELETE" ? await req.text() : undefined,
+    body: method !== "GET" ? (await req.text()) || undefined : undefined,
   });
 
   const body = upstream.status === 204 ? null : await upstream.text();
 
   const res = new NextResponse(body, { status: upstream.status });
 
-  // Forward Set-Cookie headers from backend (login / logout)
   upstream.headers.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") {
       res.headers.append("Set-Cookie", value);
