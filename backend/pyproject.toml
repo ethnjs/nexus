@@ -21,6 +21,7 @@ dependencies = [
     "authlib>=1.9.1",
     "httpx2>=2.13.1",
     "itsdangerous>=2.2.0",
+    "discord-py>=2.7.1",
 ]
 
 [dependency-groups]
