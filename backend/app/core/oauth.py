@@ -12,10 +12,9 @@ Sign-in and sign-up share one resolution order:
 
 from urllib.parse import urlencode
 
+from authlib.integrations.starlette_client import OAuth
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
-from authlib.integrations.starlette_client import OAuth
 
 from app.core.config import get_settings
 from app.models.models import OAuthIdentity, OAuthProvider, User
@@ -139,17 +138,19 @@ def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
     db.add(user)
     try:
         db.flush()
-        db.add(OAuthIdentity(
-            user_id=user.id,
-            provider=OAuthProvider.google,
-            provider_account_id=sub,
-            email_at_provider=email,
-        ))
+        db.add(
+            OAuthIdentity(
+                user_id=user.id,
+                provider=OAuthProvider.google,
+                provider_account_id=sub,
+                email_at_provider=email,
+            )
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
         if db.query(User).filter(User.email == email).first() is not None:
-            raise AccountExists()
+            raise AccountExists() from None
         raise
     db.refresh(user)
     return user, True
@@ -182,7 +183,7 @@ def link_google_identity(db: Session, user: User, claims: dict) -> OAuthIdentity
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise GoogleLinkError("google_already_linked")
+        raise GoogleLinkError("google_already_linked") from None
     db.refresh(row)
     return row
 

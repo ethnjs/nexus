@@ -379,7 +379,7 @@ class User(Base):
     )
 
 
-class OAuthProvider(str, enum.Enum):
+class OAuthProvider(enum.StrEnum):
     google = "google"
 
 
