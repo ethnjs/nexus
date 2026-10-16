@@ -2,7 +2,12 @@
 (app/api/routes/tournament/roles.py)."""
 
 from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
-from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
+from app.core.tournament.permissions import (
+    DEFAULT_ROLES,
+    MANAGE_DISCORD,
+    MANAGE_MEMBERS,
+    MANAGE_ROLES,
+)
 from app.core.tournament.roles import DUOSMIUM_ROLES, TORUS_ROLES
 from app.models.models import (
     AuditLogEntry,
@@ -185,6 +190,15 @@ def test_apply_template_maps_torus_and_duosmium_roles(client, td_user, db):
     assert by_label["Lead Event Supervisor"]["duosmium_role"] == "event_supervisor"
     assert by_label["Volunteer"]["torus_role"] is None
     assert by_label["Volunteer"]["duosmium_role"] is None
+
+
+def test_apply_template_grants_manage_discord_to_coordinators(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client)
+
+    data = client.post(f"/tournaments/{tournament_id}/roles/apply-template/").json()
+    with_discord = {r["label"] for r in data if MANAGE_DISCORD in r["permissions"]}
+    assert with_discord == {"Tournament Director", "Volunteer Coordinator", "Test Coordinator"}
 
 
 def test_default_roles_external_mappings_are_valid():
@@ -1056,3 +1070,16 @@ def test_update_role_rejects_invalid_external_role(client, td_user, td_tournamen
         json={"torus_role": "not_a_role"},
     )
     assert response.status_code == 422
+
+
+def test_update_role_saves_manage_discord(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/",
+        json={"permissions": ["manage_discord"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["permissions"] == ["manage_discord"]
+    db.expire_all()
+    assert db.get(TournamentRole, role_id).permissions == ["manage_discord"]

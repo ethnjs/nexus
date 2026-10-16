@@ -1485,7 +1485,8 @@ export type Permission =
   | "manage_members"
   | "manage_events"
   | "manage_invites"
-  | "manage_forms";
+  | "manage_forms"
+  | "manage_discord";
 
 export const ALL_PERMISSIONS: Permission[] = [
   "manage_tournament",
@@ -1494,6 +1495,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "manage_events",
   "manage_invites",
   "manage_forms",
+  "manage_discord",
 ];
 
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
@@ -1521,6 +1523,11 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   manage_forms: {
     label: "Manage Forms",
     description: "Create and edit forms, and manage their published state.",
+  },
+  manage_discord: {
+    label: "Manage Discord",
+    description:
+      "Add the NEXUS bot to Discord servers, and build, reset and sync them. In Discord, members with this role are staff and see every channel.",
   },
 };
 
