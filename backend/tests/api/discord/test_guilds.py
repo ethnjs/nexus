@@ -1,0 +1,481 @@
+"""Linking Discord servers to tracks. Discord's OAuth API is stubbed by `mock_discord_http`, and
+the leave notification is recorded instead of sent, since the test transaction never commits."""
+
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+
+from app.core.tournament.audit import (
+    DISCORD_SERVER_LINKED,
+    DISCORD_SERVER_UNLINKED,
+    DISCORD_SETTINGS_UPDATED,
+)
+from app.models.discord import DiscordGuildLink
+from app.models.models import (
+    AuditLogEntry,
+    OAuthIdentity,
+    OAuthProvider,
+    TournamentTrack,
+    User,
+    utcnow,
+)
+from tests.conftest import grant_role, login, primary_track_id
+
+GUILD_ID = 1_560_569_782_195_978_320
+TD_DISCORD = "4001"
+
+
+@pytest.fixture
+def left(monkeypatch) -> list[int]:
+    """Guild ids the routes asked the leader to leave."""
+    calls: list[int] = []
+    monkeypatch.setattr(
+        "app.api.routes.discord.guilds.notify_leave", lambda db, guild_id: calls.append(guild_id)
+    )
+    return calls
+
+
+@pytest.fixture
+def track_id(db, td_tournament) -> int:
+    return primary_track_id(db, td_tournament.id)
+
+
+def _link_discord(db, user: User, account_id: str) -> None:
+    db.add(
+        OAuthIdentity(
+            user_id=user.id, provider=OAuthProvider.discord, provider_account_id=account_id
+        )
+    )
+    db.commit()
+
+
+def _make_user(db, email: str) -> User:
+    from app.core.auth import hash_password
+
+    user = User(
+        email=email,
+        first_name="Pat",
+        last_name="Example",
+        hashed_password=hash_password("pass1234"),
+        status="active",
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
+def _url(tournament_id: int, track_id: int, suffix: str = "") -> str:
+    return f"/tournaments/{tournament_id}/tracks/{track_id}/discord/{suffix}"
+
+
+def _start(client, tournament_id: int, track_id: int, **params):
+    return client.get(
+        _url(tournament_id, track_id, "install/"), params=params or None, follow_redirects=False
+    )
+
+
+def _state(response) -> str:
+    return parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+
+def _finish(client, mock_discord_http, state: str, guild: dict | None, **params):
+    def fake(method, path, **kwargs):
+        assert path == "/oauth2/token"
+        assert kwargs["data"]["redirect_uri"].endswith("/api/proxy/discord/install/callback")
+        token = {"access_token": "user-token", "token_type": "Bearer"}
+        if guild is not None:
+            token["guild"] = guild
+        return token
+
+    mock_discord_http.side_effect = fake
+    return client.get(
+        "/discord/install/callback/",
+        params={"code": "auth-code", "state": state, **params},
+        follow_redirects=False,
+    )
+
+
+def _guild(guild_id: int = GUILD_ID, owner_id: str = TD_DISCORD, name: str = "Test Server"):
+    return {"id": str(guild_id), "name": name, "owner_id": owner_id}
+
+
+def _install(client, mock_discord_http, tournament_id, track_id, guild=None, **start_params):
+    state = _state(_start(client, tournament_id, track_id, **start_params))
+    return _finish(client, mock_discord_http, state, guild or _guild())
+
+
+def _location_query(response) -> dict[str, str]:
+    location = urlparse(response.headers["location"])
+    return {k: v[0] for k, v in parse_qs(location.query).items()}
+
+
+def _add_link(db, tournament, track_id: int, guild_id: int = GUILD_ID, **fields):
+    link = DiscordGuildLink(
+        tournament_id=tournament.id, track_id=track_id, guild_id=guild_id, **fields
+    )
+    db.add(link)
+    db.commit()
+    return link
+
+
+class TestStartInstall:
+    def test_404_when_discord_is_off(self, client, td_user, td_tournament, track_id):
+        login(client, "td@test.com", "tdpass")
+        assert _start(client, td_tournament.id, track_id).status_code == 404
+
+    def test_redirects_to_discord_for_a_bot_install(
+        self, client, discord_on, td_user, td_tournament, track_id
+    ):
+        login(client, "td@test.com", "tdpass")
+        res = _start(client, td_tournament.id, track_id, merge_divisions="true")
+        assert res.status_code == 302
+        location = urlparse(res.headers["location"])
+        assert location.netloc == "discord.com" and location.path == "/oauth2/authorize"
+        query = parse_qs(location.query)
+        assert query["scope"] == ["bot applications.commands identify"]
+        assert query["permissions"] == ["8"]
+        assert query["response_type"] == ["code"]
+        assert query["client_id"] == ["1000"]
+        assert query["redirect_uri"] == ["http://localhost:3000/api/proxy/discord/install/callback"]
+        assert "oauth_state" in res.cookies
+
+    def test_requires_manage_discord(self, client, db, discord_on, td_tournament, track_id):
+        grant_role(db, td_tournament, _make_user(db, "vol@test.com"), "Volunteer")
+        login(client, "vol@test.com", "pass1234")
+        assert _start(client, td_tournament.id, track_id).status_code == 403
+
+    def test_other_tournaments_track_is_404(
+        self, client, db, discord_on, td_user, td_tournament, other_tournament
+    ):
+        login(client, "td@test.com", "tdpass")
+        other_track = primary_track_id(db, other_tournament.id)
+        assert _start(client, td_tournament.id, other_track).status_code == 404
+
+    def test_archived_tournament_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        td_tournament.is_archived = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert _start(client, td_tournament.id, track_id).status_code == 403
+
+    def test_track_pending_deletion_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        db.get(TournamentTrack, track_id).is_archived = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert _start(client, td_tournament.id, track_id).status_code == 409
+
+    def test_linked_track_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        assert _start(client, td_tournament.id, track_id).status_code == 409
+
+
+class TestFinishInstall:
+    def test_links_a_server_owned_by_the_tournament_owner(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        res = _install(
+            client,
+            mock_discord_http,
+            td_tournament.id,
+            track_id,
+            merge_divisions="true",
+            category_grouping="zone",
+        )
+        assert res.headers["location"] == (
+            f"http://localhost:3000/dashboard/tournaments/{td_tournament.id}/settings/discord"
+            f"?linked={track_id}"
+        )
+        link = db.query(DiscordGuildLink).one()
+        assert (link.track_id, link.guild_id, link.guild_name) == (
+            track_id,
+            GUILD_ID,
+            "Test Server",
+        )
+        assert link.merge_divisions is True
+        assert link.category_grouping == "zone"
+        assert link.installed_by_user_id == td_user.id
+        assert link.built_at is None
+        assert left == []
+        entry = db.query(AuditLogEntry).filter_by(action=DISCORD_SERVER_LINKED).one()
+        assert entry.target_id == track_id
+        assert entry.extra_data == {
+            "track_name": "Main",
+            "guild_id": str(GUILD_ID),
+            "guild_name": "Test Server",
+        }
+
+    def test_forged_guild_id_in_the_redirect_is_ignored(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        state = _state(_start(client, td_tournament.id, track_id))
+        _finish(client, mock_discord_http, state, _guild(), guild_id="999")
+        assert db.query(DiscordGuildLink).one().guild_id == GUILD_ID
+
+    def test_owner_without_a_linked_discord_account_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "owner_not_linked"}
+        assert db.query(DiscordGuildLink).count() == 0
+        assert left == [GUILD_ID]
+
+    def test_owner_without_manage_tournament_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        volunteer = _make_user(db, "vol@test.com")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        _link_discord(db, volunteer, "5001")
+        login(client, "td@test.com", "tdpass")
+        res = _install(
+            client, mock_discord_http, td_tournament.id, track_id, guild=_guild(owner_id="5001")
+        )
+        assert _location_query(res) == {"error": "owner_lacks_permission", "owner": "Pat Example"}
+        assert db.query(DiscordGuildLink).count() == 0
+        assert left == [GUILD_ID]
+
+    def test_server_owned_by_a_td_who_isnt_the_tournament_owner(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        director = _make_user(db, "director@test.com")
+        grant_role(db, td_tournament, director, "Tournament Director")
+        _link_discord(db, director, "5002")
+        login(client, "td@test.com", "tdpass")
+        res = _install(
+            client, mock_discord_http, td_tournament.id, track_id, guild=_guild(owner_id="5002")
+        )
+        assert "linked" in _location_query(res)
+        assert db.query(DiscordGuildLink).count() == 1
+
+    def test_manage_discord_only_installer_when_the_owner_qualifies(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        coordinator = _make_user(db, "vc@test.com")
+        grant_role(db, td_tournament, coordinator, "Volunteer Coordinator")
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "vc@test.com", "pass1234")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert "linked" in _location_query(res)
+        assert db.query(DiscordGuildLink).one().installed_by_user_id == coordinator.id
+
+    def test_installer_who_lost_manage_discord_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        from app.models.models import TournamentRole
+
+        coordinator = _make_user(db, "vc@test.com")
+        grant_role(db, td_tournament, coordinator, "Volunteer Coordinator")
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "vc@test.com", "pass1234")
+        state = _state(_start(client, td_tournament.id, track_id))
+        role = (
+            db.query(TournamentRole)
+            .filter_by(tournament_id=td_tournament.id, label="Volunteer Coordinator")
+            .one()
+        )
+        role.permissions = [p for p in role.permissions if p != "manage_discord"]
+        db.commit()
+        res = _finish(client, mock_discord_http, state, _guild())
+        assert _location_query(res) == {"error": "no_permission"}
+        assert left == [GUILD_ID]
+
+    def test_server_linked_to_another_track_is_refused_without_leaving(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        day_two = TournamentTrack(tournament_id=td_tournament.id, name="Day 2")
+        db.add(day_two)
+        db.commit()
+        _add_link(db, td_tournament, day_two.id)
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "guild_linked_elsewhere"}
+        assert left == []
+        assert db.query(DiscordGuildLink).one().track_id == day_two.id
+
+    def test_track_linked_to_another_server_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        _add_link(db, td_tournament, track_id, guild_id=42, bot_removed_at=utcnow())
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "track_linked_elsewhere"}
+        assert left == [GUILD_ID]
+
+    def test_adding_the_bot_back_clears_bot_removed(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        link = _add_link(db, td_tournament, track_id, bot_removed_at=utcnow(), guild_name="Old")
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert "linked" in _location_query(res)
+        db.refresh(link)
+        assert link.bot_removed_at is None
+        assert link.guild_name == "Test Server"
+        entry = db.query(AuditLogEntry).filter_by(action=DISCORD_SERVER_LINKED).one()
+        assert entry.extra_data["readded"] is True
+
+    def test_state_mismatch(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        login(client, "td@test.com", "tdpass")
+        _start(client, td_tournament.id, track_id)
+        res = _finish(client, mock_discord_http, "forged", _guild())
+        assert _location_query(res) == {"error": "discord_failed"}
+        assert mock_discord_http.call_count == 0
+        assert left == []
+
+    def test_cancelled_on_discord(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        login(client, "td@test.com", "tdpass")
+        state = _state(_start(client, td_tournament.id, track_id))
+        res = client.get(
+            "/discord/install/callback/",
+            params={"error": "access_denied", "state": state},
+            follow_redirects=False,
+        )
+        assert _location_query(res) == {"error": "discord_cancelled"}
+        assert left == []
+
+    def test_token_without_a_guild(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        login(client, "td@test.com", "tdpass")
+        state = _state(_start(client, td_tournament.id, track_id))
+        res = _finish(client, mock_discord_http, state, None)
+        assert _location_query(res) == {"error": "discord_failed"}
+        assert db.query(DiscordGuildLink).count() == 0
+
+    def test_callback_without_a_started_install(self, client, discord_on, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get(
+            "/discord/install/callback/",
+            params={"code": "x", "state": "y"},
+            follow_redirects=False,
+        )
+        assert res.headers["location"] == "http://localhost:3000/dashboard"
+
+
+class TestTrackDiscordSettings:
+    def test_status_without_a_link(self, client, discord_on, td_user, td_tournament, track_id):
+        login(client, "td@test.com", "tdpass")
+        res = client.get(_url(td_tournament.id, track_id))
+        assert res.status_code == 200
+        assert res.json() == {"track_id": track_id, "link": None}
+
+    def test_status_with_a_link(self, client, db, discord_on, td_user, td_tournament, track_id):
+        _add_link(
+            db, td_tournament, track_id, guild_name="Test Server", installed_by_user_id=td_user.id
+        )
+        login(client, "td@test.com", "tdpass")
+        link = client.get(_url(td_tournament.id, track_id)).json()["link"]
+        assert link["guild_id"] == str(GUILD_ID)
+        assert link["guild_name"] == "Test Server"
+        assert link["installed_by_name"] == "TD User"
+        assert link["merge_divisions"] is False
+        assert link["category_grouping"] == "building"
+        assert link["built_at"] is None
+
+    def test_status_requires_manage_discord(self, client, db, discord_on, td_tournament, track_id):
+        volunteer = _make_user(db, "vol@test.com")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        login(client, "vol@test.com", "pass1234")
+        assert client.get(_url(td_tournament.id, track_id)).status_code == 403
+
+    def test_update_settings(self, client, db, discord_on, td_user, td_tournament, track_id):
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(
+            _url(td_tournament.id, track_id),
+            json={"merge_divisions": True, "category_grouping": "zone"},
+        )
+        assert res.status_code == 200
+        assert res.json()["link"]["category_grouping"] == "zone"
+        db.refresh(link)
+        assert (link.merge_divisions, link.category_grouping) == (True, "zone")
+        entry = db.query(AuditLogEntry).filter_by(action=DISCORD_SETTINGS_UPDATED).one()
+        assert entry.extra_data == {
+            "track_name": "Main",
+            "changes": [
+                {"field": "merge_divisions", "old": False, "new": True},
+                {"field": "category_grouping", "old": "building", "new": "zone"},
+            ],
+        }
+
+    def test_update_without_changes_logs_nothing(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(_url(td_tournament.id, track_id), json={"merge_divisions": False})
+        assert res.status_code == 200
+        assert db.query(AuditLogEntry).filter_by(action=DISCORD_SETTINGS_UPDATED).count() == 0
+
+    def test_update_rejects_unknown_grouping(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(_url(td_tournament.id, track_id), json={"category_grouping": "floor"})
+        assert res.status_code == 422
+
+    def test_update_without_a_link_is_404(
+        self, client, discord_on, td_user, td_tournament, track_id
+    ):
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(_url(td_tournament.id, track_id), json={"merge_divisions": True})
+        assert res.status_code == 404
+
+    def test_update_refused_when_archived(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        _add_link(db, td_tournament, track_id)
+        td_tournament.is_archived = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(_url(td_tournament.id, track_id), json={"merge_divisions": True})
+        assert res.status_code == 403
+
+    def test_unlink_leaves_the_server(
+        self, client, db, discord_on, td_user, td_tournament, track_id, left
+    ):
+        _add_link(db, td_tournament, track_id, guild_name="Test Server")
+        login(client, "td@test.com", "tdpass")
+        assert client.delete(_url(td_tournament.id, track_id)).status_code == 204
+        assert db.query(DiscordGuildLink).count() == 0
+        assert left == [GUILD_ID]
+        entry = db.query(AuditLogEntry).filter_by(action=DISCORD_SERVER_UNLINKED).one()
+        assert entry.extra_data == {
+            "track_name": "Main",
+            "guild_id": str(GUILD_ID),
+            "guild_name": "Test Server",
+        }
+
+    def test_unlink_requires_manage_discord(
+        self, client, db, discord_on, td_tournament, track_id, left
+    ):
+        _add_link(db, td_tournament, track_id)
+        volunteer = _make_user(db, "vol@test.com")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        login(client, "vol@test.com", "pass1234")
+        assert client.delete(_url(td_tournament.id, track_id)).status_code == 403
+        assert left == []
+
+    def test_deleting_the_track_deletes_the_link(self, db, td_tournament, track_id):
+        _add_link(db, td_tournament, track_id)
+        db.delete(db.get(TournamentTrack, track_id))
+        db.commit()
+        assert db.query(DiscordGuildLink).count() == 0

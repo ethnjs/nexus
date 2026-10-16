@@ -45,7 +45,7 @@ function ConnectDiscordContent() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-      <IconDiscord size={32} style={{ color: "var(--color-text-secondary)" }} />
+      <IconDiscord size={32} />
       <p
         style={{
           display: "flex",
