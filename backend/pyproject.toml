@@ -49,8 +49,8 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 ignore = ["E712"]
 
 [tool.ruff.lint.isort]
-# The local alembic/ directory would otherwise make it first-party.
-known-third-party = ["alembic"]
+# The local alembic/ and app/*/discord/ directories would otherwise make these first-party.
+known-third-party = ["alembic", "discord"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency markers are meant to be called in defaults.

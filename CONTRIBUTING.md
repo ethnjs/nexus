@@ -69,7 +69,11 @@ Discord is off unless `DISCORD_BOT_TOKEN` is set, and always off under pytest. W
 1. Turn on 2FA for your Discord account (User Settings → My Account). Under Teams, join or create the NEXUS team, and make sure every member has 2FA on. Discord blocks a bot's moderation actions (Administrator included) in servers that require 2FA unless its owner has it, so apps are owned by the team.
 2. Create an application owned by the team, named "NEXUS Dev (your name)".
 3. **General Information:** paste the Application ID into `DISCORD_APPLICATION_ID` and the Public Key into `DISCORD_PUBLIC_KEY`. Leave the Interactions Endpoint URL empty for now; see the tunnel step below.
-4. **Bot:** reset the token and paste it into `DISCORD_BOT_TOKEN`. Turn on **Server Members Intent**. Keep **Public Bot** on. Turn on **Requires OAuth2 Code Grant**, so the bot can only be added through "Add to Discord" in NEXUS. Turn it off for a moment if you ever need to add the bot with a plain invite link.
+4. **Bot:**
+   - Reset the token and paste it into `DISCORD_BOT_TOKEN`.
+   - Under Privileged Gateway Intents, turn on **Server Members Intent** and save. NEXUS needs it to see members join and to read a server's member list when it syncs roles, so the bot asks for it when it connects. Discord refuses a connection that asks for an intent the portal hasn't enabled, so without it the bot stays offline and the backend logs "Turn on the Server Members intent".
+   - Keep **Public Bot** on.
+   - Turn on **Requires OAuth2 Code Grant**, so the bot can only be added through "Add to Discord" in NEXUS. Turn it off for a moment if you ever need to add the bot with a plain invite link.
 5. **OAuth2:** paste the Client Secret into `DISCORD_CLIENT_SECRET`. Add these two redirects, exactly as written and without a trailing slash. They match `DISCORD_LINK_REDIRECT_URI` and `DISCORD_INSTALL_REDIRECT_URI`.
    - `http://localhost:3000/api/proxy/auth/oauth/discord/callback` (account linking)
    - `http://localhost:3000/api/proxy/discord/install/callback` (Add to Discord)

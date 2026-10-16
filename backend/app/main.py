@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -58,16 +59,32 @@ def _read_app_version() -> str:
         return "0.0.0-unknown"
 
 
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
+
+
+def _configure_logging() -> None:
+    """uvicorn configures only its own loggers; this surfaces the app's and discord.py's."""
+    for name in ("app", "discord"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
+        if _log_handler not in logger.handlers:
+            logger.addHandler(_log_handler)
+        logger.propagate = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
 
-    scheduler = None
+    leader = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
+        from app.core.discord.leader import start_leader
         from app.db.seed_canon_events import seed_events_and_categories
         from app.db.seed_universities import seed_universities
         from app.db.session import SessionLocal
 
+        _configure_logging()
         with SessionLocal() as db:
             seed_events_and_categories(db)  # always — dev + prod
             seed_universities(db)  # always — dev + prod
@@ -77,24 +94,13 @@ async def lifespan(app: FastAPI):
             with SessionLocal() as db:
                 seed_dev_data(db)
 
-        from apscheduler.schedulers.background import BackgroundScheduler
-
-        from app.core.tournament.scheduler import archive_ended_tournaments
-
-        def _run_archive_job():
-            with SessionLocal() as db:
-                archive_ended_tournaments(db)
-
-        scheduler = BackgroundScheduler()
-        scheduler.add_job(
-            _run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments"
-        )
-        scheduler.start()
+        # The leader runs APScheduler and the Discord gateway; see core/discord/leader.py.
+        leader = start_leader()
 
     yield
 
-    if scheduler is not None:
-        scheduler.shutdown(wait=False)
+    if leader is not None:
+        await leader.stop()
 
 
 app = FastAPI(

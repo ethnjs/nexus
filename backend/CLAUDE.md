@@ -61,4 +61,4 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 ## Config and startup
 
 - Read settings with `get_settings()`, which is cached; never instantiate `Settings()`. `app_env` is `development`, `preview`, `production` or `test`.
-- Startup (skipped under pytest) always seeds canonical events, categories and universities. In `development` and `preview` it also runs `alembic upgrade head` and seeds the dev accounts. It schedules `archive_ended_tournaments` daily at 00:05 UTC. Production migrates in the `Procfile` before starting.
+- Startup (skipped under pytest) always seeds canonical events, categories, and universities. In `development` and `preview` it also runs `alembic upgrade head` and seeds the dev accounts. Then every process competes for a Postgres advisory lock (`core/discord/leader.py`), and only the holder runs APScheduler (`archive_ended_tournaments` daily at 00:05 UTC) and the Discord gateway. Production migrates in the `Procfile` before starting.
