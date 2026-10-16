@@ -82,7 +82,6 @@ from app.schemas.form import (
     FieldChangeRead,
     FormCreate,
     FormFieldRead,
-    FormLinkPreview,
     FormListRead,
     FormRead,
     FormRespondentRead,
@@ -94,7 +93,6 @@ from app.schemas.form import (
     TournamentFormPrerequisitesUpdate,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead
-from app.schemas.tournament import TournamentPublic
 
 router = APIRouter(tags=["forms"])
 
@@ -464,29 +462,6 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 
     _require_tournament_ids(roles, TournamentRole, "role IDs")
     _require_tournament_ids(shifts, TournamentShift, "shift IDs")
-
-
-# ---------------------------------------------------------------------------
-# GET /forms/{form_id}/preview/ — public, no auth
-#
-# Lets a shared form link say which tournament it's for before the visitor
-# signs in or joins. The form itself stays behind require_form_view_access.
-# ---------------------------------------------------------------------------
-@router.get("/forms/{form_id}/preview/", response_model=FormLinkPreview)
-def preview_form_link(form_id: str, db: Session = Depends(get_db)):
-    """Preview a shared form link. No auth required.
-
-    Returns the tournament the form belongs to, never the form's title or
-    questions. 404 unless the form is a published tournament form.
-    """
-    form = db.query(Form).filter(Form.id == form_id).first()
-    if form is None or form.owner_type != "tournament" or form.status != "published":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
-    tournament = form.tournament
-    assert tournament is not None
-    return FormLinkPreview(
-        tournament_id=tournament.id, **TournamentPublic.model_validate(tournament).model_dump()
-    )
 
 
 # ---------------------------------------------------------------------------

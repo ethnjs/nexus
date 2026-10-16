@@ -678,37 +678,6 @@ class TestOnboardingGate:
         assert client.get(f"/forms/{form.id}/").status_code == 200
 
 
-class TestFormLinkPreview:
-    def test_shows_the_tournament_without_signing_in(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="published", title="Secret title")
-        db.commit()
-
-        res = client.get(f"/forms/{form.id}/preview/")
-
-        assert res.status_code == 200
-        body = res.json()
-        assert body["tournament_id"] == td_tournament.id
-        assert body["name"] == td_tournament.name
-        assert "Secret title" not in res.text
-        assert form.name not in res.text
-
-    def test_unpublished_form_is_404(self, client, db, td_user, td_tournament):
-        draft = _make_form(db, td_user, td_tournament, status="draft")
-        archived = _make_form(db, td_user, td_tournament, status="archived")
-        db.commit()
-
-        assert client.get(f"/forms/{draft.id}/preview/").status_code == 404
-        assert client.get(f"/forms/{archived.id}/preview/").status_code == 404
-        assert client.get("/forms/nope/preview/").status_code == 404
-
-    def test_chapter_form_is_404(self, client, db, chapter):
-        lead = _chapter_lead(db, chapter)
-        form = _make_chapter_form(db, lead, chapter, status="published")
-        db.commit()
-
-        assert client.get(f"/forms/{form.id}/preview/").status_code == 404
-
-
 class TestUpdateArchiveDeleteForm:
     def test_patch_updates_fields(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)

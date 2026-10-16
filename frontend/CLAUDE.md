@@ -11,7 +11,7 @@ There's no test suite. UI changes are verified by using them in a browser agains
 - `lib/api.ts` is the only API client. Its types mirror the backend's Pydantic response schemas, and endpoints are grouped into `*Api` objects (`tournamentsApi`, `formsApi`, …). A new backend route or response field means updating this file. Don't call `fetch()` elsewhere.
 - Errors throw `ApiError` (`.status`, `.detail`); branch on `instanceof ApiError`.
 - Requests go to `/api/proxy` (`app/api/proxy/[...path]/route.ts`), which adds the trailing slash, attaches `X-API-Key` on the server, and forwards to `API_URL` (default `http://localhost:8001`). Don't set `NEXT_PUBLIC_API_URL`.
-- `proxy.ts` is Next.js middleware, not part of the API path. It sends signed-out visitors away from `/dashboard`, `/onboarding` and `/forms` using the `access_token` cookie.
+- `proxy.ts` is Next.js middleware, not part of the API path. It sends signed-out visitors away from `/dashboard`, `/onboarding` and `/forms` using the `access_token` cookie, except a shared form link (`/forms/{id}/view`), which shows them a sign-in card.
 
 ## UI kit (`components/ui/`)
 

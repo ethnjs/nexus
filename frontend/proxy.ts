@@ -3,12 +3,15 @@ import { safeRedirectPath } from "@/lib/auth";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/forms"];
 const AUTH_ROUTES = ["/", "/sign-in", "/sign-up"];
+// A shared form link shows signed-out visitors a sign-in card instead.
+const SHARED_FORM_LINK = /^\/forms\/[^/]+\/view\/?$/;
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("access_token")?.value;
 
-  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+  const isProtected =
+    PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) && !SHARED_FORM_LINK.test(pathname);
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
 
   if (isProtected && !token) {

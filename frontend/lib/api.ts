@@ -2047,11 +2047,6 @@ export interface TournamentTrackRef {
   is_primary: boolean;
 }
 
-// Matches FormLinkPreview — never carries the form's own title or questions.
-export interface FormLinkPreview extends TournamentPublic {
-  tournament_id: number;
-}
-
 export interface MemberForm {
   id: string;
   name: string;
@@ -2245,8 +2240,6 @@ export const formsApi = {
   // Renders with option values already resolved (availability/event_preference) —
   // for a respondent-facing view (or the future /preview page), not the builder.
   get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
-  // Public: the tournament a shared link belongs to, for visitors who can't load the form yet.
-  preview: (formId: string) => api.get<FormLinkPreview>(`/forms/${formId}/preview/`),
   // Unresolved — option `value` comes back exactly as stored (plain
   // shift/event ids, not `get`'s hydrated {id, label, start, end} objects),
   // which is what the builder needs since it's what PUT .../fields/ expects

@@ -4,7 +4,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
+import cardStyles from "@/components/layout/CenteredCard.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
@@ -15,8 +17,11 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, type Form, type FormResponse, formsApi } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
 import { formatDateTime } from "@/lib/timeFormat";
+import { useAuth } from "@/lib/useAuth";
 
-// Respondent-facing form page, one URL for every state of a member's response:
+// Respondent-facing form page, and the link managers share. One URL for every state:
+// - signed out: a sign-in card; not a member: No access
+// - still owes onboarding: sent through the sequence, which returns here
 // - no response yet: fill the form
 // - responded: read-only view of their answers, with an Edit button
 // - ?edit=true: revise them, when the form allows (otherwise the param is dropped)
@@ -29,6 +34,54 @@ import { formatDateTime } from "@/lib/timeFormat";
 // open-redirect vector.
 function internalRedirect(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
+}
+
+// The form-access 403s that send a visitor somewhere else instead of erroring.
+type AccessDenied = { code: "not_member" } | { code: "onboarding_required"; tournament_id: number };
+
+function accessDenied(error: unknown): AccessDenied | null {
+  if (!(error instanceof ApiError) || error.status !== 403) return null;
+  const code = (error.detail as { code?: unknown } | null)?.code;
+  return code === "not_member" || code === "onboarding_required"
+    ? (error.detail as AccessDenied)
+    : null;
+}
+
+// Matches the (auth) pages: a signed-out visitor learns nothing about the form.
+function SignInCard({ formId }: { formId: string }) {
+  const router = useRouter();
+  const redirectParam = `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
+
+  return (
+    <div className={cardStyles.page}>
+      <section className={cardStyles.card}>
+        <h1 className={cardStyles.wordmark}>NEXUS</h1>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            textAlign: "center",
+            marginBottom: "24px",
+          }}
+        >
+          Please sign in or create an account to fill out this form.
+        </p>
+        <div style={{ width: "100%", display: "flex", gap: "10px" }}>
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => router.push(`/sign-up${redirectParam}`)}
+          >
+            Create account
+          </Button>
+          <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
+            Sign in
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export default function FormViewPage() {
@@ -44,24 +97,36 @@ export default function FormViewPage() {
   const [checkedExisting, setCheckedExisting] = useState(false);
   // Shown on the read-only view after a submit or save lands there.
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  const [notMember, setNotMember] = useState(false);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     formsApi
       .get(formId)
       .then(setForm)
-      .catch((error) =>
-        setLoadError(error instanceof ApiError ? error.message : "Failed to load form."),
-      );
-  }, [formId]);
+      .catch((error) => {
+        const denied = accessDenied(error);
+        if (denied?.code === "onboarding_required") {
+          const back = encodeURIComponent(`/forms/${formId}/view`);
+          router.replace(`/tournaments/${denied.tournament_id}/onboarding?redirect=${back}`);
+        } else if (denied?.code === "not_member") {
+          setNotMember(true);
+        } else {
+          setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
+        }
+      });
+  }, [authLoading, user, formId, router]);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     // 404 is the ordinary "hasn't answered yet" case, not a failure.
     formsApi
       .getMyResponse(formId)
       .then(setExisting)
       .catch(() => setExisting(null))
       .finally(() => setCheckedExisting(true));
-  }, [formId]);
+  }, [authLoading, user, formId]);
 
   // Why Edit is unavailable, or undefined when it's open.
   const editLockedReason = useMemo(() => {
@@ -121,6 +186,17 @@ export default function FormViewPage() {
     );
     await afterWrite("Your changes were saved.");
   }
+
+  if (authLoading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (!user) return <SignInCard formId={formId} />;
+  if (notMember) return <NoFormAccess description="You aren't a member of this tournament." />;
 
   if (loadError) {
     return (
