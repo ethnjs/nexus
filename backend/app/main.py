@@ -4,7 +4,6 @@ from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
-
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import (

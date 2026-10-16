@@ -281,7 +281,7 @@ async def send_password_reset_request_email(db: Session, user_id: int, to: str) 
         raise HTTPException(500, "Failed to send password reset email") from e
 
 
-async def send_identity_linked_notice(to: str, provider_email: Optional[str]) -> None:
+async def send_identity_linked_notice(to: str, provider_email: str | None) -> None:
     who = provider_email or "a Google account"
     url = _cta_url("/settings/security")
     html = _render_email_html(
@@ -294,10 +294,15 @@ async def send_identity_linked_notice(to: str, provider_email: Optional[str]) ->
         cta_url=url,
         footnote=_CONTACT_SUPPORT,
     )
-    await _send(to, "Google was connected to your NEXUS account", f"Google ({who}) was connected to your account. If this wasn't you: {url}", html)
+    await _send(
+        to,
+        "Google was connected to your NEXUS account",
+        f"Google ({who}) was connected to your account. If this wasn't you: {url}",
+        html,
+    )
 
 
-async def send_identity_unlinked_notice(to: str, provider_email: Optional[str]) -> None:
+async def send_identity_unlinked_notice(to: str, provider_email: str | None) -> None:
     who = provider_email or "your Google account"
     url = _cta_url("/settings/security")
     html = _render_email_html(
@@ -310,7 +315,12 @@ async def send_identity_unlinked_notice(to: str, provider_email: Optional[str]) 
         cta_url=url,
         footnote=_CONTACT_SUPPORT,
     )
-    await _send(to, "Google was disconnected from your NEXUS account", f"Google ({who}) was disconnected. If this wasn't you: {url}", html)
+    await _send(
+        to,
+        "Google was disconnected from your NEXUS account",
+        f"Google ({who}) was disconnected. If this wasn't you: {url}",
+        html,
+    )
 
 
 async def send_password_changed_notice(to: str) -> None:

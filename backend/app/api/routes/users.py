@@ -358,6 +358,7 @@ def delete_me(
 # DELETE /users/me/identities/google/ — unlink, unless it's the only way in
 # ---------------------------------------------------------------------------
 
+
 def _identity_response(row: OAuthIdentity) -> OAuthIdentityResponse:
     provider = row.provider.value if isinstance(row.provider, OAuthProvider) else row.provider
     return OAuthIdentityResponse(
@@ -376,7 +377,10 @@ def list_my_identities(
     return [_identity_response(row) for row in rows]
 
 
-@router.delete("/users/me/identities/google/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.delete(
+    "/users/me/identities/google/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
     responses={
         400: {"description": "No password set, or Google is not connected"},
     },
@@ -393,7 +397,9 @@ async def unlink_google(
     if row is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
     if not user.hashed_password:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
+        )
 
     provider_email = row.email_at_provider
     db.delete(row)

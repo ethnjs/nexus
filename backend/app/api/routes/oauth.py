@@ -1,8 +1,6 @@
 """Google OIDC start + callback. Browser navigations, so failures redirect
 instead of returning JSON. The access token from Google is not stored."""
 
-from typing import Optional
-
 from authlib.integrations.base_client import OAuthError
 from fastapi import APIRouter, Cookie, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -30,7 +28,7 @@ from app.services.email_service import send_identity_linked_notice
 router = APIRouter(tags=["auth"])
 
 
-def _bounce(request: Request, path: str, *, raw_token: Optional[str] = None) -> RedirectResponse:
+def _bounce(request: Request, path: str, *, raw_token: str | None = None) -> RedirectResponse:
     request.session.clear()
     response = RedirectResponse(frontend_redirect(path), status_code=302)
     if raw_token is not None:
@@ -38,7 +36,7 @@ def _bounce(request: Request, path: str, *, raw_token: Optional[str] = None) -> 
     return response
 
 
-def _error_path(intent: Optional[str], code: str) -> str:
+def _error_path(intent: str | None, code: str) -> str:
     base = "/settings/security" if intent == "link" else "/sign-in"
     return f"{base}?error={code}"
 
@@ -47,14 +45,16 @@ def _error_path(intent: Optional[str], code: str) -> str:
 async def google_start(
     request: Request,
     intent: str = "login",
-    redirect: Optional[str] = None,
-    access_token: Optional[str] = Cookie(default=None),
+    redirect: str | None = None,
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     if intent not in ("login", "link"):
         intent = "login"
     if not is_google_configured():
-        return RedirectResponse(frontend_redirect("/sign-in?error=google_unavailable"), status_code=302)
+        return RedirectResponse(
+            frontend_redirect("/sign-in?error=google_unavailable"), status_code=302
+        )
 
     if intent == "link":
         session_row = get_active_session(db, access_token) if access_token else None
@@ -77,7 +77,7 @@ async def google_start(
 @router.get("/auth/oauth/google/callback/")
 async def google_callback(
     request: Request,
-    access_token: Optional[str] = Cookie(default=None),
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     intent = request.session.get("oauth_intent")
@@ -119,7 +119,8 @@ async def google_callback(
         return _bounce(request, _error_path("login", "google_failed"))
 
     raw_token = create_session(
-        db, user.id,
+        db,
+        user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
     )
