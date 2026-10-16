@@ -646,6 +646,7 @@ class TestOnboardingGate:
         assert res.status_code == 403
         assert res.json()["detail"]["code"] == "onboarding_required"
         assert res.json()["detail"]["tournament_id"] == td_tournament.id
+        assert res.json()["detail"]["is_onboarding"] is False
         submit = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert submit.status_code == 403
 
@@ -666,6 +667,7 @@ class TestOnboardingGate:
         res = client.get(f"/forms/{later.id}/")
         assert res.status_code == 403
         assert res.json()["detail"]["code"] == "onboarding_required"
+        assert res.json()["detail"]["is_onboarding"] is True
 
     def test_permission_holder_is_exempt(self, client, db, td_user, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")

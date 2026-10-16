@@ -37,7 +37,9 @@ function internalRedirect(value: string | null): string | null {
 }
 
 // The form-access 403s that send a visitor somewhere else instead of erroring.
-type AccessDenied = { code: "not_member" } | { code: "onboarding_required"; tournament_id: number };
+type AccessDenied =
+  | { code: "not_member" }
+  | { code: "onboarding_required"; tournament_id: number; is_onboarding: boolean };
 
 function accessDenied(error: unknown): AccessDenied | null {
   if (!(error instanceof ApiError) || error.status !== 403) return null;
@@ -108,8 +110,11 @@ export default function FormViewPage() {
       .catch((error) => {
         const denied = accessDenied(error);
         if (denied?.code === "onboarding_required") {
-          const back = encodeURIComponent(`/forms/${formId}/view`);
-          router.replace(`/tournaments/${denied.tournament_id}/onboarding?redirect=${back}`);
+          // A step of the sequence is reached along the way, so only come back for other forms.
+          const back = denied.is_onboarding
+            ? ""
+            : `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
+          router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
         } else if (denied?.code === "not_member") {
           setNotMember(true);
         } else {

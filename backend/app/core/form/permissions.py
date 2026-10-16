@@ -63,15 +63,17 @@ def require_form_manage_access(
     return form
 
 
-def _onboarding_required(tournament_id: int) -> HTTPException:
-    """The frontend reads `tournament_id` to send the member into the sequence,
-    since a form it can't load can't tell it whose sequence that is."""
+def _onboarding_required(tournament_id: int, is_onboarding: bool) -> HTTPException:
+    """The frontend can't load the form, so the detail says whose sequence to
+    send the member into and whether to come back after: a step of that
+    sequence is reached along the way."""
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={
             "code": "onboarding_required",
             "message": "Finish this tournament's onboarding first.",
             "tournament_id": tournament_id,
+            "is_onboarding": is_onboarding,
         },
     )
 
@@ -131,9 +133,9 @@ def require_form_view_access(
                 is not None
             )
             if not responded and next_required_onboarding_form_id(db, membership) != form.id:
-                raise _onboarding_required(form.tournament_id)
+                raise _onboarding_required(form.tournament_id, is_onboarding=True)
         elif needs_tournament_onboarding(db, membership, permissions):
-            raise _onboarding_required(form.tournament_id)
+            raise _onboarding_required(form.tournament_id, is_onboarding=False)
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
