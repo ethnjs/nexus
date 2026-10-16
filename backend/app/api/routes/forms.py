@@ -56,8 +56,12 @@ from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
-from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
-from app.core.tournament.permissions import MANAGE_FORMS, require_permission
+from app.core.tournament.onboarding import (
+    needs_tournament_onboarding,
+    next_required_onboarding_form_id,
+    recompute_onboarding,
+)
+from app.core.tournament.permissions import MANAGE_FORMS, get_user_permissions, require_permission
 from app.db.session import get_db
 from app.models.models import (
     ChapterMembership,
@@ -78,6 +82,7 @@ from app.schemas.form import (
     FieldChangeRead,
     FormCreate,
     FormFieldRead,
+    FormLinkPreview,
     FormListRead,
     FormRead,
     FormRespondentRead,
@@ -89,6 +94,7 @@ from app.schemas.form import (
     TournamentFormPrerequisitesUpdate,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead
+from app.schemas.tournament import TournamentPublic
 
 router = APIRouter(tags=["forms"])
 
@@ -235,6 +241,9 @@ def list_my_tournament_forms(
         .all()
     }
     next_onboarding_form_id = next_required_onboarding_form_id(db, membership)
+    held_to_onboarding = needs_tournament_onboarding(
+        db, membership, get_user_permissions(current_user, tournament_id, db)
+    )
 
     result = []
     for tournament_form in rows:
@@ -243,8 +252,10 @@ def list_my_tournament_forms(
         if tournament_form.is_onboarding:
             eligible = form.status == "published" and form.id == next_onboarding_form_id
         else:
-            eligible = form.status == "published" and member_meets_form_prerequisites(
-                db, membership, tournament_form
+            eligible = (
+                form.status == "published"
+                and not held_to_onboarding
+                and member_meets_form_prerequisites(db, membership, tournament_form)
             )
         if completed or eligible:
             result.append(
@@ -453,6 +464,29 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 
     _require_tournament_ids(roles, TournamentRole, "role IDs")
     _require_tournament_ids(shifts, TournamentShift, "shift IDs")
+
+
+# ---------------------------------------------------------------------------
+# GET /forms/{form_id}/preview/ — public, no auth
+#
+# Lets a shared form link say which tournament it's for before the visitor
+# signs in or joins. The form itself stays behind require_form_view_access.
+# ---------------------------------------------------------------------------
+@router.get("/forms/{form_id}/preview/", response_model=FormLinkPreview)
+def preview_form_link(form_id: str, db: Session = Depends(get_db)):
+    """Preview a shared form link. No auth required.
+
+    Returns the tournament the form belongs to, never the form's title or
+    questions. 404 unless the form is a published tournament form.
+    """
+    form = db.query(Form).filter(Form.id == form_id).first()
+    if form is None or form.owner_type != "tournament" or form.status != "published":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    tournament = form.tournament
+    assert tournament is not None
+    return FormLinkPreview(
+        tournament_id=tournament.id, **TournamentPublic.model_validate(tournament).model_dump()
+    )
 
 
 # ---------------------------------------------------------------------------

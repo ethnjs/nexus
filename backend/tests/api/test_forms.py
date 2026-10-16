@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.tournament.permissions import MANAGE_EVENTS
 from app.models.models import (
     ChapterMembership,
     Form,
@@ -71,6 +72,14 @@ def _make_form(db, user, tournament, **overrides):
     db.add(form)
     db.flush()
     return form
+
+
+def _role(db, tournament, label):
+    return (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == tournament.id, TournamentRole.label == label)
+        .one()
+    )
 
 
 def _make_chapter_form(db, user, chapter, **overrides):
@@ -467,7 +476,7 @@ class TestMyTournamentForms:
     ):
         membership = grant_role(db, td_tournament, other_user, "Runner")
         completed_archived = self._form(db, td_user, td_tournament, status="archived")
-        eligible_standard = self._form(db, td_user, td_tournament)
+        waiting_standard = self._form(db, td_user, td_tournament)
         blocked_standard = self._form(
             db, td_user, td_tournament, prerequisites={"onboarding_complete": True}
         )
@@ -488,17 +497,32 @@ class TestMyTournamentForms:
         rows = {row["id"]: row for row in res.json()}
         assert set(rows) == {
             completed_archived.id,
-            eligible_standard.id,
             completed_onboarding.id,
             next_onboarding.id,
         }
         assert rows[completed_archived.id]["completed"] is True
         assert rows[completed_archived.id]["eligible"] is False
-        assert rows[eligible_standard.id]["eligible"] is True
         assert rows[completed_onboarding.id]["is_onboarding"] is True
         assert rows[next_onboarding.id]["eligible"] is True
+        # Standard forms wait until the member finishes onboarding.
+        assert waiting_standard.id not in rows
         assert blocked_standard.id not in rows
         assert membership.onboarded_at is None
+
+    def test_permission_holder_sees_standard_forms_during_onboarding(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        _role(db, td_tournament, "Runner").permissions = [MANAGE_EVENTS]
+        standard = self._form(db, td_user, td_tournament)
+        self._form(db, td_user, td_tournament, is_onboarding=True, order=1)
+        login(client, "other@test.com", "otherpass")
+
+        rows = {
+            row["id"]: row
+            for row in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()
+        }
+        assert rows[standard.id]["eligible"] is True
 
     def test_requires_a_tournament_membership(self, client, td_user, td_tournament, other_user):
         login(client, "other@test.com", "otherpass")
@@ -576,6 +600,7 @@ class TestGetForm:
         login(client, "other@test.com", "otherpass")
         res = client.get(f"/forms/{form.id}/")
         assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "not_member"
 
     def test_missing_form_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -596,6 +621,92 @@ class TestGetForm:
 # ---------------------------------------------------------------------------
 # PATCH / delete /forms/{form_id}/
 # ---------------------------------------------------------------------------
+
+
+class TestOnboardingGate:
+    """A member who owes an onboarding step reaches only that step until it's
+    answered, unless they hold a tournament permission."""
+
+    def _published(self, db, td_user, td_tournament, **link):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, **link))
+        db.flush()
+        return form
+
+    def test_standard_form_waits_for_onboarding(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        step = self._published(db, td_user, td_tournament, is_onboarding=True, order=1)
+        form = self._published(db, td_user, td_tournament)
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        res = client.get(f"/forms/{form.id}/")
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "onboarding_required"
+        assert res.json()["detail"]["tournament_id"] == td_tournament.id
+        submit = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
+        assert submit.status_code == 403
+
+        assert client.get(f"/forms/{step.id}/").status_code == 200
+        db.add(FormResponse(form_id=step.id, user_id=other_user.id))
+        db.commit()
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+
+    def test_later_step_sends_member_back_to_the_sequence(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        self._published(db, td_user, td_tournament, is_onboarding=True, order=1)
+        later = self._published(db, td_user, td_tournament, is_onboarding=True, order=2)
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        res = client.get(f"/forms/{later.id}/")
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "onboarding_required"
+
+    def test_permission_holder_is_exempt(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        _role(db, td_tournament, "Runner").permissions = [MANAGE_EVENTS]
+        self._published(db, td_user, td_tournament, is_onboarding=True, order=1)
+        form = self._published(db, td_user, td_tournament)
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+
+
+class TestFormLinkPreview:
+    def test_shows_the_tournament_without_signing_in(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published", title="Secret title")
+        db.commit()
+
+        res = client.get(f"/forms/{form.id}/preview/")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["tournament_id"] == td_tournament.id
+        assert body["name"] == td_tournament.name
+        assert "Secret title" not in res.text
+        assert form.name not in res.text
+
+    def test_unpublished_form_is_404(self, client, db, td_user, td_tournament):
+        draft = _make_form(db, td_user, td_tournament, status="draft")
+        archived = _make_form(db, td_user, td_tournament, status="archived")
+        db.commit()
+
+        assert client.get(f"/forms/{draft.id}/preview/").status_code == 404
+        assert client.get(f"/forms/{archived.id}/preview/").status_code == 404
+        assert client.get("/forms/nope/preview/").status_code == 404
+
+    def test_chapter_form_is_404(self, client, db, chapter):
+        lead = _chapter_lead(db, chapter)
+        form = _make_chapter_form(db, lead, chapter, status="published")
+        db.commit()
+
+        assert client.get(f"/forms/{form.id}/preview/").status_code == 404
 
 
 class TestUpdateArchiveDeleteForm:

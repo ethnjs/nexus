@@ -9,6 +9,7 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    TournamentForm,
     TournamentMembership,
     TournamentRole,
     TournamentTrackAssignment,
@@ -1923,6 +1924,58 @@ def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
     assert data["is_owner"] is False
     assert data["id"] == membership.id
     assert [r["label"] for r in data["roles"]] == ["Volunteer"]
+
+
+def test_get_my_membership_needs_onboarding_until_steps_are_answered(
+    client, db, td_user, td_tournament, other_user
+):
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    step = Form(
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        name="Step 1",
+        status="published",
+        created_by=td_user.id,
+    )
+    db.add(step)
+    db.flush()
+    db.add(
+        TournamentForm(form_id=step.id, tournament_id=td_tournament.id, is_onboarding=True, order=1)
+    )
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    url = f"/tournaments/{td_tournament.id}/members/me/?fields=roles"
+
+    assert client.get(url).json()["needs_onboarding"] is True
+    db.add(FormResponse(form_id=step.id, user_id=other_user.id))
+    db.commit()
+    assert client.get(url).json()["needs_onboarding"] is False
+
+
+def test_get_my_membership_permission_holder_never_needs_onboarding(
+    client, db, td_user, td_tournament, other_user
+):
+    grant_role(db, td_tournament, other_user, "Runner")
+    db.query(TournamentRole).filter(
+        TournamentRole.tournament_id == td_tournament.id, TournamentRole.label == "Runner"
+    ).one().permissions = [MANAGE_MEMBERS]
+    step = Form(
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        name="Step 1",
+        status="published",
+        created_by=td_user.id,
+    )
+    db.add(step)
+    db.flush()
+    db.add(
+        TournamentForm(form_id=step.id, tournament_id=td_tournament.id, is_onboarding=True, order=1)
+    )
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+
+    me = client.get(f"/tournaments/{td_tournament.id}/members/me/?fields=roles").json()
+    assert me["needs_onboarding"] is False
 
 
 def test_get_my_membership_includes_enrichment(client, td_tournament, db):

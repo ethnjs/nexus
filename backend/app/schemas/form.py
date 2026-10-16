@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.person import PersonNameRef, PersonRefResponse
+from app.schemas.tournament import TournamentPublic
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
@@ -383,6 +384,13 @@ class MemberFormRead(BaseModel):
     allow_response_edits: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FormLinkPreview(TournamentPublic):
+    """What a shared form link shows anyone, signed in or not: the tournament
+    the form belongs to, never the form's own title or questions."""
+
+    tournament_id: int
 
 
 class FormCreate(BaseModel):

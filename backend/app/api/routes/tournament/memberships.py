@@ -59,6 +59,7 @@ from app.core.tournament.memberships import (
     onboarding_reads,
     resolve_person_refs,
 )
+from app.core.tournament.onboarding import needs_tournament_onboarding
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     get_user_permissions,
@@ -120,7 +121,8 @@ def _build_me_response(
     `requested` gating them is not a micro-optimisation: the provider reads
     four identity fields and nothing else, and says so with fields=roles.
     """
-    permissions = sorted(get_user_permissions(current_user, tournament.id, db))
+    held_permissions = get_user_permissions(current_user, tournament.id, db)
+    permissions = sorted(held_permissions)
     is_owner = current_user.id == tournament.owner_id
     needs_age_consent = (
         (tournament.collect_is_over_18 or tournament.collect_is_over_21)
@@ -135,6 +137,7 @@ def _build_me_response(
         is_owner=is_owner,
         permissions=permissions,
         needs_age_consent=needs_age_consent,
+        needs_onboarding=needs_tournament_onboarding(db, membership, held_permissions),
         roles=membership.held_roles if wants(requested, ROLES) else [],
         is_over_18=membership.is_over_18,
         is_over_21=membership.is_over_21,

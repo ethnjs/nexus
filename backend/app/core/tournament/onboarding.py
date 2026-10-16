@@ -117,3 +117,17 @@ def next_required_onboarding_form_id(
 
     next_step = next((step for step in steps if step.form_id not in answered_form_ids), None)
     return next_step.form_id if next_step else None
+
+
+def needs_tournament_onboarding(
+    db: Session,
+    membership: TournamentMembership,
+    permissions: set[str],
+) -> bool:
+    """Whether the member is held to the onboarding sequence before reaching
+    the rest of the tournament. Anyone holding a tournament permission is
+    exempt, and so is everyone in an archived tournament, where nothing can be
+    answered."""
+    if permissions or membership.tournament.is_archived:
+        return False
+    return next_required_onboarding_form_id(db, membership) is not None

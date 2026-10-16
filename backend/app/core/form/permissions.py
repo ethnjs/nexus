@@ -6,8 +6,11 @@ from app.core.chapters import require_officer_or_lead
 from app.core.tournament import require_not_archived
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, has_any_membership
-from app.core.tournament.onboarding import next_required_onboarding_form_id
-from app.core.tournament.permissions import MANAGE_FORMS, has_permission
+from app.core.tournament.onboarding import (
+    needs_tournament_onboarding,
+    next_required_onboarding_form_id,
+)
+from app.core.tournament.permissions import MANAGE_FORMS, get_user_permissions, has_permission
 from app.db.session import get_db
 from app.models.models import ChapterMembership, Form, FormResponse, User
 
@@ -60,6 +63,19 @@ def require_form_manage_access(
     return form
 
 
+def _onboarding_required(tournament_id: int) -> HTTPException:
+    """The frontend reads `tournament_id` to send the member into the sequence,
+    since a form it can't load can't tell it whose sequence that is."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "onboarding_required",
+            "message": "Finish this tournament's onboarding first.",
+            "tournament_id": tournament_id,
+        },
+    )
+
+
 def require_form_view_access(
     form_id: str,
     db: Session = Depends(get_db),
@@ -74,9 +90,14 @@ def require_form_view_access(
         assert form.tournament_id is not None
         if not has_any_membership(current_user, form.tournament_id, db):
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "not_member",
+                    "message": "You aren't a member of this tournament.",
+                },
             )
-        if has_permission(current_user, form.tournament_id, MANAGE_FORMS, db):
+        permissions = get_user_permissions(current_user, form.tournament_id, db)
+        if MANAGE_FORMS in permissions:
             return form
 
         membership = get_membership_by_user(db, form.tournament_id, current_user.id)
@@ -110,10 +131,9 @@ def require_form_view_access(
                 is not None
             )
             if not responded and next_required_onboarding_form_id(db, membership) != form.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="This onboarding form is not currently available",
-                )
+                raise _onboarding_required(form.tournament_id)
+        elif needs_tournament_onboarding(db, membership, permissions):
+            raise _onboarding_required(form.tournament_id)
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

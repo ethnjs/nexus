@@ -409,3 +409,6 @@ class MembershipMeResponse(MembershipBaseResponse):
     # True when the tournament collects an age flag and this non-owner member
     # hasn't answered yet; drives the blocking consent modal.
     needs_age_consent: bool = False
+    # True while the member owes an onboarding step and holds no tournament
+    # permission. The dashboard sends them into the sequence until it's False.
+    needs_onboarding: bool = False
