@@ -610,12 +610,8 @@ class TournamentMembership(Base):
     # onboarding-forms POST route, which clears it tournament-wide.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # One status column, not a consented_at/declined_at pair — a pair can
-    # represent "both set" (nonsensical) and something will eventually set
-    # both. null = unanswered, "consented" | "declined" — one answer covers
-    # both is_over_18 and is_over_21, there's no partial consent. String,
-    # not an enum type, validated in the Pydantic schema — same idiom as
-    # TournamentMembershipTrackStatus.status.
+    # null = unanswered, "consented" covers both is_over_18 and is_over_21.
+    # Declining deletes the membership, so there's no declined value.
     age_disclosure: Mapped[str | None] = mapped_column(String(32))
     age_disclosure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

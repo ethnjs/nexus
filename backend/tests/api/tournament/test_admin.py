@@ -2,7 +2,7 @@
 
 from app.core.tournament.audit import TOURNAMENT_VERIFIED
 from app.models.models import AuditLogEntry
-from tests.conftest import grant_role, login
+from tests.conftest import login
 
 # ---------------------------------------------------------------------------
 # GET /admin/tournaments/ — platform admin only (global list)
@@ -40,30 +40,6 @@ def test_list_all_tournaments_carries_counts(client, admin_user, td_user, td_tou
     # The owner's own membership is the one volunteer.
     assert row["volunteer_count"] == 1
     assert row["event_count"] == len(td_tournament.events)
-
-
-def test_list_all_tournaments_counts_exclude_declined(
-    client, admin_user, td_user, td_tournament, db
-):
-    """A declined membership row still exists but isn't a volunteer — the
-    grouped count has to match is_declined()."""
-    from app.models.models import TournamentMembership
-
-    grant_role(db, td_tournament, admin_user, "Volunteer")
-    membership = (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.tournament_id == td_tournament.id,
-            TournamentMembership.user_id == admin_user.id,
-        )
-        .first()
-    )
-    membership.age_disclosure = "declined"
-    db.commit()
-
-    login(client, "admin@test.com", "adminpass")
-    row = next(t for t in client.get("/admin/tournaments/").json() if t["id"] == td_tournament.id)
-    assert row["volunteer_count"] == 1
 
 
 def test_list_all_tournaments_zero_counts_present(client, admin_user, td_tournament):

@@ -48,7 +48,6 @@ from app.core.tournament.member_filters import (
 )
 from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.memberships import (
-    ACTIVE_MEMBERSHIP_CLAUSE,
     build_event_preferences,
     build_lunch,
     build_track_statuses,
@@ -206,7 +205,6 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/members", tags=["tournam
 @router.get("/", response_model=list[MembershipFullResponse])
 def list_memberships(
     tournament_id: int,
-    include_declined: bool = Query(False),
     surface: str | None = Query(default=None),
     # Which field groups to serialize. Omitted means everything; `surface`
     # fills in for it when absent (see resolve_fields).
@@ -251,8 +249,6 @@ def list_memberships(
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
-    if not include_declined:
-        query = query.filter(ACTIVE_MEMBERSHIP_CLAUSE)
     query = apply_member_filters(
         query,
         tournament=tournament,

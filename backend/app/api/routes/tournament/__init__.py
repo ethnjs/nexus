@@ -11,7 +11,7 @@ from app.core.tournament import get_tournament as fetch_tournament
 from app.core.tournament import require_not_archived, tournament_counts
 from app.core.tournament.archive import archive_tournament as apply_archive
 from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIVED, log_action
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership
+from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
@@ -69,13 +69,11 @@ def list_my_tournaments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return all tournaments where the current user has any active
-    membership — a declined one is blocked from tournament pages generally,
-    including this "my tournaments" dashboard listing."""
+    """Return all tournaments the current user is a member of."""
     tournaments = (
         db.query(Tournament)
         .join(TournamentMembership, TournamentMembership.tournament_id == Tournament.id)
-        .filter(TournamentMembership.user_id == current_user.id, ACTIVE_MEMBERSHIP_CLAUSE)
+        .filter(TournamentMembership.user_id == current_user.id)
         .order_by(Tournament.created_at.desc())
         .all()
     )
@@ -317,7 +315,6 @@ def transfer_ownership(
         .filter(
             TournamentMembership.user_id == payload.new_owner_id,
             TournamentMembership.tournament_id == tournament_id,
-            ACTIVE_MEMBERSHIP_CLAUSE,
         )
         .first()
     )

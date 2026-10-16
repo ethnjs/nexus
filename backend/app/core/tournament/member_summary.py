@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.core.form.member_options import member_editable_reserved_fields
 from app.core.form.validation import availability_field_track_id, option_shift_ids
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.core.tournament.onboarding import onboarding_progress_bulk
 from app.models.models import (
     Tournament,
@@ -70,7 +69,7 @@ def covered_options(options: list[Option], held: set[int]) -> list[str]:
 def build_member_summary(db: Session, tournament: Tournament) -> dict:
     members = (
         db.query(TournamentMembership.id, TournamentMembership.user_id)
-        .filter(TournamentMembership.tournament_id == tournament.id, ACTIVE_MEMBERSHIP_CLAUSE)
+        .filter(TournamentMembership.tournament_id == tournament.id)
         .all()
     )
     member_ids = [member.id for member in members]

@@ -34,8 +34,7 @@ def with_member_counts(db: Session, roles: list[TournamentRole]) -> list[Tournam
     reads it via from_attributes. One grouped count query regardless of how
     many roles are passed in, so callers stay off the N+1 path.
     """
-    from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
-    from app.models.models import TournamentMembership, TournamentTrackAssignment
+    from app.models.models import TournamentTrackAssignment
 
     role_ids = [r.id for r in roles]
     # Distinct memberships, not rows: since #83 one member holds a role
@@ -47,11 +46,7 @@ def with_member_counts(db: Session, roles: list[TournamentRole]) -> list[Tournam
                 TournamentTrackAssignment.role_id,
                 func.count(func.distinct(TournamentTrackAssignment.membership_id)),
             )
-            .join(
-                TournamentMembership,
-                TournamentMembership.id == TournamentTrackAssignment.membership_id,
-            )
-            .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
+            .filter(TournamentTrackAssignment.role_id.in_(role_ids))
             .group_by(TournamentTrackAssignment.role_id)
             .all()
         )
