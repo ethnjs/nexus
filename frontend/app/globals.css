@@ -167,6 +167,8 @@
   --color-bg: #f7f7f5;
   --color-accent-hover: #2a2a2a;
   --color-danger-hover: #c53030;
+  /* Discord's brand guidelines allow its symbol only in blurple, black or white. */
+  --color-discord-blurple: #5865f2;
 
   --color-text-primary: #0a0a0a;
   --color-text-secondary: #6b6b65;

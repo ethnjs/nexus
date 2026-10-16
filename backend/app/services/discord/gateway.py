@@ -3,6 +3,8 @@ commands and buttons arrive over HTTP instead (routes/discord/interactions.py)."
 
 import asyncio
 import logging
+from datetime import datetime
+from typing import Protocol
 
 import discord
 
@@ -17,8 +19,15 @@ discord.VoiceClient.warn_dave = False
 MISSING_ACCESS = 50001
 
 
+class GatewayEvents(Protocol):
+    """NEXUS-side reactions to gateway events. Called off the event loop, so they may block."""
+
+    def guild_removed(self, guild_id: int) -> None: ...
+    def guild_renamed(self, guild_id: int, name: str) -> None: ...
+
+
 class _Client(discord.Client):
-    def __init__(self, *, dev_guild_id: int | None) -> None:
+    def __init__(self, *, dev_guild_id: int | None, events: GatewayEvents) -> None:
         intents = discord.Intents.none()
         intents.guilds = True
         intents.members = True
@@ -30,6 +39,7 @@ class _Client(discord.Client):
             activity=None,
         )
         self._dev_guild_id = dev_guild_id
+        self._events = events
 
     async def setup_hook(self) -> None:
         await self._register_commands()
@@ -37,6 +47,13 @@ class _Client(discord.Client):
     async def on_guild_join(self, guild: discord.Guild) -> None:
         if guild.id == self._dev_guild_id:
             await self._register_commands()
+
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        await asyncio.to_thread(self._events.guild_removed, guild.id)
+
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
+        if before.name != after.name:
+            await asyncio.to_thread(self._events.guild_renamed, after.id, after.name)
 
     async def _register_commands(self) -> None:
         assert self.application_id is not None
@@ -63,14 +80,15 @@ class Gateway:
     """Runs one client as a background task. A closed discord.py client can't be restarted, so
     each start() builds a new one."""
 
-    def __init__(self, token: str, *, dev_guild_id: int | None) -> None:
+    def __init__(self, token: str, *, dev_guild_id: int | None, events: GatewayEvents) -> None:
         self._token = token
         self._dev_guild_id = dev_guild_id
+        self._events = events
         self._client: _Client | None = None
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        self._client = _Client(dev_guild_id=self._dev_guild_id)
+        self._client = _Client(dev_guild_id=self._dev_guild_id, events=self._events)
         self._task = asyncio.create_task(self._run(self._client))
 
     async def _run(self, client: _Client) -> None:
@@ -94,3 +112,25 @@ class Gateway:
             await asyncio.gather(self._task, return_exceptions=True)
         self._client = None
         self._task = None
+
+    async def wait_until_ready(self) -> None:
+        assert self._client is not None
+        await self._client.wait_until_ready()
+
+    def guilds(self) -> list[tuple[int, datetime | None]]:
+        """Every server the bot is in, with when the bot joined it."""
+        if self._client is None:
+            return []
+        return [(g.id, g.me.joined_at if g.me else None) for g in self._client.guilds]
+
+    async def leave_guild(self, guild_id: int) -> None:
+        if self._client is None:
+            return
+        try:
+            await self._client.http.leave_guild(guild_id)
+        except discord.NotFound:
+            return
+        except discord.HTTPException:
+            log.exception("Couldn't leave server %s", guild_id)
+            return
+        log.info("Left server %s", guild_id)

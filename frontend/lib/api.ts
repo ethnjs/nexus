@@ -1585,6 +1585,55 @@ export interface InviteUpdate {
   add_hours?: number | null;
 }
 
+// -------------------------------------------------------------------------
+// Discord — per-track server links, under /tournaments/{id}/tracks/{track_id}/discord/
+// -------------------------------------------------------------------------
+export type DiscordCategoryGrouping = "building" | "zone";
+
+// Matches DiscordLinkResponse. guild_id is a string: Discord ids exceed JS integer precision.
+export interface DiscordLink {
+  guild_id: string;
+  guild_name: string | null;
+  merge_divisions: boolean;
+  category_grouping: DiscordCategoryGrouping;
+  installed_by_name: string | null;
+  built_at: string | null;
+  bot_removed_at: string | null;
+  last_build_at: string | null;
+  last_build_status: string | null;
+  last_build_error: string | null;
+  last_sync_error: string | null;
+  created_at: string;
+}
+
+export interface DiscordTrackStatus {
+  track_id: number;
+  link: DiscordLink | null;
+}
+
+export interface DiscordLinkSettings {
+  merge_divisions: boolean;
+  category_grouping: DiscordCategoryGrouping;
+}
+
+export const discordApi = {
+  // 404 when Discord is off on this deployment.
+  status: (tournamentId: number, trackId: number) =>
+    api.get<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`),
+  update: (tournamentId: number, trackId: number, body: Partial<DiscordLinkSettings>) =>
+    api.patch<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`, body),
+  unlink: (tournamentId: number, trackId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`),
+  // A full navigation, not fetch: the backend redirects to Discord's bot install screen.
+  installUrl: (tournamentId: number, trackId: number, settings: DiscordLinkSettings) =>
+    `/api/proxy/tournaments/${tournamentId}/tracks/${trackId}/discord/install?${new URLSearchParams(
+      {
+        merge_divisions: String(settings.merge_divisions),
+        category_grouping: settings.category_grouping,
+      },
+    )}`,
+};
+
 export const invitesApi = {
   list: (tournamentId: number) => api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
   create: (tournamentId: number, body: InviteCreate) =>

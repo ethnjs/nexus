@@ -5,7 +5,7 @@ import type { Permission } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 
-export type SettingsPageKey = "general" | "roles" | "invites" | "audit-log";
+export type SettingsPageKey = "general" | "roles" | "invites" | "discord" | "audit-log";
 
 export interface SettingsPage {
   key: SettingsPageKey;
@@ -28,6 +28,7 @@ export function useSettingsPages(tournamentId: string | number): SettingsPage[] 
   const can = (permission: Permission) => isPrivileged || hasPermission(permission);
   const roles = can("manage_roles");
   const invites = can("manage_invites");
+  const discord = can("manage_discord");
   const auditLog = can("manage_tournament");
 
   return useMemo(() => {
@@ -36,9 +37,10 @@ export function useSettingsPages(tournamentId: string | number): SettingsPage[] 
       { key: "general", label: "General", href: `${base}/general` },
       ...(roles ? [{ key: "roles" as const, label: "Roles", href: `${base}/roles` }] : []),
       ...(invites ? [{ key: "invites" as const, label: "Invites", href: `${base}/invites` }] : []),
+      ...(discord ? [{ key: "discord" as const, label: "Discord", href: `${base}/discord` }] : []),
       ...(auditLog
         ? [{ key: "audit-log" as const, label: "Audit Log", href: `${base}/audit-log` }]
         : []),
     ];
-  }, [tournamentId, roles, invites, auditLog]);
+  }, [tournamentId, roles, invites, discord, auditLog]);
 }

@@ -24,6 +24,7 @@ from app.api.routes import tournament as tournament_core
 from app.api.routes.chapter import admin as chapter_admin
 from app.api.routes.chapter import join_codes as chapter_join_codes
 from app.api.routes.chapter import memberships as chapter_memberships
+from app.api.routes.discord import guilds as discord_guilds
 from app.api.routes.tournament import admin as tournament_admin
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes.tournament import audit as tournament_audit
@@ -181,6 +182,7 @@ app.include_router(chapter_admin.router, prefix="", dependencies=[api_key_depend
 app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(discord_guilds.router, prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

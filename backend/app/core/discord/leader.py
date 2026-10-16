@@ -17,6 +17,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.engine import make_url
 
 from app.core.config import discord_enabled, get_settings
+from app.core.discord.drain import Drain
+from app.core.discord.events import DatabaseEvents
+from app.core.discord.sweep import run_sweep
 from app.core.tournament.scheduler import start_scheduler
 from app.services.discord.gateway import Gateway
 
@@ -115,11 +118,14 @@ class Leader:
 
 
 class LeaderWork:
-    """What the leader runs: APScheduler and, when Discord is on, the gateway connection."""
+    """What the leader runs: APScheduler and, when Discord is on, the gateway connection, the
+    discord_sync listener and the sweep."""
 
-    def __init__(self) -> None:
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
         self._scheduler: BackgroundScheduler | None = None
         self._gateway: Gateway | None = None
+        self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self) -> None:
         self._scheduler = start_scheduler()
@@ -128,10 +134,21 @@ class LeaderWork:
             dev_guild_id = (
                 int(settings.discord_dev_guild_id) if settings.discord_dev_guild_id else None
             )
-            self._gateway = Gateway(settings.discord_bot_token, dev_guild_id=dev_guild_id)
-            await self._gateway.start()
+            gateway = Gateway(
+                settings.discord_bot_token, dev_guild_id=dev_guild_id, events=DatabaseEvents()
+            )
+            await gateway.start()
+            self._gateway = gateway
+            self._tasks = [
+                asyncio.create_task(Drain(self._dsn, gateway).run()),
+                asyncio.create_task(run_sweep(gateway)),
+            ]
 
     async def stop(self) -> None:
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
         if self._gateway is not None:
             await self._gateway.stop()
             self._gateway = None
@@ -141,10 +158,9 @@ class LeaderWork:
 
 
 def start_leader() -> Leader:
-    work = LeaderWork()
     dsn = make_url(get_settings().database_url).set(drivername="postgresql")
-    leader = Leader(
-        dsn.render_as_string(hide_password=False), on_elected=work.start, on_deposed=work.stop
-    )
+    dsn_string = dsn.render_as_string(hide_password=False)
+    work = LeaderWork(dsn_string)
+    leader = Leader(dsn_string, on_elected=work.start, on_deposed=work.stop)
     leader.start()
     return leader

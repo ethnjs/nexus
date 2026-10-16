@@ -18,6 +18,9 @@ export const ALL_AUDIT_ACTIONS = [
   "tournament_unarchived",
   "ownership_transferred",
   "form_response_deleted",
+  "discord_server_linked",
+  "discord_server_unlinked",
+  "discord_settings_updated",
 ] as const;
 
 // "join_code_*" stays the backend/wire action name — display text says
@@ -35,6 +38,9 @@ export const ACTION_LABELS: Record<string, string> = {
   tournament_unarchived: "Tournament unarchived",
   ownership_transferred: "Ownership transferred",
   form_response_deleted: "Response deleted",
+  discord_server_linked: "Discord server linked",
+  discord_server_unlinked: "Discord server unlinked",
+  discord_settings_updated: "Discord settings changed",
 };
 
 export interface AuditLogDescription {
@@ -474,7 +480,40 @@ const DESCRIBERS: Record<
   form_response_deleted: (e) => ({
     summary: `Deleted ${e.respondent_name as string}'s response to ${e.form_name as string}`,
   }),
+
+  discord_server_linked: (e) => ({
+    summary: `${e.readded ? "Added the bot back to" : "Linked"} Discord server ${discordServerName(e)} ${e.readded ? "for" : "to"} ${e.track_name as string}`,
+  }),
+
+  discord_server_unlinked: (e) => ({
+    summary: `Unlinked Discord server ${discordServerName(e)} from ${e.track_name as string}`,
+  }),
+
+  discord_settings_updated: (e) => {
+    const changes = (e.changes as { field: string; old: unknown; new: unknown }[]) ?? [];
+    return {
+      summary: `Changed Discord settings for ${e.track_name as string}`,
+      details: changes.map(
+        (c) =>
+          `${DISCORD_SETTING_LABELS[c.field] ?? c.field}: ${discordSettingValue(c.old)} → ${discordSettingValue(c.new)}`,
+      ),
+    };
+  },
 };
+
+const DISCORD_SETTING_LABELS: Record<string, string> = {
+  merge_divisions: "Division merge",
+  category_grouping: "Categories by",
+};
+
+function discordServerName(e: Record<string, unknown>): string {
+  return (e.guild_name as string | null) ?? (e.guild_id as string);
+}
+
+function discordSettingValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "on" : "off";
+  return String(value);
+}
 
 export function describeAuditLogEntry(entry: AuditLogEntry): AuditLogDescription {
   const describe = DESCRIBERS[entry.action];
