@@ -2125,6 +2125,26 @@ def test_get_my_membership_needs_age_consent_false_when_not_collected(
     assert data["needs_age_consent"] is False
 
 
+def test_get_my_membership_owner_never_needs_age_consent(client, td_user, td_tournament, db):
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
+    assert data["needs_age_consent"] is False
+
+
+def test_get_my_membership_needs_age_consent_with_permissions(
+    client, td_tournament, other_user, db
+):
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    grant_role(db, td_tournament, other_user, "Tournament Director")
+    login(client, "other@test.com", "otherpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
+    assert data["permissions"]
+    assert data["needs_age_consent"] is True
+
+
 def test_get_my_membership_admin_without_membership(client, admin_user, td_tournament):
     """A site admin who never joined the tournament still gets in via
     require_membership()'s admin bypass — membership_id/roles are

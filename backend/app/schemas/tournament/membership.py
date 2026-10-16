@@ -407,9 +407,6 @@ class MembershipMeResponse(MembershipBaseResponse):
 
     is_owner: bool = False
     permissions: list[str] = []
-    # True when the tournament collects an age flag and this member hasn't
-    # answered yet (age_disclosure is null) — drives the blocking consent
-    # modal for existing members after a TD turns collection on. False (not
-    # just omitted) once answered either way, and always False with no
-    # membership row — nothing to consent to.
+    # True when the tournament collects an age flag and this non-owner member
+    # hasn't answered yet; drives the blocking consent modal.
     needs_age_consent: bool = False

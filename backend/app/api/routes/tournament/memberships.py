@@ -109,8 +109,10 @@ def _build_me_response(
     permissions = sorted(get_user_permissions(current_user, tournament.id, db))
     is_owner = current_user.id == tournament.owner_id
     needs_age_consent = (
-        tournament.collect_is_over_18 or tournament.collect_is_over_21
-    ) and membership.age_disclosure is None
+        (tournament.collect_is_over_18 or tournament.collect_is_over_21)
+        and membership.age_disclosure is None
+        and not is_owner
+    )
     resp = MembershipMeResponse(
         id=membership.id,
         created_at=membership.created_at,
