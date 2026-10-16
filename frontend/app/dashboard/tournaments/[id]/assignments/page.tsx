@@ -119,13 +119,7 @@ import {
   type Flag,
   memberFacts,
 } from "@/lib/assignments/flags";
-import {
-  type AssignmentRole,
-  replaceInPlace,
-  roleKey,
-  rolesOf,
-  sameRole,
-} from "@/lib/assignments/lanes";
+import { type AssignmentRole, roleKey, rolesOf, sameRole } from "@/lib/assignments/lanes";
 import { persistDisplayConfigSurface } from "@/lib/displayConfig";
 import { eventName } from "@/lib/eventDisplay";
 import {
@@ -819,7 +813,7 @@ export default function AssignmentsPage() {
     const settle = (source: Assignment[]) => {
       const owned = new Set(keys.filter((key) => latestWriteRef.current.get(key) === seq));
       const isOwned = (row: Assignment) => owned.has(placementKeyOf(row));
-      setRows((current) => replaceInPlace(current, isOwned, source.filter(isOwned)));
+      setRows((current) => [...current.filter((row) => !isOwned(row)), ...source.filter(isOwned)]);
     };
 
     try {
@@ -972,7 +966,7 @@ export default function AssignmentsPage() {
     }
     const nextIds = new Set(next.map((row) => row.id));
     return {
-      rows: replaceInPlace(current, (row) => laneIds.has(row.id), [...parked, ...next]),
+      rows: [...current.filter((row) => !laneIds.has(row.id)), ...parked, ...next],
       added: next.filter((row) => !laneIds.has(row.id)),
       removed: inLane.filter((row) => !nextIds.has(row.id)),
     };
@@ -1610,11 +1604,7 @@ export default function AssignmentsPage() {
       // Put back exactly where it came from.
       if (added.length === 0 && removed.length === 0) return;
 
-      // A bar moved to another event joins the bottom of it; one edited within
-      // its event keeps its place.
-      const next = sameEvent
-        ? replaceInPlace(rows, (row) => movingIds.has(row.id), [...kept, ...added])
-        : [...rows.filter((row) => !movingIds.has(row.id)), ...kept, ...added];
+      const next = [...rows.filter((row) => !movingIds.has(row.id)), ...kept, ...added];
       setRows(next);
       syncPlacements([...removed, ...added], rows, next);
       return;

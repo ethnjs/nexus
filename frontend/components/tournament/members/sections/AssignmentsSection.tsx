@@ -44,11 +44,11 @@ import {
   buildLanes,
   type Lane,
   laneFlags,
-  replaceInPlace,
   rolesOf,
   sameRole,
 } from "@/lib/assignments/lanes";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { byName } from "@/lib/memberSort";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { useToast } from "@/lib/useToast";
 
@@ -75,6 +75,14 @@ interface AssignmentsSectionProps {
 /** A bar here is one event, not one person — the inverse of the board's key. */
 function laneKeyOf(assignment: Assignment) {
   return String(assignment.event.id);
+}
+
+/** The panel's bars are events, so they sort by the name each one shows. */
+function byEventName(a: Assignment, b: Assignment) {
+  return (
+    byName(eventNameWithDivision(a.event), eventNameWithDivision(b.event)) ||
+    a.event.id - b.event.id
+  );
 }
 
 function cellKey(eventId: number, trackId: number, shiftId: number | null, roleId: number | null) {
@@ -231,7 +239,7 @@ export function AssignmentsSection({
     assignmentsApi
       .setPlacements(tournamentId, placements)
       .then((fresh) => {
-        setRows((current) => replaceInPlace(current, inScope, fresh));
+        setRows((current) => [...current.filter((row) => !inScope(row)), ...fresh]);
         onChanged?.();
       })
       .catch((err: unknown) => {
@@ -502,7 +510,7 @@ function DayTimeline({
   // Only this track's rows: an event can be staffed on two days, and each
   // day's timeline speaks for its own.
   const mine = rows.filter((row) => row.track.id === track.id && row.shift !== null);
-  const { lanes } = buildLanes(mine, shiftIds, laneKeyOf);
+  const { lanes } = buildLanes(mine, shiftIds, laneKeyOf, byEventName);
   const columns = shifts.length;
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`;
   const boundaries = [shifts[0].start, ...shifts.map((s) => s.end)];
@@ -757,6 +765,7 @@ function WorkstreamRow({
                 rows.filter((row) => row.shift === null && row.track.id === track.id),
                 [],
                 laneKeyOf,
+                byEventName,
               ).unpinned
             }
             roleCatalog={roleCatalog}

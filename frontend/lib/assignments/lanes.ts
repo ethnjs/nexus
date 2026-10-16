@@ -25,21 +25,6 @@ export function sameRole(a: AssignmentRole, b: AssignmentRole): boolean {
   return roleKey(a) === roleKey(b);
 }
 
-/** `rows` with every row matching `isReplaced` swapped for `replacement`, put
- *  where the first replaced row was. Lanes are drawn in the order their rows
- *  first appear, so appending instead moves the edited bar to the bottom, and
- *  moving it mid-resize drops the pointer capture. */
-export function replaceInPlace(
-  rows: Assignment[],
-  isReplaced: (row: Assignment) => boolean,
-  replacement: Assignment[],
-): Assignment[] {
-  const at = rows.findIndex(isReplaced);
-  const kept = rows.filter((row) => !isReplaced(row));
-  if (at === -1) return [...kept, ...replacement];
-  return [...kept.slice(0, at), ...replacement, ...kept.slice(at)];
-}
-
 /** The distinct roles a set of rows carries, in a stable order so the pill's
  *  summary doesn't reshuffle every time rows are rebuilt. */
 export function rolesOf(rows: Assignment[]): AssignmentRole[] {
@@ -79,6 +64,10 @@ export function buildLanes(
   rows: Assignment[],
   shiftIds: number[],
   keyOf: (assignment: Assignment) => string,
+  // Compares two lanes by one row of each. Lanes are sorted rather than left
+  // in row order, which follows write history: an edit that recreates a
+  // bar's rows would otherwise move it, even mid-resize.
+  compare: (a: Assignment, b: Assignment) => number,
 ): { lanes: Lane[]; unpinned: Lane[] } {
   const pinned = new Map<string, Assignment[]>();
   const loose = new Map<string, Assignment[]>();
@@ -93,15 +82,17 @@ export function buildLanes(
   }
 
   const toLanes = (grouped: Map<string, Assignment[]>): Lane[] =>
-    [...grouped.entries()].map(([key, group]) => ({
-      key,
-      assignments: group,
-      // Distinct, because the same shift appears once per role.
-      covered: [
-        ...new Set(group.map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))),
-      ].filter((i) => i >= 0),
-      roles: rolesOf(group),
-    }));
+    [...grouped.entries()]
+      .map(([key, group]) => ({
+        key,
+        assignments: group,
+        // Distinct, because the same shift appears once per role.
+        covered: [
+          ...new Set(group.map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1))),
+        ].filter((i) => i >= 0),
+        roles: rolesOf(group),
+      }))
+      .sort((a, b) => compare(a.assignments[0], b.assignments[0]));
 
   return { lanes: toLanes(pinned), unpinned: toLanes(loose) };
 }

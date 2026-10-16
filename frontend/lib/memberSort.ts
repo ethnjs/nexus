@@ -216,7 +216,7 @@ export function memberSortValue(m: MembershipFull, field: MemberSortField): Sort
   return null;
 }
 
-const byName = (a: string | null, b: string | null) =>
+export const byName = (a: string | null, b: string | null) =>
   (a ?? "").localeCompare(b ?? "", undefined, { numeric: true, sensitivity: "base" });
 
 /** The hidden tail every chain ends with, so the order is total (see
