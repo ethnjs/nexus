@@ -63,8 +63,8 @@ def _reassign_default_role(
     updates: dict,
     actor: User,
 ) -> None:
-    """Move the track's event assignments in its current default role to the
-    new one. Runs before the new default is set on the row."""
+    """Move the track's bars whose only role is its current default to the new
+    one. Runs before the new default is set on the row."""
     if not has_permission(actor, tournament.id, MANAGE_MEMBERS, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
@@ -156,8 +156,8 @@ def create_track(
 # PATCH /tournaments/{tournament_id}/tracks/{track_id}/ — edit a track's name,
 # schedule, venue, divisions, default role or self-confirm flag.
 #
-# `reassign_assignments` moves the people staffed in the old default role to
-# the new one in the same commit, so the setting and the rows can't disagree.
+# `reassign_assignments` also moves the bars whose only role is the old
+# default to the new one, in the same commit.
 #
 # `is_archived` is not editable here: pending-delete is set by DELETE and
 # cleared by /restore/, never by a TD toggling a field.

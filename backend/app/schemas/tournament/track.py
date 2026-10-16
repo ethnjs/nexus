@@ -135,8 +135,8 @@ class TournamentTrackUpdate(BaseModel):
     location: str | None = None
     division: list[str] | None = None
     default_role_id: int | None = None
-    # Also move this track's event assignments from the old default role to
-    # the new one, in the same transaction. Needs manage_members as well.
+    # Also move this track's bars whose only role is the old default to the
+    # new one, in the same transaction. Needs manage_members as well.
     reassign_assignments: bool = False
 
     @field_validator("name")

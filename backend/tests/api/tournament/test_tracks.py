@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from app.models.models import (
     Form,
@@ -8,6 +8,7 @@ from app.models.models import (
     TournamentMembership,
     TournamentMembershipTrackStatus,
     TournamentRole,
+    TournamentShift,
     TournamentTrack,
     TournamentTrackAssignment,
     University,
@@ -573,11 +574,26 @@ def _event_on(db, tournament, track_id, name="Anatomy") -> TournamentEvent:
     return event
 
 
-def _staff(db, membership, event, track_id, role) -> TournamentTrackAssignment:
+def _shift_on(db, tournament, track_id, label, hour) -> TournamentShift:
+    start = datetime.combine(date.today(), time(hour), tzinfo=UTC)
+    shift = TournamentShift(
+        tournament_id=tournament.id,
+        track_id=track_id,
+        label=label,
+        start=start,
+        end=start + timedelta(hours=4),
+    )
+    db.add(shift)
+    db.flush()
+    return shift
+
+
+def _staff(db, membership, event, track_id, role, shift=None) -> TournamentTrackAssignment:
     row = TournamentTrackAssignment(
         membership_id=membership.id,
         role_id=role.id,
         tournament_event_id=event.id,
+        tournament_shift_id=shift.id if shift else None,
         tournament_track_id=track_id,
     )
     db.add(row)
@@ -599,9 +615,11 @@ def _reassign(client, tournament, track, role, **extra):
     )
 
 
-def test_reassign_moves_only_the_old_default_on_this_track(
+def test_reassign_moves_only_bars_whose_only_role_is_the_old_default(
     client, db, td_user, td_tournament, other_user
 ):
+    """Checked per bar, so one member can move on one event and stay on
+    another."""
     track = _track_with_default(db, td_tournament)
     other_track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
     db.add(other_track)
@@ -609,10 +627,19 @@ def test_reassign_moves_only_the_old_default_on_this_track(
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     volunteer = _role(db, td_tournament, "Volunteer")
     runner = _role(db, td_tournament, "Runner")
-    event = _event_on(db, td_tournament, track.id)
-    elsewhere = _event_on(db, td_tournament, other_track.id, name="Astronomy")
-    moved = _staff(db, membership, event, track.id, volunteer)
-    other_role = _staff(db, membership, event, track.id, runner)
+    morning = _shift_on(db, td_tournament, track.id, "Morning", 8)
+    afternoon = _shift_on(db, td_tournament, track.id, "Afternoon", 13)
+    anatomy = _event_on(db, td_tournament, track.id)
+    astronomy = _event_on(db, td_tournament, track.id, name="Astronomy")
+    elsewhere = _event_on(db, td_tournament, other_track.id, name="Circuit Lab")
+    moved = [
+        _staff(db, membership, anatomy, track.id, volunteer, morning),
+        _staff(db, membership, anatomy, track.id, volunteer, afternoon),
+    ]
+    mixed = [
+        _staff(db, membership, astronomy, track.id, volunteer, morning),
+        _staff(db, membership, astronomy, track.id, runner, afternoon),
+    ]
     other_track_row = _staff(db, membership, elsewhere, other_track.id, volunteer)
     db.commit()
     login(client, "td@test.com", "tdpass")
@@ -622,12 +649,12 @@ def test_reassign_moves_only_the_old_default_on_this_track(
     assert response.status_code == 200
     assert response.json()["default_role_id"] == _role(db, td_tournament, "Test Writer").id
     db.expire_all()
-    assert moved.role.label == "Test Writer"
-    assert other_role.role.label == "Runner"
+    assert [row.role.label for row in moved] == ["Test Writer", "Test Writer"]
+    assert [row.role.label for row in mixed] == ["Volunteer", "Runner"]
     assert other_track_row.role.label == "Volunteer"
 
 
-def test_reassign_merges_into_a_row_already_in_the_new_role(
+def test_reassign_leaves_a_bar_that_also_holds_the_new_role(
     client, db, td_user, td_tournament, other_user
 ):
     track = _track_with_default(db, td_tournament)
@@ -642,7 +669,7 @@ def test_reassign_merges_into_a_row_already_in_the_new_role(
 
     assert response.status_code == 200
     rows = db.query(TournamentTrackAssignment).filter_by(tournament_event_id=event.id).all()
-    assert [row.role.label for row in rows] == ["Runner"]
+    assert sorted(row.role.label for row in rows) == ["Runner", "Volunteer"]
 
 
 def test_without_the_flag_assignments_keep_their_role(

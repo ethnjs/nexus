@@ -94,6 +94,21 @@ export function placementKeyOf(assignment: Assignment) {
   return `${assignment.member.membership_id}:${assignment.event.id}:${assignment.track.id}`;
 }
 
+/** The rows a track default-role change moves: every bar on `trackId` whose
+ *  only role is `roleId`, a bar here being one member on one event. Mirrors
+ *  reassign_track_role on the server. */
+export function soleRoleBars(rows: Assignment[], trackId: number, roleId: number): Assignment[][] {
+  const bars = new Map<string, Assignment[]>();
+  for (const row of rows) {
+    if (row.track.id !== trackId) continue;
+    const key = `${row.member.membership_id}:${row.event.id}`;
+    const bar = bars.get(key);
+    if (bar) bar.push(row);
+    else bars.set(key, [row]);
+  }
+  return [...bars.values()].filter((bar) => bar.every((row) => row.role.id === roleId));
+}
+
 /** The board's bars: one per member on the event, across its shifts. */
 export function buildLanes(rowAssignments: Assignment[], shiftIds: number[]) {
   return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf);

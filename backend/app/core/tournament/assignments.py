@@ -142,12 +142,12 @@ def reassign_track_role(
     new_role: TournamentRole,
     actor: User,
 ) -> None:
-    """Move every event assignment on this track from `old_role_id` to
-    `new_role`, without committing.
+    """Move this track's bars whose only role is `old_role_id` to `new_role`,
+    without committing.
 
-    A member who already holds `new_role` in the same cell loses the old row
-    instead, since the unique indexes allow only one. Every member is
-    rank-checked before any row changes, so a refusal leaves them all alone.
+    A bar is one member on one event. One that holds any other role as well
+    was set up by hand, so it is left alone. Every member is rank-checked
+    before any row changes, so a refusal leaves them all alone.
     """
     rows = (
         db.query(TournamentTrackAssignment)
@@ -159,25 +159,21 @@ def reassign_track_role(
         .filter(
             TournamentTrackAssignment.tournament_track_id == track_id,
             TournamentTrackAssignment.tournament_event_id.isnot(None),
-            TournamentTrackAssignment.role_id.in_((old_role_id, new_role.id)),
         )
         .all()
     )
-    moving = [row for row in rows if row.role_id == old_role_id]
-    taken = {
-        (row.membership_id, row.tournament_event_id, row.tournament_shift_id)
-        for row in rows
-        if row.role_id == new_role.id
-    }
+    bars: dict[tuple[int, int | None], list[TournamentTrackAssignment]] = {}
+    for row in rows:
+        bars.setdefault((row.membership_id, row.tournament_event_id), []).append(row)
+    moving = [
+        row for bar in bars.values() if {row.role_id for row in bar} == {old_role_id} for row in bar
+    ]
 
     for membership in {row.membership for row in moving}:
         authorize_role_grant(db, tournament, membership, new_role, actor)
 
     for row in moving:
-        if (row.membership_id, row.tournament_event_id, row.tournament_shift_id) in taken:
-            db.delete(row)
-        else:
-            row.role_id = new_role.id
+        row.role_id = new_role.id
 
 
 def detach_shifts_from_assignments(

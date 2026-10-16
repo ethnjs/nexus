@@ -110,6 +110,7 @@ import {
   fullName,
   laneKeyOf,
   placementKeyOf,
+  soleRoleBars,
   withOrderedShifts,
 } from "@/lib/assignments/board";
 import {
@@ -1124,14 +1125,14 @@ export default function AssignmentsPage() {
     track: TournamentTrack;
     oldRole: Role;
     newRole: Role;
-    affected: Assignment[];
+    affected: Assignment[][];
     resolve: () => void;
   } | null>(null);
 
   async function applyDefaultRoleChange(
     track: TournamentTrack,
     newRole: Role,
-    affected: Assignment[],
+    affected: Assignment[][],
   ) {
     const updated = await tournamentTracksApi.update(tournamentId, track.id, {
       default_role_id: newRole.id,
@@ -1155,31 +1156,20 @@ export default function AssignmentsPage() {
           ),
     );
     if (affected.length > 0) {
-      // Mirrors reassign_track_role: someone who already holds the new role
-      // in that cell loses the old row instead of gaining a duplicate.
       const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label };
-      const affectedIds = new Set(affected.map((r) => r.id));
-      const cellOf = (r: Assignment) =>
-        `${r.member.membership_id}|${r.event.id}|${r.shift?.id ?? "none"}`;
-      setRows((current) => {
-        const taken = new Set(
-          current.filter((r) => r.track.id === track.id && r.role.id === newRole.id).map(cellOf),
-        );
-        return current.flatMap((r) => {
-          if (!affectedIds.has(r.id)) return [r];
-          return taken.has(cellOf(r)) ? [] : [{ ...r, role: nextRole }];
-        });
-      });
+      const affectedIds = new Set(affected.flat().map((r) => r.id));
+      setRows((current) =>
+        current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)),
+      );
       setBoardWriteVersion((v) => v + 1);
     }
   }
 
-  /** Picking a new default role for a track. Only the people currently
-   *  holding the *old* default on that track move to the new one — anyone
-   *  staffed under a different role is untouched, since a role they were
-   *  deliberately given is not the same fact as a role they inherited from
-   *  the track's default. Nothing to migrate (no default set yet, or nobody
-   *  holds it) applies immediately with no prompt. */
+  /** Picking a new default role for a track. Only bars whose sole role is
+   *  the *old* default move to the new one: a bar holding any other role was
+   *  set up by hand, and its roles are not the same fact as a role inherited
+   *  from the track's default. Nothing to migrate (no default set yet, or no
+   *  such bar) applies immediately with no prompt. */
   function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
     if (!requireWriteAccess()) return Promise.resolve();
     if (track.default_role_id === newRole.id) return Promise.resolve();
@@ -1187,9 +1177,7 @@ export default function AssignmentsPage() {
       track.default_role_id === null
         ? null
         : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
-    const affected = oldRole
-      ? rows.filter((r) => r.track.id === track.id && r.role.id === oldRole.id)
-      : [];
+    const affected = oldRole ? soleRoleBars(rows, track.id, oldRole.id) : [];
     if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, []);
     return new Promise<void>((resolve) => {
       setPendingRoleChange({ track, oldRole, newRole, affected, resolve });
@@ -1950,10 +1938,11 @@ export default function AssignmentsPage() {
               {pendingRoleChange.track.name}&rsquo;s default role is changing from{" "}
               <strong>{pendingRoleChange.oldRole.label}</strong> to{" "}
               <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{" "}
-              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{" "}
+              {pendingRoleChange.affected.length}{" "}
               {pendingRoleChange.affected.length === 1 ? "assignment" : "assignments"} on this track
-              to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on this
-              track is left alone.
+              whose only role is {pendingRoleChange.oldRole.label} to{" "}
+              {pendingRoleChange.newRole.label}. Anyone who also holds another role on that event
+              keeps their roles.
             </>
           }
           confirmLabel="Change role"
