@@ -87,7 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } finally {
-      setUser(null);
+      // No setUser(null): the full reload resets it anyway, and clearing it
+      // first flashes whatever the current page shows signed-out visitors.
       window.location.href = "/";
     }
   }
