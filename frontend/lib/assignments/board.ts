@@ -10,6 +10,7 @@
 
 import type { Assignment, Role, TournamentEvent, TournamentTrack } from "@/lib/api";
 import { type AssignmentRole, buildLanes as buildAssignmentLanes } from "@/lib/assignments/lanes";
+import { byName } from "@/lib/memberSort";
 
 /**
  * What a chip can do to the bar it draws.
@@ -87,7 +88,40 @@ export function laneKeyOf(assignment: Assignment) {
     : `${member}:track:${assignment.track.id}`;
 }
 
+/** The placement a row belongs to: one member on one event and track, which
+ *  is what a single entry of assignmentsApi.setPlacements rewrites. Wider
+ *  than a lane, since a pinned and an unpinned bar can share a track. */
+export function placementKeyOf(assignment: Assignment) {
+  return `${assignment.member.membership_id}:${assignment.event.id}:${assignment.track.id}`;
+}
+
+/** The rows a track default-role change moves: every bar on `trackId` whose
+ *  only role is `roleId`, a bar here being one member on one event. Mirrors
+ *  reassign_track_role on the server. */
+export function soleRoleBars(rows: Assignment[], trackId: number, roleId: number): Assignment[][] {
+  const bars = new Map<string, Assignment[]>();
+  for (const row of rows) {
+    if (row.track.id !== trackId) continue;
+    const key = `${row.member.membership_id}:${row.event.id}`;
+    const bar = bars.get(key);
+    if (bar) bar.push(row);
+    else bars.set(key, [row]);
+  }
+  return [...bars.values()].filter((bar) => bar.every((row) => row.role.id === roleId));
+}
+
+/** Alphabetical, as the member sidebar falls back to. The membership id breaks
+ *  ties: a person has one per tournament, so two members with the same name
+ *  come out in the same order on every event. */
+function byMemberName(a: Assignment, b: Assignment) {
+  return (
+    byName(a.member.first_name, b.member.first_name) ||
+    byName(a.member.last_name, b.member.last_name) ||
+    (a.member.membership_id ?? 0) - (b.member.membership_id ?? 0)
+  );
+}
+
 /** The board's bars: one per member on the event, across its shifts. */
 export function buildLanes(rowAssignments: Assignment[], shiftIds: number[]) {
-  return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf);
+  return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf, byMemberName);
 }

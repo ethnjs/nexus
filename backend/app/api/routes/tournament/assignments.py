@@ -21,10 +21,16 @@ from app.models.models import (
     TournamentEvent,
     TournamentMembership,
     TournamentRole,
+    TournamentTrack,
     TournamentTrackAssignment,
     User,
 )
-from app.schemas.tournament.assignment import AssignmentCreate, AssignmentRead, AssignmentUpdate
+from app.schemas.tournament.assignment import (
+    AssignmentCreate,
+    AssignmentPlacement,
+    AssignmentRead,
+    AssignmentUpdate,
+)
 
 # Flat under the tournament, not nested under either parent: an assignment
 # joins an event to a member, and the board that writes these drags between
@@ -182,6 +188,107 @@ def create_assignment(
     return AssignmentRead.from_row(
         _with_relations(db.query(TournamentTrackAssignment)).filter_by(id=assignment.id).one()
     )
+
+
+# ---------------------------------------------------------------------------
+# PUT /tournaments/{tournament_id}/assignments/placements/ — manage_members
+#
+# Sets several placements in one transaction. A placement is one member on one
+# event and track, and its `cells` list every (shift, role) row they should
+# have there. The existing rows are diffed against it, so a row that stays
+# keeps its id. A board gesture can touch more than one placement (a drag
+# between events clears one and fills another), and any 403, 404, 409 or 422
+# leaves all of them as they were.
+# ---------------------------------------------------------------------------
+@router.put("/placements/", response_model=list[AssignmentRead])
+def set_placements(
+    tournament_id: int,
+    payload: list[AssignmentPlacement],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    scopes = [(p.membership_id, p.tournament_event_id, p.tournament_track_id) for p in payload]
+    if len(set(scopes)) != len(scopes):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Each member, event and track can appear in only one placement",
+        )
+
+    # Everything is checked before any row changes: authorize_role_grant asks
+    # which roles the member already holds, and a delete earlier in this same
+    # request must not change its answer.
+    kept_ids: list[int] = []
+    to_delete: list[TournamentTrackAssignment] = []
+    to_add: list[TournamentTrackAssignment] = []
+    roles: dict[int, TournamentRole] = {}
+    authorized: set[tuple[int, int]] = set()
+    for placement in payload:
+        event = get_scoped_or_404(
+            db, TournamentEvent, placement.tournament_event_id, tournament_id, "Event"
+        )
+        membership = get_scoped_or_404(
+            db, TournamentMembership, placement.membership_id, tournament_id, "Membership"
+        )
+        get_scoped_or_404(
+            db, TournamentTrack, placement.tournament_track_id, tournament_id, "Track"
+        )
+
+        existing = {
+            (row.tournament_shift_id, row.role_id): row
+            for row in db.query(TournamentTrackAssignment).filter_by(
+                membership_id=membership.id,
+                tournament_event_id=event.id,
+                tournament_track_id=placement.tournament_track_id,
+            )
+        }
+        wanted = dict.fromkeys((cell.tournament_shift_id, cell.role_id) for cell in placement.cells)
+        for cell, row in existing.items():
+            if cell in wanted:
+                kept_ids.append(row.id)
+            else:
+                to_delete.append(row)
+
+        for shift_id, role_id in wanted:
+            if (shift_id, role_id) in existing:
+                continue
+            if role_id not in roles:
+                roles[role_id] = get_scoped_or_404(
+                    db, TournamentRole, role_id, tournament_id, "Role"
+                )
+            shift = validate_shift_on_event(db, event, shift_id, tournament_id)
+            track_id = resolve_assignment_track(
+                db, shift, placement.tournament_track_id, tournament_id
+            )
+            if (membership.id, role_id) not in authorized:
+                authorize_role_grant(db, tournament, membership, roles[role_id], current_user)
+                authorized.add((membership.id, role_id))
+            to_add.append(
+                TournamentTrackAssignment(
+                    tournament_event_id=event.id,
+                    membership_id=membership.id,
+                    role_id=role_id,
+                    tournament_shift_id=shift_id,
+                    tournament_track_id=track_id,
+                )
+            )
+
+    for row in to_delete:
+        db.delete(row)
+    db.add_all(to_add)
+    _flush_or_conflict(db)
+    ids = kept_ids + [row.id for row in to_add]
+    db.commit()
+
+    rows = (
+        _with_relations(db.query(TournamentTrackAssignment))
+        .filter(TournamentTrackAssignment.id.in_(ids))
+        .order_by(TournamentTrackAssignment.id)
+        .all()
+    )
+    return [AssignmentRead.from_row(row) for row in rows]
 
 
 # ---------------------------------------------------------------------------

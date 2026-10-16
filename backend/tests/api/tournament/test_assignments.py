@@ -1028,6 +1028,293 @@ class TestUpdateAndDeleteRoutes:
         assert _staffing_count(db) == 1
 
 
+class TestPlacementsRoute:
+    """PUT /assignments/placements/ — one board gesture, however many rows it
+    touches, in one transaction."""
+
+    def _url(self, tournament):
+        return f"/tournaments/{tournament.id}/assignments/placements/"
+
+    def _event_with_shifts(self, db, tournament, user):
+        grant_role(db, tournament, user, "Test Writer")
+        grant_role(db, tournament, user, "Test Reviewer")
+        event = _make_event(db, tournament, name="Anatomy")
+        morning = _make_shift(db, tournament, label="Morning", hour=8)
+        afternoon = _make_shift(db, tournament, label="Afternoon", hour=13)
+        _attach_shift(db, event, morning)
+        _attach_shift(db, event, afternoon)
+        return event, morning, afternoon
+
+    def _placement(self, db, tournament, user, event, cells, track_id=None):
+        return {
+            "membership_id": _membership_id(db, tournament, user),
+            "tournament_event_id": event.id,
+            "tournament_track_id": track_id or primary_track_id(db, tournament.id),
+            "cells": [{"tournament_shift_id": shift, "role_id": role} for shift, role in cells],
+        }
+
+    def _cells(self, body):
+        return {(row["shift"]["id"] if row["shift"] else None, row["role"]["id"]) for row in body}
+
+    def test_adds_removes_and_keeps_rows_with_stable_ids(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        event, morning, afternoon = self._event_with_shifts(db, td_tournament, other_user)
+        writer = _role_id(db, td_tournament, "Test Writer")
+        reviewer = _role_id(db, td_tournament, "Test Reviewer")
+        login(client, "td@test.com", "tdpass")
+
+        def put(cells):
+            response = client.put(
+                self._url(td_tournament),
+                json=[self._placement(db, td_tournament, other_user, event, cells)],
+            )
+            assert response.status_code == 200
+            return response.json()
+
+        first = put([(morning.id, writer)])
+        kept_id = first[0]["id"]
+
+        grown = put([(morning.id, writer), (afternoon.id, writer), (morning.id, reviewer)])
+        assert self._cells(grown) == {
+            (morning.id, writer),
+            (afternoon.id, writer),
+            (morning.id, reviewer),
+        }
+        ids = {(row["shift"]["id"], row["role"]["id"]): row["id"] for row in grown}
+        assert ids[(morning.id, writer)] == kept_id
+
+        shrunk = put([(afternoon.id, writer)])
+        assert [row["id"] for row in shrunk] == [ids[(afternoon.id, writer)]]
+        assert _staffing_count(db) == 1
+
+    def test_leaves_rows_outside_the_placement_alone(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        event, morning, _ = self._event_with_shifts(db, td_tournament, other_user)
+        other_event = _make_event(db, td_tournament, name="Astronomy")
+        writer = _role_id(db, td_tournament, "Test Writer")
+        untouched = _assign(
+            db,
+            other_event,
+            SimpleNamespace(
+                membership_id=_membership_id(db, td_tournament, other_user), role_id=writer
+            ),
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[self._placement(db, td_tournament, other_user, event, [(morning.id, writer)])],
+        )
+
+        assert response.status_code == 200
+        assert db.get(TournamentTrackAssignment, untouched.id) is not None
+        assert _staffing_count(db) == 2
+
+    def test_empty_cells_clear_the_placement(self, client, db, td_user, td_tournament, other_user):
+        event, morning, afternoon = self._event_with_shifts(db, td_tournament, other_user)
+        writer = _role_id(db, td_tournament, "Test Writer")
+        login(client, "td@test.com", "tdpass")
+        client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(
+                    db,
+                    td_tournament,
+                    other_user,
+                    event,
+                    [(morning.id, writer), (afternoon.id, writer)],
+                )
+            ],
+        )
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[self._placement(db, td_tournament, other_user, event, [])],
+        )
+
+        assert response.status_code == 200
+        assert response.json() == []
+        assert _staffing_count(db) == 0
+
+    def test_a_move_between_events_is_one_request(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        source = _make_event(db, td_tournament, name="Anatomy")
+        target = _make_event(db, td_tournament, name="Astronomy")
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        writer = _role_id(db, td_tournament, "Test Writer")
+        login(client, "td@test.com", "tdpass")
+        client.put(
+            self._url(td_tournament),
+            json=[self._placement(db, td_tournament, other_user, source, [(None, writer)])],
+        )
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(db, td_tournament, other_user, source, []),
+                self._placement(db, td_tournament, other_user, target, [(None, writer)]),
+            ],
+        )
+
+        assert response.status_code == 200
+        assert [row["event"]["id"] for row in response.json()] == [target.id]
+        assert [row.tournament_event_id for row in _staffing_rows(db)] == [target.id]
+
+    def test_a_forbidden_placement_rolls_back_the_rest(self, client, db, td_tournament, other_user):
+        """The second placement grants a role that outranks the actor, so the
+        first, which on its own is fine, must not land either."""
+        grant_role(db, td_tournament, other_user, "Volunteer Coordinator")
+        anatomy = _make_event(db, td_tournament, name="Anatomy")
+        astronomy = _make_event(db, td_tournament, name="Astronomy")
+        login(client, "other@test.com", "otherpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(
+                    db,
+                    td_tournament,
+                    other_user,
+                    anatomy,
+                    [(None, _role_id(db, td_tournament, "Test Writer"))],
+                ),
+                self._placement(
+                    db,
+                    td_tournament,
+                    other_user,
+                    astronomy,
+                    [(None, _role_id(db, td_tournament, "Tournament Director"))],
+                ),
+            ],
+        )
+
+        assert response.status_code == 403
+        assert _staffing_count(db) == 0
+
+    def test_a_conflict_rolls_back_the_rest(
+        self, client, db, td_user, td_tournament, other_user, monkeypatch
+    ):
+        """The route diffs against what is there, so a 409 only comes from a
+        write landing between its read and its flush. This makes one."""
+        from app.api.routes.tournament import assignments as route
+
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        grant_role(db, td_tournament, other_user, "Test Reviewer")
+        anatomy = _make_event(db, td_tournament, name="Anatomy")
+        astronomy = _make_event(db, td_tournament, name="Astronomy")
+        writer = _role_id(db, td_tournament, "Test Writer")
+        reviewer = _role_id(db, td_tournament, "Test Reviewer")
+        membership_id = _membership_id(db, td_tournament, other_user)
+
+        real = route.authorize_role_grant
+
+        def racing(db_, tournament, membership, role, actor):
+            real(db_, tournament, membership, role, actor)
+            if role.id == reviewer:
+                _assign(
+                    db_, astronomy, SimpleNamespace(membership_id=membership_id, role_id=reviewer)
+                )
+
+        monkeypatch.setattr(route, "authorize_role_grant", racing)
+        login(client, "td@test.com", "tdpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(db, td_tournament, other_user, anatomy, [(None, writer)]),
+                self._placement(db, td_tournament, other_user, astronomy, [(None, reviewer)]),
+            ],
+        )
+
+        assert response.status_code == 409
+        assert _staffing_count(db) == 0
+
+    def test_an_event_off_the_named_track_rolls_back_the_rest(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        anatomy = _make_event(db, td_tournament, name="Anatomy")
+        astronomy = _make_event(db, td_tournament, name="Astronomy")
+        writer = _role_id(db, td_tournament, "Test Writer")
+        unused_track = _other_track_id(db, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(db, td_tournament, other_user, anatomy, [(None, writer)]),
+                self._placement(
+                    db,
+                    td_tournament,
+                    other_user,
+                    astronomy,
+                    [(None, writer)],
+                    track_id=unused_track,
+                ),
+            ],
+        )
+
+        assert response.status_code == 422
+        assert _staffing_count(db) == 0
+
+    def test_the_same_placement_twice_is_rejected(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament)
+        writer = _role_id(db, td_tournament, "Test Writer")
+        login(client, "td@test.com", "tdpass")
+        placement = self._placement(db, td_tournament, other_user, event, [(None, writer)])
+
+        response = client.put(self._url(td_tournament), json=[placement, placement])
+
+        assert response.status_code == 422
+        assert _staffing_count(db) == 0
+
+    def test_an_archived_tournament_is_refused(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament)
+        writer = _role_id(db, td_tournament, "Test Writer")
+        td_tournament.is_archived = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[self._placement(db, td_tournament, other_user, event, [(None, writer)])],
+        )
+
+        assert response.status_code == 403
+        assert _staffing_count(db) == 0
+
+    def test_another_tournaments_event_is_not_found(
+        self, client, db, td_user, td_tournament, other_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        foreign_event = _make_event(db, other_tournament, name="Astronomy")
+        writer = _role_id(db, td_tournament, "Test Writer")
+        login(client, "td@test.com", "tdpass")
+
+        response = client.put(
+            self._url(td_tournament),
+            json=[
+                self._placement(db, td_tournament, other_user, event, [(None, writer)]),
+                self._placement(db, td_tournament, other_user, foreign_event, [(None, writer)]),
+            ],
+        )
+
+        assert response.status_code == 404
+        assert _staffing_count(db) == 0
+
+
 class TestMembershipReads:
     """What the board's belt and the member panel read: the `assigned` filter
     and the `assignments` field group on the roster route."""

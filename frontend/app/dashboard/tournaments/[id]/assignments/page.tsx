@@ -16,8 +16,8 @@ import { useParams, useSearchParams } from "next/navigation";
  * Resizing a bar adds or removes rows; it does not edit a span.
  *
  * Writes: every mutation (drag, resize, role toggle, remove) updates local
- * state first and syncs to assignmentsApi after — see createAssignmentRow /
- * deleteAssignmentRow and the lane-diff helpers below. A row not yet
+ * state first, then sends the whole gesture as one setPlacements request —
+ * see syncPlacements and the lane-diff helpers below. A row not yet
  * confirmed by the server carries a negative id (see nextLocalId) so a
  * handler can always tell "real" from "still in flight" without a second
  * bookkeeping structure.
@@ -109,6 +109,8 @@ import {
   type BoardHandlers,
   fullName,
   laneKeyOf,
+  placementKeyOf,
+  soleRoleBars,
   withOrderedShifts,
 } from "@/lib/assignments/board";
 import {
@@ -762,10 +764,8 @@ export default function AssignmentsPage() {
   }, [memberById, rows, eventTrackIds]);
 
   // ---------------------------------------------------------------------
-  // Server sync — every write lands here or in the two per-gesture callers
-  // below. Local state moves first; the API call follows and reconciles
-  // (a create swaps the temp row for the server's, a failed write rolls
-  // its local change back and toasts).
+  // Server sync. Local state moves first; syncPlacements then sends the
+  // gesture as one request and reconciles.
   // ---------------------------------------------------------------------
 
   /** Every mutating handler's first line. Matches the backend's write gate
@@ -783,44 +783,56 @@ export default function AssignmentsPage() {
     return true;
   }
 
-  async function createAssignmentRow(row: Assignment) {
+  const writeSeqRef = useRef(0);
+  const latestWriteRef = useRef(new Map<string, number>());
+
+  /**
+   * Send one gesture as a single request. `rows` already holds `next`; every
+   * placement a row in `changed` belongs to is sent with its cells from
+   * `next`. On success those placements' rows are swapped for the server's,
+   * and on failure they go back to `previous`. A placement that a newer
+   * gesture has written since is left to that gesture's response.
+   */
+  async function syncPlacements(changed: Assignment[], previous: Assignment[], next: Assignment[]) {
+    const keys = [...new Set(changed.map(placementKeyOf))];
+    if (keys.length === 0) return;
+    const seq = ++writeSeqRef.current;
+    for (const key of keys) latestWriteRef.current.set(key, seq);
+
+    const placements = keys.map((key) => {
+      const sample = changed.find((row) => placementKeyOf(row) === key)!;
+      return {
+        membership_id: sample.member.membership_id!,
+        tournament_event_id: sample.event.id,
+        tournament_track_id: sample.track.id,
+        cells: next
+          .filter((row) => placementKeyOf(row) === key)
+          .map((row) => ({ tournament_shift_id: row.shift?.id ?? null, role_id: row.role.id! })),
+      };
+    });
+    const settle = (source: Assignment[]) => {
+      const owned = new Set(keys.filter((key) => latestWriteRef.current.get(key) === seq));
+      const isOwned = (row: Assignment) => owned.has(placementKeyOf(row));
+      setRows((current) => [...current.filter((row) => !isOwned(row)), ...source.filter(isOwned)]);
+    };
+
     try {
-      const created = await assignmentsApi.create(tournamentId, {
-        tournament_event_id: row.event.id,
-        membership_id: row.member.membership_id!,
-        role_id: row.role.id!,
-        tournament_shift_id: row.shift?.id ?? null,
-        // Ignored by the server when a shift is given (the shift names its
-        // own track); the whole answer when one isn't.
-        tournament_track_id: row.shift ? null : row.track.id,
-      });
-      setRows((current) => current.map((r) => (r.id === row.id ? created : r)));
-      afterWrite(row);
+      settle(await assignmentsApi.setPlacements(tournamentId, placements));
+      afterWrite(changed);
     } catch (err) {
-      setRows((current) => current.filter((r) => r.id !== row.id));
+      settle(previous);
       show(
-        err instanceof ApiError ? err.message : "Failed to assign — the change was rolled back.",
+        err instanceof ApiError ? err.message : "That change didn't save and was undone.",
         "error",
       );
     }
   }
 
-  async function deleteAssignmentRow(row: Assignment) {
-    // A row that never reached the server (its create is still in flight, or
-    // failed and was already rolled back) has nothing there to remove.
-    if (row.id < 0) return;
-    try {
-      await assignmentsApi.delete(tournamentId, row.id);
-      afterWrite(row);
-    } catch (err) {
-      setRows((current) => [...current, row]);
-      show(err instanceof ApiError ? err.message : "Failed to remove — restored.", "error");
-    }
-  }
-
-  function afterWrite(row: Assignment) {
+  function afterWrite(changed: Assignment[]) {
     setBoardWriteVersion((v) => v + 1);
-    if (row.member.membership_id === focusedId) setPanelAssignmentsVersion((v) => v + 1);
+    if (changed.some((row) => row.member.membership_id === focusedId)) {
+      setPanelAssignmentsVersion((v) => v + 1);
+    }
   }
 
   /** The member panel wrote this member's assignments — swap their rows on
@@ -1024,13 +1036,16 @@ export default function AssignmentsPage() {
    *  the same gesture cancel out here for free — neither ever reaches this
    *  as a diff, since only the endpoints are compared. */
   function handleResizeCommit(laneKey: string, eventId: number, beforeRows: Assignment[]) {
+    const all = rowsRef.current;
     const beforeIds = new Set(beforeRows.map((r) => r.id));
-    const current = rowsRef.current.filter(
-      (row) => row.event.id === eventId && laneKeyOf(row) === laneKey,
-    );
+    const current = all.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
     const currentIds = new Set(current.map((r) => r.id));
-    for (const row of current.filter((r) => !beforeIds.has(r.id))) createAssignmentRow(row);
-    for (const row of beforeRows.filter((r) => !currentIds.has(r.id))) deleteAssignmentRow(row);
+    const changed = [
+      ...current.filter((r) => !beforeIds.has(r.id)),
+      ...beforeRows.filter((r) => !currentIds.has(r.id)),
+    ];
+    const previous = [...all.filter((r) => !currentIds.has(r.id)), ...beforeRows];
+    syncPlacements(changed, previous, all);
   }
 
   /** Drop a whole bar: every row for that member on that event, across every
@@ -1038,11 +1053,10 @@ export default function AssignmentsPage() {
    *  behind, which is not what an × on the chip promises. */
   function handleRemove(laneKey: string, eventId: number) {
     if (!requireWriteAccess()) return;
-    const toRemove = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
-    setRows((current) =>
-      current.filter((row) => !(row.event.id === eventId && laneKeyOf(row) === laneKey)),
-    );
-    for (const row of toRemove) deleteAssignmentRow(row);
+    const inLane = (row: Assignment) => row.event.id === eventId && laneKeyOf(row) === laneKey;
+    const next = rows.filter((row) => !inLane(row));
+    setRows(next);
+    syncPlacements(rows.filter(inLane), rows, next);
   }
 
   /** Add or drop one role across every shift the bar covers. Roles belong to
@@ -1078,8 +1092,7 @@ export default function AssignmentsPage() {
       removed,
     } = rebuildLane(rows, eventId, laneKey, laneShiftIds(inLane, event), nextRoles, event);
     setRows(nextRows);
-    for (const row of added) createAssignmentRow(row);
-    for (const row of removed) deleteAssignmentRow(row);
+    syncPlacements([...added, ...removed], rows, nextRows);
   }
 
   function handleToggleRole(laneKey: string, eventId: number, role: AssignmentRole) {
@@ -1106,25 +1119,39 @@ export default function AssignmentsPage() {
     track: TournamentTrack;
     oldRole: Role;
     newRole: Role;
-    affected: Assignment[];
+    affected: Assignment[][];
     resolve: () => void;
   } | null>(null);
 
   async function applyDefaultRoleChange(
     track: TournamentTrack,
     newRole: Role,
-    affected: Assignment[],
+    affected: Assignment[][],
   ) {
     const updated = await tournamentTracksApi.update(tournamentId, track.id, {
       default_role_id: newRole.id,
+      reassign_assignments: affected.length > 0,
     });
     setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)));
+    // The track headers read each event's own copy of the track, not the
+    // catalog above.
+    setEvents((current) =>
+      current === null
+        ? null
+        : current.map((e) =>
+            e.tracks.some((t) => t.id === track.id)
+              ? {
+                  ...e,
+                  tracks: e.tracks.map((t) =>
+                    t.id === track.id ? { ...t, default_role_id: updated.default_role_id } : t,
+                  ),
+                }
+              : e,
+          ),
+    );
     if (affected.length > 0) {
-      await Promise.all(
-        affected.map((row) => assignmentsApi.update(tournamentId, row.id, { role_id: newRole.id })),
-      );
       const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label };
-      const affectedIds = new Set(affected.map((r) => r.id));
+      const affectedIds = new Set(affected.flat().map((r) => r.id));
       setRows((current) =>
         current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)),
       );
@@ -1132,12 +1159,11 @@ export default function AssignmentsPage() {
     }
   }
 
-  /** Picking a new default role for a track. Only the people currently
-   *  holding the *old* default on that track move to the new one — anyone
-   *  staffed under a different role is untouched, since a role they were
-   *  deliberately given is not the same fact as a role they inherited from
-   *  the track's default. Nothing to migrate (no default set yet, or nobody
-   *  holds it) applies immediately with no prompt. */
+  /** Picking a new default role for a track. Only bars whose sole role is
+   *  the *old* default move to the new one: a bar holding any other role was
+   *  set up by hand, and its roles are not the same fact as a role inherited
+   *  from the track's default. Nothing to migrate (no default set yet, or no
+   *  such bar) applies immediately with no prompt. */
   function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
     if (!requireWriteAccess()) return Promise.resolve();
     if (track.default_role_id === newRole.id) return Promise.resolve();
@@ -1145,9 +1171,7 @@ export default function AssignmentsPage() {
       track.default_role_id === null
         ? null
         : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
-    const affected = oldRole
-      ? rows.filter((r) => r.track.id === track.id && r.role.id === oldRole.id)
-      : [];
+    const affected = oldRole ? soleRoleBars(rows, track.id, oldRole.id) : [];
     if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, []);
     return new Promise<void>((resolve) => {
       setPendingRoleChange({ track, oldRole, newRole, affected, resolve });
@@ -1526,18 +1550,10 @@ export default function AssignmentsPage() {
       const template = moving[0] ?? assignment;
       const rolesToKeep = rolesOf(moving.length > 0 ? moving : [assignment]);
 
-      // Diffed by cell rather than deleted and recreated wholesale, the same
-      // way rebuildLane treats a resize. Two reasons, and the second is the
-      // one that bites: a drop that changes nothing has to write nothing, and
-      // a drop that *overlaps* its own bar (shifts 1-2 dragged onto 2-3)
-      // shares the (shift 2, role) cell with itself. Recreating that cell
-      // races the delete of the row already holding it — the create loses on
-      // the unique index, rolls back, and then the delete takes the original
-      // away, so the person silently loses a shift they never left.
-      //
-      // Only within one event. A cross-event move shares no cells (the row
-      // names its event) and has no single PATCH for it either, since the
-      // shift is what a write can repoint — so it stays a delete and create.
+      // Diffed by cell, like rebuildLane, so a drop that overlaps its own bar
+      // (shifts 1-2 onto 2-3) keeps the shift 2 row it already had, and a drop
+      // that changes nothing writes nothing. A cross-event move shares no
+      // cells, since a row names its event.
       const sameEvent = event.id === assignment.event.id;
       const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds));
       if (!trackRef) {
@@ -1585,16 +1601,12 @@ export default function AssignmentsPage() {
       const keptIds = new Set(kept.map((row) => row.id));
       const removed = moving.filter((row) => !keptIds.has(row.id));
 
-      // Put back exactly where it came from. Not an error to swallow — there
-      // is nothing to write, so nothing is written and the rows never leave
-      // state. A *different* card landing on an occupied cell still creates,
-      // still hits the unique index, and still reports the 409: the server
-      // can't tell those two apart, only this can.
+      // Put back exactly where it came from.
       if (added.length === 0 && removed.length === 0) return;
 
-      setRows((current) => [...current.filter((row) => !movingIds.has(row.id)), ...kept, ...added]);
-      for (const row of removed) deleteAssignmentRow(row);
-      for (const row of added) createAssignmentRow(row);
+      const next = [...rows.filter((row) => !movingIds.has(row.id)), ...kept, ...added];
+      setRows(next);
+      syncPlacements([...removed, ...added], rows, next);
       return;
     }
 
@@ -1644,8 +1656,9 @@ export default function AssignmentsPage() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
-      setRows((current) => [...current, ...newRows]);
-      for (const row of newRows) createAssignmentRow(row);
+      const next = [...rows, ...newRows];
+      setRows(next);
+      syncPlacements(newRows, rows, next);
     }
   }
 
@@ -1915,10 +1928,11 @@ export default function AssignmentsPage() {
               {pendingRoleChange.track.name}&rsquo;s default role is changing from{" "}
               <strong>{pendingRoleChange.oldRole.label}</strong> to{" "}
               <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{" "}
-              {pendingRoleChange.affected.length} existing {pendingRoleChange.oldRole.label}{" "}
+              {pendingRoleChange.affected.length}{" "}
               {pendingRoleChange.affected.length === 1 ? "assignment" : "assignments"} on this track
-              to {pendingRoleChange.newRole.label}. Anyone staffed under a different role on this
-              track is left alone.
+              whose only role is {pendingRoleChange.oldRole.label} to{" "}
+              {pendingRoleChange.newRole.label}. Anyone who also holds another role on that event
+              keeps their roles.
             </>
           }
           confirmLabel="Change role"
