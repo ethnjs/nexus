@@ -114,9 +114,11 @@ function TimelineBar({
       // crossings — this is the only part of the gesture that moves at
       // pointer resolution.
       setResize({ edge, x, width: rect.width });
-      // The column the border is now inside. Same position the preview
-      // draws from, so the bar doesn't jump when the span catches up.
-      const index = Math.max(0, Math.min(columns - 1, Math.floor(x / colWidth)));
+      // The column boundary nearest the preview's border, as the column the
+      // dragged edge now ends in. onResize keeps at least the anchor column,
+      // so the bar never shrinks to nothing.
+      const boundary = Math.round(x / colWidth);
+      const index = Math.max(0, Math.min(columns - 1, edge === "end" ? boundary - 1 : boundary));
       // Pointermove fires per frame; without this every one re-commits the
       // same span and rebuilds the whole rows array for nothing.
       if (index === lastIndex) return;
@@ -130,8 +132,8 @@ function TimelineBar({
       document.body.style.cursor = priorCursor;
       document.body.style.userSelect = priorSelect;
       // Dropping the preview snaps the bar onto the span that was committed
-      // as the cursor crossed columns — the last thing the eye saw and the
-      // thing that was actually written.
+      // as the border passed each column's midpoint — the boundary nearest
+      // the last thing the eye saw, and the thing that was actually written.
       setResize(null);
       // `lane.assignments` is exactly what the lane held before this
       // gesture's first pointermove — startResize closed over it once, at

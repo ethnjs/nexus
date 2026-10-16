@@ -893,8 +893,10 @@ function EventBar({
     let index = edge === "start" ? first : last;
 
     function move(ev: globalThis.PointerEvent) {
-      const raw = Math.floor((ev.clientX - rect.left) / colWidth);
-      index = Math.max(0, Math.min(columns - 1, raw));
+      // The column boundary nearest the cursor, as the column the dragged
+      // edge now ends in; the clamp below keeps at least the anchor column.
+      const boundary = Math.round((ev.clientX - rect.left) / colWidth);
+      index = Math.max(0, Math.min(columns - 1, edge === "end" ? boundary - 1 : boundary));
     }
     function up() {
       handle.removeEventListener("pointermove", move);
