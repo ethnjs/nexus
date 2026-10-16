@@ -91,6 +91,21 @@ from app.schemas.tournament.membership import (
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
+def _no_membership_response(
+    db: Session,
+    tournament: Tournament,
+    current_user: User,
+    requested: frozenset[str] | None = None,
+) -> JSONResponse:
+    resp = MembershipMeResponse(
+        is_owner=current_user.id == tournament.owner_id,
+        roles=[],
+        permissions=sorted(get_user_permissions(current_user, tournament.id, db)),
+    )
+    data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
+    return JSONResponse(gate_age_flags(None, data))
+
+
 def _build_me_response(
     db: Session,
     tournament: Tournament,
@@ -325,12 +340,8 @@ def get_my_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Deliberately not require_membership() — that now excludes a declined
-    # membership (see has_any_membership), and this route is the escape
-    # hatch a declined member needs to see their own status and re-consent.
-    # Any authenticated user can reach this; a non-member just gets back
-    # membership_id=None, same shape already used for the site-admin-with-
-    # no-row case below.
+    # Not require_membership(): a non-member, including a site admin with no
+    # row, gets back id=None rather than a 404.
     tournament = get_tournament(tournament_id, db)
 
     membership = get_membership_by_user(
@@ -340,33 +351,14 @@ def get_my_membership(
         # The role rides along on each assignment via its own lazy="joined".
         selectinload(TournamentMembership.track_assignments),
     )
-    permissions = sorted(get_user_permissions(current_user, tournament_id, db))
-    is_owner = current_user.id == tournament.owner_id
-
-    # No row: a site admin who never joined, or any other authenticated user
-    # with no relationship to this tournament (this route no longer gates on
-    # require_membership() — see above).
     if not membership:
-        # No id/user either — there is no membership to describe.
-        resp = MembershipMeResponse(
-            is_owner=is_owner,
-            roles=[],
-            permissions=permissions,
-        )
-        data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
-        return JSONResponse(gate_age_flags(None, data))
+        return _no_membership_response(db, tournament, current_user, requested)
 
     return _build_me_response(db, tournament, membership, current_user, requested)
 
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/members/me/age-disclosure/ — self-service
-# Answers (or re-answers) the age-disclosure prompt. Decline is a *soft*
-# decline: it only ever sets a status column, never touches availability,
-# lunch, track statuses, or event preferences. Re-consenting from the same
-# modal flips the member straight back to active with that data still
-# there — no rejoin, no re-onboarding. (2.4d wires "declined" into the
-# roster/active-membership queries that must exclude it.)
 # ---------------------------------------------------------------------------
 @router.post("/me/age-disclosure/", response_model=MembershipMeResponse)
 def set_my_age_disclosure(
@@ -375,6 +367,9 @@ def set_my_age_disclosure(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Answer the tournament's age-disclosure prompt. Declining removes you from
+    the tournament along with your form responses there; rejoining takes a new
+    join link. The owner can't decline."""
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
@@ -388,7 +383,18 @@ def set_my_age_disclosure(
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
-    membership.age_disclosure = "consented" if payload.consent else "declined"
+    if not payload.consent:
+        if tournament.owner_id == current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The tournament owner can't decline age disclosure.",
+            )
+        delete_tournament_form_responses(db, tournament_id, current_user.id)
+        db.delete(membership)
+        db.commit()
+        return _no_membership_response(db, tournament, current_user)
+
+    membership.age_disclosure = "consented"
     membership.age_disclosure_at = datetime.now(UTC)
     db.commit()
     db.refresh(membership)

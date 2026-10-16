@@ -2213,43 +2213,24 @@ def test_age_disclosure_consent_sets_status_and_timestamp(client, td_tournament,
     assert membership.age_disclosure_at is not None
 
 
-def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, other_user, db):
-    """Declining sets the status column only — availability, lunch, track
-    statuses, and event preferences all survive."""
-    from datetime import datetime
-
-    from app.models.models import (
-        TournamentMembershipAvailability,
-        TournamentMembershipLunch,
-        TournamentShift,
-    )
+def test_age_disclosure_decline_removes_membership(client, td_user, td_tournament, other_user, db):
+    from app.models.models import TournamentMembership, TournamentMembershipLunch
 
     td_tournament.collect_is_over_21 = True
     db.commit()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
-
-    shift = TournamentShift(
-        tournament_id=td_tournament.id,
-        track_id=primary_track_id(db, td_tournament.id),
-        label="Morning",
-        start=datetime(2026, 5, 21, 8, 0),
-        end=datetime(2026, 5, 21, 12, 0),
-    )
-    db.add(shift)
-    db.flush()
-    db.add(
-        TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id)
-    )
+    membership_id = membership.id
     db.add(
         TournamentMembershipLunch(
-            membership_id=membership.id,
+            membership_id=membership_id,
             track_id=primary_track_id(db, td_tournament.id),
             category="entree",
             value="pizza",
             label="Pizza",
         )
     )
-    db.commit()
+    form = _make_form(db, td_user, td_tournament.id)
+    _make_answer(db, other_user.id, form, _make_field(db, form), "blue")
 
     login(client, "other@test.com", "otherpass")
     response = client.post(
@@ -2257,33 +2238,25 @@ def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, ot
         json={"consent": False},
     )
     assert response.status_code == 200
+    assert response.json()["id"] is None
 
-    db.refresh(membership)
-    assert membership.age_disclosure == "declined"
-    assert membership.age_disclosure_at is not None
-    assert (
-        db.query(TournamentMembershipAvailability).filter_by(membership_id=membership.id).count()
-        == 1
-    )
-    assert db.query(TournamentMembershipLunch).filter_by(membership_id=membership.id).count() == 1
+    db.expire_all()
+    assert db.get(TournamentMembership, membership_id) is None
+    assert db.query(TournamentMembershipLunch).filter_by(membership_id=membership_id).count() == 0
+    assert db.query(FormResponse).filter_by(user_id=other_user.id).count() == 0
+    assert td_tournament.id not in {t["id"] for t in client.get("/tournaments/me/").json()}
 
 
-def test_age_disclosure_recanting_flips_back_to_consented(client, td_tournament, other_user, db):
-    """Re-answering after a decline moves straight to consented — no rejoin."""
+def test_age_disclosure_owner_cannot_decline(client, td_user, td_tournament, db):
     td_tournament.collect_is_over_18 = True
     db.commit()
-    membership = grant_role(db, td_tournament, other_user, "Volunteer")
-    membership.age_disclosure = "declined"
-    db.commit()
-
-    login(client, "other@test.com", "otherpass")
+    login(client, "td@test.com", "tdpass")
     response = client.post(
         f"/tournaments/{td_tournament.id}/members/me/age-disclosure/",
-        json={"consent": True},
+        json={"consent": False},
     )
-    assert response.status_code == 200
-    db.refresh(membership)
-    assert membership.age_disclosure == "consented"
+    assert response.status_code == 400
+    assert client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["id"] is not None
 
 
 def test_age_disclosure_not_found_without_membership(client, td_tournament, td_user):
