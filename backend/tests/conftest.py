@@ -26,6 +26,7 @@ os.environ.setdefault("API_KEY", "")
 
 from unittest.mock import AsyncMock, MagicMock
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -428,6 +429,10 @@ def client(db, mock_sheets_service, mock_forms_service):
     app.dependency_overrides.clear()
 
 
+# Signs test interactions; `discord_on` installs its public key as DISCORD_PUBLIC_KEY.
+DISCORD_TEST_KEY = Ed25519PrivateKey.generate()
+
+
 @pytest.fixture
 def discord_on(client, monkeypatch):
     """Turns the Discord feature switch on, with dev-shaped settings."""
@@ -438,7 +443,7 @@ def discord_on(client, monkeypatch):
     settings = get_settings()
     values = {
         "discord_application_id": "1000",
-        "discord_public_key": "00" * 32,
+        "discord_public_key": DISCORD_TEST_KEY.public_key().public_bytes_raw().hex(),
         "discord_bot_token": "bot-token",
         "discord_client_secret": "client-secret",
         "discord_link_redirect_uri": "http://localhost:3000/api/proxy/auth/oauth/discord/callback",

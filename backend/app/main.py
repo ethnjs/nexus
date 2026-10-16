@@ -25,6 +25,7 @@ from app.api.routes.chapter import admin as chapter_admin
 from app.api.routes.chapter import join_codes as chapter_join_codes
 from app.api.routes.chapter import memberships as chapter_memberships
 from app.api.routes.discord import guilds as discord_guilds
+from app.api.routes.discord import interactions as discord_interactions
 from app.api.routes.tournament import admin as tournament_admin
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes.tournament import audit as tournament_audit
@@ -139,7 +140,7 @@ app.add_middleware(
 
 api_key_dependency = Depends(verify_api_key)
 
-# All routes require API key — including auth (login, logout, register).
+# Every route requires the API key, auth included, except Discord's interactions endpoint.
 # In development with API_KEY unset, security.py skips the check automatically.
 app.include_router(auth.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(oauth.router, prefix="", dependencies=[api_key_dependency])
@@ -183,6 +184,7 @@ app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_
 app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(discord_guilds.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(discord_interactions.router, prefix="")
 
 
 @app.get("/health", tags=["meta"])
