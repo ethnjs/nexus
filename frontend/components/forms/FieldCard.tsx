@@ -27,7 +27,7 @@ import {
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
-import { issuesFor } from "@/lib/forms/useFormValidation";
+import { backwardBranchTargetIds, issuesFor } from "@/lib/forms/useFormValidation";
 
 // How long to keep waiting for the clicked input to exist. The entity-backed
 // editors (availability/event_preference) render "Loading shifts…" until their
@@ -233,10 +233,22 @@ export function FieldCard({
     (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
       (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey)));
   const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
-  const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
-  const branchTargets: BranchTarget[] = allFields
-    .filter((f) => f.clientKey !== field.clientKey && f.label.trim())
-    .map((f) => ({ id: f.id, label: f.label.trim() }));
+  // Flagged without waiting for Save, so the card turns red as the reorder
+  // that broke the branch lands.
+  const hasBackwardBranch = backwardBranchTargetIds(field, allFields).size > 0;
+  const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError || hasBackwardBranch;
+  const position = allFields.findIndex((f) => f.clientKey === field.clientKey);
+  const branchTargets = allFields.flatMap<BranchTarget>((f, i) =>
+    i === position
+      ? []
+      : [
+          {
+            id: f.id,
+            label: f.label.trim(),
+            position: i < position ? "above" : i === position + 1 ? "next" : "below",
+          },
+        ],
+  );
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't

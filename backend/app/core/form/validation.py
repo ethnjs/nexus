@@ -273,27 +273,18 @@ def validate_branching_options(
     form_id: str,
     question_type: str,
     config: dict,
-    field_id: str | None = None,
+    field: FormField | None = None,
 ) -> None:
     """`next_field_id` must reference an existing, non-archived field in the
-    same form and can't equal the field the option belongs to. (Mutual
-    exclusivity with `action` and the single_select-only restriction are
-    already enforced by the config's pydantic schema — see
-    QUESTION_TYPE_CONFIG_SCHEMAS — so this only covers what needs the DB.)
-    `field_id` is the field being edited (None on create — a new field has
-    no id yet for an option to self-reference)."""
+    same form that comes after `field`, the field the options belong to.
+    Forward-only is what keeps the respondent's walk free of loops."""
     if question_type not in BRANCHING_QUESTION_TYPES:
         return
 
     options = config.get("options") or []
-    next_field_ids = set()
-    for option in options:
-        next_field_id = option.get("next_field_id")
-        if next_field_id is None:
-            continue
-        _require(next_field_id != field_id, "an option cannot jump to the field it belongs to")
-        next_field_ids.add(next_field_id)
-
+    next_field_ids = {
+        option["next_field_id"] for option in options if option.get("next_field_id") is not None
+    }
     if not next_field_ids:
         return
 
@@ -302,23 +293,27 @@ def validate_branching_options(
     # an id_in() with mixed types instead of just finding no rows. Skip the
     # query for those and let them fall straight into `missing` below.
     string_ids = {fid for fid in next_field_ids if isinstance(fid, str)}
-    valid_ids = set()
+    target_orders: dict[str, int] = {}
     if string_ids:
-        valid_ids = {
-            fid
-            for (fid,) in db.query(FormField.id)
+        target_orders = dict(
+            db.query(FormField.id, FormField.order)
             .filter(
                 FormField.form_id == form_id,
                 FormField.id.in_(string_ids),
                 FormField.is_archived == False,
             )
             .all()
-        }
-    missing = next_field_ids - valid_ids
+        )
+    missing = next_field_ids - target_orders.keys()
     _require(
         not missing,
         f"next_field_id(s) do not reference an existing, non-archived field in this form: {sorted(missing)}",
     )
+    if field is not None:
+        _require(
+            all(order > field.order for order in target_orders.values()),
+            "an option can only jump to a question after its own",
+        )
 
 
 def collect_active_field_errors(db: Session, form: Form) -> list[str]:
@@ -364,7 +359,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
                 form.id,
                 field.question_type,
                 normalized_config,
-                field_id=field.id,
+                field=field,
             ),
         ):
             try:

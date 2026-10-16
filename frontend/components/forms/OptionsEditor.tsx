@@ -58,22 +58,31 @@ export function bulletTypeFor(questionType: FormQuestionType): BulletType {
   return "none";
 }
 
-// A field this option could jump to — id is only available once the target
-// field has been saved (a draft field's id is null), so unsaved fields show
-// up disabled with a reason rather than being silently excluded.
+// Another field on the form, placed relative to the one being edited. id is
+// null until the field is saved, so unsaved fields show up disabled with a
+// reason rather than being silently excluded. Only fields `below` are offered
+// as jumps: `next` is what Continue already does, and an `above` field is
+// shown only when a reorder left an option pointing at it.
 export interface BranchTarget {
   id: string | null;
   label: string;
+  position: "above" | "next" | "below";
 }
 
 const CONTINUE_VALUE = "__continue__";
 const SUBMIT_VALUE = "__submit__";
 const JUMP_PREFIX = "jump:";
 
-function branchValueFor(option: FormFieldOption): string {
+// Falling through the last question ends the form, so it reads as Submit.
+function branchValueFor(
+  option: FormFieldOption,
+  nextFieldId: string | null,
+  isLast: boolean,
+): string {
   if (option.action === "submit_form") return SUBMIT_VALUE;
-  if (option.next_field_id != null) return `${JUMP_PREFIX}${option.next_field_id}`;
-  return CONTINUE_VALUE;
+  if (option.next_field_id != null && option.next_field_id !== nextFieldId)
+    return `${JUMP_PREFIX}${option.next_field_id}`;
+  return isLast ? SUBMIT_VALUE : CONTINUE_VALUE;
 }
 
 function applyBranchValue(option: EditableOption, value: string): EditableOption {
@@ -186,24 +195,42 @@ function BranchDropdown({
   branchTargets: BranchTarget[];
   onChange: (value: string) => void;
 }) {
+  const isLast = branchTargets.every((t) => t.position === "above");
+  const nextFieldId = branchTargets.find((t) => t.position === "next")?.id ?? null;
+  const backwardTarget = branchTargets.find(
+    (t) => t.position === "above" && t.id === option.next_field_id,
+  );
   const branchOptions: DropdownOption[] = [
-    { value: CONTINUE_VALUE, label: "Continue to next question" },
-    ...branchTargets.map(
-      (t): DropdownOption => ({
-        value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
-        label: `Jump to: ${t.label}`,
-        disabled: t.id == null,
-        subtitle: t.id == null ? "Save the form to enable this target" : undefined,
-      }),
-    ),
+    ...(isLast ? [] : [{ value: CONTINUE_VALUE, label: "Continue to next question" }]),
+    ...(backwardTarget
+      ? [
+          {
+            value: `${JUMP_PREFIX}${backwardTarget.id}`,
+            label: `Jump to: ${backwardTarget.label}`,
+            disabled: true,
+            subtitle: "Above this question",
+          },
+        ]
+      : []),
+    ...branchTargets
+      .filter((t) => t.position === "below" && t.label)
+      .map(
+        (t): DropdownOption => ({
+          value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
+          label: `Jump to: ${t.label}`,
+          disabled: t.id == null,
+          subtitle: t.id == null ? "Save the form to enable this target" : undefined,
+        }),
+      ),
     { value: SUBMIT_VALUE, label: "Submit form" },
   ];
 
   return (
     <Dropdown
-      value={branchValueFor(option)}
+      value={branchValueFor(option, nextFieldId, isLast)}
       onChange={onChange}
       options={branchOptions}
+      error={backwardTarget ? "Pick a question below this one." : undefined}
       size="md"
       width={190}
       variant="primary"

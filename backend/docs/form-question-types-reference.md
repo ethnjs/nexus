@@ -66,11 +66,11 @@ The exception is `availability_*` fields, whose answers store the raw selected `
 
 Only single-select options (`single_select_radio`, `single_select_dropdown`) may branch:
 
-- `next_field_id` jumps to that field, which must be on the same form.
+- `next_field_id` jumps to that field, which must be on the same form and come after the option's own field in `order`.
 - `action: "submit_form"` ends the form.
 - With neither, the form continues in `order`.
 
-An option can't have both. The frontend's flow and the backend's submission check (`app/core/form/branching.py`) both match answers to options by `option_id`. Loops (A → B → A) aren't detected.
+An option can't have both. The frontend's flow and the backend's submission check (`app/core/form/branching.py`) both match answers to options by `option_id`. Because jumps only go forward, a walk can't loop. Saving or publishing rejects a jump that a reorder left pointing backward, and the builder flags it on the card. Forms saved before this rule may still hold backward jumps; the walk stops at a revisited field so they still terminate.
 
 ## Reserved field keys
 

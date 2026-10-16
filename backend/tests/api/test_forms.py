@@ -1261,6 +1261,65 @@ class TestBulkUpdateFieldsPublished:
         db.refresh(other_field)
         assert other_field.label != "New label that should not stick"
 
+    def test_reorder_that_points_a_branch_backward_rejected(
+        self, client, db, td_user, td_tournament
+    ):
+        form = _make_form(db, td_user, td_tournament)
+        target = _make_field(
+            db,
+            form,
+            order=2,
+            field_key="target",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        branch_config = {
+            "required": False,
+            "options": [
+                {
+                    "option_id": "opt_yes",
+                    "value": "yes",
+                    "label": "Yes",
+                    "next_field_id": target.id,
+                }
+            ],
+        }
+        branch_field = _make_field(
+            db,
+            form,
+            field_key="branch",
+            question_type="single_select_radio",
+            config=branch_config,
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": target.id,
+                        "label": "Target",
+                        "question_type": "short_text",
+                        "config": {"required": False, "max_length": 50},
+                    },
+                    {
+                        "id": branch_field.id,
+                        "label": "Branch",
+                        "question_type": "single_select_radio",
+                        "config": branch_config,
+                    },
+                ]
+            },
+        )
+        assert res.status_code == 422
+        assert "after its own" in str(res.json())
+
+        db.refresh(branch_field)
+        assert branch_field.order == 1
+
     OPTIONS = [
         {"option_id": "opt_red", "value": "red", "label": "Red"},
         {"option_id": "opt_blue", "value": "blue", "label": "Blue"},

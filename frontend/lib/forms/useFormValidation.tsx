@@ -19,6 +19,7 @@ import {
 // and importing a type from a page module for a value the hook never
 // constructs isn't worth the coupling.
 export interface ValidatableField {
+  id: string | null;
   clientKey: string;
   field_key: string;
   label: string;
@@ -40,9 +41,7 @@ const OPTION_BEARING = new Set<FormQuestionType>([
 
 // Structural checks only — matches the backend's per-config Pydantic models
 // (backend/app/schemas/form.py) closely enough to catch the same problems
-// before a round trip, but the backend remains the source of truth (e.g. it
-// also validates next_field_id resolution and availability option shape,
-// neither of which is checked here).
+// before a round trip, but the backend remains the source of truth.
 // Exported so callers that already know a field had errors as of the last
 // validate() pass (e.g. FieldCard) can re-run just this field's structural
 // checks against its live, currently-being-edited data — letting an error
@@ -113,6 +112,22 @@ export function issuesFor(field: ValidatableField): string[] {
   return issues;
 }
 
+// Jump targets that sit at or above `field` in `fields`. Branches only go
+// forward, so a reorder can leave one of these behind.
+export function backwardBranchTargetIds(
+  field: ValidatableField,
+  fields: ValidatableField[],
+): Set<string> {
+  const position = fields.findIndex((f) => f.clientKey === field.clientKey);
+  const upToHere = new Set(fields.slice(0, position + 1).map((f) => f.id));
+  return new Set(
+    (field.config?.options ?? [])
+      .filter((o) => !o.is_archived)
+      .map((o) => o.next_field_id)
+      .filter((id): id is string => id != null && upToHere.has(id)),
+  );
+}
+
 // Matches the 409 forms.py raises on a Save-time field_key collision
 // (`field_key '{key}' is already in use — pick a more distinct label`) —
 // this can only fire on a key that collides with a *different* form's
@@ -137,6 +152,12 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
   for (const field of fields) {
     for (const message of issuesFor(field)) {
       issues.push({ clientKey: field.clientKey, message });
+    }
+    if (backwardBranchTargetIds(field, fields).size > 0) {
+      issues.push({
+        clientKey: field.clientKey,
+        message: "An option jumps to a question above this one.",
+      });
     }
     const key = effectiveFieldKey(field);
     if (key && (keyCounts.get(key) ?? 0) > 1) {

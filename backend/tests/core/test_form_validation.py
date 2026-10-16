@@ -364,10 +364,33 @@ class TestValidateBranchingOptions:
             "required": False,
             "options": [{"value": "yes", "label": "Yes", "next_field_id": field.id}],
         }
-        with pytest.raises(FormFieldValidationError):
-            validate_branching_options(
-                db, form.id, "single_select_radio", config, field_id=field.id
-            )
+        with pytest.raises(FormFieldValidationError, match="after its own"):
+            validate_branching_options(db, form.id, "single_select_radio", config, field=field)
+
+    def test_earlier_target_rejected(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        earlier = _make_field(db, form, order=1, field_key="earlier")
+        field = _make_field(db, form, order=2, field_key="source")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": earlier.id}],
+        }
+        with pytest.raises(FormFieldValidationError, match="after its own"):
+            validate_branching_options(db, form.id, "single_select_radio", config, field=field)
+
+    def test_later_target_passes(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, order=1, field_key="source")
+        later = _make_field(db, form, order=2, field_key="later")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": later.id}],
+        }
+        validate_branching_options(
+            db, form.id, "single_select_radio", config, field=field
+        )  # no raise
 
     def test_archived_target_rejected(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
