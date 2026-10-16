@@ -20,16 +20,15 @@ function thresholdCopy(tournament: Tournament | null): string {
   return "which age group you're in: under 18 or 18+";
 }
 
-// Blocking — no close button, no click-outside, no Esc (onClose is a
-// no-op and closeOnOverlayClick is off). A member must answer before doing
-// anything else in this tournament.
+// Blocking — no close button, no click-outside, no Esc. A member must answer
+// before doing anything else in this tournament.
 export function AgeDisclosureModal({
   tournamentId,
   tournament,
   onResolved,
 }: AgeDisclosureModalProps) {
   const router = useRouter();
-  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [stage, setStage] = useState<"ask" | "confirm" | "final">("ask");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -39,8 +38,6 @@ export function AgeDisclosureModal({
     try {
       const updated = await membersApi.setAgeDisclosure(tournamentId, consent);
       if (!consent) {
-        // Declining blocks this tournament's pages (see TASK.md 2.4d) — the
-        // member has nowhere left to go here.
         router.replace("/dashboard");
         return;
       }
@@ -51,9 +48,63 @@ export function AgeDisclosureModal({
     }
   }
 
+  const errorLine = error && (
+    <p
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
+        color: "var(--color-danger)",
+      }}
+    >
+      {error}
+    </p>
+  );
+
+  if (stage === "final") {
+    return (
+      <Modal
+        title="Leave this tournament?"
+        onClose={() => {}}
+        closeOnOverlayClick={false}
+        variant="danger"
+        width={440}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-text-secondary)",
+              lineHeight: 1.6,
+            }}
+          >
+            This can&apos;t be undone. You&apos;ll be removed from this tournament right away.
+          </p>
+          {errorLine}
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => {
+                setError(undefined);
+                setStage("ask");
+              }}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button variant="danger" fullWidth loading={submitting} onClick={() => respond(false)}>
+              Decline and leave
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Age disclosure" onClose={() => {}} closeOnOverlayClick={false} width={440}>
-      {!confirmingDecline ? (
+      {stage === "ask" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <p
             style={{
@@ -76,22 +127,12 @@ export function AgeDisclosureModal({
           >
             You need to answer before continuing.
           </p>
-          {error && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-                color: "var(--color-danger)",
-              }}
-            >
-              {error}
-            </p>
-          )}
+          {errorLine}
           <div style={{ display: "flex", gap: "10px" }}>
             <Button
               variant="secondary"
               fullWidth
-              onClick={() => setConfirmingDecline(true)}
+              onClick={() => setStage("confirm")}
               disabled={submitting}
             >
               Decline
@@ -111,31 +152,14 @@ export function AgeDisclosureModal({
               lineHeight: 1.6,
             }}
           >
-            Declining removes your access to this tournament, but your existing responses
-            (availability, lunch, track statuses, and event preferences) stay on file. You can come
-            back any time by allowing.
+            Declining removes you from this tournament and deletes your responses to its forms.
+            You&apos;ll need a new join link to come back.
           </p>
-          {error && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-                color: "var(--color-danger)",
-              }}
-            >
-              {error}
-            </p>
-          )}
           <div style={{ display: "flex", gap: "10px" }}>
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={() => setConfirmingDecline(false)}
-              disabled={submitting}
-            >
+            <Button variant="secondary" fullWidth onClick={() => setStage("ask")}>
               Go back
             </Button>
-            <Button variant="danger" fullWidth loading={submitting} onClick={() => respond(false)}>
+            <Button variant="danger" fullWidth onClick={() => setStage("final")}>
               Yes, decline
             </Button>
           </div>
