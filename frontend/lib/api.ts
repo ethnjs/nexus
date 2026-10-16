@@ -1,8 +1,5 @@
-// Always goes through /api/proxy (the Next.js route at app/api/proxy/[...path]/,
-// which attaches the API key server-side) — dev, preview, and prod all use this
-// same path. NEXT_PUBLIC_API_URL is an escape hatch, not a required env var: set
-// it only if you want the browser to call a backend directly, bypassing the proxy.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api/proxy";
+const VIA_PROXY = !process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/proxy";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -32,7 +29,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {}, keepalive } = options;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Next.js 308-redirects paths ending in "/"; the proxy route adds the slash back.
+  const url = VIA_PROXY ? path.replace(/^([^?]*)\/(?=\?|$)/, "$1") : path;
+
+  const res = await fetch(`${API_BASE}${url}`, {
     method,
     credentials: "include",
     keepalive,
