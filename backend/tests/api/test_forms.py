@@ -599,8 +599,7 @@ class TestGetForm:
         db.commit()
         login(client, "other@test.com", "otherpass")
         res = client.get(f"/forms/{form.id}/")
-        assert res.status_code == 403
-        assert res.json()["detail"]["code"] == "not_member"
+        assert res.status_code == 404
 
     def test_missing_form_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -678,6 +677,74 @@ class TestOnboardingGate:
         login(client, "other@test.com", "otherpass")
 
         assert client.get(f"/forms/{form.id}/").status_code == 200
+
+
+class TestRespondentNotFound:
+    """A respondent can't tell a draft, or an archived form they never
+    answered, from a form that doesn't exist."""
+
+    def _published_link(self, db, form, td_tournament):
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id))
+        db.commit()
+
+    def test_draft_and_unanswered_archived_are_404(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        draft = _make_form(db, td_user, td_tournament, status="draft")
+        archived = _make_form(db, td_user, td_tournament, status="archived")
+        self._published_link(db, draft, td_tournament)
+        self._published_link(db, archived, td_tournament)
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{draft.id}/").status_code == 404
+        assert client.get(f"/forms/{archived.id}/").status_code == 404
+        assert client.get(f"/forms/{archived.id}/responses/me/").status_code == 404
+
+    def test_archived_form_with_a_response_stays_readable(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        field = _make_field(db, form, field_key="color")
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=td_tournament.id,
+                prerequisites={"onboarding_complete": True},
+            )
+        )
+        db.add(FormResponse(form_id=form.id, user_id=other_user.id))
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        # Readable even though the member no longer meets the prerequisites.
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+        assert client.get(f"/forms/{form.id}/responses/me/").status_code == 200
+        answers = {"answers": [{"field_id": field.id, "value": ["opt_1"]}]}
+        assert client.patch(f"/forms/{form.id}/responses/me/", json=answers).status_code == 409
+
+    def test_non_member_is_404_on_every_form_route(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        self._published_link(db, form, td_tournament)
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{form.id}/").status_code == 404
+        assert client.get(f"/forms/{form.id}/?raw=true").status_code == 404
+        assert client.get(f"/forms/{form.id}/responses/").status_code == 404
+
+    def test_member_without_manage_forms_still_gets_403_on_builder_routes(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, status="draft")
+        self._published_link(db, form, td_tournament)
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{form.id}/responses/").status_code == 403
+        assert client.get(f"/forms/{form.id}/?raw=true").status_code == 403
 
 
 class TestUpdateArchiveDeleteForm:
@@ -2718,7 +2785,7 @@ class TestSubmitResponse:
         db.commit()
         login(client, "other@test.com", "otherpass")
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
-        assert res.status_code == 403
+        assert res.status_code == 404
 
     def test_draft_form_rejects_submission(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)  # draft by default

@@ -1,10 +1,9 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
-import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import cardStyles from "@/components/layout/CenteredCard.module.css";
 import { Badge } from "@/components/ui/Badge";
@@ -20,7 +19,8 @@ import { formatDateTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 
 // Respondent-facing form page, and the link managers share. One URL for every state:
-// - signed out: a sign-in card; not a member: No access
+// - signed out: a sign-in card; not a member, a draft, or an archived form
+//   they never answered: 404
 // - still owes onboarding: sent through the sequence, which returns here
 // - no response yet: fill the form
 // - responded: read-only view of their answers, with an Edit button
@@ -36,17 +36,16 @@ function internalRedirect(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
 }
 
-// The form-access 403s that send a visitor somewhere else instead of erroring.
-type AccessDenied =
-  | { code: "not_member" }
-  | { code: "onboarding_required"; tournament_id: number; is_onboarding: boolean };
+type OnboardingRequired = {
+  code: "onboarding_required";
+  tournament_id: number;
+  is_onboarding: boolean;
+};
 
-function accessDenied(error: unknown): AccessDenied | null {
+function onboardingRequired(error: unknown): OnboardingRequired | null {
   if (!(error instanceof ApiError) || error.status !== 403) return null;
-  const code = (error.detail as { code?: unknown } | null)?.code;
-  return code === "not_member" || code === "onboarding_required"
-    ? (error.detail as AccessDenied)
-    : null;
+  const detail = error.detail as { code?: unknown } | null;
+  return detail?.code === "onboarding_required" ? (detail as OnboardingRequired) : null;
 }
 
 // Matches the (auth) pages: a signed-out visitor learns nothing about the form.
@@ -100,7 +99,7 @@ export default function FormViewPage() {
   // Shown on the read-only view after a submit or save lands there.
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const { user, loading: authLoading } = useAuth();
-  const [notMember, setNotMember] = useState(false);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -108,15 +107,15 @@ export default function FormViewPage() {
       .get(formId)
       .then(setForm)
       .catch((error) => {
-        const denied = accessDenied(error);
-        if (denied?.code === "onboarding_required") {
+        const denied = onboardingRequired(error);
+        if (denied) {
           // A step of the sequence is reached along the way, so only come back for other forms.
           const back = denied.is_onboarding
             ? ""
             : `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
           router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
-        } else if (denied?.code === "not_member") {
-          setNotMember(true);
+        } else if (error instanceof ApiError && error.status === 404) {
+          setMissing(true);
         } else {
           setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
         }
@@ -201,7 +200,7 @@ export default function FormViewPage() {
   }
 
   if (!user) return <SignInCard formId={formId} />;
-  if (notMember) return <NoFormAccess description="You aren't a member of this tournament." />;
+  if (missing) notFound();
 
   if (loadError) {
     return (

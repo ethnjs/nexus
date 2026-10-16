@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { FieldList } from "@/components/forms/FieldList";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
@@ -8,7 +8,8 @@ import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
 import { TitleCard } from "@/components/forms/TitleCard";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, type Form, formsApi } from "@/lib/api";
+import { type Form, formsApi } from "@/lib/api";
+import { builderLoadFailure } from "@/lib/forms/builderLoad";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 export default function FormEditPage({ params }: { params: Promise<{ formId: string }> }) {
@@ -18,15 +19,17 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [noAccess, setNoAccess] = useState(false);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     formsApi
       .getForEdit(formId)
       .then(setForm)
       .catch((e) => {
-        // getForEdit is manager-only — a member who lands here gets a 403.
-        if (e instanceof ApiError && e.status === 403) setNoAccess(true);
-        else setLoadError(e instanceof ApiError ? e.message : "Failed to load form.");
+        const failure = builderLoadFailure([e], "Failed to load form.");
+        if (failure === "no-access") setNoAccess(true);
+        else if (failure === "not-found") setMissing(true);
+        else setLoadError(failure.message);
       });
   }, [formId]);
 
@@ -38,6 +41,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
     }
   }
 
+  if (missing) notFound();
   if (noAccess) return <NoFormAccess />;
 
   if (loadError) {

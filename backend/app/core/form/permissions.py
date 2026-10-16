@@ -24,7 +24,7 @@ from app.models.models import ChapterMembership, Form, FormResponse, User
 def _load_form_or_404(form_id: str, db: Session) -> Form:
     form = db.query(Form).filter(Form.id == form_id).first()
     if not form:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+        raise _form_not_found()
     return form
 
 
@@ -63,6 +63,10 @@ def require_form_manage_access(
     return form
 
 
+def _form_not_found() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+
+
 def _onboarding_required(tournament_id: int, is_onboarding: bool) -> HTTPException:
     """The frontend can't load the form, so the detail says whose sequence to
     send the member into and whether to come back after: a step of that
@@ -85,19 +89,16 @@ def require_form_view_access(
 ) -> Form:
     """Dependency — loads the Form and requires either manage access, or
     plain membership in the owning tournament/chapter (for the people
-    filling the form out, not just the people managing it)."""
+    filling the form out, not just the people managing it). A tournament
+    respondent gets 404 for a draft, or an archived form they never answered."""
     form = _load_form_or_404(form_id, db)
 
     if form.owner_type == "tournament":
         assert form.tournament_id is not None
+        # Respondents get the same 404 as a missing form for anything they
+        # can't open at all, so a link never reveals that a form exists.
         if not has_any_membership(current_user, form.tournament_id, db):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "not_member",
-                    "message": "You aren't a member of this tournament.",
-                },
-            )
+            raise _form_not_found()
         permissions = get_user_permissions(current_user, form.tournament_id, db)
         if MANAGE_FORMS in permissions:
             return form
@@ -106,32 +107,27 @@ def require_form_view_access(
         # Only a site admin can pass has_any_membership without a row; admins
         # already pass MANAGE_FORMS above, so this remains a defensive guard.
         if membership is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
-            )
-        if form.status != "published":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available"
-            )
+            raise _form_not_found()
+        responded = (
+            db.query(FormResponse.id)
+            .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
+            .first()
+            is not None
+        )
+        if form.status == "draft" or (form.status == "archived" and not responded):
+            raise _form_not_found()
+        # A response to an archived form stays readable whatever the gates
+        # below now say; _require_published still rejects every write.
+        if form.status == "archived":
+            return form
 
         tournament_form = form.tournament_form
         if tournament_form is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="This form is not currently available"
-            )
+            raise _form_not_found()
         if tournament_form.is_onboarding:
             # Their current step, or one they already completed — a finished
             # step stays reachable so its response can be read and revised
             # (flagged updates, allow_response_edits).
-            responded = (
-                db.query(FormResponse.id)
-                .filter(
-                    FormResponse.form_id == form.id,
-                    FormResponse.user_id == current_user.id,
-                )
-                .first()
-                is not None
-            )
             if not responded and next_required_onboarding_form_id(db, membership) != form.id:
                 raise _onboarding_required(form.tournament_id, is_onboarding=True)
         elif needs_tournament_onboarding(db, membership, permissions):
