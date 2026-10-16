@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Self
 
@@ -35,6 +36,15 @@ class Settings(BaseSettings):
     google_oauth_redirect_uri: str = ""
     # Signs the oauth_state cookie. Production refuses the default.
     oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
+
+    discord_application_id: str = ""
+    discord_public_key: str = ""
+    discord_bot_token: str = ""
+    discord_client_secret: str = ""
+    discord_link_redirect_uri: str = ""
+    discord_install_redirect_uri: str = ""
+    # Registers slash commands on this one server instead of globally. Dev only.
+    discord_dev_guild_id: str = ""
     # Emergency switch for email outages: false skips sign-in and step-up codes.
     login_codes_required: bool = True
 
@@ -50,3 +60,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Cached settings instance — import and call this everywhere."""
     return Settings()
+
+
+def discord_enabled() -> bool:
+    """The Discord feature switch. Off under pytest, so tests opt in explicitly."""
+    return bool(get_settings().discord_bot_token) and "PYTEST_CURRENT_TEST" not in os.environ

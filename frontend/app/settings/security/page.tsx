@@ -1,17 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { SessionList } from "@/components/settings/SessionList";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
+import { IconDiscord } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ApiError, authApi } from "@/lib/api";
+import { ApiError, authApi, type OAuthIdentity, usersApi } from "@/lib/api";
 import {
   checkPassword,
+  discordLinkErrorMessage,
   EMPTY_PASSWORD_CHECKS,
   type PasswordChecks,
   validatePassword,
@@ -78,6 +80,12 @@ export default function SecuritySettingsPage() {
   return (
     <div>
       <PageHeader heading="Security" />
+
+      <SettingsSection title="Connected accounts">
+        <Suspense>
+          <ConnectedAccounts />
+        </Suspense>
+      </SettingsSection>
 
       <SettingsSection title="Password">
         <form onSubmit={handleSubmit}>
@@ -158,5 +166,78 @@ export default function SecuritySettingsPage() {
         <SessionList />
       </SettingsSection>
     </div>
+  );
+}
+
+function ConnectedAccounts() {
+  const searchParams = useSearchParams();
+  const [discord, setDiscord] = useState<OAuthIdentity | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [unlinking, setUnlinking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(
+    searchParams.get("linked") === "discord" ? "Discord is connected." : null,
+  );
+  const [error, setError] = useState<string | null>(
+    discordLinkErrorMessage(searchParams.get("error")),
+  );
+
+  useEffect(() => {
+    usersApi
+      .identities()
+      .then((rows) => setDiscord(rows.find((row) => row.provider === "discord") ?? null))
+      .catch(() => setError("Couldn't load connected accounts."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleUnlink() {
+    setUnlinking(true);
+    setNotice(null);
+    setError(null);
+    try {
+      await usersApi.unlinkDiscord();
+      setDiscord(null);
+      setNotice("Discord was disconnected.");
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  return (
+    <>
+      <SettingsRow
+        label={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <IconDiscord />
+            Discord
+          </span>
+        }
+        helper={
+          discord
+            ? `@${discord.username_at_provider ?? "unknown"}`
+            : "Link Discord to get your roles and channels on tournament servers."
+        }
+        last
+      >
+        {loading ? null : discord ? (
+          <Button variant="secondary" loading={unlinking} onClick={handleUnlink}>
+            Disconnect
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() => window.location.assign(authApi.discordStartUrl("/settings/security"))}
+          >
+            Connect
+          </Button>
+        )}
+      </SettingsRow>
+      {(notice || error) && (
+        <div style={{ marginBottom: "16px" }}>
+          <Banner variant={error ? "error" : "success"} message={error ?? notice ?? ""} />
+        </div>
+      )}
+    </>
   );
 }
