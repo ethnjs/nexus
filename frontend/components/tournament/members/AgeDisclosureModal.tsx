@@ -28,7 +28,7 @@ export function AgeDisclosureModal({
   onResolved,
 }: AgeDisclosureModalProps) {
   const router = useRouter();
-  const [stage, setStage] = useState<"ask" | "confirm" | "final">("ask");
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -60,7 +60,7 @@ export function AgeDisclosureModal({
     </p>
   );
 
-  if (stage === "final") {
+  if (confirmingDecline) {
     return (
       <Modal
         title="Leave this tournament?"
@@ -87,7 +87,7 @@ export function AgeDisclosureModal({
               fullWidth
               onClick={() => {
                 setError(undefined);
-                setStage("ask");
+                setConfirmingDecline(false);
               }}
               disabled={submitting}
             >
@@ -104,67 +104,44 @@ export function AgeDisclosureModal({
 
   return (
     <Modal title="Age disclosure" onClose={() => {}} closeOnOverlayClick={false} width={440}>
-      {stage === "ask" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "14px",
-              color: "var(--color-text-secondary)",
-              lineHeight: 1.6,
-            }}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
+          This tournament asks {thresholdCopy(tournament)}. It only sees the answer — your date of
+          birth is never shared.
+        </p>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
+          You need to answer before continuing. Declining removes you from this tournament and
+          deletes your responses to its forms. You&apos;ll need a new join link to come back.
+        </p>
+        {errorLine}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => setConfirmingDecline(true)}
+            disabled={submitting}
           >
-            This tournament asks {thresholdCopy(tournament)}. It only sees the answer — your date of
-            birth is never shared.
-          </p>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "14px",
-              color: "var(--color-text-secondary)",
-              lineHeight: 1.6,
-            }}
-          >
-            You need to answer before continuing.
-          </p>
-          {errorLine}
-          <div style={{ display: "flex", gap: "10px" }}>
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={() => setStage("confirm")}
-              disabled={submitting}
-            >
-              Decline
-            </Button>
-            <Button fullWidth loading={submitting} onClick={() => respond(true)}>
-              Allow
-            </Button>
-          </div>
+            Decline
+          </Button>
+          <Button fullWidth loading={submitting} onClick={() => respond(true)}>
+            Allow
+          </Button>
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "14px",
-              color: "var(--color-text-secondary)",
-              lineHeight: 1.6,
-            }}
-          >
-            Declining removes you from this tournament and deletes your responses to its forms.
-            You&apos;ll need a new join link to come back.
-          </p>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" fullWidth onClick={() => setStage("ask")}>
-              Go back
-            </Button>
-            <Button variant="danger" fullWidth onClick={() => setStage("final")}>
-              Yes, decline
-            </Button>
-          </div>
-        </div>
-      )}
+      </div>
     </Modal>
   );
 }
