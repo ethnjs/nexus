@@ -356,14 +356,15 @@ def delete_me(
 # ---------------------------------------------------------------------------
 # GET /users/me/identities/ — linked OAuth accounts
 # DELETE /users/me/identities/google/ — unlink, unless it's the only way in
+# DELETE /users/me/identities/discord/ — unlink; Discord never signs in
 # ---------------------------------------------------------------------------
 
 
 def _identity_response(row: OAuthIdentity) -> OAuthIdentityResponse:
-    provider = row.provider.value if isinstance(row.provider, OAuthProvider) else row.provider
     return OAuthIdentityResponse(
-        provider=provider,
+        provider=row.provider.value,
         email_at_provider=row.email_at_provider,
+        username_at_provider=row.username_at_provider,
         created_at=row.created_at,
     )
 
@@ -406,6 +407,28 @@ async def unlink_google(
     db.commit()
     await send_identity_unlinked_notice(user.email, provider_email)
     return {"detail": "Google disconnected"}
+
+
+@router.delete(
+    "/users/me/identities/discord/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={400: {"description": "Discord is not connected"}},
+)
+def unlink_discord(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(OAuthIdentity)
+        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.discord)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discord is not connected")
+    db.delete(row)
+    db.commit()
+    return {"detail": "Discord disconnected"}
 
 
 # ---------------------------------------------------------------------------

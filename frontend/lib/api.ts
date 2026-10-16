@@ -296,6 +296,10 @@ export const authApi = {
 
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>("/auth/email/revert/", { token, new_password: newPassword }),
+
+  // A full navigation, not fetch: the backend answers with a redirect to Discord.
+  discordStartUrl: (redirect?: string) =>
+    `/api/proxy/auth/oauth/discord/start${redirect ? `?${new URLSearchParams({ redirect })}` : ""}`,
 };
 
 // -------------------------------------------------------------------------
@@ -310,9 +314,18 @@ export interface UserSession {
   is_current: boolean;
 }
 
+export interface OAuthIdentity {
+  provider: "google" | "discord";
+  email_at_provider: string | null;
+  username_at_provider: string | null;
+  created_at: string;
+}
+
 export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
   me: () => api.get<UserMeSlim>("/users/me/"),
+  identities: () => api.get<OAuthIdentity[]>("/users/me/identities/"),
+  unlinkDiscord: () => api.delete<void>("/users/me/identities/discord/"),
   // GET /users/me/?full=true — matches UserMeFullResponse
   meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
   // PATCH /users/me/ — matches UserMeFullResponse

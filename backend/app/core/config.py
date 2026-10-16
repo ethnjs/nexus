@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,8 +35,22 @@ class Settings(BaseSettings):
     # Signs the oauth_state cookie. Production refuses the default.
     oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
 
+    discord_application_id: str = ""
+    discord_public_key: str = ""
+    discord_bot_token: str = ""
+    discord_client_secret: str = ""
+    discord_link_redirect_uri: str = ""
+    discord_install_redirect_uri: str = ""
+    # Registers slash commands on this one server instead of globally. Dev only.
+    discord_dev_guild_id: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Cached settings instance — import and call this everywhere."""
     return Settings()
+
+
+def discord_enabled() -> bool:
+    """The Discord feature switch. Off under pytest, so tests opt in explicitly."""
+    return bool(get_settings().discord_bot_token) and "PYTEST_CURRENT_TEST" not in os.environ

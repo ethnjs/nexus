@@ -399,6 +399,15 @@ def mock_send_email(monkeypatch):
     return mock
 
 
+@pytest.fixture(autouse=True)
+def mock_discord_http(monkeypatch):
+    """Stubs every Discord OAuth call at `_request`. Set `side_effect` to answer by path;
+    an unstubbed call fails the test."""
+    mock = MagicMock(side_effect=AssertionError("unstubbed Discord OAuth call"))
+    monkeypatch.setattr("app.services.discord.oauth._request", mock)
+    return mock
+
+
 @pytest.fixture(scope="function")
 def client(db, mock_sheets_service, mock_forms_service):
     from app.main import app
@@ -417,6 +426,28 @@ def client(db, mock_sheets_service, mock_forms_service):
         yield c
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def discord_on(client, monkeypatch):
+    """Turns the Discord feature switch on, with dev-shaped settings."""
+    from app.core.config import get_settings
+    from app.core.discord.deps import require_discord_enabled
+    from app.main import app
+
+    settings = get_settings()
+    values = {
+        "discord_application_id": "1000",
+        "discord_public_key": "00" * 32,
+        "discord_bot_token": "bot-token",
+        "discord_client_secret": "client-secret",
+        "discord_link_redirect_uri": "http://localhost:3000/api/proxy/auth/oauth/discord/callback",
+        "discord_install_redirect_uri": "http://localhost:3000/api/proxy/discord/install/callback",
+        "frontend_url": "http://localhost:3000/",
+    }
+    for name, value in values.items():
+        monkeypatch.setattr(settings, name, value)
+    app.dependency_overrides[require_discord_enabled] = lambda: None
 
 
 # ---------------------------------------------------------------------------

@@ -289,11 +289,13 @@ class User(Base):
 
 class OAuthProvider(enum.StrEnum):
     google = "google"
+    discord = "discord"
 
 
 class OAuthIdentity(Base):
-    """One external login per provider. Keyed on the provider's stable account
-    id (`sub` for Google), never on email — the provider email is only a label."""
+    """One linked external account per provider, keyed on the provider's stable account id
+    (Google's `sub`, the Discord user id), never on email or username, which are labels.
+    Google can sign in; Discord only links."""
 
     __tablename__ = "oauth_identities"
 
@@ -304,6 +306,7 @@ class OAuthIdentity(Base):
     )
     provider_account_id: Mapped[str] = mapped_column(String(255))
     email_at_provider: Mapped[str | None] = mapped_column(String(255))
+    username_at_provider: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship("User", back_populates="oauth_identities")

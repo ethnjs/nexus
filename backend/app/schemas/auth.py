@@ -206,6 +206,7 @@ class AccountDeactivateRequest(BaseModel):
 class OAuthIdentityResponse(BaseModel):
     provider: str
     email_at_provider: str | None = None
+    username_at_provider: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
