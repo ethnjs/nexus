@@ -109,7 +109,7 @@ export function SubHeader({
             />
             <FormActionsMenu
               form={form}
-              items={["allow-edits", "copy-json"]}
+              items={["copy-link", "allow-edits", "copy-json"]}
               onAllowEditsChange={(allow) => onUpdated({ ...form, allow_response_edits: allow })}
               lockedReason={locked ? ARCHIVED_REASON : undefined}
             />
