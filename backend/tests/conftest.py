@@ -17,6 +17,7 @@ Fixture hierarchy:
 """
 
 import os
+from contextlib import nullcontext
 from datetime import date, timedelta
 
 import pytest
@@ -55,6 +56,7 @@ from app.schemas.sheet_config import (
 )
 from app.services.forms_service import FormsService
 from app.services.sheets_service import SheetsService
+from tests.discord_fake import FakeDiscord
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"
@@ -401,6 +403,14 @@ def mock_send_email(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def mock_discord_rest(monkeypatch) -> FakeDiscord:
+    """Replaces the bot's REST client with an in-memory server; add guilds to it per test."""
+    fake = FakeDiscord()
+    monkeypatch.setattr("app.services.discord.rest.get_rest", lambda: fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
 def mock_discord_http(monkeypatch):
     """Stubs every Discord OAuth call at `_request`. Set `side_effect` to answer by path;
     an unstubbed call fails the test."""
@@ -434,8 +444,9 @@ DISCORD_TEST_KEY = Ed25519PrivateKey.generate()
 
 
 @pytest.fixture
-def discord_on(client, monkeypatch):
-    """Turns the Discord feature switch on, with dev-shaped settings."""
+def discord_on(client, db, monkeypatch):
+    """Turns the Discord feature switch on, with dev-shaped settings. Background builds use the
+    test session instead of opening their own."""
     from app.core.config import get_settings
     from app.core.discord.deps import require_discord_enabled
     from app.main import app
@@ -453,6 +464,7 @@ def discord_on(client, monkeypatch):
     for name, value in values.items():
         monkeypatch.setattr(settings, name, value)
     app.dependency_overrides[require_discord_enabled] = lambda: None
+    monkeypatch.setattr("app.core.discord.build.default_session_scope", lambda: nullcontext(db))
 
 
 # ---------------------------------------------------------------------------

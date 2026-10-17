@@ -37,3 +37,26 @@ class DiscordLinkUpdate(BaseModel):
 
     merge_divisions: bool | None = None
     category_grouping: CategoryGrouping | None = None
+
+
+class DiscordBuildRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reset: bool = False
+    # True asks for the preview; False runs the build, and needs the preview's token.
+    dry_run: bool = True
+    preview_token: str | None = None
+
+
+class DiscordPreviewGroup(BaseModel):
+    title: str
+    items: list[str]
+
+
+class DiscordBuildPreview(BaseModel):
+    groups: list[DiscordPreviewGroup]
+    warnings: list[str]
+    # Anything here means the build can't run; the token is then null.
+    blockers: list[str]
+    # Confirms this preview for 10 minutes. Null when there's nothing to do or it's blocked.
+    preview_token: str | None

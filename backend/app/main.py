@@ -103,6 +103,9 @@ async def lifespan(app: FastAPI):
 
     if leader is not None:
         await leader.stop()
+        from app.services.discord.rest import close_rest
+
+        await close_rest()
 
 
 app = FastAPI(

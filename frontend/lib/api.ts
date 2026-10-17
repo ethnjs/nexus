@@ -1611,6 +1611,14 @@ export interface DiscordTrackStatus {
   link: DiscordLink | null;
 }
 
+// Matches DiscordBuildPreview: a dry run of the build, grouped under headings.
+export interface DiscordBuildPreview {
+  groups: { title: string; items: string[] }[];
+  warnings: string[];
+  blockers: string[];
+  preview_token: string | null;
+}
+
 export interface DiscordLinkSettings {
   merge_divisions: boolean;
   category_grouping: DiscordCategoryGrouping;
@@ -1624,6 +1632,18 @@ export const discordApi = {
     api.patch<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`, body),
   unlink: (tournamentId: number, trackId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`),
+  previewBuild: (tournamentId: number, trackId: number, reset: boolean) =>
+    api.post<DiscordBuildPreview>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/build/`, {
+      reset,
+      dry_run: true,
+    }),
+  // Starts the build in the background; poll status() for last_build_status.
+  startBuild: (tournamentId: number, trackId: number, reset: boolean, previewToken: string) =>
+    api.post<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/build/`, {
+      reset,
+      dry_run: false,
+      preview_token: previewToken,
+    }),
   // A full navigation, not fetch: the backend redirects to Discord's bot install screen.
   installUrl: (tournamentId: number, trackId: number, settings: DiscordLinkSettings) =>
     `/api/proxy/tournaments/${tournamentId}/tracks/${trackId}/discord/install?${new URLSearchParams(
