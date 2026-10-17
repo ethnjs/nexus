@@ -479,3 +479,147 @@ class TestTrackDiscordSettings:
         db.delete(db.get(TournamentTrack, track_id))
         db.commit()
         assert db.query(DiscordGuildLink).count() == 0
+
+
+class TestBuildRoute:
+    @pytest.fixture
+    def guild(self, mock_discord_rest):
+        return mock_discord_rest.add_guild(GUILD_ID)
+
+    def _build(self, client, tournament_id, track_id, **body):
+        return client.post(_url(tournament_id, track_id, "build/"), json=body)
+
+    def test_preview_then_confirm(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild, mock_discord_rest
+    ):
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = self._build(client, td_tournament.id, track_id)
+        assert res.status_code == 200
+        preview = res.json()
+        titles = [g["title"] for g in preview["groups"]]
+        assert titles[0] == "Create" and titles[-1] == "Gate"
+        assert preview["blockers"] == []
+        assert preview["preview_token"]
+        assert mock_discord_rest.writes == []
+
+        res = self._build(
+            client,
+            td_tournament.id,
+            track_id,
+            dry_run=False,
+            preview_token=preview["preview_token"],
+        )
+        assert res.status_code == 202
+        db.refresh(link)
+        assert link.built_at is not None
+        assert link.last_build_status == "succeeded"
+        assert guild.channel("verify")
+
+    def test_confirm_needs_a_preview(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        assert self._build(client, td_tournament.id, track_id, dry_run=False).status_code == 400
+
+    def test_preview_token_is_bound_to_its_user_and_kind(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        from app.core.discord.previews import sign
+
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        for token in (
+            sign(link.id, False, None, "u999999"),
+            sign(link.id, True, None, f"u{td_user.id}"),
+            sign(link.id + 1, False, None, f"u{td_user.id}"),
+        ):
+            res = self._build(
+                client, td_tournament.id, track_id, dry_run=False, preview_token=token
+            )
+            assert res.status_code == 400
+
+    def test_expired_preview(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild, monkeypatch
+    ):
+        from app.core.discord import previews
+
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        token = self._build(client, td_tournament.id, track_id).json()["preview_token"]
+        later = previews.time.time() + previews.EXPIRY_SECONDS + 1
+        monkeypatch.setattr(previews.time, "time", lambda: later)
+        res = self._build(client, td_tournament.id, track_id, dry_run=False, preview_token=token)
+        assert res.status_code == 409
+
+    def test_one_build_at_a_time(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        token = self._build(client, td_tournament.id, track_id).json()["preview_token"]
+        link.last_build_status = "running"
+        link.last_build_at = utcnow()
+        db.commit()
+        res = self._build(client, td_tournament.id, track_id, dry_run=False, preview_token=token)
+        assert res.status_code == 409
+
+    def test_reset_needs_a_built_server(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        assert self._build(client, td_tournament.id, track_id, reset=True).status_code == 409
+
+    def test_refused_when_the_bot_was_removed(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        _add_link(db, td_tournament, track_id, bot_removed_at=utcnow())
+        login(client, "td@test.com", "tdpass")
+        assert self._build(client, td_tournament.id, track_id).status_code == 409
+
+    def test_refused_when_archived(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        _add_link(db, td_tournament, track_id)
+        td_tournament.is_archived = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert self._build(client, td_tournament.id, track_id).status_code == 403
+
+    def test_requires_manage_discord(self, client, db, discord_on, td_tournament, track_id, guild):
+        _add_link(db, td_tournament, track_id)
+        grant_role(db, td_tournament, _make_user(db, "vol@test.com"), "Volunteer")
+        login(client, "vol@test.com", "pass1234")
+        assert self._build(client, td_tournament.id, track_id).status_code == 403
+
+    def test_blocked_preview_has_no_token(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild
+    ):
+        guild.roles[guild.bot_role]["permissions"] = "0"
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        preview = self._build(client, td_tournament.id, track_id).json()
+        assert "Administrator" in preview["blockers"][0]
+        assert preview["preview_token"] is None
+
+    def test_discord_error_is_502(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_rest
+    ):
+        from unittest.mock import Mock
+
+        import discord
+
+        async def forbidden(guild_id):
+            raise discord.Forbidden(
+                Mock(status=403, reason="Forbidden"),
+                {"message": "Missing Access", "code": 50001},
+            )
+
+        mock_discord_rest.guild = forbidden
+        _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = self._build(client, td_tournament.id, track_id)
+        assert res.status_code == 502
+        assert "Missing Access" in res.json()["detail"]
