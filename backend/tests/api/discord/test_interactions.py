@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.models.discord import DiscordGuildLink
+from app.models.discord import DiscordGuildLink, DiscordSyncMark
 from app.models.models import (
     OAuthIdentity,
     OAuthProvider,
@@ -48,6 +48,7 @@ def _post(client, payload: dict, *, signature: str | None = None, timestamp: str
 def _command(name: str, user_id: str = TD_DISCORD, guild_id: str | None = GUILD_ID, **options):
     payload: dict = {
         "type": 2,
+        "token": "command-token",
         "data": {
             "name": name,
             "options": [{"name": k, "type": 8, "value": v} for k, v in options.items()],
@@ -288,9 +289,10 @@ class TestStaffCommands:
         coordinator = _make_user(db, "vc@test.com")
         _link_discord(db, coordinator, "5006")
         grant_role(db, td_tournament, coordinator, "Volunteer Coordinator")
-        assert _content(_post(client, _command("setup", user_id="5006"))) == (
-            "/setup isn't available yet."
-        )
+        assert _post(client, _command("setup", user_id="5006")).json() == {
+            "type": 5,
+            "data": {"flags": EPHEMERAL},
+        }
 
     @pytest.mark.parametrize("name", ["sync", "reset"])
     def test_unbuilt_server_needs_setup_first(self, client, db, discord_on, link, td_user, name):
@@ -306,6 +308,227 @@ class TestStaffCommands:
 
     def test_site_admin_passes_the_nexus_check(self, client, db, discord_on, link, admin_user):
         _link_discord(db, admin_user, "5007")
-        assert _content(_post(client, _command("setup", user_id="5007"))) == (
-            "/setup isn't available yet."
+        assert _post(client, _command("setup", user_id="5007")).json() == {
+            "type": 5,
+            "data": {"flags": EPHEMERAL},
+        }
+
+
+def _click(custom_id: str, user_id: str = TD_DISCORD, roles: list[str] | None = None):
+    return {
+        "type": 3,
+        "token": "click-token",
+        "guild_id": GUILD_ID,
+        "member": {"user": {"id": user_id}, "roles": roles or []},
+        "data": {"custom_id": custom_id, "component_type": 2},
+    }
+
+
+@pytest.fixture
+def guild(mock_discord_rest):
+    return mock_discord_rest.add_guild(int(GUILD_ID))
+
+
+@pytest.fixture(autouse=True)
+def _fresh_verify_cooldowns(monkeypatch):
+    monkeypatch.setattr("app.core.discord.interactions._verify_clicks", {})
+
+
+def _last_reply(mock_discord_rest, token: str) -> dict:
+    replies = [payload for t, payload in mock_discord_rest.interaction_replies if t == token]
+    assert replies, f"no reply edited through {token}"
+    return replies[-1]
+
+
+def _buttons(payload: dict) -> list[dict]:
+    return [c for row in payload.get("components", []) for c in row["components"]]
+
+
+class TestSetupAndReset:
+    def _setup_preview(self, client, db, td_user, mock_discord_rest) -> dict:
+        _link_discord(db, td_user, TD_DISCORD)
+        res = _post(client, _command("setup"))
+        assert res.json() == {"type": 5, "data": {"flags": EPHEMERAL}}
+        return _last_reply(mock_discord_rest, "command-token")
+
+    def _built(self, client, db, td_user, mock_discord_rest) -> None:
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        _post(client, _click(_buttons(preview)[0]["custom_id"]))
+
+    def test_setup_previews_with_confirm_and_cancel(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        assert preview["content"].startswith("**Preview of /setup**")
+        assert "**Create**" in preview["content"]
+        assert "Unverified members will no longer see" in preview["content"]
+        confirm, cancel = _buttons(preview)
+        assert confirm["custom_id"].startswith("nexus:go:")
+        assert confirm["style"] == 1
+        assert cancel["custom_id"] == "nexus:cancel"
+        assert mock_discord_rest.writes == []
+
+    def test_confirm_builds_and_reports(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        res = _post(client, _click(_buttons(preview)[0]["custom_id"]))
+        assert res.json()["type"] == 7
+        assert res.json()["data"]["content"].startswith("Building")
+        db.refresh(link)
+        assert link.built_at is not None
+        assert link.last_build_status == "succeeded"
+        assert _last_reply(mock_discord_rest, "click-token")["content"].startswith("Done.")
+        assert guild.channel("verify")
+
+    def test_nothing_to_change_after_a_build(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        self._built(client, db, td_user, mock_discord_rest)
+        _post(client, _command("setup"))
+        assert _last_reply(mock_discord_rest, "command-token")["content"] == (
+            "Nothing to change. This server matches NEXUS."
         )
+
+    def test_only_the_person_who_ran_it_can_confirm(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest, td_tournament
+    ):
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        other = _make_user(db, "vc@test.com")
+        _link_discord(db, other, "5008")
+        grant_role(db, td_tournament, other, "Volunteer Coordinator")
+        res = _post(client, _click(_buttons(preview)[0]["custom_id"], user_id="5008"))
+        assert _content(res) == "Only the person who ran the command can confirm it."
+        db.refresh(link)
+        assert link.built_at is None
+
+    def test_expired_preview_is_refused(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest, monkeypatch
+    ):
+        from app.core.discord import previews
+
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        later = previews.time.time() + previews.EXPIRY_SECONDS + 1
+        monkeypatch.setattr(previews.time, "time", lambda: later)
+        res = _post(client, _click(_buttons(preview)[0]["custom_id"]))
+        assert res.json()["data"]["content"] == "This preview expired. Run the command again."
+        db.refresh(link)
+        assert link.built_at is None
+
+    def test_confirm_rechecks_manage_discord(
+        self, client, db, discord_on, link, guild, mock_discord_rest, td_tournament
+    ):
+        coordinator = _make_user(db, "vc@test.com")
+        _link_discord(db, coordinator, "5009")
+        grant_role(db, td_tournament, coordinator, "Volunteer Coordinator")
+        _post(client, _command("setup", user_id="5009"))
+        confirm = _buttons(_last_reply(mock_discord_rest, "command-token"))[0]["custom_id"]
+        role = (
+            db.query(TournamentRole)
+            .filter_by(tournament_id=td_tournament.id, label="Volunteer Coordinator")
+            .one()
+        )
+        role.permissions = []
+        db.commit()
+        res = _post(client, _click(confirm, user_id="5009"))
+        assert _content(res) == "You need the Manage Discord permission in NEXUS to run this."
+
+    def test_one_build_at_a_time(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        link.last_build_status = "running"
+        link.last_build_at = utcnow()
+        db.commit()
+        res = _post(client, _click(_buttons(preview)[0]["custom_id"]))
+        assert res.json()["data"]["content"].startswith("A build is already running")
+
+    def test_cancel(self, client, discord_on, link):
+        res = _post(client, _click("nexus:cancel"))
+        assert res.json() == {
+            "type": 7,
+            "data": {
+                "content": "Cancelled. Nothing changed.",
+                "components": [],
+                "allowed_mentions": {"parse": []},
+            },
+        }
+
+    def test_reset_confirm_is_red(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        self._built(client, db, td_user, mock_discord_rest)
+        guild.role("Volunteer Coordinator")["name"] = "VC"
+        _post(client, _command("reset"))
+        preview = _last_reply(mock_discord_rest, "command-token")
+        assert "Volunteer Coordinator: renamed from VC" in preview["content"]
+        assert _buttons(preview)[0]["style"] == 4
+
+    def test_scoped_reset_of_an_unmanaged_role_has_no_confirm(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        self._built(client, db, td_user, mock_discord_rest)
+        mods = guild.add_role("Mods")
+        _post(client, _command("reset", role=str(mods)))
+        preview = _last_reply(mock_discord_rest, "command-token")
+        assert "NEXUS doesn't manage this." in preview["content"]
+        assert [b["custom_id"] for b in _buttons(preview)] == ["nexus:cancel"]
+
+    def test_sync_is_not_built_yet(self, client, db, discord_on, link, td_user):
+        link.built_at = utcnow()
+        db.commit()
+        _link_discord(db, td_user, TD_DISCORD)
+        assert _content(_post(client, _command("sync"))) == "/sync isn't available yet."
+
+
+class TestVerifyButton:
+    def test_already_verified(self, client, discord_on):
+        # Answered from the click alone: this server isn't even linked.
+        res = _post(client, _click("nexus:verify:777", roles=["777"]))
+        assert _content(res) == "You're already verified."
+
+    def test_cooldown(self, client, discord_on, link):
+        _post(client, _click("nexus:verify:777", user_id="9999"))
+        res = _post(client, _click("nexus:verify:777", user_id="9999"))
+        assert _content(res).startswith("Try again in")
+
+    def test_unlinked_account_gets_the_link_button(self, client, discord_on, link):
+        res = _post(client, _click("nexus:verify:777", user_id="9999"))
+        assert _content(res).startswith("Link your Discord account to NEXUS first.")
+        assert _link_url(res) == CONNECT_URL
+
+    def test_linked_but_not_on_staff(self, client, db, discord_on, link):
+        _link_discord(db, _make_user(db, "nobody@test.com"), "5010")
+        content = _content(_post(client, _click("nexus:verify:777", user_id="5010")))
+        assert content.startswith("Your NEXUS account (Pat Example) isn't on staff for")
+        assert content.endswith("Contact the tournament director.")
+        assert db.query(DiscordSyncMark).count() == 0
+
+    def test_eligible_member_is_marked(self, client, db, discord_on, link, td_tournament, track_id):
+        volunteer = _make_user(db, "vol@test.com")
+        _link_discord(db, volunteer, "5011")
+        grant_role(db, td_tournament, volunteer, "Volunteer", track_id=track_id)
+        res = _post(client, _click("nexus:verify:777", user_id="5011"))
+        assert _content(res) == "You're verified. Your channels will appear in a few seconds."
+        mark = db.query(DiscordSyncMark).one()
+        assert (mark.link_id, mark.kind, mark.discord_user_id) == (link.id, "member", 5011)
+
+    def test_roles_on_another_track_dont_count(self, client, db, discord_on, link, td_tournament):
+        volunteer = _make_user(db, "vol@test.com")
+        _link_discord(db, volunteer, "5012")
+        other_track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+        db.add(other_track)
+        db.commit()
+        grant_role(db, td_tournament, volunteer, "Test Writer", track_id=other_track.id)
+        content = _content(_post(client, _click("nexus:verify:777", user_id="5012")))
+        assert "isn't on staff" in content
+
+    def test_site_admins_get_no_special_treatment(self, client, db, discord_on, link, admin_user):
+        _link_discord(db, admin_user, "5013")
+        content = _content(_post(client, _click("nexus:verify:777", user_id="5013")))
+        assert "isn't on staff" in content
+
+    def test_owner_without_roles_is_eligible(self, client, db, discord_on, link, td_user):
+        _link_discord(db, td_user, TD_DISCORD)
+        content = _content(_post(client, _click("nexus:verify:777")))
+        assert content.startswith("You're verified.")

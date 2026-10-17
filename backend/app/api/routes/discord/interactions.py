@@ -5,7 +5,7 @@ Ed25519 signature authenticates every request instead."""
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -34,9 +34,10 @@ async def verified_interaction(request: Request) -> dict[str, Any]:
 
 @router.post("/discord/interactions/", include_in_schema=False)
 def receive_interaction(
+    background_tasks: BackgroundTasks,
     payload: dict[str, Any] = Depends(verified_interaction),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if payload.get("type") == PING:
         return {"type": PONG}
-    return handle(db, payload)
+    return handle(db, payload, background_tasks.add_task)

@@ -3,6 +3,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { DiscordBuildModal } from "@/components/tournament/settings/DiscordBuildModal";
 import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
@@ -52,6 +53,10 @@ const GROUPING_OPTIONS = [
 
 const MERGE_HELPER =
   "Events that are the same catalog event in the same building or zone share one channel, like #circuit-lab-bc.";
+const BUILD_POLL_MS = 3000;
+// A running build refreshes last_build_at every 30 s; one this quiet was interrupted.
+// Matches STALE_BUILD_MINUTES in backend/app/core/discord/build.py.
+const BUILD_STALE_MS = 2 * 60_000;
 const GROUPING_HELPER = "Channel categories are named after each event's building or zone.";
 
 export default function DiscordSettingsPage() {
@@ -192,6 +197,25 @@ function TrackDiscord({
   });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const building =
+    link?.last_build_status === "running" &&
+    link.last_build_at !== null &&
+    now - new Date(link.last_build_at).getTime() < BUILD_STALE_MS;
+
+  // A build runs in the background; poll until it finishes.
+  useEffect(() => {
+    if (!building) return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+      discordApi
+        .status(tournamentId, track.id)
+        .then(onChange)
+        .catch(() => {});
+    }, BUILD_POLL_MS);
+    return () => clearInterval(interval);
+  }, [building, tournamentId, track.id, onChange]);
 
   function install() {
     window.location.assign(discordApi.installUrl(tournamentId, track.id, draft));
@@ -275,6 +299,8 @@ function TrackDiscord({
         </span>
         {removed ? (
           <Badge variant="removed">Bot removed</Badge>
+        ) : building ? (
+          <Badge variant="pending">Building…</Badge>
         ) : link.built_at ? (
           <Badge variant="confirmed">Built</Badge>
         ) : (
@@ -294,7 +320,7 @@ function TrackDiscord({
           />
         </div>
       )}
-      {link.last_build_error && (
+      {link.last_build_error && !building && (
         <div style={{ margin: "12px 0" }}>
           <Banner variant="error" message={`Last build failed: ${link.last_build_error}`} />
         </div>
@@ -310,6 +336,23 @@ function TrackDiscord({
           <Banner variant="error" message={saveError} />
         </div>
       )}
+      <SettingsRow
+        label={link.built_at ? "Reset to defaults" : "Build server"}
+        helper={
+          link.built_at
+            ? "Puts NEXUS's roles, channels and permissions back the way NEXUS sets them up, undoing hand edits. Shows exactly what changes first."
+            : "Creates the server's roles, categories and channels, and the #verify gate. Shows exactly what changes first."
+        }
+        contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+      >
+        <Button
+          variant={link.built_at ? "secondary" : "primary"}
+          onClick={() => setPreviewing(true)}
+          disabled={locked || removed || building}
+        >
+          {link.built_at ? "Reset to defaults" : "Build server"}
+        </Button>
+      </SettingsRow>
       <SettingsRow
         label="Unlink"
         helper="The bot leaves the server. Its roles and channels stay as they are."
@@ -331,6 +374,15 @@ function TrackDiscord({
         >
           Changes to division merge and categories take effect the next time the server is reset.
         </p>
+      )}
+      {previewing && (
+        <DiscordBuildModal
+          tournamentId={tournamentId}
+          trackId={track.id}
+          reset={link.built_at !== null}
+          onClose={() => setPreviewing(false)}
+          onStarted={onChange}
+        />
       )}
       {unlinking && (
         <ConfirmModal

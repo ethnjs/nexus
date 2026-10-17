@@ -3,14 +3,27 @@ settings. The install is a browser navigation, so its failures redirect instead 
 JSON."""
 
 import secrets
+from functools import partial
 from typing import Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
+import anyio
+import discord
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_active_session
 from app.core.config import get_settings
+from app.core.discord import build as discord_build
 from app.core.discord.deps import require_discord_enabled
 from app.core.discord.links import (
     InstallRefused,
@@ -21,6 +34,7 @@ from app.core.discord.links import (
     require_track_installable,
     user_label,
 )
+from app.core.discord.previews import PreviewExpired, sign, verify
 from app.core.oauth import frontend_redirect, with_query
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
@@ -33,7 +47,14 @@ from app.core.tournament.permissions import MANAGE_DISCORD, require_permission
 from app.db.session import get_db
 from app.models.discord import CategoryGrouping, DiscordGuildLink
 from app.models.models import Tournament, TournamentTrack, User
-from app.schemas.discord import DiscordLinkResponse, DiscordLinkUpdate, DiscordTrackStatus
+from app.schemas.discord import (
+    DiscordBuildPreview,
+    DiscordBuildRequest,
+    DiscordLinkResponse,
+    DiscordLinkUpdate,
+    DiscordPreviewGroup,
+    DiscordTrackStatus,
+)
 from app.services.discord import oauth as discord_oauth
 from app.services.discord.oauth import DiscordOAuthError
 
@@ -263,3 +284,90 @@ def unlink_track_discord(
     notify_leave(db, link.guild_id)
     db.delete(link)
     db.commit()
+
+
+@router.post(
+    "/tournaments/{tournament_id}/tracks/{track_id}/discord/build/",
+    response_model=DiscordBuildPreview | DiscordTrackStatus,
+    responses={202: {"model": DiscordTrackStatus, "description": "The build started"}},
+)
+def build_track_discord(
+    tournament_id: int,
+    track_id: int,
+    payload: DiscordBuildRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_DISCORD)),
+):
+    """Builds the linked server, or with `reset` puts NEXUS's defaults back over hand edits.
+
+    Call it first with `dry_run` (the default) for a preview of exactly what would change, then
+    again with `dry_run: false` and the preview's `preview_token` within 10 minutes to run it.
+    The build runs in the background; its outcome lands on the link's `last_build_*` fields.
+    """
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    link = _scoped_link(db, tournament_id, track_id)
+    if link.track.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This track is being deleted")
+    if link.bot_removed_at is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The bot was removed from this server. Add it back first."
+        )
+    if payload.reset and link.built_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Build the server before resetting it")
+
+    if payload.dry_run:
+        try:
+            plan, _, _ = anyio.from_thread.run(
+                partial(
+                    discord_build.prepare,
+                    link.id,
+                    reset=payload.reset,
+                    target=None,
+                    session_scope=discord_build.default_session_scope,
+                )
+            )
+        except discord.HTTPException as exc:
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY, f"Couldn't read the Discord server: {exc.text}"
+            ) from None
+        runnable = not plan.blocked and not plan.empty
+        return DiscordBuildPreview(
+            groups=[DiscordPreviewGroup(title=t, items=items) for t, items in plan.groups()],
+            warnings=plan.warnings,
+            blockers=plan.blockers,
+            preview_token=sign(link.id, payload.reset, None, f"u{current_user.id}")
+            if runnable
+            else None,
+        )
+
+    if not payload.preview_token:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Preview the build first")
+    try:
+        preview = verify(payload.preview_token)
+    except PreviewExpired:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This preview expired. Preview again."
+        ) from None
+    if (
+        preview is None
+        or preview.link_id != link.id
+        or preview.reset != payload.reset
+        or preview.target is not None
+        or preview.actor != f"u{current_user.id}"
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This preview isn't valid. Preview again.")
+    if not discord_build.claim_build(db, link.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A build is already running for this server")
+    background_tasks.add_task(
+        discord_build.run_build,
+        link.id,
+        reset=payload.reset,
+        target=None,
+        session_scope=discord_build.default_session_scope,
+    )
+    response.status_code = status.HTTP_202_ACCEPTED
+    db.refresh(link)
+    return _status(track_id, link)
