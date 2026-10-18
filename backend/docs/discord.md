@@ -188,7 +188,7 @@ lobot sees its own changes too; repeated marks merge, so a build's channel creat
 | `/setup` | Preview, Confirm, then `build(reset=False)` |
 | `/reset [role] [channel]` | Preview, Confirm, then a full or scoped reset |
 
-- **The Verify button** (`custom_id` `nexus:verify:<Verified role id>`): already holding Verified, per the click payload, is answered without a database query; then a 10-second per-worker cooldown; then unlinked (instructions and the link button), ineligible ("isn't on staff for …", no kick), or eligible (a member mark, "You're verified").
+- **The Verify button** (`custom_id` `nexus:verify:<Verified role id>`): already holding Verified, per the click payload, is answered without a database query; then a 10-second per-worker cooldown; then unlinked (instructions and the link button), ineligible ("doesn't have a role or assignment in …", no kick), or eligible (a member mark, "You're verified").
 
 ## Tests
 

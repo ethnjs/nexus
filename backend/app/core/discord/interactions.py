@@ -149,7 +149,7 @@ def _verify(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     if not is_eligible(db, link, user):
         where = f"{tournament_display_name(link.tournament)} ({link.track.name})"
         return reply(
-            f"Your NEXUS account ({user_label(user)}) isn't on staff for {where}. "
+            f"Your NEXUS account ({user_label(user)}) doesn't have a role or assignment in {where}. "
             "Contact the tournament director."
         )
     mark_member(db, link.id, int(discord_user_id))
@@ -323,7 +323,7 @@ def _whoami(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     ]
     if not rows:
         if tournament.owner_id != user.id:
-            lines.append(f"You aren't on staff for {where}.")
+            lines.append(f"You don't have a role or assignment in {where}.")
         return reply("\n".join(lines))
 
     lines.append(f"**Roles** in {where}: {_role_summary(rows)}")
