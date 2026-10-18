@@ -52,6 +52,8 @@ class DiscordGuildLink(Base):
     last_build_status: Mapped[str | None] = mapped_column(String(16))
     last_build_error: Mapped[str | None] = mapped_column(Text)
     last_sync_error: Mapped[str | None] = mapped_column(Text)
+    # A sync that succeeded but skipped something, such as roles above the bot's.
+    last_sync_warning: Mapped[str | None] = mapped_column(Text)
 
     verified_role_id: Mapped[int | None] = mapped_column(BigInteger)
     owner_role_id: Mapped[int | None] = mapped_column(BigInteger)

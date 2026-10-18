@@ -13,7 +13,7 @@ from app.core.discord.build import Target, claim_build
 from app.core.discord.eligibility import is_eligible
 from app.core.discord.layout import event_name_with_division
 from app.core.discord.links import link_for_guild, user_label
-from app.core.discord.marks import mark_member
+from app.core.discord.marks import mark_full, mark_member
 from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
 from app.core.oauth import frontend_redirect
 from app.core.tournament import tournament_display_name
@@ -86,7 +86,7 @@ def handle(db: Session, payload: dict[str, Any], schedule: Schedule) -> dict[str
     guild_id = payload.get("guild_id")
     member = payload.get("member")
     if guild_id is None or member is None:
-        return reply("NEXUS commands work only inside servers.")
+        return reply("lobot's commands work only inside servers.")
     discord_user_id = str(member["user"]["id"])
     custom_id = payload.get("data", {}).get("custom_id", "")
 
@@ -114,7 +114,7 @@ def handle(db: Session, payload: dict[str, Any], schedule: Schedule) -> dict[str
             return _confirm(db, link, discord_user_id, token, payload, schedule)
         return reply("This button doesn't do anything any more.")
     if payload["type"] != APPLICATION_COMMAND:
-        return reply("NEXUS doesn't know how to answer that.")
+        return reply("lobot doesn't know how to answer that.")
 
     data = payload["data"]
     name = data["name"]
@@ -125,7 +125,7 @@ def handle(db: Session, payload: dict[str, Any], schedule: Schedule) -> dict[str
     if name in STAFF_COMMANDS:
         options = {o["name"]: o.get("value") for o in data.get("options", [])}
         return _staff_command(db, link, discord_user_id, name, options, payload, schedule)
-    return reply("NEXUS doesn't know that command.")
+    return reply("lobot doesn't know that command.")
 
 
 def _verify_cooldown(guild_id: int, discord_user_id: int) -> int:
@@ -185,7 +185,16 @@ def _staff_command(
     if name in ("sync", "reset") and link.built_at is None:
         return reply("Run /setup first.")
     if name == "sync":
-        return reply("/sync isn't available yet.")
+        mark_full(db, link.id)
+        db.commit()
+        message = (
+            "Sync queued. Members' roles and missing roles and channels catch up in a few seconds."
+        )
+        if link.last_sync_error:
+            message += f"\nThe last sync failed: {link.last_sync_error}"
+        elif link.last_sync_warning:
+            message += f"\nThe last sync finished with a warning: {link.last_sync_warning}"
+        return reply(message)
 
     target = None
     if "role" in options:
@@ -226,7 +235,7 @@ async def _send_preview(
         )
     except Exception:
         log.exception("Couldn't preview a build for link %s", link_id)
-        await _edit(token, {"content": "NEXUS couldn't read this server. Try again."})
+        await _edit(token, {"content": "lobot couldn't read this server. Try again."})
         return
     if plan.empty and not plan.warnings:
         await _edit(token, {"content": "Nothing to change. This server matches NEXUS."})

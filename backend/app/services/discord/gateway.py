@@ -24,6 +24,11 @@ class GatewayEvents(Protocol):
 
     def guild_removed(self, guild_id: int) -> None: ...
     def guild_renamed(self, guild_id: int, name: str) -> None: ...
+    def member_joined(self, guild_id: int, user_id: int) -> None: ...
+    def role_deleted(self, guild_id: int, role_id: int) -> None: ...
+    def channel_deleted(self, guild_id: int, channel_id: int) -> None: ...
+    def channel_created(self, guild_id: int) -> None: ...
+    def role_overwrites_removed(self, guild_id: int, role_ids: set[int]) -> None: ...
 
 
 class _Client(discord.Client):
@@ -55,6 +60,26 @@ class _Client(discord.Client):
         if before.name != after.name:
             await asyncio.to_thread(self._events.guild_renamed, after.id, after.name)
 
+    async def on_member_join(self, member: discord.Member) -> None:
+        if not member.bot:
+            await asyncio.to_thread(self._events.member_joined, member.guild.id, member.id)
+
+    async def on_guild_role_delete(self, role: discord.Role) -> None:
+        await asyncio.to_thread(self._events.role_deleted, role.guild.id, role.id)
+
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
+        await asyncio.to_thread(self._events.channel_deleted, channel.guild.id, channel.id)
+
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
+        await asyncio.to_thread(self._events.channel_created, channel.guild.id)
+
+    async def on_guild_channel_update(
+        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+    ) -> None:
+        removed = _role_targets(before) - _role_targets(after)
+        if removed:
+            await asyncio.to_thread(self._events.role_overwrites_removed, after.guild.id, removed)
+
     async def _register_commands(self) -> None:
         assert self.application_id is not None
         scope = f"server {self._dev_guild_id}" if self._dev_guild_id else "global"
@@ -74,6 +99,10 @@ class _Client(discord.Client):
     async def on_ready(self) -> None:
         assert self.user is not None
         log.info("Connected to Discord as %s, in %d servers", self.user, len(self.guilds))
+
+
+def _role_targets(channel: discord.abc.GuildChannel) -> set[int]:
+    return {target.id for target in channel.overwrites if isinstance(target, discord.Role)}
 
 
 class Gateway:

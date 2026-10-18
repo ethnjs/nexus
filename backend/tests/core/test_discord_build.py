@@ -1,6 +1,5 @@
 """build() against the in-memory Discord server, with real NEXUS data in the test database."""
 
-from contextlib import nullcontext
 from datetime import timedelta
 
 import pytest
@@ -15,7 +14,6 @@ from app.core.discord.build import (
     run_build,
 )
 from app.models.discord import (
-    DiscordGuildLink,
     DiscordManagedChannel,
     DiscordManagedRole,
     DiscordSyncMark,
@@ -23,10 +21,7 @@ from app.models.discord import (
 from app.models.models import (
     Event,
     EventCategory,
-    TournamentBuilding,
-    TournamentBuildingTrack,
     TournamentEvent,
-    TournamentEventTrack,
     TournamentRole,
     utcnow,
 )
@@ -39,58 +34,7 @@ from app.services.discord.permissions import (
     VIEW_CHANNEL,
 )
 from app.services.discord.rest import GUILD_CATEGORY, MEMBER_OVERWRITE, ROLE_OVERWRITE
-from tests.conftest import primary_track_id
-
-GUILD_ID = 5000
-
-
-@pytest.fixture
-def scope(db):
-    return lambda: nullcontext(db)
-
-
-@pytest.fixture
-def track_id(db, td_tournament) -> int:
-    return primary_track_id(db, td_tournament.id)
-
-
-@pytest.fixture
-def events(db, td_tournament, track_id) -> dict[str, TournamentEvent]:
-    """Circuit Lab B and C in Rowland Hall, Anatomy C unplaced."""
-    rowland = TournamentBuilding(tournament_id=td_tournament.id, name="Rowland Hall")
-    db.add(rowland)
-    db.flush()
-    db.add(TournamentBuildingTrack(building_id=rowland.id, track_id=track_id))
-    made = {}
-    for name, division, building in [
-        ("Circuit Lab", "B", rowland.id),
-        ("Circuit Lab", "C", rowland.id),
-        ("Anatomy", "C", None),
-    ]:
-        event = TournamentEvent(tournament_id=td_tournament.id, name=name, division=division)
-        db.add(event)
-        db.flush()
-        db.add(
-            TournamentEventTrack(
-                tournament_event_id=event.id, track_id=track_id, building_id=building
-            )
-        )
-        made[f"{name} {division}"] = event
-    db.commit()
-    return made
-
-
-@pytest.fixture
-def link(db, td_tournament, track_id, events) -> DiscordGuildLink:
-    link = DiscordGuildLink(tournament_id=td_tournament.id, track_id=track_id, guild_id=GUILD_ID)
-    db.add(link)
-    db.commit()
-    return link
-
-
-@pytest.fixture
-def guild(mock_discord_rest):
-    return mock_discord_rest.add_guild(GUILD_ID)
+from tests.core.conftest import GUILD_ID
 
 
 async def _preview(link, scope, *, reset=False, target=None):
@@ -250,7 +194,7 @@ class TestChecks:
     async def test_roles_above_the_bot_are_skipped_and_reported(self, db, link, guild, scope):
         above = guild.add_role("Volunteer", top=True)
         plan = await _preview(link, scope)
-        assert "Move the NEXUS bot's role above Volunteer." in plan.warnings
+        assert "Move lobot's role above Volunteer." in plan.warnings
         assert not plan.blocked
         await _build(db, link, scope)
         assert [r["name"] for r in guild.roles.values()].count("Volunteer") == 1
@@ -527,7 +471,7 @@ class TestScopedReset:
         mods = guild.add_role("Mods")
         for target in (Target("channel", general), Target("role", mods)):
             plan = await _preview(link, scope, target=target)
-            assert plan.blockers == ["NEXUS doesn't manage this."]
+            assert plan.blockers == ["lobot doesn't manage this."]
 
 
 class TestRecreatedRoles:
@@ -615,3 +559,23 @@ class TestTiedPositions:
         assert any("drag any role" in w for w in plan.warnings)
         assert await _build(db, link, scope, reset=True) is None
         assert link.last_build_status == "succeeded"
+
+
+async def test_admin_roles_are_created_hoisted(db, link, guild, scope):
+    db.add(
+        TournamentRole(
+            tournament_id=link.tournament_id,
+            label="Co-Director",
+            rank=15,
+            permissions=["manage_tournament"],
+        )
+    )
+    db.commit()
+    await _build(db, link, scope)
+    hoisted = {r["name"] for r in guild.roles.values() if r.get("hoist")}
+    assert hoisted == {"Tournament Director", "Co-Director"}
+
+    # Only at creation: an admin unhoisting it is never undone, even by /reset.
+    guild.role("Tournament Director")["hoist"] = False
+    await _build(db, link, scope, reset=True)
+    assert guild.role("Tournament Director")["hoist"] is False

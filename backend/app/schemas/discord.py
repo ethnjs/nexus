@@ -23,6 +23,7 @@ class DiscordLinkResponse(BaseModel):
     last_build_status: str | None
     last_build_error: str | None
     last_sync_error: str | None
+    last_sync_warning: str | None
     created_at: datetime
 
 

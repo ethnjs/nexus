@@ -2,6 +2,7 @@
 settings. The install is a browser navigation, so its failures redirect instead of returning
 JSON."""
 
+import logging
 import secrets
 from functools import partial
 from typing import Any
@@ -34,6 +35,7 @@ from app.core.discord.links import (
     require_track_installable,
     user_label,
 )
+from app.core.discord.marks import mark_full
 from app.core.discord.previews import PreviewExpired, sign, verify
 from app.core.oauth import frontend_redirect, with_query
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
@@ -56,7 +58,10 @@ from app.schemas.discord import (
     DiscordTrackStatus,
 )
 from app.services.discord import oauth as discord_oauth
+from app.services.discord import rest as discord_rest
 from app.services.discord.oauth import DiscordOAuthError
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["discord"], dependencies=[Depends(require_discord_enabled)])
 
@@ -96,7 +101,7 @@ def start_install(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_DISCORD)),
 ):
-    """Redirects to Discord to add the NEXUS bot to a server and link it to this track."""
+    """Redirects to Discord to add lobot to a server and link it to this track."""
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
@@ -122,6 +127,17 @@ def start_install(
     return RedirectResponse(url, status_code=302)
 
 
+def _leave_now(db: Session, guild_id: int) -> None:
+    """Makes the bot leave before the redirect, so a quick retry finds the bot gone. A failed
+    call falls back to asking the leader."""
+    try:
+        anyio.from_thread.run(discord_rest.get_rest().leave_guild, guild_id)
+    except Exception:
+        log.exception("Couldn't leave server %s; asking the leader to", guild_id)
+        notify_leave(db, guild_id)
+        db.commit()
+
+
 @router.get("/discord/install/callback/", include_in_schema=False)
 def finish_install(
     request: Request,
@@ -142,20 +158,30 @@ def finish_install(
         return RedirectResponse(frontend_redirect(with_query(dest, **params)), status_code=302)
 
     if error:
-        return bounce(error="discord_cancelled" if error == "access_denied" else "discord_failed")
+        if error == "access_denied":
+            return bounce(error="discord_cancelled")
+        log.warning("Discord install refused by Discord: %s", error)
+        return bounce(error="discord_failed")
     if not (code and state and secrets.compare_digest(state, pending["state"])):
+        log.warning("Discord install callback had no code or a mismatched state")
         return bounce(error="discord_failed")
     session_row = get_active_session(db, access_token) if access_token else None
     if session_row is None or session_row.user_id != pending["user_id"]:
+        log.warning("Discord install callback came back to a different NEXUS session")
         return bounce(error="discord_failed")
 
     try:
         token = discord_oauth.exchange_code(code, get_settings().discord_install_redirect_uri)
+    except DiscordOAuthError as exc:
+        log.warning("Discord install code exchange failed: %s", exc)
+        return bounce(error="discord_failed")
+    try:
         guild = token["guild"]
         guild_id = int(guild["id"])
-    except (DiscordOAuthError, KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         # Without the token's guild there's nothing trustworthy to leave; the sweep covers it.
-        return bounce(error="discord_failed")
+        log.warning("Discord install token response had no guild (scopes: %s)", token.get("scope"))
+        return bounce(error="discord_no_guild")
 
     tournament = db.get(Tournament, tournament_id)
     track = db.get(TournamentTrack, pending["track_id"])
@@ -167,10 +193,10 @@ def finish_install(
             db, installer=session_row.user, tournament=tournament, track=track, guild=guild
         )
     except InstallRefused as refused:
+        log.info("Discord install refused (%s) for server %s", refused.code, guild_id)
         # Never leave a server another track is linked to.
         if link_for_guild(db, guild_id) is None:
-            notify_leave(db, guild_id)
-            db.commit()
+            _leave_now(db, guild_id)
         params = {"error": refused.code}
         if refused.owner:
             params["owner"] = refused.owner
@@ -188,6 +214,9 @@ def finish_install(
     link.category_grouping = pending["category_grouping"]
     link.bot_removed_at = None
     db.flush()
+    if link.built_at is not None:
+        # Catches up on whatever changed while the bot was out.
+        mark_full(db, link.id)
     extra: dict[str, Any] = {
         "track_name": track.name,
         "guild_id": str(guild_id),
@@ -263,7 +292,7 @@ def unlink_track_discord(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_DISCORD)),
 ):
-    """Unlinks the server and makes the bot leave it. Its roles and channels stay."""
+    """Unlinks the server and makes lobot leave it. The server's roles and channels stay."""
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     link = _scoped_link(db, tournament_id, track_id)
@@ -313,7 +342,7 @@ def build_track_discord(
         raise HTTPException(status.HTTP_409_CONFLICT, "This track is being deleted")
     if link.bot_removed_at is not None:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "The bot was removed from this server. Add it back first."
+            status.HTTP_409_CONFLICT, "lobot was removed from this server. Add it back first."
         )
     if payload.reset and link.built_at is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Build the server before resetting it")

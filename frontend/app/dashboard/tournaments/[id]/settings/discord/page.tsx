@@ -27,7 +27,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
 
-const LEFT = "The bot left the server.";
+const LEFT = "lobot left the server.";
 
 const INSTALL_ERRORS: Record<string, string> = {
   owner_not_linked: `The server owner hasn't linked their Discord account to NEXUS. ${LEFT}`,
@@ -36,14 +36,16 @@ const INSTALL_ERRORS: Record<string, string> = {
   track_unavailable: `This track is being deleted or no longer exists. ${LEFT}`,
   guild_linked_elsewhere: "That Discord server is already linked to another track.",
   track_linked_elsewhere: `This track is linked to a different Discord server. Unlink it first. ${LEFT}`,
-  discord_cancelled: "Adding the bot was cancelled in Discord.",
+  discord_cancelled: "Adding lobot was cancelled in Discord.",
+  discord_no_guild:
+    "Discord didn't say which server lobot joined. If lobot was just removed from that server, wait a few seconds and try again.",
 };
 
 function installErrorMessage(code: string, owner: string | null): string {
   if (code === "owner_lacks_permission") {
     return `The server owner (${owner ?? "unknown"}) doesn't have Manage Tournament in this tournament. ${LEFT}`;
   }
-  return INSTALL_ERRORS[code] ?? "Something went wrong adding the bot. Try again.";
+  return INSTALL_ERRORS[code] ?? "Something went wrong adding lobot. Try again.";
 }
 
 const GROUPING_OPTIONS = [
@@ -269,7 +271,7 @@ function TrackDiscord({
         {settingsRows}
         <SettingsRow
           label="Add to Discord"
-          helper="Pick a server in Discord. Its owner must have linked their Discord account to NEXUS and have Manage Tournament in this tournament; otherwise the bot leaves right away. Adding the bot changes nothing in the server until you build it."
+          helper="Pick a server in Discord. Its owner must have linked their Discord account to NEXUS and have Manage Tournament in this tournament; otherwise lobot leaves right away. Adding lobot changes nothing in the server until you build it."
           last
           contentStyle={{ display: "flex", justifyContent: "flex-end" }}
         >
@@ -298,7 +300,7 @@ function TrackDiscord({
           {link.guild_name ?? link.guild_id}
         </span>
         {removed ? (
-          <Badge variant="removed">Bot removed</Badge>
+          <Badge variant="removed">lobot removed</Badge>
         ) : building ? (
           <Badge variant="pending">Building…</Badge>
         ) : link.built_at ? (
@@ -311,10 +313,10 @@ function TrackDiscord({
         <div style={{ margin: "12px 0" }}>
           <Banner
             variant="warning"
-            message="The bot was removed from this server, so syncing has stopped. Add it back to resume."
+            message="lobot was removed from this server, so syncing has stopped. Add it back to resume."
             action={
               <Button size="sm" variant="secondary" onClick={install} disabled={locked}>
-                Add the bot back
+                Add lobot back
               </Button>
             }
           />
@@ -325,10 +327,16 @@ function TrackDiscord({
           <Banner variant="error" message={`Last build failed: ${link.last_build_error}`} />
         </div>
       )}
-      {link.last_sync_error && (
+      {link.last_sync_error ? (
         <div style={{ margin: "12px 0" }}>
           <Banner variant="error" message={`Last sync failed: ${link.last_sync_error}`} />
         </div>
+      ) : (
+        link.last_sync_warning && (
+          <div style={{ margin: "12px 0" }}>
+            <Banner variant="warning" message={link.last_sync_warning} />
+          </div>
+        )
       )}
       {settingsRows}
       {saveError && (
@@ -355,7 +363,7 @@ function TrackDiscord({
       </SettingsRow>
       <SettingsRow
         label="Unlink"
-        helper="The bot leaves the server. Its roles and channels stay as they are."
+        helper="lobot leaves the server. The server's roles and channels stay as they are."
         last
         contentStyle={{ display: "flex", justifyContent: "flex-end" }}
       >
@@ -387,7 +395,7 @@ function TrackDiscord({
       {unlinking && (
         <ConfirmModal
           title="Unlink this Discord server?"
-          description={`The NEXUS bot leaves ${link.guild_name ?? "the server"}. Roles and channels stay as they are, and syncing stops. You can add it back later.`}
+          description={`lobot leaves ${link.guild_name ?? "the server"}. Roles and channels stay as they are, and syncing stops. You can add it back later.`}
           confirmLabel="Unlink"
           onConfirm={() => discordApi.unlink(tournamentId, track.id)}
           onClose={() => setUnlinking(false)}

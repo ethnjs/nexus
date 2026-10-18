@@ -67,6 +67,8 @@ class RoleSpec:
     name: str
     permissions: int
     tier: Tier | None
+    # Shown as its own group in the member list. Set only when the role is created.
+    hoist: bool = False
 
 
 @dataclass(frozen=True)
@@ -153,7 +155,13 @@ def compute_layout(
 
 def _role_specs(roles: Iterable[LayoutRole], events: list[LayoutEvent]) -> tuple[RoleSpec, ...]:
     nexus = [
-        RoleSpec(role_key(r.id), r.label, tier_permissions(t := role_tier(r.permissions)), t)
+        RoleSpec(
+            role_key(r.id),
+            r.label,
+            tier_permissions(t := role_tier(r.permissions)),
+            t,
+            hoist=t == "admin",
+        )
         for r in sorted(roles, key=lambda r: (r.rank, _sort_name(r.label), r.id))
     ]
     event_roles = [
