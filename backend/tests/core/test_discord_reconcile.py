@@ -487,6 +487,43 @@ class TestDrain:
         assert mark.next_attempt_at > utcnow()
         assert mark.attempts == 0
 
+    async def test_a_build_cant_start_while_the_sync_changes_the_server(
+        self, db, built, guild, scope, mock_discord_rest, monkeypatch
+    ):
+        claims: list[bool] = []
+        create_role = mock_discord_rest.create_role
+
+        async def create_while_a_build_tries_to_start(*args, **kwargs):
+            claims.append(claim_build(db, built.id))
+            return await create_role(*args, **kwargs)
+
+        monkeypatch.setattr(mock_discord_rest, "create_role", create_while_a_build_tries_to_start)
+        await mock_discord_rest.delete_role(GUILD_ID, int(guild.role("Verified")["id"]))
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        assert claims == [False]
+        db.refresh(built)
+        assert built.sync_started_at is None
+        assert claim_build(db, built.id)
+
+    async def test_a_build_that_started_first_holds_the_structure_sync_back(
+        self, db, built, scope, monkeypatch
+    ):
+        from app.core.discord import drain
+
+        # The build claims the link after the sync's first look found it idle.
+        monkeypatch.setattr(drain, "_link_state", lambda db, link_id: "sync")
+        assert claim_build(db, built.id)
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        [mark] = db.query(DiscordSyncMark).all()
+        assert mark.next_attempt_at > utcnow()
+        assert mark.attempts == 0
+        db.refresh(built)
+        assert built.sync_started_at is None
+
     async def test_failures_back_off_and_are_reported(
         self, db, built, scope, mock_discord_rest, monkeypatch
     ):

@@ -389,7 +389,9 @@ def build_track_discord(
     ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This preview isn't valid. Preview again.")
     if not discord_build.claim_build(db, link.id):
-        raise HTTPException(status.HTTP_409_CONFLICT, "A build is already running for this server")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "lobot is already building or syncing this server"
+        )
     background_tasks.add_task(
         discord_build.run_build,
         link.id,
