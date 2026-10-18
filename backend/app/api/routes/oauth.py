@@ -17,6 +17,7 @@ from app.core.discord.marks import mark_account_everywhere
 from app.core.oauth import (
     AccountExists,
     AccountInactive,
+    EmailUnverified,
     IdentityLinkError,
     email_and_sub,
     frontend_redirect,
@@ -126,6 +127,8 @@ async def google_callback(
         return _bounce(request, _error_path("login", "google_account_exists"))
     except AccountInactive:
         return _bounce(request, _error_path("login", "google_account_inactive"))
+    except EmailUnverified:
+        return _bounce(request, _error_path("login", "google_email_unverified"))
     except (ValueError, IntegrityError):
         return _bounce(request, _error_path("login", "google_failed"))
 

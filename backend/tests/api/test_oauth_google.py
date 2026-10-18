@@ -155,21 +155,23 @@ class TestGoogleCallback:
         assert identity.provider_account_id == "google-sub-1"
         assert "oauth_state" in res.headers.get("set-cookie", "")
 
-    def test_unverified_google_email(self, client, db, google_settings, monkeypatch):
+    @pytest.mark.parametrize("verified", [False, None])
+    def test_unverified_google_email_creates_no_account(
+        self, client, db, google_settings, monkeypatch, verified
+    ):
         _start(client)
-        _callback(
-            client,
-            monkeypatch,
-            {
-                "sub": "google-sub-2",
-                "email": "unverified@example.com",
-                "email_verified": False,
-                "given_name": "No",
-                "family_name": "Verify",
-            },
-        )
-        user = db.query(User).filter(User.email == "unverified@example.com").one()
-        assert user.email_verified is False
+        claims = {
+            "sub": "google-sub-2",
+            "email": "unverified@example.com",
+            "given_name": "No",
+            "family_name": "Verify",
+        }
+        if verified is not None:
+            claims["email_verified"] = verified
+        res = _callback(client, monkeypatch, claims)
+        assert _location(res).endswith("/sign-in?error=google_email_unverified")
+        assert db.query(User).filter(User.email == "unverified@example.com").count() == 0
+        assert db.query(OAuthIdentity).filter_by(provider_account_id="google-sub-2").count() == 0
 
     def test_returning_user_signs_in(self, client, db, td_user, google_settings, monkeypatch):
         _complete_profile(db, td_user)

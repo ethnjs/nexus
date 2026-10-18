@@ -30,6 +30,10 @@ class AccountInactive(Exception):
     """The matched account is not status='active'."""
 
 
+class EmailUnverified(Exception):
+    """Google hasn't verified the email, so it can't claim a new account."""
+
+
 class IdentityLinkError(Exception):
     def __init__(self, code: str):
         self.code = code
@@ -117,7 +121,7 @@ def _find_identity(db: Session, provider: OAuthProvider, account_id: str) -> OAu
 
 
 def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
-    """Returns (user, created). Raises AccountExists or AccountInactive."""
+    """Returns (user, created). Raises AccountExists, AccountInactive, or EmailUnverified."""
     email, sub = email_and_sub(claims)
     identity = _find_identity(db, OAuthProvider.google, sub)
     if identity is not None:
@@ -129,6 +133,11 @@ def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
             db.commit()
         return user, False
 
+    # A Google account can carry an address its owner never proved. Creating a NEXUS account for
+    # it would squat the address, and the real owner's password reset would hand them an account
+    # the squatter can still sign in to.
+    if claims.get("email_verified") is not True:
+        raise EmailUnverified()
     existing = db.query(User).filter(User.email == email).first()
     if existing is not None:
         raise AccountExists()
@@ -140,7 +149,7 @@ def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
         first_name=_name(claims.get("given_name")),
         last_name=_name(claims.get("family_name")),
         hashed_password=None,
-        email_verified=claims.get("email_verified") is True,
+        email_verified=True,
         role="user",
         status="active",
     )
