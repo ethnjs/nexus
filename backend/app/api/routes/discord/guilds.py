@@ -106,6 +106,13 @@ def start_install(
     require_not_archived(tournament)
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
     require_track_installable(db, track)
+    # Adding lobot back after it was removed: Discord's picker is locked to the linked server.
+    removed = link_for_track(db, track.id)
+    pick = (
+        {"guild_id": str(removed.guild_id), "disable_guild_select": "true"}
+        if removed is not None
+        else {}
+    )
 
     state = secrets.token_urlsafe(32)
     request.session.clear()
@@ -123,6 +130,7 @@ def start_install(
         state=state,
         scopes=["bot", "applications.commands", "identify"],
         permissions=str(ADMINISTRATOR),
+        **pick,
     )
     return RedirectResponse(url, status_code=302)
 
@@ -184,10 +192,14 @@ def finish_install(
         return bounce(error="discord_no_guild")
 
     tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        log.info("Discord install finished for a deleted tournament; leaving server %s", guild_id)
+        if link_for_guild(db, guild_id) is None:
+            _leave_now(db, guild_id)
+        return RedirectResponse(frontend_redirect("/dashboard"), status_code=302)
     track = db.get(TournamentTrack, pending["track_id"])
     if track is not None and track.tournament_id != tournament_id:
         track = None
-    assert tournament is not None
     try:
         check_install(
             db, installer=session_row.user, tournament=tournament, track=track, guild=guild
