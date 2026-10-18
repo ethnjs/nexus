@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.discord.deps import require_discord_enabled
 from app.core.discord.interactions import handle
 from app.db.session import get_db
-from app.services.discord.interactions import PING, PONG, signature_is_valid
+from app.services.discord.interactions import PING, PONG, signature_is_valid, timestamp_is_fresh
 
 router = APIRouter(tags=["discord"], dependencies=[Depends(require_discord_enabled)])
 
@@ -26,6 +26,8 @@ async def verified_interaction(request: Request) -> dict[str, Any]:
     timestamp = request.headers.get("X-Signature-Timestamp", "")
     if not signature_is_valid(get_settings().discord_public_key, signature, timestamp, body):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid request signature")
+    if not timestamp_is_fresh(timestamp):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Stale request timestamp")
     try:
         return json.loads(body)
     except ValueError:

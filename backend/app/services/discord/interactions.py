@@ -1,5 +1,6 @@
 """Discord's interaction protocol: request signatures and response shapes."""
 
+import time
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -22,6 +23,8 @@ SECONDARY_STYLE = 2
 DANGER_STYLE = 4
 LINK_STYLE = 5
 
+MAX_TIMESTAMP_SKEW_SECONDS = 300
+
 
 def signature_is_valid(public_key: str, signature: str, timestamp: str, body: bytes) -> bool:
     """Discord signs the timestamp plus the exact request bytes with Ed25519."""
@@ -31,6 +34,15 @@ def signature_is_valid(public_key: str, signature: str, timestamp: str, body: by
     except (ValueError, InvalidSignature):
         return False
     return True
+
+
+def timestamp_is_fresh(timestamp: str) -> bool:
+    """Whether the signed `X-Signature-Timestamp` is recent, so a captured request can't be
+    replayed later."""
+    try:
+        return abs(time.time() - int(timestamp)) <= MAX_TIMESTAMP_SKEW_SECONDS
+    except ValueError:
+        return False
 
 
 def link_button(label: str, url: str) -> dict[str, Any]:
