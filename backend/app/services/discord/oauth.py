@@ -46,7 +46,15 @@ def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
     """Every call in this module goes through here, so tests patch this one function."""
     try:
         response = httpx2.request(method, API_BASE + path, timeout=10, **kwargs)
-        response.raise_for_status()
+    except httpx2.HTTPError as exc:
+        raise DiscordOAuthError(f"{method} {path} failed: {type(exc).__name__}") from exc
+    if response.status_code >= 400:
+        try:
+            reason = response.json().get("error", "")
+        except ValueError:
+            reason = ""
+        raise DiscordOAuthError(f"{method} {path} failed: HTTP {response.status_code} {reason}")
+    try:
         return response.json()
-    except (httpx2.HTTPError, ValueError) as exc:
-        raise DiscordOAuthError(f"{method} {path} failed") from exc
+    except ValueError as exc:
+        raise DiscordOAuthError(f"{method} {path} returned no JSON") from exc

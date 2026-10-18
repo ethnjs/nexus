@@ -27,6 +27,7 @@ class FakeGuild:
         }
         self.channels: dict[int, dict[str, Any]] = {}
         self.members: dict[int, list[int]] = {}
+        self.bots: set[int] = {BOT_USER_ID}
         # Like a new server that Discord never gave distinct role positions: every role sits at
         # position 1 and creates don't shift anything.
         self.tied_positions = False
@@ -76,6 +77,14 @@ class FakeGuild:
         }
         return channel_id
 
+    def join(self, user_id: int, *role_ids: int, bot: bool = False) -> None:
+        self.members[user_id] = list(role_ids)
+        if bot:
+            self.bots.add(user_id)
+
+    def member_role_names(self, user_id: int) -> set[str]:
+        return {self.roles[r]["name"] for r in self.members[user_id] if r in self.roles}
+
     def role(self, name: str) -> dict[str, Any]:
         [role] = [r for r in self.roles.values() if r["name"] == name]
         return role
@@ -110,6 +119,21 @@ class FakeGuild:
         return [c["name"] for c in sorted(items, key=lambda c: (c["position"], int(c["id"])))]
 
 
+def _member_json(guild: FakeGuild, user_id: int) -> dict[str, Any]:
+    user: dict[str, Any] = {"id": str(user_id)}
+    if user_id in guild.bots:
+        user["bot"] = True
+    return {"user": user, "roles": [str(r) for r in guild.members[user_id]]}
+
+
+def _require_below_bot(guild: FakeGuild, role_id: int) -> None:
+    """Discord: "403 Forbidden (error code: 50013): Missing Permissions"."""
+    bot = guild.roles[guild.bot_role]
+    role = guild.roles[role_id]
+    if (int(role["position"]), -int(role["id"])) >= (int(bot["position"]), -int(bot["id"])):
+        raise RuntimeError("Missing Permissions")
+
+
 class FakeDiscord:
     def __init__(self) -> None:
         self._ids = itertools.count(10_000)
@@ -117,6 +141,7 @@ class FakeDiscord:
         self.messages: dict[int, dict[int, dict[str, Any]]] = {}
         self.writes: list[tuple[str, Any]] = []
         self.interaction_replies: list[tuple[str, dict[str, Any]]] = []
+        self.left: list[int] = []
         self.bot_user_id = BOT_USER_ID
 
     def add_guild(self, guild_id: int, owner_id: int = 1) -> FakeGuild:
@@ -151,12 +176,52 @@ class FakeDiscord:
         ]
 
     async def member(self, guild_id: int, user_id: int) -> dict[str, Any] | None:
-        roles = self.guilds[guild_id].members.get(user_id)
-        if roles is None:
+        guild = self.guilds[guild_id]
+        if user_id not in guild.members:
             return None
-        return {"user": {"id": str(user_id)}, "roles": [str(r) for r in roles]}
+        return _member_json(guild, user_id)
 
-    async def create_role(self, guild_id: int, *, name: str, permissions: int) -> dict[str, Any]:
+    async def members(
+        self, guild_id: int, *, after: int = 0, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        guild = self.guilds[guild_id]
+        ids = sorted(i for i in guild.members if i > after)[:limit]
+        self._write("list_members", after)
+        return [_member_json(guild, i) for i in ids]
+
+    async def add_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
+        guild = self.guilds[guild_id]
+        _require_below_bot(guild, role_id)
+        if role_id not in guild.members[user_id]:
+            guild.members[user_id].append(role_id)
+        self._write("add_member_role", (user_id, guild.roles[role_id]["name"]))
+
+    async def remove_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
+        guild = self.guilds[guild_id]
+        _require_below_bot(guild, role_id)
+        if role_id in guild.members.get(user_id, []):
+            guild.members[user_id].remove(role_id)
+        self._write("remove_member_role", (user_id, guild.roles[role_id]["name"]))
+
+    async def leave_guild(self, guild_id: int) -> None:
+        self.left.append(guild_id)
+        self._write("leave_guild", guild_id)
+
+    async def delete_role(self, guild_id: int, role_id: int) -> None:
+        guild = self.guilds[guild_id]
+        role = guild.roles.pop(role_id, None)
+        for roles in guild.members.values():
+            if role_id in roles:
+                roles.remove(role_id)
+        for channel in guild.channels.values():
+            channel["permission_overwrites"] = [
+                o for o in channel["permission_overwrites"] if int(o["id"]) != role_id
+            ]
+        self._write("delete_role", role["name"] if role else role_id)
+
+    async def create_role(
+        self, guild_id: int, *, name: str, permissions: int, hoist: bool = False
+    ) -> dict[str, Any]:
         guild = self.guilds[guild_id]
         for role in guild.roles.values():
             if int(role["position"]) >= 1 and not guild.tied_positions:
@@ -168,6 +233,7 @@ class FakeDiscord:
             "permissions": str(permissions),
             "position": 1,
             "managed": False,
+            "hoist": hoist,
         }
         self._write("create_role", name)
         return dict(guild.roles[role_id])

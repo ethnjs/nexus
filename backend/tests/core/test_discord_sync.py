@@ -3,6 +3,7 @@ and the gateway's server events. Notifications use the real test database, outsi
 rolled-back test transaction, because Postgres delivers them only on commit."""
 
 import asyncio
+from contextlib import nullcontext
 from datetime import timedelta
 
 import psycopg
@@ -47,6 +48,13 @@ def test_leave_notification_is_sent_only_when_the_transaction_commits():
         engine.dispose()
 
 
+class IdleSyncer:
+    """Keeps the drain test off the database's marks."""
+
+    async def run_pending(self) -> None:
+        return None
+
+
 class FakeGateway:
     def __init__(self) -> None:
         self.left: list[int] = []
@@ -55,13 +63,21 @@ class FakeGateway:
         self.left.append(guild_id)
 
 
-async def test_drain_leaves_the_server_named_in_a_leave_notification():
+async def test_drain_leaves_the_server_named_in_a_leave_notification(db):
     gateway = FakeGateway()
-    task = asyncio.create_task(Drain(TEST_DATABASE_URL, gateway, wait=0.05).run())
+    drain = Drain(
+        TEST_DATABASE_URL,
+        gateway,
+        wait=5.0,
+        syncer=IdleSyncer(),
+        session_scope=lambda: nullcontext(db),
+    )
+    task = asyncio.create_task(drain.run())
     try:
         with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as conn:
-            # The listener connects in the background; keep notifying until it hears one.
-            for _ in range(100):
+            # The listener connects in the background; keep notifying until it hears one. A
+            # second is far inside the drain's 5-second wait, so it acts on arrival.
+            for _ in range(20):
                 conn.execute("SELECT pg_notify(%s, %s)", (CHANNEL, "leave:789"))
                 await asyncio.sleep(0.05)
                 if gateway.left:
@@ -108,3 +124,21 @@ def test_renamed_server(db, td_tournament):
     assert link.guild_name == "New"
     rename_guild(db, 8, "Unlinked")
     assert link.guild_name == "New"
+
+
+async def test_a_stale_leave_spares_a_server_linked_again(db, td_tournament):
+    db.add(
+        DiscordGuildLink(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            guild_id=555,
+        )
+    )
+    db.commit()
+    gateway = FakeGateway()
+    drain = Drain(
+        TEST_DATABASE_URL, gateway, syncer=IdleSyncer(), session_scope=lambda: nullcontext(db)
+    )
+    await drain._handle("leave:555")
+    await drain._handle("leave:556")
+    assert gateway.left == [556]
