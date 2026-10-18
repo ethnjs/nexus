@@ -333,7 +333,10 @@ class Drain:
                     await asyncio.sleep(5)
                     continue
                 for payload in payloads:
-                    await self._handle(payload)
+                    try:
+                        await self._handle(payload)
+                    except Exception:
+                        log.exception("Couldn't act on the %s notification %r", CHANNEL, payload)
                 try:
                     await self._syncer.run_pending()
                 except Exception:
@@ -354,7 +357,17 @@ class Drain:
             return link_for_guild(db, guild_id) is not None
 
     def _listen(self) -> psycopg.Connection:
-        conn = psycopg.connect(self._dsn, autocommit=True, application_name="nexus-discord-sync")
+        # Keepalives notice a connection dropped without an error, which LISTEN alone never would.
+        conn = psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            connect_timeout=10,
+            application_name="nexus-discord-sync",
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
+        )
         conn.execute(f"LISTEN {CHANNEL}")
         return conn
 

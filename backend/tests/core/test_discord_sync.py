@@ -89,6 +89,38 @@ async def test_drain_leaves_the_server_named_in_a_leave_notification(db):
         await asyncio.gather(task, return_exceptions=True)
 
 
+class FlakyGateway(FakeGateway):
+    async def leave_guild(self, guild_id: int) -> None:
+        if guild_id == 1:
+            raise RuntimeError("connection reset")
+        await super().leave_guild(guild_id)
+
+
+async def test_drain_survives_a_failed_leave(db):
+    gateway = FlakyGateway()
+    drain = Drain(
+        TEST_DATABASE_URL,
+        gateway,
+        wait=5.0,
+        syncer=IdleSyncer(),
+        session_scope=lambda: nullcontext(db),
+    )
+    task = asyncio.create_task(drain.run())
+    try:
+        with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as conn:
+            for _ in range(20):
+                conn.execute("SELECT pg_notify(%s, %s)", (CHANNEL, "leave:1"))
+                conn.execute("SELECT pg_notify(%s, %s)", (CHANNEL, "leave:2"))
+                await asyncio.sleep(0.05)
+                if gateway.left:
+                    break
+        assert set(gateway.left) == {2}
+        assert not task.done()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 def test_sweep_leaves_only_unlinked_servers_past_the_grace_period():
     now = utcnow()
     old = now - INSTALL_GRACE - timedelta(minutes=1)
