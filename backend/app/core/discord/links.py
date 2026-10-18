@@ -86,5 +86,7 @@ def check_install(
     )
     if identity is None:
         raise InstallRefused("owner_not_linked")
+    if identity.user.status != "active":
+        raise InstallRefused("owner_inactive", owner=user_label(identity.user))
     if not has_permission(identity.user, tournament.id, MANAGE_TOURNAMENT, db):
         raise InstallRefused("owner_lacks_permission", owner=user_label(identity.user))
