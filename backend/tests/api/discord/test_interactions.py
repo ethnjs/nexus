@@ -477,7 +477,7 @@ class TestSetupAndReset:
         link.last_build_at = utcnow()
         db.commit()
         res = _post(client, _click(_buttons(preview)[0]["custom_id"]))
-        assert res.json()["data"]["content"].startswith("A build is already running")
+        assert res.json()["data"]["content"].startswith("lobot is already building or syncing")
 
     def test_cancel(self, client, discord_on, link):
         res = _post(client, _click("nexus:cancel"))

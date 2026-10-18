@@ -286,7 +286,7 @@ def _confirm(
     if refusal is not None:
         return refusal
     if not claim_build(db, link.id):
-        return update("A build is already running for this server. Try again when it finishes.")
+        return update("lobot is already building or syncing this server. Try again in a moment.")
     schedule(_run_and_report, link.id, preview.reset, preview.target, payload["token"])
     return update("Building… This can take a few minutes.")
 
