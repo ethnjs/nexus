@@ -51,6 +51,8 @@ class DiscordGuildLink(Base):
     last_build_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_build_status: Mapped[str | None] = mapped_column(String(16))
     last_build_error: Mapped[str | None] = mapped_column(Text)
+    # Set while the sync changes roles or channels; claim_build refuses until it clears.
+    sync_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sync_error: Mapped[str | None] = mapped_column(Text)
     # A sync that succeeded but skipped something, such as roles above the bot's.
     last_sync_warning: Mapped[str | None] = mapped_column(Text)

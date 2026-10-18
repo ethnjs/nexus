@@ -15,10 +15,10 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Generator
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import ColumnElement, or_
 from sqlalchemy.orm import Session
 
 from app.core.discord.layout import (
@@ -382,6 +382,11 @@ class Store:
         """Shows the build is still alive, so claim_build doesn't take it for dead."""
         with self._link(link_id) as (_db, link):
             link.last_build_at = utcnow()
+
+    def sync_heartbeat(self, link_id: int) -> None:
+        """Shows the sync is still alive, so claim_build doesn't take it for dead."""
+        with self._link(link_id) as (_db, link):
+            link.sync_started_at = utcnow()
 
     def save_verify_message(self, link_id: int, message_id: int) -> None:
         with self._link(link_id) as (_db, link):
@@ -1375,10 +1380,10 @@ async def execute(
     store: Store,
     progress: Progress | None = None,
     *,
-    heartbeat: bool = True,
+    heartbeat: Callable[[int], None] | None = None,
 ) -> None:
-    """Runs the plan's actions in order. `heartbeat` keeps a build's claim alive; a sync holds
-    no claim."""
+    """Runs the plan's actions in order, calling `heartbeat` every 30 seconds to keep the
+    caller's claim alive."""
     ctx = Context(
         rest=rest,
         store=store,
@@ -1391,9 +1396,9 @@ async def execute(
     beat = time.monotonic()
     for done, action in enumerate(plan.actions, start=1):
         await action.run(ctx)
-        if heartbeat and time.monotonic() - beat >= HEARTBEAT_SECONDS:
+        if heartbeat is not None and time.monotonic() - beat >= HEARTBEAT_SECONDS:
             beat = time.monotonic()
-            await ctx.save(store.heartbeat)
+            await ctx.save(heartbeat)
         if progress is not None:
             await progress(done, total)
 
@@ -1404,18 +1409,27 @@ def build_running(link: DiscordGuildLink) -> bool:
     return utcnow() - link.last_build_at < timedelta(minutes=STALE_BUILD_MINUTES)
 
 
+def _no_build_running(now: datetime) -> ColumnElement[bool]:
+    return or_(
+        DiscordGuildLink.last_build_status.is_distinct_from("running"),
+        DiscordGuildLink.last_build_at < now - timedelta(minutes=STALE_BUILD_MINUTES),
+    )
+
+
 def claim_build(db: Session, link_id: int) -> bool:
-    """Marks the link as building unless another build holds it. Builds can run on any backend
-    process, so this is the only thing stopping two at once. A running build refreshes
-    last_build_at every 30 seconds, so one silent for 2 minutes was interrupted and is retaken."""
+    """Marks the link as building unless another build, or the sync's structure step, holds it.
+    Builds can run on any backend process, so this is the only thing stopping two at once. Both
+    refresh their claim every 30 seconds, so one silent for 2 minutes was interrupted and is
+    retaken."""
     now = utcnow()
     claimed = (
         db.query(DiscordGuildLink)
         .filter(
             DiscordGuildLink.id == link_id,
+            _no_build_running(now),
             or_(
-                DiscordGuildLink.last_build_status.is_distinct_from("running"),
-                DiscordGuildLink.last_build_at < now - timedelta(minutes=STALE_BUILD_MINUTES),
+                DiscordGuildLink.sync_started_at.is_(None),
+                DiscordGuildLink.sync_started_at < now - timedelta(minutes=STALE_BUILD_MINUTES),
             ),
         )
         .update(
@@ -1425,6 +1439,26 @@ def claim_build(db: Session, link_id: int) -> bool:
     )
     db.commit()
     return claimed == 1
+
+
+def claim_sync(db: Session, link_id: int) -> bool:
+    """Lets the sync change roles and channels unless a build holds the link. Without it, a build
+    and the sync could plan from the same snapshot and both create a missing role."""
+    now = utcnow()
+    claimed = (
+        db.query(DiscordGuildLink)
+        .filter(DiscordGuildLink.id == link_id, _no_build_running(now))
+        .update({"sync_started_at": now}, synchronize_session=False)
+    )
+    db.commit()
+    return claimed == 1
+
+
+def release_sync(db: Session, link_id: int) -> None:
+    db.query(DiscordGuildLink).filter(DiscordGuildLink.id == link_id).update(
+        {"sync_started_at": None}, synchronize_session=False
+    )
+    db.commit()
 
 
 def finish_build(db: Session, link_id: int, error: str | None) -> None:
@@ -1478,7 +1512,15 @@ async def run_build(
             error = " ".join(plan.blockers)
         else:
             store = Store(session_scope)
-            await execute(plan, snapshot, live, discord_rest.get_rest(), store, progress)
+            await execute(
+                plan,
+                snapshot,
+                live,
+                discord_rest.get_rest(),
+                store,
+                progress,
+                heartbeat=store.heartbeat,
+            )
     except Exception as exc:
         log.exception("Discord build for link %s failed", link_id)
         error = str(exc) or type(exc).__name__

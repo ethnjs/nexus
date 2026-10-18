@@ -135,6 +135,9 @@ class Syncer:
         try:
             if "full" in kinds or "structure" in kinds:
                 above_bot = await self._sync_structure(link_id)
+                if above_bot is None:
+                    await self._in_db(lambda db: _retry(db, marks, BUSY_RETRY))
+                    return
                 if "full" in kinds:
                     await self._sync_everyone(link_id, above_bot)
                 else:
@@ -216,16 +219,23 @@ class Syncer:
         live = await fetch_roles(discord_rest.get_rest(), snapshot)
         return snapshot, live, desired
 
-    async def _sync_structure(self, link_id: int) -> set[str]:
-        snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
-        rest = discord_rest.get_rest()
-        live = await build.fetch_live(rest, snapshot)
-        plan, above_bot = plan_structure(snapshot, live)
-        if plan.actions:
-            await build.execute(
-                plan, snapshot, live, rest, build.Store(self._scope), heartbeat=False
-            )
-        return above_bot
+    async def _sync_structure(self, link_id: int) -> set[str] | None:
+        """The roles above the bot's, or None if a build started and holds the link."""
+        if not await self._in_db(lambda db: build.claim_sync(db, link_id)):
+            return None
+        try:
+            snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
+            rest = discord_rest.get_rest()
+            live = await build.fetch_live(rest, snapshot)
+            plan, above_bot = plan_structure(snapshot, live)
+            if plan.actions:
+                store = build.Store(self._scope)
+                await build.execute(
+                    plan, snapshot, live, rest, store, heartbeat=store.sync_heartbeat
+                )
+            return above_bot
+        finally:
+            await self._in_db(lambda db: build.release_sync(db, link_id))
 
     async def _sync_members(
         self, link_id: int, accounts: list[int | None], above_bot: set[str]

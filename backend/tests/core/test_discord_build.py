@@ -9,9 +9,11 @@ from app.core.discord.build import (
     VOLUNTEER_GUIDE_URL,
     Target,
     claim_build,
+    claim_sync,
     parse_roles,
     prepare,
     ranked_roles,
+    release_sync,
     run_build,
 )
 from app.models.discord import (
@@ -228,6 +230,20 @@ class TestChecks:
         # An interrupted build stops refreshing last_build_at; after 2 minutes it is retaken.
         link.last_build_at = utcnow() - timedelta(minutes=3)
         db.commit()
+        assert claim_build(db, link.id)
+
+    async def test_a_build_waits_for_the_sync(self, db, link):
+        assert claim_sync(db, link.id)
+        assert not claim_build(db, link.id)
+        # A sync that died stops refreshing sync_started_at; after 2 minutes a build goes ahead.
+        link.sync_started_at = utcnow() - timedelta(minutes=3)
+        db.commit()
+        assert claim_build(db, link.id)
+        assert not claim_sync(db, link.id)
+
+    async def test_a_released_sync_lets_a_build_start(self, db, link):
+        assert claim_sync(db, link.id)
+        release_sync(db, link.id)
         assert claim_build(db, link.id)
 
     async def test_long_builds_keep_their_claim(self, db, link, guild, scope, monkeypatch):
