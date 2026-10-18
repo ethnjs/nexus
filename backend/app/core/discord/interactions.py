@@ -71,6 +71,12 @@ def _nexus_user(db: Session, discord_user_id: str) -> User | None:
     return identity.user if identity else None
 
 
+def _inactive(user: User) -> dict[str, Any] | None:
+    if user.status == "active":
+        return None
+    return reply(f"Your NEXUS account ({user_label(user)}) isn't active.")
+
+
 def _unusable(link: DiscordGuildLink | None) -> str | None:
     """Why commands can't run in this server, if they can't."""
     if link is None:
@@ -146,6 +152,9 @@ def _verify(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
             "automatically.",
             components=_link_row(),
         )
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     if not is_eligible(db, link, user):
         where = f"{tournament_display_name(link.tournament)} ({link.track.name})"
         return reply(
@@ -163,6 +172,9 @@ def _staff_refusal(
     user = _nexus_user(db, discord_user_id)
     if user is None:
         return reply("Link your NEXUS account first.", components=_link_row())
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     if not has_permission(user, link.tournament_id, MANAGE_DISCORD, db):
         return reply("You need the Manage Discord permission in NEXUS to run this.")
     return None
@@ -306,6 +318,9 @@ def _whoami(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     user = _nexus_user(db, discord_user_id)
     if user is None:
         return reply("Your Discord account isn't linked to NEXUS.", components=_link_row())
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     tournament = link.tournament
     track = link.track
     where = f"{tournament_display_name(tournament)} ({track.name})"

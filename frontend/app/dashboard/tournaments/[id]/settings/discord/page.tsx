@@ -46,6 +46,9 @@ function installErrorMessage(code: string, owner: string | null): string {
   if (code === "owner_lacks_permission") {
     return `The server owner (${owner ?? "unknown"}) doesn't have Manage Tournament in this tournament. ${LEFT}`;
   }
+  if (code === "owner_inactive") {
+    return `The server owner's NEXUS account (${owner ?? "unknown"}) isn't active. ${LEFT}`;
+  }
   return INSTALL_ERRORS[code] ?? "Something went wrong adding lobot. Try again.";
 }
 
