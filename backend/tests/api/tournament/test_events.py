@@ -91,6 +91,29 @@ def test_create_event_duplicate_catalog_division_rejected(client, td_user, td_to
     assert second.status_code == 409
 
 
+def test_create_event_duplicate_with_tracks_rejected(client, db, td_user, td_tournament, event):
+    """The track checks query, which flushes the new row early; the duplicate is still a 409."""
+    login(client, "td@test.com", "tdpass")
+    details = [{"track_id": primary_track_id(db, td_tournament.id)}]
+    kwargs = {"name": None, "event_id": event.id, "division": "C", "track_details": details}
+    assert _make_event(client, td_tournament.id, **kwargs).status_code == 201
+    assert _make_event(client, td_tournament.id, **kwargs).status_code == 409
+
+
+def test_update_event_into_a_duplicate_with_tracks_rejected(
+    client, db, td_user, td_tournament, event
+):
+    login(client, "td@test.com", "tdpass")
+    details = [{"track_id": primary_track_id(db, td_tournament.id)}]
+    _make_event(client, td_tournament.id, name=None, event_id=event.id, division="C")
+    other = _make_event(client, td_tournament.id, name=None, event_id=event.id, division="B")
+    res = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{other.json()['id']}/",
+        json={"division": "C", "track_details": details},
+    )
+    assert res.status_code == 409
+
+
 def test_create_event_two_custom_events_same_name_both_succeed(client, td_user, td_tournament):
     """Custom events have no uniqueness constraint at all."""
     login(client, "td@test.com", "tdpass")

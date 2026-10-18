@@ -422,9 +422,10 @@ def create_event(
     data.pop("track_details")
     event = TournamentEvent(**data)
     db.add(event)
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
     try:
-        # Inside the try: the marks' queries autoflush the insert, which is what fails.
+        # Everything that queries goes inside the try: a query autoflushes the insert, and a
+        # duplicate catalog event fails there rather than at the commit.
+        _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
         if event.track_details:
             mark_servers(db, tournament_id, "structure")
         db.commit()
@@ -470,23 +471,24 @@ def update_event(
     update_data.pop("track_details", None)
     for field, value in update_data.items():
         setattr(event, field, value)
-    # payload.track_details rather than the dumped copy — see create. None
-    # still means "not sent", which model_dump(exclude_unset) can't express
-    # once the value has become a list of dicts.
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
-
-    if event.name is None and event.event_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Cannot clear both name and event_id — at least one must be set",
-        )
-
-    # A rename or a track change reaches Discord through the sync; a move between buildings
-    # or zones waits for /reset.
-    tracks_after = {detail.track_id for detail in event.track_details}
-    renamed = any(field in update_data for field in ("name", "division", "event_id"))
     try:
-        # Inside the try: the marks' queries autoflush the update, which is what fails.
+        # Everything that queries goes inside the try: a query autoflushes the update, and a
+        # duplicate catalog event fails there rather than at the commit.
+        # payload.track_details rather than the dumped copy — see create. None
+        # still means "not sent", which model_dump(exclude_unset) can't express
+        # once the value has become a list of dicts.
+        _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
+
+        if event.name is None and event.event_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot clear both name and event_id — at least one must be set",
+            )
+
+        # A rename or a track change reaches Discord through the sync; a move between
+        # buildings or zones waits for /reset.
+        tracks_after = {detail.track_id for detail in event.track_details}
+        renamed = any(field in update_data for field in ("name", "division", "event_id"))
         if renamed or tracks_before != tracks_after:
             mark_servers(db, tournament_id, "structure")
         dropped = tracks_before - tracks_after
