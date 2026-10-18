@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import create_session, get_active_session, get_client_ip, set_auth_cookie
 from app.core.config import get_settings
-from app.core.discord.deps import require_discord_enabled
+from app.core.discord.deps import discord_is_enabled, require_discord_enabled
 from app.core.discord.marks import mark_account_everywhere
 from app.core.oauth import (
     AccountExists,
@@ -142,18 +142,21 @@ async def google_callback(
     return _bounce(request, dest, raw_token=raw_token)
 
 
-@router.get("/auth/oauth/discord/start/", dependencies=[Depends(require_discord_enabled)])
+# No require_discord_enabled: the Connect button links here whether or not Discord is on, so
+# this explains with an error code instead of a 404.
+@router.get("/auth/oauth/discord/start/")
 def discord_start(
     request: Request,
     redirect: str | None = None,
     access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
+    enabled: bool = Depends(discord_is_enabled),
 ):
     dest = safe_redirect_path(redirect) or "/connect/discord"
     session_row = get_active_session(db, access_token) if access_token else None
     if session_row is None:
         return RedirectResponse(frontend_redirect(with_redirect("/sign-in", dest)), status_code=302)
-    if not is_discord_link_configured():
+    if not enabled or not is_discord_link_configured():
         return RedirectResponse(
             frontend_redirect(with_query(dest, error="discord_unavailable")), status_code=302
         )

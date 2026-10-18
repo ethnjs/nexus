@@ -78,7 +78,7 @@ function DiscordSettingsContent() {
   const tournamentId = Number(params.id);
   const searchParams = useSearchParams();
   const { user: currentUser } = useAuth();
-  const { tracks, isSimple, isArchived } = useTournament();
+  const { selectedTournament, tracks, isSimple, isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageDiscord =
     currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_discord");
@@ -101,6 +101,8 @@ function DiscordSettingsContent() {
   });
 
   const trackIds = tracks.map((t) => t.id).join(",");
+  // `tracks` is also empty while the tournament loads, so check it's this tournament's list.
+  const noTracks = selectedTournament?.id === tournamentId && tracks.length === 0;
   useEffect(() => {
     if (!canManageDiscord || !trackIds) return;
     const ids = trackIds.split(",").map(Number);
@@ -168,6 +170,14 @@ function DiscordSettingsContent() {
             icon={<IconDiscord size={28} />}
             title="Discord isn't available"
             description="Discord isn't turned on for this NEXUS deployment."
+          />
+        </Card>
+      ) : noTracks ? (
+        <Card radius="lg" style={{ padding: "8px" }}>
+          <EmptyState
+            icon={<IconDiscord size={28} />}
+            title="No tracks yet"
+            description="Add a track in Settings → General, then link a Discord server to it here."
           />
         </Card>
       ) : statuses === null ? (
