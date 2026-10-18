@@ -146,7 +146,7 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 
 | Write | Marks |
 |---|---|
-| Assignment create, update, delete, placements; zone assignments; role grants | member, in the row's track's server; tournament-wide rows in every server |
+| Assignment create, update, delete, placements (one mark per member for the whole edit); zone assignments; role grants | member, in the row's track's server; tournament-wide rows in every server |
 | Membership deleted (both routes) | member, every server |
 | Role created or renamed | structure, every server |
 | Role deleted; event deleted or removed from a track | structure, plus member for former holders, queried first |
@@ -189,6 +189,24 @@ lobot sees its own changes too; repeated marks merge, so a build's channel creat
 | `/reset [role] [channel]` | Preview, Confirm, then a full or scoped reset |
 
 - **The Verify button** (`custom_id` `nexus:verify:<Verified role id>`): already holding Verified, per the click payload, is answered without a database query; then a 10-second per-worker cooldown; then unlinked (instructions and the link button), ineligible ("doesn't have a role or assignment in …", no kick), or eligible (a member mark, "You're verified").
+- `/link` and `/whoami` work for unverified members in `#verify` because slash commands need Use Application Commands, which `@everyone` keeps and which is separate from Send Messages.
+
+## Discord behavior this relies on
+
+Checked on 2026-10-16 against Discord's developer docs and the discord.py 2.7.1 source. ⚠️ marks what Discord doesn't document.
+
+- **Overwrites:** `@everyone`'s overwrite applies first, then all of a member's role overwrites combined (deny, then allow, so allow beats deny across roles), then the member's own. Administrator and the server owner skip overwrites entirely.
+- **A bot can only allow or deny overwrite bits, and give role permissions, that it holds itself,** and can only assign, edit, or reorder roles below its own highest role.
+- **Pin Messages (bit 51) and Bypass Slowmode (bit 52)** were split out of Manage Messages in August 2025, and pinning has required Pin Messages since February 2026, so the staff set lists both.
+- **2FA:** Kick, Ban, Administrator, Manage Channels, Manage Messages, Manage Roles, Manage Webhooks, and Manage Threads require the bot's owner to have 2FA in servers with server-wide 2FA.
+- **Limits:** 50 channels per category; channel names 1 to 100 characters. ⚠️ 250 roles and 500 channels per server come from error codes 30005 and 30013 as listed by discord.js, not from Discord's docs; roles from other integrations count toward the 250.
+- **Bulk reorders:** `PATCH /guilds/{id}/roles` and `PATCH /guilds/{id}/channels` reorder many in one call, but at most one channel per call may change `parent_id`, so moves between categories are one call each.
+- **Members list:** `GET /guilds/{id}/members` returns up to 1,000 per call and requires the Server Members intent in the portal, whatever the gateway asks for.
+- **Interaction delivery:** with an endpoint URL set, interactions come only over HTTP, never the gateway. Tokens last 15 minutes, and edits through them don't count against the bot's global rate limit. ⚠️ Link buttons in ephemeral replies aren't documented, but work.
+- **Global commands** update by read-repair: a stale command refreshes when someone runs it.
+- **Install:** the token response carries `guild` only in a full code grant with a scope beyond `bot` and `applications.commands`. ⚠️ The docs don't say whether the bot joins at Authorize or at the code exchange; leaving in the callback and the sweep's one-hour grace cover both.
+- **Gateway:** 1,000 identifies per 24 hours, resumes excluded. Closing with code 1000 or 1001 shows the bot offline at once; other disconnects leave it shown online until the session times out.
+- **discord.py:** `Client.start()` installs no signal handlers or logging (only `run()` does), so it runs as a task on uvicorn's loop. With `MemberCacheFlags.none()` and chunking off, `on_member_join` still fires. Its HTTP client waits out 429s per bucket.
 
 ## Tests
 
