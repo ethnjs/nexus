@@ -5,8 +5,10 @@ Day 2."""
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event as sa_event
 
 from app.core.auth import hash_password
+from app.core.discord.marks import mark_memberships
 from app.models.discord import DiscordGuildLink, DiscordSyncMark
 from app.models.models import (
     OAuthIdentity,
@@ -265,6 +267,30 @@ class TestAssignments:
         _clear(db)
         assert td.delete(f"/tournaments/{td_tournament.id}/shifts/{shift.id}/").status_code == 204
         assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+
+    def test_marking_many_members_takes_the_same_few_queries(self, db, td_tournament, links, day1):
+        memberships = [
+            grant_role(db, td_tournament, _user(db, f"v{n}@test.com", 8100 + n), "Volunteer", day1)
+            for n in range(6)
+        ]
+        _clear(db)
+        tournament_id = td_tournament.id
+        scopes = [(m.id, day1) for m in memberships]
+        statements: list[str] = []
+        bind = db.get_bind()
+
+        def count(conn, cursor, statement, *args):
+            if not statement.startswith("SAVEPOINT"):
+                statements.append(statement)
+
+        sa_event.listen(bind, "before_cursor_execute", count)
+        try:
+            mark_memberships(db, tournament_id, scopes)
+        finally:
+            sa_event.remove(bind, "before_cursor_execute", count)
+        # Memberships, links, accounts, the upsert, and the notification.
+        assert len(statements) == 5
+        assert _marks(db, links) == {("day1", "member", 8100 + n) for n in range(6)}
 
     def test_unbuilt_servers_and_unlinked_users_get_no_marks(
         self, db, td, td_tournament, links, day1
