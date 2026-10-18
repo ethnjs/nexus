@@ -137,7 +137,18 @@ class TestStartInstall:
         assert query["response_type"] == ["code"]
         assert query["client_id"] == ["1000"]
         assert query["redirect_uri"] == ["http://localhost:3000/api/proxy/discord/install/callback"]
+        assert "guild_id" not in query and "disable_guild_select" not in query
         assert "oauth_state" in res.cookies
+
+    def test_adding_the_bot_back_locks_the_server_picker(
+        self, client, db, discord_on, td_user, td_tournament, track_id
+    ):
+        _add_link(db, td_tournament, track_id, bot_removed_at=utcnow())
+        login(client, "td@test.com", "tdpass")
+        res = _start(client, td_tournament.id, track_id)
+        query = parse_qs(urlparse(res.headers["location"]).query)
+        assert query["guild_id"] == [str(GUILD_ID)]
+        assert query["disable_guild_select"] == ["true"]
 
     def test_requires_manage_discord(self, client, db, discord_on, td_tournament, track_id):
         grant_role(db, td_tournament, _make_user(db, "vol@test.com"), "Volunteer")
@@ -342,6 +353,20 @@ class TestFinishInstall:
         assert link.guild_name == "Test Server"
         entry = db.query(AuditLogEntry).filter_by(action=DISCORD_SERVER_LINKED).one()
         assert entry.extra_data["readded"] is True
+
+    def test_tournament_deleted_during_the_install(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        _link_discord(db, td_user, TD_DISCORD)
+        login(client, "td@test.com", "tdpass")
+        state = _state(_start(client, td_tournament.id, track_id))
+        db.delete(td_tournament)
+        db.commit()
+        res = _finish(client, mock_discord_http, state, _guild())
+        assert res.status_code == 302
+        assert res.headers["location"] == "http://localhost:3000/dashboard"
+        assert db.query(DiscordGuildLink).count() == 0
+        assert left == [GUILD_ID]
 
     def test_state_mismatch(
         self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left

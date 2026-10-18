@@ -56,7 +56,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 | Tournament archived | No sync; builds refused; commands reply "This tournament is archived." Unarchiving writes a full mark. |
 | Track pending deletion | Same, "This track is being deleted." Cancelling the deletion writes a full mark. |
 | Track purged | The link cascades away; the sweep makes lobot leave. |
-| lobot removed from the server | `bot_removed_at` set, no sync; "Add to Discord" again clears it and writes a full mark. |
+| lobot removed from the server | `bot_removed_at` set, no sync; "Add to Discord" again clears it and writes a full mark. Its authorize URL passes `guild_id` and `disable_guild_select=true`, so Discord's picker offers only the linked server. |
 
 ## Permissions and tiers
 
