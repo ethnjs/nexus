@@ -61,7 +61,7 @@ def verify(token: str) -> PreviewToken | None:
     return parsed
 
 
-def discord_summary(plan: Plan, title: str, settings_url: str) -> str:
+def discord_summary(plan: Plan, title: str, settings_url: str, guide_url: str) -> str:
     """The preview as one Discord message: up to 10 items a heading, then a count."""
     lines = [f"**{title}**"]
     for heading, items in plan.groups():
@@ -75,7 +75,8 @@ def discord_summary(plan: Plan, title: str, settings_url: str) -> str:
     if plan.blockers:
         lines.append("\n**Can't continue**")
         lines.extend(f"• {b}" for b in plan.blockers)
-    footer = f"\nFull list in NEXUS: {settings_url}"
+    # Angle brackets stop Discord from unfurling the guide into an embed.
+    footer = f"\nFull list in NEXUS: {settings_url}\nHow this works: <{guide_url}>"
     text = "\n".join(lines)
     if len(text) + len(footer) > DISCORD_MESSAGE_LIMIT:
         text = text[: DISCORD_MESSAGE_LIMIT - len(footer) - 2] + "…"

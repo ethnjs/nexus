@@ -23,6 +23,7 @@ import {
   discordApi,
   type TournamentTrack,
 } from "@/lib/api";
+import { DISCORD_STAFF_GUIDE_URL } from "@/lib/docs";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
@@ -133,7 +134,19 @@ function DiscordSettingsContent() {
 
   return (
     <div>
-      <SettingsPageHeader page="discord" heading="Discord" />
+      <SettingsPageHeader
+        page="discord"
+        heading="Discord"
+        action={
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => window.open(DISCORD_STAFF_GUIDE_URL, "_blank", "noopener,noreferrer")}
+          >
+            Discord guide
+          </Button>
+        }
+      />
 
       {notice && (
         <div style={{ marginBottom: "16px" }}>

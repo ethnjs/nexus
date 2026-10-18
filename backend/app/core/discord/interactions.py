@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.discord import build as discord_build
-from app.core.discord.build import Target, claim_build
+from app.core.discord.build import STAFF_GUIDE_URL, Target, claim_build
 from app.core.discord.eligibility import is_eligible
 from app.core.discord.layout import event_name_with_division
 from app.core.discord.links import link_for_guild, user_label
@@ -240,7 +240,12 @@ async def _send_preview(
     if plan.empty and not plan.warnings:
         await _edit(token, {"content": "Nothing to change. This server matches NEXUS."})
         return
-    content = discord_summary(plan, f"Preview of {title}", settings_url(snapshot.tournament_id))
+    guide = (
+        f"{STAFF_GUIDE_URL}#reset-to-defaults" if reset else f"{STAFF_GUIDE_URL}#build-the-server"
+    )
+    content = discord_summary(
+        plan, f"Preview of {title}", settings_url(snapshot.tournament_id), guide
+    )
     buttons = [button("Cancel", "nexus:cancel", SECONDARY_STYLE)]
     if not plan.blocked and not plan.empty:
         custom_id = "nexus:go:" + sign(link_id, reset, target, actor)
