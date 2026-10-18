@@ -48,8 +48,8 @@ STAFF_COMMANDS = {"sync", "setup", "reset"}
 VERIFY_COOLDOWN_SECONDS = 10
 PROGRESS_INTERVAL_SECONDS = 3
 
-# (guild id, Discord user id) -> when they last clicked Verify. Per worker, which is enough to
-# stop a burst of clicks from writing a mark each.
+# (guild id, Discord user id) -> when they last clicked Verify, for the last cooldown's worth of
+# clicks. Per worker, which is enough to stop a burst of clicks from writing a mark each.
 _verify_clicks: dict[tuple[int, int], float] = {}
 
 # Runs a coroutine after the response is sent: FastAPI's BackgroundTasks.add_task.
@@ -141,6 +141,8 @@ def _verify_cooldown(guild_id: int, discord_user_id: int) -> int:
     last = _verify_clicks.get((guild_id, discord_user_id))
     if last is not None and now - last < VERIFY_COOLDOWN_SECONDS:
         return int(VERIFY_COOLDOWN_SECONDS - (now - last)) + 1
+    for key in [k for k, t in _verify_clicks.items() if now - t >= VERIFY_COOLDOWN_SECONDS]:
+        del _verify_clicks[key]
     _verify_clicks[(guild_id, discord_user_id)] = now
     return 0
 

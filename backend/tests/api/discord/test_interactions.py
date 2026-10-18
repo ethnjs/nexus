@@ -130,6 +130,10 @@ class TestEndpoint:
             _post(client, {"type": 1}, signature=signature, timestamp=timestamp).status_code == 401
         )
 
+    def test_stale_timestamp_is_401(self, client, discord_on):
+        res = _post(client, {"type": 1}, timestamp=str(int(time.time()) - 600))
+        assert res.status_code == 401
+
     def test_missing_signature_headers_is_401(self, client, discord_on):
         res = client.post("/discord/interactions/", json={"type": 1})
         assert res.status_code == 401
@@ -534,6 +538,15 @@ class TestVerifyButton:
         _post(client, _click("nexus:verify:777", user_id="9999"))
         res = _post(client, _click("nexus:verify:777", user_id="9999"))
         assert _content(res).startswith("Try again in")
+
+    def test_cooldowns_are_forgotten_once_they_pass(self, client, discord_on, link):
+        from app.core.discord import interactions
+
+        _post(client, _click("nexus:verify:777", user_id="9998"))
+        clicks = interactions._verify_clicks
+        clicks[(int(GUILD_ID), 9998)] -= interactions.VERIFY_COOLDOWN_SECONDS
+        _post(client, _click("nexus:verify:777", user_id="9999"))
+        assert list(clicks) == [(int(GUILD_ID), 9999)]
 
     def test_unlinked_account_gets_the_link_button(self, client, discord_on, link):
         res = _post(client, _click("nexus:verify:777", user_id="9999"))
