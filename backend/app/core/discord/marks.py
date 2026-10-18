@@ -23,17 +23,26 @@ from app.models.models import (
 )
 
 
-def _mark(db: Session, link_id: int, kind: str, discord_user_id: int | None) -> None:
-    statement = insert(DiscordSyncMark).values(
-        link_id=link_id,
-        kind=kind,
-        discord_user_id=discord_user_id,
-        attempts=0,
-        next_attempt_at=func.clock_timestamp(),
-        created_at=func.clock_timestamp(),
-    )
+def _upsert(db: Session, marks: Iterable[tuple[int, str, int | None]]) -> None:
+    """Writes (link id, kind, Discord user id) marks in one statement. Each must be distinct:
+    Postgres refuses an upsert that touches the same row twice."""
+    rows = [
+        {
+            "link_id": link_id,
+            "kind": kind,
+            "discord_user_id": discord_user_id,
+            "attempts": 0,
+            "next_attempt_at": func.clock_timestamp(),
+            "created_at": func.clock_timestamp(),
+        }
+        for link_id, kind, discord_user_id in marks
+    ]
+    if not rows:
+        return
     db.execute(
-        statement.on_conflict_do_update(
+        insert(DiscordSyncMark)
+        .values(rows)
+        .on_conflict_do_update(
             constraint="uq_discord_sync_mark",
             set_={
                 "attempts": 0,
@@ -43,6 +52,10 @@ def _mark(db: Session, link_id: int, kind: str, discord_user_id: int | None) -> 
         )
     )
     db.execute(text("SELECT pg_notify(:channel, '')"), {"channel": CHANNEL})
+
+
+def _mark(db: Session, link_id: int, kind: str, discord_user_id: int | None) -> None:
+    _upsert(db, [(link_id, kind, discord_user_id)])
 
 
 def mark_member(db: Session, link_id: int, discord_user_id: int) -> None:
@@ -86,22 +99,34 @@ def mark_servers(db: Session, tournament_id: int, kind: str, track_id: int | Non
         _mark(db, link.id, kind, None)
 
 
+def _mark_users_on_tracks(
+    db: Session, tournament_id: int, tracks_by_user: dict[int, set[int | None]]
+) -> None:
+    """Member marks for each user in the servers of their tracks, a None track meaning every
+    server. Three queries at most, however many users."""
+    if not tracks_by_user:
+        return
+    links = syncing_links(db, tournament_id)
+    if not links:
+        return
+    accounts = discord_accounts(db, tracks_by_user)
+    marks = {
+        (link.id, "member", account)
+        for user_id, account in accounts.items()
+        for link in links
+        if None in tracks_by_user[user_id] or link.track_id in tracks_by_user[user_id]
+    }
+    _upsert(db, sorted(marks))
+
+
 def mark_users(
     db: Session, tournament_id: int, user_ids: Iterable[int], track_ids: Iterable[int | None]
 ) -> None:
     """Member marks for these users in the servers of these tracks. A None track means a
     tournament-wide row, which counts in every server of the tournament."""
-    user_ids, track_ids = set(user_ids), set(track_ids)
-    if not user_ids or not track_ids:
-        return
-    tracks = None if None in track_ids else {t for t in track_ids if t is not None}
-    links = syncing_links(db, tournament_id, tracks)
-    if not links:
-        return
-    accounts = discord_accounts(db, user_ids)
-    for link in links:
-        for account in accounts.values():
-            mark_member(db, link.id, account)
+    tracks = set(track_ids)
+    if tracks:
+        _mark_users_on_tracks(db, tournament_id, {user_id: tracks for user_id in user_ids})
 
 
 def mark_memberships(
@@ -113,14 +138,13 @@ def mark_memberships(
         by_membership.setdefault(membership_id, set()).add(track_id)
     if not by_membership:
         return
-    users = dict(
-        db.query(TournamentMembership.id, TournamentMembership.user_id).filter(
-            TournamentMembership.id.in_(list(by_membership))
-        )
+    users = db.query(TournamentMembership.id, TournamentMembership.user_id).filter(
+        TournamentMembership.id.in_(list(by_membership))
     )
-    for membership_id, track_ids in by_membership.items():
-        if membership_id in users:
-            mark_users(db, tournament_id, [users[membership_id]], track_ids)
+    tracks_by_user: dict[int, set[int | None]] = {}
+    for membership_id, user_id in users:
+        tracks_by_user.setdefault(user_id, set()).update(by_membership[membership_id])
+    _mark_users_on_tracks(db, tournament_id, tracks_by_user)
 
 
 def row_scope(row: TournamentTrackAssignment) -> tuple[int, int | None]:
