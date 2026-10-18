@@ -189,18 +189,21 @@ class DiscordRest:
         15 minutes: never log them, or the URLs that contain them."""
         application_id = get_settings().discord_application_id
         url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
-        async with httpx2.AsyncClient(timeout=10) as client:
-            response = await client.patch(url, json=payload)
+        try:
+            async with httpx2.AsyncClient(timeout=10) as client:
+                response = await client.patch(url, json=payload)
+        except httpx2.HTTPError as exc:
+            # `from None`: the original exception can carry the URL.
+            raise InteractionReplyError(type(exc).__name__) from None
         if response.status_code >= 400:
-            raise InteractionReplyError(response.status_code)
+            raise InteractionReplyError(f"HTTP {response.status_code}")
 
 
 class InteractionReplyError(Exception):
-    """Carries only the status code, so the token-bearing URL never reaches a log."""
+    """Carries only a short reason, so the token-bearing URL never reaches a log."""
 
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"editing the interaction reply failed with HTTP {status_code}")
-        self.status_code = status_code
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"editing the interaction reply failed: {reason}")
 
 
 _rest: DiscordRest | None = None
