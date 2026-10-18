@@ -1,0 +1,213 @@
+---
+title: Discord servers
+description: Link a tournament's Discord server to NEXUS, and let lobot keep its roles and channels in step with your staff and volunteers.
+---
+
+lobot is NEXUS's Discord bot. Link a Discord server to one of your tournament's tracks, and lobot sets the server up from NEXUS: a role for each NEXUS role and event, a channel for each event, and a `#verify` gate so only the track's staff and volunteers can see the server's channels. After that, lobot keeps who holds which role in step with NEXUS on its own, usually within seconds of a change.
+
+A few things lobot never does:
+
+- **It never changes anything in NEXUS.** NEXUS is the source of truth. To change someone's roles or events, change them in NEXUS; edits made in Discord are put back.
+- **It never kicks, bans, or DMs anyone.** Staff and volunteers who leave the tournament or track lose lobot's roles and are back to seeing only `#verify`, but stay in the server. Every reply from lobot is ephemeral ("Only you can see this").
+- **It never reads messages.** lobot sees members, roles, and channels, not what people post.
+
+This guide is for tournament directors and staff who run a server. Volunteers who want to join one should read [Join a tournament's Discord server](/docs/nexus/volunteer-guides/discord).
+
+## Before you start
+
+- **You need the Manage Discord permission** in the tournament. By default, the Tournament Director, Volunteer Coordinator, and Test Coordinator roles have it, and so does the tournament's owner. You can give it to other roles in **Settings → Roles**.
+- **One server per track, one track per server.** A multi-track tournament can have a server for each track. A single-track tournament has one, shown as **Tournament server**.
+- **The Discord server's owner must have Manage Tournament in NEXUS.** The owner (the person with the crown in Discord's member list) must have linked their Discord account to NEXUS, and must hold a role with **Manage Tournament** in this tournament. A server owner can do anything in Discord regardless of roles, so NEXUS only links servers whose owner already has full control of the tournament. The person adding lobot can be someone else, as long as they have Manage Discord in NEXUS.
+- **To add any bot to a server, Discord requires Manage Server** on that server. This is usually the server owner or someone with Administrator.
+
+A new, empty server works best. If you link a server that's already in use, see [Your existing roles and channels](#your-existing-roles-and-channels) for what lobot changes.
+
+## Add lobot to a server
+
+1. Open the tournament and go to **Settings → Discord**.
+2. Optional: For the track you're linking, set **Division merge** and **Categories by** (see [Channels](#channels)). These are used for the first build, and you can change them later.
+3. Click **Add to Discord**. Discord opens and asks which server to add lobot to.
+4. Pick the server, leave **Administrator** checked, and click **Authorize**.
+5. Back in NEXUS, you see **The Discord server is linked.** The track now shows the server's name and a **Not built yet** badge.
+
+Adding lobot changes nothing in the server yet. lobot just sits in the member list until you build.
+
+If NEXUS refuses the server, lobot leaves it straight away, and the Discord page says why:
+
+| Message | What to do |
+|---|---|
+| The server owner hasn't linked their Discord account to NEXUS. | Have the owner link their account (see [Join a tournament's Discord server](/docs/nexus/volunteer-guides/discord#link-your-discord-account)), then try again. |
+| The server owner (*name*) doesn't have Manage Tournament in this tournament. | Give the owner a role with Manage Tournament, or pick a server owned by someone who has it. |
+| That Discord server is already linked to another track. | Unlink it from the other track first, or use a different server. |
+| This track is linked to a different Discord server. Unlink it first. | Each track has one server. Unlink the current one first. |
+| Adding lobot was cancelled in Discord. | You closed or cancelled Discord's screen. Click **Add to Discord** again. |
+| Discord didn't say which server lobot joined. | This can happen right after lobot was removed from that server. Wait a few seconds and try again. |
+
+## Build the server
+
+1. On **Settings → Discord**, click **Build server**. (Or run `/setup` in the server; see [Commands](#commands).)
+2. A preview lists everything the build will create or change, grouped by kind. Read it, then click **Confirm** within 10 minutes.
+   - **Yellow warnings** don't stop the build, but say what it will skip. For example, *Move lobot's role above Moderators.* means lobot can't manage a role that sits above its own.
+   - **Red messages** block the build until you fix them, for example if lobot doesn't have Administrator.
+3. The badge changes to **Building…**. A large server takes a few minutes. You can leave the page.
+4. When it's done, the badge reads **Built**, and lobot gives every eligible member their roles over the next few seconds.
+
+If a build stops partway (a Discord outage, for example), the page shows **Last build failed** with the reason. Run it again: it picks up where it left off and doesn't make duplicates.
+
+### Roles
+
+lobot creates these roles, in this order, directly below its own role (named **lobot**) in **Server Settings → Roles**:
+
+| Role | Who holds it | Discord permissions |
+|---|---|---|
+| **Tournament Owner** | The tournament's owner in NEXUS. Moves to the new owner if ownership is transferred. | Administrator |
+| **One per NEXUS role**, named after the role (for example, **Tournament Director** or **Event Supervisor**) | Everyone holding that role on this track, or holding it tournament-wide | Depends on the role; see below |
+| **One per event** on the track, named with its division (for example, **Circuit Lab C**) | Everyone assigned to that event on this track, with or without a shift. Zone assignments don't give event roles. | None. They only open the event's channel. |
+| **Verified** | Every member with a role or assignment on this track or tournament-wide, and the tournament's owner | View Channels |
+
+A NEXUS role's Discord permissions depend on its NEXUS permissions:
+
+- **Roles with Manage Tournament** get **Administrator**. They're also created with **Display role members separately from online members** turned on, so your leads show as their own group in the member list.
+- **Roles with Manage Discord, but not Manage Tournament,** are *staff roles*. They see every channel and get a moderator's permissions: View Channels, Read Message History, View Audit Log, Manage Channels, Manage Messages, Pin Messages, Bypass Slowmode, Mention @everyone, @here, and All Roles, the thread permissions, Timeout Members, Kick Members, Manage Nicknames, Create Events, Manage Events, and the voice moderation permissions. They don't get Administrator, Manage Server, Manage Roles, Manage Webhooks, Ban Members, or Manage Expressions. Without Manage Roles, staff can't hand-edit lobot's roles or channel permissions, so they can't end up fighting the sync.
+- **Every other role** gets no permissions of its own. Its holders see the server through Verified and their event roles.
+
+New roles get no color. You can set colors, icons, and hoist yourself; lobot never changes them.
+
+### Channels
+
+- **`#verify`** goes at the top of the server. lobot takes **View Channels** away from `@everyone` in the server's role permissions, and gives it to **Verified**, so someone who isn't verified sees only `#verify`. Everyone can read `#verify`, but only members with Administrator can post in it. Verified members don't see it, except staff, who see it to help people through. lobot posts one message there, with a **Verify** button and a **Link your NEXUS account** button.
+- **Event channels:** one text channel per event on the track, named after the event and its division, like `#circuit-lab-c`. Each one's permission overwrites deny `@everyone` and allow that event's role and every staff role, so it's visible to the event's volunteers, staff, and anyone with Administrator.
+- **Division merge:** with this on, events that are the same catalog event and are in the same building or zone share one channel, named with every division that runs there, like `#circuit-lab-bc`. Events with no building or zone count as one place. Custom events never merge.
+- **Categories by building or zone:** channels are grouped into categories named after each event's building or zone. Events without one go in **Other Events**, or in **Events** if no event on the track has one. A category holds up to 50 channels; past that, lobot adds a second category, like **Science Building (2)**.
+
+Changing **Division merge** or **Categories by** after the first build, or moving events to a different building or zone, takes effect only the next time you [reset the server](#reset-to-defaults). lobot never regroups channels on its own.
+
+### Your existing roles and channels
+
+lobot manages only the roles and channels it creates (or adopts, below). Anything else is yours, with two exceptions:
+
+- **The gate applies to the whole server.** Once `@everyone` loses View Channels, your existing channels are visible only to verified members, unless a channel's own overwrites give `@everyone` View Channels.
+- **Staff roles see every channel.** On each of your channels where a staff role has no permission overwrite at all, lobot adds one allowing View Channels and Read Message History. To hide one of your channels from a staff role, give that role an overwrite that denies View Channels; lobot leaves an explicit deny alone.
+
+If a role or channel already has the exact name lobot would use, and only one does, lobot adopts it instead of creating a duplicate. This is also how a server you unlinked and linked again gets its old roles and channels back.
+
+## What syncs on its own
+
+Once a server is built, lobot keeps it in step with NEXUS by itself. Changes reach Discord within seconds, and every 15 minutes lobot checks every member of every server, which catches anything missed and puts back hand edits to members' roles.
+
+The rule of thumb: **changes about people sync on their own; changes about how the server is set up wait for a reset.**
+
+| In NEXUS, you… | In Discord |
+|---|---|
+| Assign someone to a role, event, shift, or zone, or remove them | Their roles update on their own. |
+| Remove someone from the tournament, or they unlink Discord | They lose lobot's roles and see only `#verify`. They aren't kicked. |
+| Transfer the tournament's ownership | **Tournament Owner** moves to the new owner. |
+| Add a role, or add an event to the track | lobot creates the role, and the event's channel. |
+| Rename a role or an event | lobot renames the role. An event's channel keeps its old name until a reset. |
+| Delete a role, or delete an event or remove it from the track | lobot deletes the role. A channel whose events are all gone moves to an **Archived** category, keeping its messages, and lobot stops managing it. |
+| Change a role's permissions | Nothing until a reset. The role keeps the permissions and channel access it was built with. |
+| Turn on division merge, change categories, or move events between buildings or zones | Nothing until a reset. |
+
+lobot also recreates anything of its own that's deleted in Discord: a role, a channel, a category, or `#verify` and its message.
+
+## Commands
+
+Type `/` in any channel of a linked server to see lobot's commands. Every reply is ephemeral, visible only to you.
+
+| Command | Who can use it | What it does |
+|---|---|---|
+| `/link` | Anyone | Replies with a button that links your Discord account to NEXUS. |
+| `/whoami` | Anyone | Shows the NEXUS account you're linked to, your roles on this track and tournament-wide, and your events with shift times in your own time zone. |
+| `/sync` | Manage Discord | Syncs the whole server now instead of waiting. The reply also shows the last sync's error or warning, if there was one. |
+| `/setup` | Manage Discord | Previews the build, then runs it when you click **Confirm**. On a built server, it only fills in what's missing; see below. |
+| `/reset` | Manage Discord | Previews putting the whole server back to NEXUS's defaults, then does it when you click **Confirm**. |
+| `/reset role:` | Manage Discord | The same, for just one of lobot's roles. |
+| `/reset channel:` | Manage Discord | The same, for just one of lobot's channels or categories. |
+
+To run `/sync`, `/setup`, or `/reset`, your Discord account must be linked to a NEXUS account with Manage Discord in the tournament. By default, Discord shows these three only to members with Manage Channels, to keep them out of everyone else's way. To change who sees them, go to **Server Settings → Integrations → lobot**. Whoever can see them, NEXUS still checks Manage Discord.
+
+Only the person who ran a command can click its **Confirm**, and only within 10 minutes. The preview in Discord shows up to 10 items under each heading. For the full list, open **Settings → Discord** in NEXUS, which the preview links to, and click **Build server** or **Reset to defaults**; you can cancel there.
+
+## Reset to defaults
+
+Over time, people edit the server by hand: they move roles, rename channels, and change permissions. A reset puts lobot's roles and channels back the way NEXUS sets them up, and applies any setup changes waiting for one, like division merge or new buildings. It always shows a preview first.
+
+To reset the whole server, click **Reset to defaults** on **Settings → Discord**, or run `/reset` in the server. A reset:
+
+- Restores the permissions and order of lobot's roles, and the staff or admin permissions that match each role's current NEXUS permissions.
+- Restores the names, categories, and order of lobot's channels, and their `@everyone` and lobot-role overwrites. Overwrites you added for your own roles or for individual members stay.
+- Restores the `#verify` gate.
+- Applies the current division merge and category settings, buildings, and zones, moving channels into their new categories and archiving channels that no longer fit.
+
+A reset never changes topics, slowmode, colors, icons, or hoist, and never touches your own roles and channels.
+
+To reset just one role or channel, run `/reset role:` or `/reset channel:` and pick it. This restores only that object. It doesn't create, archive, or reorder anything else, and lobot refuses roles and channels it doesn't manage.
+
+### `/setup` after the first build is not a reset
+
+On a server that's already built, `/setup` (and **Build server**, if it's offered again) only fills gaps. It creates what's missing, adopts roles and channels by name, and adds back missing overwrites, but it never changes anything that already exists. If you want hand edits undone, use `/reset`.
+
+## Which Discord edits stick
+
+When a Discord admin edits lobot's roles or channels by hand, whether the edit lasts depends on what it was. "Kept" means lobot leaves it as the admin set it.
+
+| An admin in Discord… | The automatic sync | `/setup` | `/reset` |
+|---|---|---|---|
+| Gives or removes one of lobot's roles on a member, Verified included | Puts it back | Puts it back | Puts it back |
+| Renames one of lobot's roles | Renames it back | Renames it back | Renames it back |
+| Deletes one of lobot's roles, channels, or categories, or `#verify` or its message | Recreates it | Recreates it | Recreates it |
+| Changes the permissions or position of one of lobot's roles | Kept | Kept | Restored |
+| Changes the color, icon, hoist, or mentionable setting of one of lobot's roles | Kept | Kept | Kept |
+| Renames or moves one of lobot's channels, or edits its `@everyone` or lobot-role overwrites | Kept | Kept | Restored |
+| Denies a staff role View Channels on a channel | Kept | Kept | Restored to allowed on lobot's channels; kept on yours |
+| Deletes a staff role's overwrite from a channel entirely, or Verified's from `#verify` | Added back | Added back | Restored |
+| Gives `@everyone` View Channels in the server's role permissions | Kept | Kept | Removed again |
+| Edits the topic, slowmode, or other settings of one of lobot's channels, or adds overwrites there for other roles or members | Kept | Kept | Kept |
+| Creates or edits their own roles and channels, gives out roles lobot doesn't manage, or edits an archived channel | Kept (a new channel gets the staff overwrite) | Kept | Kept |
+
+Members' roles always follow NEXUS. To give someone access, give them a role or assignment in NEXUS rather than a role in Discord.
+
+## Unlink or remove lobot
+
+- **Unlink** on **Settings → Discord** makes lobot leave the server and stops syncing. The server's roles and channels stay as they are. If you link the same server again later and build it, lobot adopts its old roles and channels by name.
+- **If someone removes lobot from the server** in Discord, the track shows a **lobot removed** badge and syncing stops. Click **Add lobot back** and go through Discord's screen again; the server owner rule is checked again. lobot then resyncs the whole server.
+- **If the tournament is archived,** lobot stops syncing, builds are blocked, and its commands reply *This tournament is archived.* Unarchiving resumes syncing and resyncs the whole server.
+- **If a track is being deleted,** the same happens, and commands reply *This track is being deleted.* Cancelling the deletion resumes syncing. Once the track is permanently deleted, lobot leaves the server; the roles and channels stay.
+
+## Troubleshooting
+
+**A yellow banner says "Move lobot's role above *role*. lobot can't give or remove it."**
+Discord's role hierarchy only lets a bot manage roles below its own. One of lobot's roles has ended up above lobot's role, usually because someone dragged it there. Everything else still syncs. In **Server Settings → Roles**, drag the role named **lobot** above the roles listed, or drag those roles below it. The warning clears at the next sync; run `/sync` to clear it now.
+
+**A preview says "Discord hasn't given this server's roles distinct positions yet."**
+Brand-new servers sometimes report every role at the same position, and then lobot can't put its roles in order. In **Server Settings → Roles**, drag any role up or down once, then run `/reset` again.
+
+**"lobot doesn't have the Administrator permission."**
+Someone unchecked Administrator when adding lobot, or took it away later. lobot needs it to set the permissions it builds. In **Server Settings → Roles**, open the role named **lobot** and turn on **Administrator**, then try again.
+
+**"This would make *n* roles, over Discord's limit of 250" (or 500 channels and categories).**
+Discord limits every server to 250 roles and 500 channels. Delete roles or channels you no longer use, then try again.
+
+**A red banner says "Last sync failed".**
+lobot retries on its own, waiting longer each time, up to an hour. Once the cause is fixed, run `/sync` to retry now.
+
+**"This server isn't linked to a NEXUS track."**
+lobot is in the server, but it isn't linked, or the link was removed. Link it from **Settings → Discord** with **Add to Discord**. lobot leaves servers that stay unlinked for more than an hour.
+
+**"Run /setup first."**
+`/sync` and `/reset` work only on a built server. Build it with `/setup` or **Build server**.
+
+**"You need the Manage Discord permission in NEXUS to run this."** or **"Link your NEXUS account first."**
+The staff commands check your NEXUS account. Link Discord to NEXUS, and make sure one of your roles in the tournament has Manage Discord.
+
+**"The build stopped: …"**
+Fix what the message describes, then run the same command again. It picks up where it left off.
+
+**"A build is already running for this server."**
+Only one build or reset runs at a time. Wait for it to finish; **Settings → Discord** shows **Building…** until it does.
+
+**Someone's roles didn't change after an edit in NEXUS.**
+Most changes reach Discord within seconds, and every member is checked every 15 minutes. Check that they've linked the Discord account they're using (they can run `/whoami`), and that their role or assignment is on this server's track. To check everyone now, run `/sync`.
+
+**The Discord page says "Discord isn't available".**
+Discord isn't turned on for this NEXUS deployment.
