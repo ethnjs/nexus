@@ -18,6 +18,7 @@ import {
   type PasswordChecks,
   validatePassword,
 } from "@/lib/auth";
+import { DISCORD_VOLUNTEER_GUIDE_URL } from "@/lib/docs";
 import { useAuth } from "@/lib/useAuth";
 
 export default function SecuritySettingsPage() {
@@ -214,9 +215,25 @@ function ConnectedAccounts() {
           </span>
         }
         helper={
-          discord
-            ? `@${discord.username_at_provider ?? "unknown"}`
-            : "Link Discord to get your roles and channels on tournament servers."
+          discord ? (
+            `@${discord.username_at_provider ?? "unknown"}`
+          ) : (
+            <>
+              Link Discord to get your roles and channels on tournament servers.{" "}
+              <a
+                href={DISCORD_VOLUNTEER_GUIDE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "inherit",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "2px",
+                }}
+              >
+                Read the Discord guide
+              </a>
+            </>
+          )
         }
         last
       >

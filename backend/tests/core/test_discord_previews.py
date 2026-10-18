@@ -5,6 +5,7 @@ from app.core.discord.build import Action, Plan, Target
 from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
 
 BIG_ID = 1_560_569_782_195_978_320
+FOOTER = "Full list in NEXUS: http://nexus/settings\nHow this works: <http://docs/guide>"
 
 
 def test_round_trip():
@@ -51,17 +52,17 @@ def test_fits_in_a_discord_custom_id():
 
 def test_discord_summary_caps_each_group():
     plan = Plan(actions=[Action("Create", f"Role: {i}") for i in range(14)], warnings=["Careful"])
-    text = discord_summary(plan, "Preview of /setup", "http://nexus/settings")
+    text = discord_summary(plan, "Preview of /setup", "http://nexus/settings", "http://docs/guide")
     assert text.startswith("**Preview of /setup**")
     assert "• Role: 9" in text
     assert "• Role: 10" not in text
     assert "…and 4 more" in text
     assert "**Warnings**\n• Careful" in text
-    assert text.endswith("Full list in NEXUS: http://nexus/settings")
+    assert text.endswith(FOOTER)
 
 
 def test_discord_summary_stays_under_the_message_limit():
     plan = Plan(actions=[Action(group, "x" * 150) for group in ("Create", "Adopt") * 10])
-    text = discord_summary(plan, "Preview", "http://nexus/settings")
+    text = discord_summary(plan, "Preview", "http://nexus/settings", "http://docs/guide")
     assert len(text) <= previews.DISCORD_MESSAGE_LIMIT
-    assert text.endswith("Full list in NEXUS: http://nexus/settings")
+    assert text.endswith(FOOTER)

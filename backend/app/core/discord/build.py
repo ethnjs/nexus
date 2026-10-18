@@ -73,6 +73,9 @@ MAX_ROLES = 250
 MAX_CHANNELS = 500
 STALE_BUILD_MINUTES = 2
 HEARTBEAT_SECONDS = 30
+GUIDES_URL = "https://docs.ethanshih.com/docs/nexus"
+STAFF_GUIDE_URL = f"{GUIDES_URL}/discord"
+VOLUNTEER_GUIDE_URL = f"{GUIDES_URL}/volunteer-guides/discord"
 
 CREATE = "Create"
 ADOPT = "Adopt"
@@ -716,6 +719,7 @@ def verify_message(verified_role_id: int | None) -> dict[str, Any]:
                         "label": "Link your NEXUS account",
                         "url": frontend_redirect("/connect/discord"),
                     },
+                    {"type": 2, "style": 5, "label": "Help", "url": VOLUNTEER_GUIDE_URL},
                 ],
             }
         ],

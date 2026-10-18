@@ -6,6 +6,7 @@ import pytest
 
 from app.core.discord.build import (
     GATE_NOTICE,
+    VOLUNTEER_GUIDE_URL,
     Target,
     claim_build,
     parse_roles,
@@ -128,9 +129,10 @@ class TestFirstBuild:
         verify_id = int(guild.channel("verify")["id"])
         [message] = mock_discord_rest.messages[verify_id].values()
         [row] = message["components"]
-        button, link_button = row["components"]
+        button, link_button, help_button = row["components"]
         assert button["custom_id"] == f"nexus:verify:{verified}"
         assert link_button["url"] == "http://localhost:3000/connect/discord"
+        assert help_button["url"] == VOLUNTEER_GUIDE_URL
         assert link.verify_message_id is not None
 
     async def test_saves_every_id_and_tier(self, db, link, guild, scope, events):
