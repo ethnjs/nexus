@@ -148,6 +148,7 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 |---|---|
 | Assignment create, update, delete, placements (one mark per member for the whole edit); zone assignments; role grants | member, in the row's track's server; tournament-wide rows in every server |
 | Membership deleted (both routes) | member, every server |
+| Age disclosure declined, or given after declining | member, in the servers of the membership's rows |
 | Role created or renamed | structure, every server |
 | Role deleted; event deleted or removed from a track | structure, plus member for former holders, queried first |
 | Event created or renamed, or its tracks change | structure, every server |

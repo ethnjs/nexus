@@ -305,6 +305,21 @@ class TestMemberships:
         assert client.delete(f"/tournaments/{td_tournament.id}/members/me/").status_code == 204
         assert ("day2", "member", VOL_DISCORD) in _marks(db, links)
 
+    def test_declining_and_consenting_to_age_disclosure(
+        self, db, client, td_tournament, links, volunteer, day1
+    ):
+        grant_role(db, td_tournament, volunteer, "Volunteer", track_id=day1)
+        _clear(db)
+        login(client, "vol@test.com", "pass1234")
+        url = f"/tournaments/{td_tournament.id}/members/me/age-disclosure/"
+        assert client.post(url, json={"consent": False}).status_code == 200
+        assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+        _clear(db)
+        assert client.post(url, json={"consent": False}).status_code == 200
+        assert _marks(db, links) == set()
+        assert client.post(url, json={"consent": True}).status_code == 200
+        assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+
     def test_ownership_transfer_marks_both_owners(
         self, db, td, td_tournament, links, volunteer, day1
     ):

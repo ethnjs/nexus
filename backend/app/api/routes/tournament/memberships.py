@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import get_current_user
-from app.core.discord.marks import mark_users
+from app.core.discord.marks import mark_memberships, mark_users, row_scope
 from app.core.form.member_options import member_editable_reserved_fields, member_track_options
 from app.core.form.validation import (
     LUNCH_FREE_TEXT_QUESTION_TYPES,
@@ -58,6 +58,7 @@ from app.core.tournament.memberships import (
     gate_age_flags,
     get_custom_form_answers,
     get_membership_by_user,
+    is_declined,
     onboarding_reads,
     resolve_person_refs,
 )
@@ -387,8 +388,12 @@ def set_my_age_disclosure(
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
+    was_declined = is_declined(membership)
     membership.age_disclosure = "consented" if payload.consent else "declined"
     membership.age_disclosure_at = datetime.now(UTC)
+    if is_declined(membership) != was_declined:
+        # A declined membership's assignments don't count toward Discord access.
+        mark_memberships(db, tournament_id, [row_scope(r) for r in membership.track_assignments])
     db.commit()
     db.refresh(membership)
 
