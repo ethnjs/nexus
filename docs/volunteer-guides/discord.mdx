@@ -1,0 +1,80 @@
+---
+title: Join a tournament's Discord server
+description: Link your Discord account to NEXUS so lobot can give you your roles and channels.
+---
+
+Many tournaments run a Discord server for their staff and volunteers. lobot, NEXUS's Discord bot, looks after those servers: it gives you a role for each of your NEXUS roles and events, and opens the channels you need. You link your Discord account to NEXUS once, and it works in every tournament's server from then on.
+
+## Link your Discord account
+
+Use whichever is handiest. They all do the same thing.
+
+- **From anywhere:** go to [nexus.socalscioly.org/connect/discord](https://nexus.socalscioly.org/connect/discord). If you aren't signed in to NEXUS, you sign in first, then go straight to Discord.
+- **From NEXUS:** go to **Settings → Security**, and under **Connected accounts**, next to **Discord**, click **Connect**.
+- **From the server:** in `#verify`, click **Link your NEXUS account**, or type `/link` in any channel and click the button in lobot's reply.
+
+Discord asks whether NEXUS may see your Discord username. Click **Authorize**. When NEXUS shows **Linked. Head back to Discord.** (or **Discord is connected.** in Settings), you're done.
+
+Linking only tells NEXUS which Discord account is yours. You can't sign in to NEXUS with Discord, and NEXUS can't post or read messages as you.
+
+Each NEXUS account can link one Discord account, and each Discord account can link to one NEXUS account. If linking fails:
+
+| Message | What to do |
+|---|---|
+| That Discord account is already linked to another NEXUS account. | Sign in to that other NEXUS account and disconnect Discord there first, or use a different Discord account. |
+| Your NEXUS account is already linked to a different Discord account. | Go to **Settings → Security** and click **Disconnect**, then link again. |
+| Linking was cancelled in Discord. | You closed or cancelled Discord's screen. Click **Try again** (or **Connect** in Settings). |
+| Discord linking isn't available right now. | Discord isn't turned on in NEXUS at the moment. Try again later, or contact the tournament director. |
+
+## Get verified
+
+When you first join a tournament's server, you see only one channel, `#verify`. The rest of the server opens once lobot verifies you.
+
+**If you've already linked your account and you have a role or assignment in the tournament,** you don't need to do anything: lobot verifies you within a few seconds of joining. The same goes if you join first and link afterward.
+
+Otherwise, in `#verify`, click **Verify**. lobot replies with a message only you can see:
+
+| Reply | What it means |
+|---|---|
+| You're verified. Your channels will appear in a few seconds. | You're all set. |
+| You're already verified. | You already have access. |
+| Link your Discord account to NEXUS first. | lobot doesn't know your NEXUS account yet. Click the button in the reply to link it. Once it's linked, you're verified automatically. |
+| Your NEXUS account (*name*) doesn't have a role or assignment in *tournament* (*track*). | You're linked, but that NEXUS account has no role or assignment on the part of the tournament this server is for. If that's wrong, contact the tournament director. If it names a NEXUS account you didn't expect, you linked Discord while signed in to that account; see [Can't see a channel?](#cant-see-a-channel). |
+| Try again in *n* s. | You clicked a moment ago. Wait that many seconds, then click again. |
+| This tournament is archived. / This track is being deleted. | The tournament or track is no longer active, so lobot isn't giving out roles in this server. |
+
+lobot verifies you when you have any role or assignment on the server's track in NEXUS, or one that covers the whole tournament, or you own the tournament.
+
+## What you'll see
+
+Once you're verified, you get:
+
+- A role for each of your NEXUS roles, like **Event Supervisor**.
+- A role for each event you're assigned to, like **Circuit Lab C**, and that event's channel, like `#circuit-lab-c`. Channels are grouped into categories by building or zone.
+- The server's general channels.
+
+Your roles follow NEXUS. When the tournament director assigns you to an event, changes your role, or removes an assignment, your Discord roles update on their own, usually within a few seconds. You can't change them from Discord, and if someone adds or removes one of lobot's roles by hand, lobot puts it back.
+
+## Check what lobot knows about you
+
+Type `/whoami` in any channel of the server. lobot replies, visible only to you, with:
+
+- The NEXUS account your Discord account is linked to.
+- Your roles in this tournament. Roles that cover the whole tournament are marked **tournament-wide**.
+- Your events, with shift times shown in your own time zone.
+
+## Can't see a channel?
+
+- **You haven't been verified yet.** Until you are, you see only `#verify`. See [Get verified](#get-verified).
+- **The channel is for an event you aren't assigned to.** Each event's channel is visible only to its volunteers and to staff. Assignments to a zone, rather than to an event, don't open event channels.
+- **A change was just made in NEXUS.** Most changes reach Discord within seconds; every member is checked every 15 minutes.
+- **You linked a different Discord account.** Run `/whoami`. If it says your Discord account isn't linked, or names a NEXUS account that isn't yours, check **Settings → Security** in NEXUS, which shows the Discord username you linked.
+- **The server is for a different track.** In a tournament with several tracks, each track can have its own server, and you see channels only in the server for the track you're on.
+
+If none of these explain it, contact the tournament director.
+
+## Unlink your account, or leave a tournament
+
+To unlink, go to **Settings → Security** in NEXUS, and next to **Discord**, click **Disconnect**. You don't need your password.
+
+When you unlink, or you're removed from a tournament, or your last role or assignment there ends, lobot takes away the roles it gave you, and you're back to seeing only `#verify`. lobot never kicks you from a server and never sends you DMs. To leave a server completely, leave it in Discord.
