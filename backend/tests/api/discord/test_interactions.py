@@ -186,12 +186,12 @@ class TestWhoami:
         content = _content(_post(client, _command("whoami", user_id="5001")))
         assert "**Olive Owner**" in content
         assert "You own" in content
-        assert "aren't on staff" not in content
+        assert "don't have a role or assignment" not in content
 
-    def test_linked_but_not_on_staff(self, client, db, discord_on, link):
+    def test_linked_without_a_role_or_assignment(self, client, db, discord_on, link):
         _link_discord(db, _make_user(db, "nobody@test.com"), "5002")
         content = _content(_post(client, _command("whoami", user_id="5002")))
-        assert "aren't on staff" in content
+        assert "don't have a role or assignment" in content
 
     def test_roles_on_this_track_and_tournament_wide_only(
         self, client, db, discord_on, link, td_tournament, track_id
@@ -504,10 +504,12 @@ class TestVerifyButton:
         assert _content(res).startswith("Link your Discord account to NEXUS first.")
         assert _link_url(res) == CONNECT_URL
 
-    def test_linked_but_not_on_staff(self, client, db, discord_on, link):
+    def test_linked_without_a_role_or_assignment(self, client, db, discord_on, link):
         _link_discord(db, _make_user(db, "nobody@test.com"), "5010")
         content = _content(_post(client, _click("nexus:verify:777", user_id="5010")))
-        assert content.startswith("Your NEXUS account (Pat Example) isn't on staff for")
+        assert content.startswith(
+            "Your NEXUS account (Pat Example) doesn't have a role or assignment in"
+        )
         assert content.endswith("Contact the tournament director.")
         assert db.query(DiscordSyncMark).count() == 0
 
@@ -528,12 +530,12 @@ class TestVerifyButton:
         db.commit()
         grant_role(db, td_tournament, volunteer, "Test Writer", track_id=other_track.id)
         content = _content(_post(client, _click("nexus:verify:777", user_id="5012")))
-        assert "isn't on staff" in content
+        assert "doesn't have a role or assignment" in content
 
     def test_site_admins_get_no_special_treatment(self, client, db, discord_on, link, admin_user):
         _link_discord(db, admin_user, "5013")
         content = _content(_post(client, _click("nexus:verify:777", user_id="5013")))
-        assert "isn't on staff" in content
+        assert "doesn't have a role or assignment" in content
 
     def test_owner_without_roles_is_eligible(self, client, db, discord_on, link, td_user):
         _link_discord(db, td_user, TD_DISCORD)
