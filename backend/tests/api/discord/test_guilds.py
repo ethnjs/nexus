@@ -244,6 +244,22 @@ class TestFinishInstall:
         assert db.query(DiscordGuildLink).count() == 0
         assert left == [GUILD_ID]
 
+    def test_inactive_owner_is_refused(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        coordinator = _make_user(db, "lead@test.com")
+        grant_role(db, td_tournament, coordinator, "Tournament Director")
+        _link_discord(db, coordinator, "5001")
+        coordinator.status = "deactivated"
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = _install(
+            client, mock_discord_http, td_tournament.id, track_id, guild=_guild(owner_id="5001")
+        )
+        assert _location_query(res) == {"error": "owner_inactive", "owner": "Pat Example"}
+        assert db.query(DiscordGuildLink).count() == 0
+        assert left == [GUILD_ID]
+
     def test_server_owned_by_a_td_who_isnt_the_tournament_owner(
         self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
     ):

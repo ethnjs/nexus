@@ -14,6 +14,7 @@ from app.models.models import (
     TournamentEvent,
     TournamentEventShift,
     TournamentEventTrack,
+    TournamentMembership,
     TournamentRole,
     TournamentShift,
     TournamentTrack,
@@ -193,6 +194,32 @@ class TestWhoami:
         content = _content(_post(client, _command("whoami", user_id="5002")))
         assert "don't have a role or assignment" in content
 
+    def test_inactive_account(self, client, db, discord_on, link, td_tournament):
+        volunteer = _make_user(db, "vol@test.com")
+        _link_discord(db, volunteer, "5003")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        volunteer.status = "locked"
+        db.commit()
+        content = _content(_post(client, _command("whoami", user_id="5003")))
+        assert content == "Your NEXUS account (Pat Example) isn't active."
+
+    def test_declined_age_disclosure_shows_no_roles(
+        self, client, db, discord_on, link, td_tournament
+    ):
+        volunteer = _make_user(db, "vol@test.com")
+        _link_discord(db, volunteer, "5003")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        membership = (
+            db.query(TournamentMembership)
+            .filter_by(user_id=volunteer.id, tournament_id=td_tournament.id)
+            .one()
+        )
+        membership.age_disclosure = "declined"
+        db.commit()
+        content = _content(_post(client, _command("whoami", user_id="5003")))
+        assert "**Roles**" not in content
+        assert "don't have a role or assignment" in content
+
     def test_roles_on_this_track_and_tournament_wide_only(
         self, client, db, discord_on, link, td_tournament, track_id
     ):
@@ -293,6 +320,15 @@ class TestStaffCommands:
             "type": 5,
             "data": {"flags": EPHEMERAL},
         }
+
+    @pytest.mark.parametrize("status", ["deactivated", "locked"])
+    def test_refused_for_an_inactive_account(self, client, db, discord_on, link, td_user, status):
+        _link_discord(db, td_user, TD_DISCORD)
+        td_user.status = status
+        db.commit()
+        content = _content(_post(client, _command("sync")))
+        assert content.endswith("isn't active.")
+        assert db.query(DiscordSyncMark).count() == 0
 
     @pytest.mark.parametrize("name", ["sync", "reset"])
     def test_unbuilt_server_needs_setup_first(self, client, db, discord_on, link, td_user, name):
@@ -511,6 +547,16 @@ class TestVerifyButton:
             "Your NEXUS account (Pat Example) doesn't have a role or assignment in"
         )
         assert content.endswith("Contact the tournament director.")
+        assert db.query(DiscordSyncMark).count() == 0
+
+    def test_inactive_account(self, client, db, discord_on, link, td_tournament):
+        volunteer = _make_user(db, "vol@test.com")
+        _link_discord(db, volunteer, "5010")
+        grant_role(db, td_tournament, volunteer, "Volunteer")
+        volunteer.status = "deactivated"
+        db.commit()
+        content = _content(_post(client, _click("nexus:verify:777", user_id="5010")))
+        assert content == "Your NEXUS account (Pat Example) isn't active."
         assert db.query(DiscordSyncMark).count() == 0
 
     def test_eligible_member_is_marked(self, client, db, discord_on, link, td_tournament, track_id):

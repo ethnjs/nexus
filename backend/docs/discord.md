@@ -43,7 +43,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 ## Servers and tracks
 
 - **One server per track and one track per server** (`track_id` and `guild_id` are unique on `discord_guild_links`).
-- **The server's owner must be a linked NEXUS user with `manage_tournament` in the tournament.** That matches what `manage_tournament` already means in Discord (Administrator). Anyone with `manage_discord` can run the install, and the server owner can differ from the installer. Ownership is checked only at install; later ownership changes don't unlink.
+- **The server's owner must be a linked, active NEXUS user with `manage_tournament` in the tournament.** That matches what `manage_tournament` already means in Discord (Administrator). Anyone with `manage_discord` can run the install, and the server owner can differ from the installer. Ownership is checked only at install; later ownership changes don't unlink.
 - **The install is a full OAuth code grant** with scopes `bot applications.commands identify` and `permissions=8` (Administrator). `identify` is there only because Discord includes the `guild` object in the token response only in a full code grant. The callback trusts that `guild` (with its `owner_id`), never the redirect's `guild_id`, which Discord documents as a hint.
 - **Administrator** is needed because a bot can only set overwrite bits and role permissions it holds itself, and the build sets many. Role hierarchy still applies.
 - **A refused install makes lobot leave at once,** inside the callback, before redirecting, so a quick retry finds lobot gone (otherwise Discord's next token response can lack `guild`, since the bot wasn't added). A failed leave falls back to a `leave:<guild_id>` notification to the leader. lobot never leaves a server another track is linked to.
@@ -60,7 +60,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 
 ## Permissions and tiers
 
-- `manage_discord` gates Add to Discord, the Discord settings, building, `/setup`, `/reset`, and `/sync`. The default template gives it to Tournament Director, Volunteer Coordinator, and Test Coordinator.
+- `manage_discord` gates Add to Discord, the Discord settings, building, `/setup`, `/reset`, and `/sync`. The default template gives it to Tournament Director, Volunteer Coordinator, and Test Coordinator. In Discord, the linked NEXUS account must also be active (not deactivated or locked); `has_permission` doesn't check that, so the commands and Verify do.
 - **Admin tier:** NEXUS roles with `manage_tournament` (and the Tournament Owner role) get Administrator in Discord.
 - **Staff tier:** roles with `manage_discord` but not `manage_tournament` get the staff permission set (`STAFF_PERMISSIONS` in `services/discord/permissions.py`) and see every channel. Left out on purpose: Administrator, Manage Server, Manage Roles (staff can't hand-edit managed roles or channel permissions, so they can't fight the sync), Manage Webhooks (webhooks can impersonate anyone), Ban Members, and Manage Expressions.
 - **A role's tier is stored** (`discord_managed_roles.tier`) as set at creation or the last `/reset`, and the sync reads that, not NEXUS's current permissions. Otherwise a role whose NEXUS permissions changed would gain access to new channels but not old ones. Permission and tier changes reach Discord only through `/reset`.
@@ -183,12 +183,12 @@ lobot sees its own changes too; repeated marks merge, so a build's channel creat
 | Command | Does |
 |---|---|
 | `/link` | A link button to `/connect/discord` |
-| `/whoami` | Your linked NEXUS name, roles on this track and tournament-wide, and event assignments with shift times |
+| `/whoami` | Your linked NEXUS name, roles on this track and tournament-wide, and event assignments with shift times, counting only what eligibility counts (an inactive account or a declined age disclosure shows none) |
 | `/sync` | Writes a full mark and replies with the last sync's failure or warning |
 | `/setup` | Preview, Confirm, then `build(reset=False)` |
 | `/reset [role] [channel]` | Preview, Confirm, then a full or scoped reset |
 
-- **The Verify button** (`custom_id` `nexus:verify:<Verified role id>`): already holding Verified, per the click payload, is answered without a database query; then a 10-second per-worker cooldown; then unlinked (instructions and the link button), ineligible ("doesn't have a role or assignment in …", no kick), or eligible (a member mark, "You're verified").
+- **The Verify button** (`custom_id` `nexus:verify:<Verified role id>`): already holding Verified, per the click payload, is answered without a database query; then a 10-second per-worker cooldown; then unlinked (instructions and the link button), inactive account ("isn't active"), ineligible ("doesn't have a role or assignment in …", no kick), or eligible (a member mark, "You're verified").
 - `/link` and `/whoami` work for unverified members in `#verify` because slash commands need Use Application Commands, which `@everyone` keeps and which is separate from Send Messages.
 
 ## Discord behavior this relies on

@@ -17,6 +17,7 @@ from app.core.discord.marks import mark_full, mark_member
 from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
 from app.core.oauth import frontend_redirect
 from app.core.tournament import tournament_display_name
+from app.core.tournament.memberships import is_declined
 from app.core.tournament.permissions import MANAGE_DISCORD, has_permission
 from app.models.discord import DiscordGuildLink
 from app.models.models import (
@@ -69,6 +70,12 @@ def _nexus_user(db: Session, discord_user_id: str) -> User | None:
         .first()
     )
     return identity.user if identity else None
+
+
+def _inactive(user: User) -> dict[str, Any] | None:
+    if user.status == "active":
+        return None
+    return reply(f"Your NEXUS account ({user_label(user)}) isn't active.")
 
 
 def _unusable(link: DiscordGuildLink | None) -> str | None:
@@ -146,6 +153,9 @@ def _verify(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
             "automatically.",
             components=_link_row(),
         )
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     if not is_eligible(db, link, user):
         where = f"{tournament_display_name(link.tournament)} ({link.track.name})"
         return reply(
@@ -163,6 +173,9 @@ def _staff_refusal(
     user = _nexus_user(db, discord_user_id)
     if user is None:
         return reply("Link your NEXUS account first.", components=_link_row())
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     if not has_permission(user, link.tournament_id, MANAGE_DISCORD, db):
         return reply("You need the Manage Discord permission in NEXUS to run this.")
     return None
@@ -306,6 +319,9 @@ def _whoami(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     user = _nexus_user(db, discord_user_id)
     if user is None:
         return reply("Your Discord account isn't linked to NEXUS.", components=_link_row())
+    inactive = _inactive(user)
+    if inactive is not None:
+        return inactive
     tournament = link.tournament
     track = link.track
     where = f"{tournament_display_name(tournament)} ({track.name})"
@@ -323,7 +339,9 @@ def _whoami(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     )
     rows = [
         row
-        for row in (membership.track_assignments if membership else [])
+        for row in (
+            membership.track_assignments if membership and not is_declined(membership) else []
+        )
         if row.is_tournament_wide or row.tournament_track_id == track.id
     ]
     if not rows:
