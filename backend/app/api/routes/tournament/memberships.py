@@ -381,6 +381,7 @@ def set_my_age_disclosure(
                 detail="The tournament owner can't decline age disclosure.",
             )
         delete_tournament_form_responses(db, tournament_id, current_user.id)
+        mark_users(db, tournament_id, [current_user.id], [None])
         db.delete(membership)
         db.commit()
         return _no_membership_response(db, tournament, current_user)
