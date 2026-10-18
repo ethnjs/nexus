@@ -54,6 +54,7 @@ from app.schemas.sheet_config import (
     SheetHeadersResponse,
     SheetValidateResponse,
 )
+from app.services.discord.rest import DiscordRest
 from app.services.forms_service import FormsService
 from app.services.sheets_service import SheetsService
 from tests.discord_fake import FakeDiscord
@@ -400,6 +401,14 @@ def mock_send_email(monkeypatch):
     mock = AsyncMock()
     monkeypatch.setattr("app.services.email_service._send", mock)
     return mock
+
+
+async def _refuse_real_discord(self, route, **kwargs):
+    raise AssertionError(f"a test reached Discord's real API: {route.method} {route.path}")
+
+
+# Set once for the whole session rather than per test, so monkeypatch.undo() can't lift it.
+DiscordRest._request = _refuse_real_discord
 
 
 @pytest.fixture(autouse=True)

@@ -41,7 +41,8 @@ class Settings(BaseSettings):
     discord_client_secret: str = ""
     discord_link_redirect_uri: str = ""
     discord_install_redirect_uri: str = ""
-    # Registers slash commands on this one server instead of globally. Dev only.
+    # Dev only: registers slash commands on this one server instead of globally. Never set
+    # it in production or preview; the commands would exist in that server alone.
     discord_dev_guild_id: str = ""
 
 

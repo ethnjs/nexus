@@ -256,3 +256,24 @@ class TestDiscordIdentities:
 
     def test_unlink_requires_sign_in(self, client):
         assert client.delete("/users/me/identities/discord/").status_code == 401
+
+
+def test_linking_marks_the_servers_where_the_user_counts(
+    client, db, discord_on, td_user, td_tournament, mock_discord_http
+):
+    from app.models.discord import DiscordGuildLink, DiscordSyncMark
+    from app.models.models import utcnow
+    from tests.conftest import primary_track_id
+
+    link = DiscordGuildLink(
+        tournament_id=td_tournament.id,
+        track_id=primary_track_id(db, td_tournament.id),
+        guild_id=303,
+        built_at=utcnow(),
+    )
+    db.add(link)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    _link(client, mock_discord_http, user_id="4242")
+    mark = db.query(DiscordSyncMark).one()
+    assert (mark.link_id, mark.kind, mark.discord_user_id) == (link.id, "member", 4242)

@@ -26,13 +26,13 @@ TD_DISCORD = "4001"
 
 
 @pytest.fixture
-def left(monkeypatch) -> list[int]:
-    """Guild ids the routes asked the leader to leave."""
-    calls: list[int] = []
+def left(monkeypatch, mock_discord_rest) -> list[int]:
+    """Guild ids the bot left, or that the routes asked the leader to leave."""
     monkeypatch.setattr(
-        "app.api.routes.discord.guilds.notify_leave", lambda db, guild_id: calls.append(guild_id)
+        "app.api.routes.discord.guilds.notify_leave",
+        lambda db, guild_id: mock_discord_rest.left.append(guild_id),
     )
-    return calls
+    return mock_discord_rest.left
 
 
 @pytest.fixture
@@ -356,8 +356,57 @@ class TestFinishInstall:
         login(client, "td@test.com", "tdpass")
         state = _state(_start(client, td_tournament.id, track_id))
         res = _finish(client, mock_discord_http, state, None)
-        assert _location_query(res) == {"error": "discord_failed"}
+        assert _location_query(res) == {"error": "discord_no_guild"}
         assert db.query(DiscordGuildLink).count() == 0
+
+    def test_a_refused_install_leaves_before_redirecting(
+        self,
+        client,
+        db,
+        discord_on,
+        td_user,
+        td_tournament,
+        track_id,
+        mock_discord_http,
+        monkeypatch,
+        mock_discord_rest,
+    ):
+        queued: list[int] = []
+        monkeypatch.setattr(
+            "app.api.routes.discord.guilds.notify_leave",
+            lambda db, guild_id: queued.append(guild_id),
+        )
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "owner_not_linked"}
+        assert mock_discord_rest.left == [GUILD_ID]
+        assert queued == []
+
+    def test_a_failed_leave_falls_back_to_the_leader(
+        self,
+        client,
+        db,
+        discord_on,
+        td_user,
+        td_tournament,
+        track_id,
+        mock_discord_http,
+        monkeypatch,
+        mock_discord_rest,
+    ):
+        async def broken(guild_id):
+            raise RuntimeError("Discord is down")
+
+        queued: list[int] = []
+        monkeypatch.setattr(mock_discord_rest, "leave_guild", broken)
+        monkeypatch.setattr(
+            "app.api.routes.discord.guilds.notify_leave",
+            lambda db, guild_id: queued.append(guild_id),
+        )
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "owner_not_linked"}
+        assert queued == [GUILD_ID]
 
     def test_callback_without_a_started_install(self, client, discord_on, td_user):
         login(client, "td@test.com", "tdpass")

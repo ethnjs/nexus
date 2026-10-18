@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import create_session, get_active_session, get_client_ip, set_auth_cookie
 from app.core.config import get_settings
 from app.core.discord.deps import require_discord_enabled
+from app.core.discord.marks import mark_account_everywhere
 from app.core.oauth import (
     AccountExists,
     AccountInactive,
@@ -202,6 +203,9 @@ def discord_callback(
 
     try:
         link_identity(db, session_row.user, OAuthProvider.discord, account_id, username=username)
+        # link_identity commits the link itself, so the marks follow in their own commit.
+        mark_account_everywhere(db, session_row.user_id, int(account_id))
+        db.commit()
     except IdentityLinkError as exc:
         own = (
             db.query(OAuthIdentity)

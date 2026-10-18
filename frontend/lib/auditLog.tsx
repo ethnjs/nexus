@@ -482,7 +482,7 @@ const DESCRIBERS: Record<
   }),
 
   discord_server_linked: (e) => ({
-    summary: `${e.readded ? "Added the bot back to" : "Linked"} Discord server ${discordServerName(e)} ${e.readded ? "for" : "to"} ${e.track_name as string}`,
+    summary: `${e.readded ? "Added lobot back to" : "Linked"} Discord server ${discordServerName(e)} ${e.readded ? "for" : "to"} ${e.track_name as string}`,
   }),
 
   discord_server_unlinked: (e) => ({

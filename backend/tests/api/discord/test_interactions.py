@@ -147,7 +147,7 @@ class TestEndpoint:
 class TestServerState:
     def test_dm_is_refused(self, client, discord_on):
         res = _post(client, _command("whoami", guild_id=None))
-        assert _content(res) == "NEXUS commands work only inside servers."
+        assert _content(res) == "lobot's commands work only inside servers."
 
     def test_unlinked_server(self, client, discord_on):
         assert _content(_post(client, _command("link"))) == (
@@ -471,14 +471,21 @@ class TestSetupAndReset:
         mods = guild.add_role("Mods")
         _post(client, _command("reset", role=str(mods)))
         preview = _last_reply(mock_discord_rest, "command-token")
-        assert "NEXUS doesn't manage this." in preview["content"]
+        assert "lobot doesn't manage this." in preview["content"]
         assert [b["custom_id"] for b in _buttons(preview)] == ["nexus:cancel"]
 
-    def test_sync_is_not_built_yet(self, client, db, discord_on, link, td_user):
+    def test_sync_queues_a_full_sync(self, client, db, discord_on, link, td_user):
         link.built_at = utcnow()
+        link.last_sync_warning = "Move lobot's role above Runner."
         db.commit()
         _link_discord(db, td_user, TD_DISCORD)
-        assert _content(_post(client, _command("sync"))) == "/sync isn't available yet."
+        content = _content(_post(client, _command("sync")))
+        assert content.startswith("Sync queued.")
+        assert content.endswith(
+            "The last sync finished with a warning: Move lobot's role above Runner."
+        )
+        mark = db.query(DiscordSyncMark).one()
+        assert (mark.link_id, mark.kind) == (link.id, "full")
 
 
 class TestVerifyButton:

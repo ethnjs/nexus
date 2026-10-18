@@ -1527,7 +1527,7 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   manage_discord: {
     label: "Manage Discord",
     description:
-      "Add the NEXUS bot to Discord servers, and build, reset and sync them. In Discord, members with this role are staff and see every channel.",
+      "Add lobot to Discord servers, and build, reset, and sync them. In Discord, members with this role are staff and see every channel.",
   },
 };
 
@@ -1603,6 +1603,8 @@ export interface DiscordLink {
   last_build_status: string | null;
   last_build_error: string | null;
   last_sync_error: string | null;
+  // The last sync succeeded but skipped something, such as roles above the bot's.
+  last_sync_warning: string | null;
   created_at: string;
 }
 

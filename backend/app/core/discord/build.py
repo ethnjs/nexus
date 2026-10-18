@@ -352,6 +352,29 @@ class Store:
             ):
                 row.archived = True
 
+    def rekey_channel(self, link_id: int, old_key: str, new_key: str) -> None:
+        """A managed event channel now covers a different set of events."""
+        with self._link(link_id) as (db, _link):
+            row = (
+                db.query(DiscordManagedChannel)
+                .filter_by(link_id=link_id, key=old_key, archived=False)
+                .first()
+            )
+            if row is not None:
+                row.key = new_key
+
+    def forget_role(self, link_id: int, key: str) -> None:
+        with self._link(link_id) as (db, link):
+            if key == OWNER_KEY:
+                link.owner_role_id = None
+            elif key == VERIFIED_KEY:
+                link.verified_role_id = None
+            else:
+                kind, nexus_id = key.split(":")
+                db.query(DiscordManagedRole).filter_by(
+                    link_id=link_id, kind=kind, nexus_id=int(nexus_id)
+                ).delete()
+
     def heartbeat(self, link_id: int) -> None:
         """Shows the build is still alive, so claim_build doesn't take it for dead."""
         with self._link(link_id) as (_db, link):
@@ -425,7 +448,10 @@ class CreateRole(Action):
 
     async def run(self, ctx: Context) -> None:
         role = await ctx.rest.create_role(
-            ctx.guild_id, name=self.spec.name, permissions=self.spec.permissions
+            ctx.guild_id,
+            name=self.spec.name,
+            permissions=self.spec.permissions,
+            hoist=self.spec.hoist,
         )
         ctx.role_ids[self.spec.key] = int(role["id"])
         await ctx.save(ctx.store.save_role, self.spec.key, int(role["id"]), self.spec.tier)
@@ -542,7 +568,7 @@ class AddOverwrite(Action):
             )
 
 
-def _staff_overwrite(group: str, label: str, channel_id: int, role_key: str) -> AddOverwrite:
+def _staff_overwrite(group: str | None, label: str, channel_id: int, role_key: str) -> AddOverwrite:
     return AddOverwrite(group, label, channel_id, role_key, STAFF_OVERWRITE)
 
 
@@ -840,7 +866,7 @@ class _Planner:
 
     def _skip(self, key: str, name: str) -> None:
         self.skipped.add(key)
-        self.plan.warnings.append(f"Move the NEXUS bot's role above {name}.")
+        self.plan.warnings.append(f"Move lobot's role above {name}.")
 
     def plan_gate(self) -> None:
         if self.first:
@@ -1092,7 +1118,7 @@ class _Planner:
             self.add(OrderRoles(group, "Role order", role_keys))
             if roles_moved and not self._room_to_order_roles():
                 self.plan.warnings.append(
-                    "Discord hasn't given this server's roles distinct positions yet, so NEXUS "
+                    "Discord hasn't given this server's roles distinct positions yet, so lobot "
                     "can't put them in order. In Server Settings → Roles, drag any role up or "
                     "down once, then run /reset again."
                 )
@@ -1161,7 +1187,7 @@ def _require_administrator(live: Live, plan: Plan) -> bool:
     if live.bot_permissions & ADMINISTRATOR:
         return True
     plan.blockers.append(
-        "The NEXUS bot doesn't have the Administrator permission. Give its role Administrator "
+        "lobot doesn't have the Administrator permission. Give its role Administrator "
         "in Server Settings → Roles, then try again."
     )
     return False
@@ -1193,7 +1219,7 @@ class Target:
     id: int
 
 
-NOT_MANAGED = "NEXUS doesn't manage this."
+NOT_MANAGED = "lobot doesn't manage this."
 NEEDS_FULL_RESET = (
     "NEXUS's layout no longer has a place for this channel. Run /reset with no options to apply "
     "the new layout."
@@ -1234,7 +1260,7 @@ def _plan_role_reset(planner: _Planner, snapshot: Snapshot, live: Live, role_id:
         return
     role = live.roles[role_id]
     if not live.below_bot(role_id):
-        plan.blockers.append(f"Move the NEXUS bot's role above {role.name}.")
+        plan.blockers.append(f"Move lobot's role above {role.name}.")
         return
     old_tier = snapshot.tiers.get(key)
     planner.tiers[key] = spec.tier
@@ -1344,7 +1370,11 @@ async def execute(
     rest: DiscordRest,
     store: Store,
     progress: Progress | None = None,
+    *,
+    heartbeat: bool = True,
 ) -> None:
+    """Runs the plan's actions in order. `heartbeat` keeps a build's claim alive; a sync holds
+    no claim."""
     ctx = Context(
         rest=rest,
         store=store,
@@ -1357,11 +1387,17 @@ async def execute(
     beat = time.monotonic()
     for done, action in enumerate(plan.actions, start=1):
         await action.run(ctx)
-        if time.monotonic() - beat >= HEARTBEAT_SECONDS:
+        if heartbeat and time.monotonic() - beat >= HEARTBEAT_SECONDS:
             beat = time.monotonic()
             await ctx.save(store.heartbeat)
         if progress is not None:
             await progress(done, total)
+
+
+def build_running(link: DiscordGuildLink) -> bool:
+    if link.last_build_status != "running" or link.last_build_at is None:
+        return False
+    return utcnow() - link.last_build_at < timedelta(minutes=STALE_BUILD_MINUTES)
 
 
 def claim_build(db: Session, link_id: int) -> bool:

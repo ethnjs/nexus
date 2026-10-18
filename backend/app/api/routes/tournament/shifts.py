@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.discord.marks import mark_memberships, row_scope
 from app.core.form import shift_referenced_by_live_field
 from app.core.tournament import (
     get_scoped_or_404,
@@ -21,6 +22,7 @@ from app.db.session import get_db
 from app.models.models import (
     TournamentShift,
     TournamentTrack,
+    TournamentTrackAssignment,
     User,
 )
 from app.schemas.tournament.shift import (
@@ -267,6 +269,11 @@ def delete_shift(
             detail="Shift is referenced by a live form field's availability option — cannot delete",
         )
 
+    # Assignments pinned to the shift cascade, and a cascade writes no marks of its own.
+    pinned = db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.tournament_shift_id == shift.id
+    )
+    mark_memberships(db, tournament_id, [row_scope(row) for row in pinned])
     db.delete(shift)
     db.flush()
     # That may have been the track's last shift — see the PATCH above.

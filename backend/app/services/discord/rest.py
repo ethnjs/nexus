@@ -65,9 +65,58 @@ class DiscordRest:
         except discord.NotFound:
             return None
 
-    async def create_role(self, guild_id: int, *, name: str, permissions: int) -> dict[str, Any]:
+    async def members(
+        self, guild_id: int, *, after: int = 0, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """One page of members, in id order after `after`. Needs the Server Members intent."""
+        route = Route("GET", "/guilds/{guild_id}/members", guild_id=guild_id)
+        return await self._request(route, params={"limit": limit, "after": after})
+
+    async def add_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
+        route = Route(
+            "PUT",
+            "/guilds/{guild_id}/members/{user_id}/roles/{role_id}",
+            guild_id=guild_id,
+            user_id=user_id,
+            role_id=role_id,
+        )
+        await self._request(route)
+
+    async def remove_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
+        route = Route(
+            "DELETE",
+            "/guilds/{guild_id}/members/{user_id}/roles/{role_id}",
+            guild_id=guild_id,
+            user_id=user_id,
+            role_id=role_id,
+        )
+        try:
+            await self._request(route)
+        except discord.NotFound:
+            return
+
+    async def leave_guild(self, guild_id: int) -> None:
+        route = Route("DELETE", "/users/@me/guilds/{guild_id}", guild_id=guild_id)
+        try:
+            await self._request(route)
+        except discord.NotFound:
+            return
+
+    async def delete_role(self, guild_id: int, role_id: int) -> None:
+        route = Route(
+            "DELETE", "/guilds/{guild_id}/roles/{role_id}", guild_id=guild_id, role_id=role_id
+        )
+        try:
+            await self._request(route)
+        except discord.NotFound:
+            return
+
+    async def create_role(
+        self, guild_id: int, *, name: str, permissions: int, hoist: bool = False
+    ) -> dict[str, Any]:
         route = Route("POST", "/guilds/{guild_id}/roles", guild_id=guild_id)
-        return await self._request(route, json={"name": name, "permissions": str(permissions)})
+        body = {"name": name, "permissions": str(permissions), "hoist": hoist}
+        return await self._request(route, json=body)
 
     async def edit_role(self, guild_id: int, role_id: int, **fields: Any) -> dict[str, Any]:
         """`fields`: any of name and permissions."""

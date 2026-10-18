@@ -14,6 +14,7 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
+from app.core.discord.marks import mark_account_everywhere, mark_user_everywhere
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -137,6 +138,10 @@ def admin_update_user(
                 detail="You cannot deactivate your own account here — use account settings",
             )
 
+    # Deactivated and locked users lose their Discord roles; reactivated ones get them back.
+    if "status" in updates and updates["status"] != user.status:
+        mark_user_everywhere(db, user.id)
+
     for field, value in updates.items():
         setattr(user, field, value)
 
@@ -179,6 +184,8 @@ def admin_delete_user(
             detail="You cannot delete your own account",
         )
 
+    # Before the cascade removes the Discord link that names their account.
+    mark_user_everywhere(db, user.id)
     db.delete(user)
     db.commit()
 
@@ -315,6 +322,7 @@ def deactivate_me(
 
     user.status = "deactivated"
     revoke_all_sessions(db, user.id)
+    mark_user_everywhere(db, user.id)
     db.commit()
 
     clear_auth_cookie(response)
@@ -346,6 +354,7 @@ def delete_me(
 
     require_not_last_admin(db, user)
 
+    mark_user_everywhere(db, user.id)
     db.delete(user)
     db.commit()
 
@@ -426,6 +435,8 @@ def unlink_discord(
     )
     if row is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discord is not connected")
+    # The old account's managed roles are stripped; it's no longer linked to anyone.
+    mark_account_everywhere(db, user.id, int(row.provider_account_id))
     db.delete(row)
     db.commit()
     return {"detail": "Discord disconnected"}
