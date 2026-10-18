@@ -457,7 +457,7 @@ def discord_on(client, db, monkeypatch):
     """Turns the Discord feature switch on, with dev-shaped settings. Background builds use the
     test session instead of opening their own."""
     from app.core.config import get_settings
-    from app.core.discord.deps import require_discord_enabled
+    from app.core.discord.deps import discord_is_enabled, require_discord_enabled
     from app.main import app
 
     settings = get_settings()
@@ -473,6 +473,7 @@ def discord_on(client, db, monkeypatch):
     for name, value in values.items():
         monkeypatch.setattr(settings, name, value)
     app.dependency_overrides[require_discord_enabled] = lambda: None
+    app.dependency_overrides[discord_is_enabled] = lambda: True
     monkeypatch.setattr("app.core.discord.build.default_session_scope", lambda: nullcontext(db))
 
 

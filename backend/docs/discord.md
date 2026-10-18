@@ -26,7 +26,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 
 ## Configuration and Discord applications
 
-- **Feature switch:** Discord is on only when `DISCORD_BOT_TOKEN` is set and pytest isn't running (`discord_enabled()`). Off, the Discord routes return 404 and nothing connects. Preview deploys leave it off.
+- **Feature switch:** Discord is on only when `DISCORD_BOT_TOKEN` is set and pytest isn't running (`discord_enabled()`). Off, the Discord routes return 404 and nothing connects, except the account-link start, which redirects with `error=discord_unavailable` because the Connect button always links to it. Preview deploys leave it off.
 - **Settings:** `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`, `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_SECRET`, `DISCORD_LINK_REDIRECT_URI`, `DISCORD_INSTALL_REDIRECT_URI`, `DISCORD_DEV_GUILD_ID`, and `OAUTH_STATE_SECRET` (shared with Google; production refuses the default).
 - **`DISCORD_DEV_GUILD_ID` is dev only.** Set, slash commands register on that one server, where they update instantly; blank, they're global, which is what production needs. Set in production, the commands would exist in one server and nowhere else.
 - **Applications:** production's is named `lobot` (the application name is the bot's name in servers); each developer makes their own, `lobot-dev`, with a test server. Applications belong to a Discord **Team** whose members all have 2FA: Discord blocks a bot's moderation actions, Administrator included, in servers requiring 2FA unless the owner has it.

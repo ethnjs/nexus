@@ -63,9 +63,11 @@ def _add_identity(db, user, account_id="111", username="someone"):
 
 
 class TestDiscordStart:
-    def test_404_when_discord_is_off(self, client, td_user):
+    def test_discord_off_reports_unavailable(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        assert _start(client).status_code == 404
+        res = _start(client)
+        assert res.status_code == 302
+        assert res.headers["location"].endswith("/connect/discord?error=discord_unavailable")
         assert _callback(client, code="x", state="y").status_code == 404
 
     def test_signed_out_goes_to_sign_in_and_back(self, client, discord_on):
