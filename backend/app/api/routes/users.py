@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -399,22 +400,27 @@ async def unlink_google(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    row = (
-        db.query(OAuthIdentity)
-        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google)
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
-    if not user.hashed_password:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
+    def unlink() -> tuple[str, str | None]:
+        row = (
+            db.query(OAuthIdentity)
+            .filter(
+                OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google
+            )
+            .first()
         )
+        if row is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
+        if not user.hashed_password:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
+            )
+        # Read before the commit expires them.
+        notice = (user.email, row.email_at_provider)
+        db.delete(row)
+        db.commit()
+        return notice
 
-    provider_email = row.email_at_provider
-    db.delete(row)
-    db.commit()
-    await send_identity_unlinked_notice(user.email, provider_email)
+    await send_identity_unlinked_notice(*await asyncio.to_thread(unlink))
     return {"detail": "Google disconnected"}
 
 
