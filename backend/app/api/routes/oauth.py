@@ -2,6 +2,7 @@
 Browser navigations, so failures redirect instead of returning JSON. Provider access
 tokens are used once and never stored."""
 
+import asyncio
 import secrets
 
 from authlib.integrations.base_client import OAuthError
@@ -68,7 +69,9 @@ async def google_start(
         )
 
     if intent == "link":
-        session_row = get_active_session(db, access_token) if access_token else None
+        session_row = (
+            await asyncio.to_thread(get_active_session, db, access_token) if access_token else None
+        )
         if session_row is None:
             return RedirectResponse(
                 frontend_redirect("/sign-in?redirect=/settings/security"),
@@ -107,42 +110,66 @@ async def google_callback(
         return _bounce(request, _error_path(intent, code))
 
     claims = token.get("userinfo") or {}
-
     if intent == "link":
-        session_row = get_active_session(db, access_token) if access_token else None
-        if session_row is None or session_row.user_id != link_user_id:
-            return _bounce(request, _error_path("link", "google_failed"))
-        try:
-            email, sub = email_and_sub(claims)
-            identity = link_identity(db, session_row.user, OAuthProvider.google, sub, email=email)
-        except (IdentityLinkError, ValueError) as exc:
-            code = exc.code if isinstance(exc, IdentityLinkError) else "google_failed"
-            return _bounce(request, _error_path("link", code))
-        await send_identity_linked_notice(session_row.user.email, identity.email_at_provider)
-        return _bounce(request, "/settings/security?linked=google")
+        path, notice = await asyncio.to_thread(_link_google, db, access_token, link_user_id, claims)
+        if notice is not None:
+            await send_identity_linked_notice(*notice)
+        return _bounce(request, path)
 
+    path, raw_token = await asyncio.to_thread(
+        _sign_in_with_google,
+        db,
+        claims,
+        saved_redirect,
+        request.headers.get("user-agent"),
+        get_client_ip(request),
+    )
+    return _bounce(request, path, raw_token=raw_token)
+
+
+# The Google callback's database work, run in a thread so it never blocks the event loop.
+
+
+def _link_google(
+    db: Session, access_token: str | None, link_user_id: int | None, claims: dict
+) -> tuple[str, tuple[str, str | None] | None]:
+    """The redirect path, and the (account email, Google email) to notify if it linked."""
+    session_row = get_active_session(db, access_token) if access_token else None
+    if session_row is None or session_row.user_id != link_user_id:
+        return _error_path("link", "google_failed"), None
+    try:
+        email, sub = email_and_sub(claims)
+        identity = link_identity(db, session_row.user, OAuthProvider.google, sub, email=email)
+    except (IdentityLinkError, ValueError) as exc:
+        code = exc.code if isinstance(exc, IdentityLinkError) else "google_failed"
+        return _error_path("link", code), None
+    notice = (session_row.user.email, identity.email_at_provider)
+    return "/settings/security?linked=google", notice
+
+
+def _sign_in_with_google(
+    db: Session,
+    claims: dict,
+    saved_redirect: str | None,
+    user_agent: str | None,
+    ip_address: str | None,
+) -> tuple[str, str | None]:
+    """The redirect path, and the new session's raw token if it signed in."""
     try:
         user, _created = resolve_google_login(db, claims)
     except AccountExists:
-        return _bounce(request, _error_path("login", "google_account_exists"))
+        return _error_path("login", "google_account_exists"), None
     except AccountInactive:
-        return _bounce(request, _error_path("login", "google_account_inactive"))
+        return _error_path("login", "google_account_inactive"), None
     except EmailUnverified:
-        return _bounce(request, _error_path("login", "google_email_unverified"))
+        return _error_path("login", "google_email_unverified"), None
     except (ValueError, IntegrityError):
-        return _bounce(request, _error_path("login", "google_failed"))
+        return _error_path("login", "google_failed"), None
 
-    raw_token = create_session(
-        db,
-        user.id,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=get_client_ip(request),
-    )
+    raw_token = create_session(db, user.id, user_agent=user_agent, ip_address=ip_address)
     if is_onboarding_complete(user, db=db):
-        dest = saved_redirect or "/dashboard"
-    else:
-        dest = with_redirect("/onboarding", saved_redirect)
-    return _bounce(request, dest, raw_token=raw_token)
+        return saved_redirect or "/dashboard", raw_token
+    return with_redirect("/onboarding", saved_redirect), raw_token
 
 
 # No require_discord_enabled: the Connect button links here whether or not Discord is on, so
