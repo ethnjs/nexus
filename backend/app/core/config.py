@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     discord_public_key: str = ""
     discord_bot_token: str = ""
     discord_client_secret: str = ""
-    # Dev only: registers slash commands on this one server instead of globally. Never set
-    # it in production or preview; the commands would exist in that server alone.
+    # Dev only: registers slash commands on this one server instead of globally. Production
+    # startup refuses it (main.py); never set it in preview either.
     discord_dev_guild_id: str = ""
 
 
