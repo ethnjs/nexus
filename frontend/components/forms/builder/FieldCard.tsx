@@ -201,19 +201,14 @@ export function FieldCard({
   const effKey = effectiveFieldKey(field);
   // A same-form collision is checked live against the other staged fields; an
   // add-on-owned key can also collide with a *different* form's field, which
-  // only the usedFieldKeys snapshot (not allFields) would catch — a plain
-  // custom key relies on FieldKeyPopover's own blur-time check for that
-  // instead. `effKey !== field.originalFieldKey` excludes the field's own
-  // already-saved key — usedFieldKeys otherwise always contains it too, which
-  // would flag every untouched existing field as a duplicate of itself. Both
-  // halves are naturally self-correcting as the TD edits: once the key
-  // changes, it just stops matching either check.
+  // only usedFieldKeys (the owner's other forms) would catch — a plain custom
+  // key relies on FieldKeyPopover's own blur-time check for that instead.
+  // Both halves self-correct as the TD edits: once the key changes, it just
+  // stops matching either check.
   const duplicateKey =
     !!effKey &&
     (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
-      (!!extension.keyLockedReason &&
-        effKey !== field.originalFieldKey &&
-        usedFieldKeys.includes(effKey)));
+      (!!extension.keyLockedReason && usedFieldKeys.includes(effKey)));
   const hasToolbarCardError = hadToolbarError && (addonIssueOpen || duplicateKey);
   // Flagged without waiting for Save, so the card turns red as the reorder
   // that broke the branch lands.

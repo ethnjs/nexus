@@ -1149,6 +1149,87 @@ class TestBulkUpdateFieldsPublished:
         assert res.json()[0]["id"] == field.id
         assert res.json()[0]["field_key"] == "favorite_color"
 
+    def _two_keyed_fields(self, db, form, first_key, second_key):
+        config = {"required": False, "max_length": 50}
+        first = _make_field(
+            db, form, field_key=first_key, question_type="short_text", config=config
+        )
+        second = _make_field(
+            db, form, order=2, field_key=second_key, question_type="short_text", config=config
+        )
+        return first, second
+
+    def _keyed_entry(self, field_id, field_key):
+        return {
+            "id": field_id,
+            "field_key": field_key,
+            "label": field_key,
+            "question_type": "short_text",
+            "config": {"required": False, "max_length": 50},
+        }
+
+    def test_key_freed_and_taken_in_one_save(self, client, db, td_user, td_tournament):
+        """The second question takes the key the first gives up in the same
+        save. Published, so the save also classifies each key change."""
+        form = _make_form(db, td_user, td_tournament)
+        first, second = self._two_keyed_fields(db, form, "a", "b")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._keyed_entry(first.id, "c"), self._keyed_entry(second.id, "a")]},
+        )
+        assert res.status_code == 200, res.json()
+        assert {f["id"]: f["field_key"] for f in res.json()} == {first.id: "c", second.id: "a"}
+
+    def test_two_questions_swap_keys(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        first, second = self._two_keyed_fields(db, form, "a", "b")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._keyed_entry(first.id, "b"), self._keyed_entry(second.id, "a")]},
+        )
+        assert res.status_code == 200, res.json()
+        assert {f["id"]: f["field_key"] for f in res.json()} == {first.id: "b", second.id: "a"}
+
+    def test_same_key_twice_in_one_save_rejected(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        first, second = self._two_keyed_fields(db, form, "a", "b")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._keyed_entry(first.id, "a"), self._keyed_entry(second.id, "a")]},
+        )
+        assert res.status_code == 409
+        assert "field_key 'a' is already in use" in res.json()["detail"]
+
+    def test_key_used_on_another_form_rejected(self, client, db, td_user, td_tournament):
+        other = _make_form(db, td_user, td_tournament, name="Other")
+        _make_field(db, other, field_key="taken")
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db,
+            form,
+            field_key="mine",
+            question_type="short_text",
+            config={"required": False, "max_length": 50},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._keyed_entry(field.id, "taken")]},
+        )
+        assert res.status_code == 409
+
     def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(

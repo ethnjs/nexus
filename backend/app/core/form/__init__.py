@@ -125,16 +125,19 @@ def assign_option_ids(config: dict | None) -> dict | None:
     return {**config, "options": options}
 
 
-def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: str) -> bool:
+def field_key_taken_in_tournament(
+    db: Session, tournament_id: int, field_key: str, exclude_form_id: str | None = None
+) -> bool:
     """True if `field_key` is in use by a **live** FormField on any Form owned
-    by `tournament_id`. field_key is the TD-visible dashboard lookup key, so
-    it's unique tournament-wide, not just per form.
+    by `tournament_id`, other than `exclude_form_id`. field_key is the
+    TD-visible dashboard lookup key, so it's unique tournament-wide, not just
+    per form.
 
     Archived fields don't reserve their keys: a key is a display name, not an
     identity (that's field_id), so retiring a question releases its name for
     reuse — including by the question a TD adds back after deleting one by
     mistake. An archived field may therefore share a key with a live one."""
-    return (
+    query = (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
         .filter(
@@ -142,9 +145,10 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
             FormField.field_key == field_key,
             FormField.is_archived == False,
         )
-        .first()
-        is not None
     )
+    if exclude_form_id is not None:
+        query = query.filter(Form.id != exclude_form_id)
+    return query.first() is not None
 
 
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:

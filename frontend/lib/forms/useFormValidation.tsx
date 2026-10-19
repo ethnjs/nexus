@@ -87,6 +87,10 @@ export function issuesFor(
 // isn't this specific error.
 const DUPLICATE_FIELD_KEY_PATTERN = /^field_key '([^']+)' is already in use/;
 
+/** A key the server (or the owner's other forms) already holds — distinct
+ *  from validateFields' same-form message, which the builder re-checks live. */
+export const KEY_IN_USE_MESSAGE = "This field key is already used by another question.";
+
 function validateFields(
   fields: ValidatableField[],
   addon: FormBuilderAddon,
@@ -178,7 +182,7 @@ export function useFormValidation() {
       const issues: FieldValidationIssue[] = [
         {
           clientKey: target.clientKey,
-          message: "This field key is already used by another question.",
+          message: KEY_IN_USE_MESSAGE,
         },
       ];
       setValidationErrors(issues);

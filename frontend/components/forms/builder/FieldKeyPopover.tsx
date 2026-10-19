@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { useFieldExtension } from "@/lib/forms/builderAddon";
 import type { EditableField } from "@/lib/forms/editableField";
 import { isFieldKeyError } from "@/lib/forms/fieldKeys";
+import { KEY_IN_USE_MESSAGE } from "@/lib/forms/useFormValidation";
 
 // The dashboard-facing identifier for a question — split out of the main
 // card into its own toolbar popover (rather than an always-visible Combobox
@@ -42,10 +43,8 @@ export function FieldKeyPopover({
   onOpenChange: (open: boolean) => void;
 }) {
   const { keyLockedReason } = useFieldExtension(field);
-  // Owns its own error state rather than deriving straight from `errors`
-  // every render, specifically so it can clear the instant field_key
-  // changes for *any* reason (typing here, or an add-on editing the key) —
-  // see below — rather than staying stuck until the next blur or Save.
+  // Cleared the instant field_key changes for *any* reason (typing here, or an
+  // add-on editing the key), rather than staying stuck until the next blur or Save.
   const [localError, setLocalError] = useState<string | undefined>(undefined);
   const [prevFieldKey, setPrevFieldKey] = useState(field.field_key);
   if (field.field_key !== prevFieldKey) {
@@ -68,25 +67,22 @@ export function FieldKeyPopover({
     if (attemptError) onOpenChange(true);
   }, [saveAttempt]);
 
+  // usedFieldKeys holds the owner's other forms; allFields includes this
+  // field itself, so it's excluded there. A server rejection from the last
+  // Save counts too, until that save's errors are cleared.
+  const key = field.field_key.trim();
+  const keyTaken =
+    !!key &&
+    (usedFieldKeys.includes(key) ||
+      allFields.some((f) => f.clientKey !== field.clientKey && f.field_key.trim() === key) ||
+      errors.includes(KEY_IN_USE_MESSAGE));
+  // localError decides *when* to flag (blur or a failed Save, not mid-typing);
+  // the live check decides whether the clash still exists — another question
+  // giving the key up clears it here without this field's key changing.
+  const shownError = keyTaken ? localError : undefined;
+
   function handleBlur() {
-    const key = field.field_key.trim();
-    if (!key) {
-      setLocalError(undefined);
-      return;
-    }
-    // Exclude this field's own current key from both lists before checking —
-    // usedFieldKeys includes every field already saved on the owner's forms,
-    // this field's own prior save included, and allFields includes this
-    // field itself.
-    const takenByOtherSaved = usedFieldKeys.some((k) => k === key && k !== field.field_key);
-    const takenBySibling = allFields.some(
-      (f) => f.clientKey !== field.clientKey && f.field_key.trim() === key,
-    );
-    setLocalError(
-      takenByOtherSaved || takenBySibling
-        ? "This field key is already used by another question."
-        : undefined,
-    );
+    setLocalError(keyTaken ? KEY_IN_USE_MESSAGE : undefined);
   }
 
   return (
@@ -94,7 +90,7 @@ export function FieldKeyPopover({
       trigger={
         <Button
           type="button"
-          variant={localError ? "danger" : open ? "primary" : "secondary"}
+          variant={shownError ? "danger" : open ? "primary" : "secondary"}
           size="sm"
           iconOnly
           title="Field key"
@@ -146,7 +142,7 @@ export function FieldKeyPopover({
               placeholder={field.label.trim()}
               size="sm"
               fullWidth
-              error={localError}
+              error={shownError}
             />
           )}
         </div>

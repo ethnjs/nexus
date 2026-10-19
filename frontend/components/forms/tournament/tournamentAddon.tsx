@@ -86,11 +86,17 @@ function TournamentBuilderProvider({ form, children }: { form: Form; children: R
       .catch(() => {});
   }, [tournamentId]);
 
+  // Only the tournament's other forms: this form's own keys change as the TD
+  // edits, and the builder checks those live against its questions. Keys
+  // are unique tournament-wide, so dropping this form's saved ones leaves
+  // exactly the others'.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: this form's keys as loaded, not as edited
   useEffect(() => {
     if (tournamentId == null) return;
+    const ownKeys = new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.field_key));
     formsApi
       .listFieldKeysForTournament(tournamentId)
-      .then(setUsedFieldKeys)
+      .then((keys) => setUsedFieldKeys(keys.filter((key) => !ownKeys.has(key))))
       .catch(() => {});
   }, [tournamentId]);
 

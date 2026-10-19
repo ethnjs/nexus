@@ -101,7 +101,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
         showDescription: !!f.description,
         branchingEnabled: deriveBranchingEnabled(f),
         customValuesEnabled: deriveCustomValuesEnabled(f),
-        originalFieldKey: f.field_key,
       })),
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
@@ -374,7 +373,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       showDescription: !!field.description,
       branchingEnabled: deriveBranchingEnabled(field),
       customValuesEnabled: deriveCustomValuesEnabled(field),
-      originalFieldKey: field.field_key,
     };
     setFields((prev) => [...prev, restored]);
     setExpandedKey(restored.clientKey);
@@ -394,7 +392,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       clientKey: crypto.randomUUID(),
       id: null,
       field_key: keepKey ? source.field_key : "",
-      originalFieldKey: "",
       config: source.config?.options
         ? {
             ...source.config,
@@ -526,7 +523,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
           showDescription: !!f.description,
           branchingEnabled: deriveBranchingEnabled(f),
           customValuesEnabled: deriveCustomValuesEnabled(f),
-          originalFieldKey: f.field_key,
         }));
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);

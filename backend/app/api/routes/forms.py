@@ -1,4 +1,7 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -735,34 +738,34 @@ def bulk_update_fields(
             detail=f"field id(s) not found on this form: {sorted(unknown_ids)}",
         )
 
-    new_entries = [e for e in payload.fields if e.id is None]
-    new_keys = [slugify(e.field_key or "") for e in new_entries]
-    if len(new_keys) != len(set(new_keys)):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="duplicate field_key among the fields being created in this request",
+    def _key_taken(field_key: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
         )
 
+    # Keys are checked against the state this save produces, not the rows as
+    # they stand: a key one question gives up in this save is free for another
+    # to take in the same save. A blank key on an existing field means "unchanged".
+    final_keys = [
+        slugify(entry.field_key)
+        if entry.field_key
+        else (existing_by_id[entry.id].field_key if entry.id is not None else "")
+        for entry in payload.fields
+    ]
+    seen_keys: set[str] = set()
+    for key in final_keys:
+        if key and key in seen_keys:
+            raise _key_taken(key)
+        seen_keys.add(key)
+
     def _check_field_key_available(field_key: str) -> None:
-        if form.owner_type == "tournament":
-            assert form.tournament_id is not None
-            taken = field_key_taken_in_tournament(db, form.tournament_id, field_key)
-        else:
-            taken = (
-                db.query(FormField)
-                .filter(
-                    FormField.form_id == form.id,
-                    FormField.field_key == field_key,
-                    FormField.is_archived == False,
-                )
-                .first()
-                is not None
-            )
-        if taken:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
-            )
+        # This form's own keys were just checked against each other; only
+        # another form of the tournament can still hold one.
+        if form.tournament_id is not None and field_key_taken_in_tournament(
+            db, form.tournament_id, field_key, exclude_form_id=form.id
+        ):
+            raise _key_taken(field_key)
 
     def _validate_config(question_type: str, config: dict | None, field_key: str) -> dict:
         # Only structural/self-contained checks run here, before the batch
@@ -797,6 +800,32 @@ def bulk_update_fields(
     pending_flags: list[tuple[FormField, set[str], list[str]]] = []
     # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
     lunch_backfills: list[FormField] = []
+
+    removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
+    for field in removed_fields:
+        if is_history_preserving:
+            # Retiring a question raises nothing: a flag on a field that can
+            # no longer be answered could never clear. Any open ones go too.
+            field.is_archived = True
+            delete_pending_updates_for_field(db, field.id)
+        else:
+            db.delete(field)
+
+    # Free every key this save gives up before any field takes one. The
+    # live-key unique index can't be deferred, and the flush writes rows in its
+    # own order, not the payload's, so a key moving between questions (or two
+    # swapping) would otherwise collide mid-flush. The placeholder skips the
+    # ORM so each field object keeps its old key for change classification.
+    for entry, final_key in zip(payload.fields, final_keys, strict=True):
+        field = existing_by_id[entry.id] if entry.id is not None else None
+        if field is not None and not field.is_archived and final_key != field.field_key:
+            db.execute(
+                update(FormField)
+                .where(FormField.id == field.id)
+                .values(field_key=f"pending_{secrets.token_hex(6)}")
+                .execution_options(synchronize_session=False)
+            )
+    db.flush()
 
     order = 1
     for entry in payload.fields:
@@ -881,16 +910,6 @@ def bulk_update_fields(
             )
             db.add(new_field)
         order += 1
-
-    removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
-    for field in removed_fields:
-        if is_history_preserving:
-            # Retiring a question raises nothing: a flag on a field that can
-            # no longer be answered could never clear. Any open ones go too.
-            field.is_archived = True
-            delete_pending_updates_for_field(db, field.id)
-        else:
-            db.delete(field)
 
     db.flush()
 
