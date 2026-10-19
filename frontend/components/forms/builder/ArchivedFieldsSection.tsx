@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { IconChevronDown, IconRestore, IconTrash } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, type FormField, formsApi } from "@/lib/api";
@@ -100,7 +101,10 @@ export function ArchivedFieldsSection({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {field.label || "Untitled question"}
+                  <FormattedText
+                    markdown={field.label.replace(/\n/g, " ") || "Untitled question"}
+                    variant="inline"
+                  />
                 </div>
                 <div
                   style={{

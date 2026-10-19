@@ -47,6 +47,7 @@ import {
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
+import { toPlainText } from "@/lib/markdown";
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover an add-on's fetch on a
@@ -545,7 +546,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
         const lost = fields.filter((f) => f.id && orphanIds.includes(f.id));
         setFields((prev) => prev.filter((f) => !(f.id && orphanIds.includes(f.id))));
         validation.setSaveError(
-          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`,
+          `${lost.map((f) => toPlainText(f.label).trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`,
         );
       } else {
         const issues = validation.handle422(err, fields);

@@ -31,6 +31,7 @@ import {
   parseTrackStatusFieldKey,
   presetIncompleteMessage,
 } from "@/lib/forms/tournament/presets";
+import { toPlainText } from "@/lib/markdown";
 import { isSimpleMode } from "@/lib/useTournament";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
@@ -202,7 +203,7 @@ export function PresetPopover({
       // other key.
       const options = carryOptions(field, null, field.question_type);
       onFieldChange({
-        field_key: slugifyFieldKey(field.label),
+        field_key: slugifyFieldKey(toPlainText(field.label)),
         // Re-derived, not kept: an entity value (an id list) just became the
         // row's label, so the custom-value list it came from is gone.
         customValuesEnabled: hasCustomValues(options),

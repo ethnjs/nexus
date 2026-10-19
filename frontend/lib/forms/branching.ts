@@ -1,5 +1,6 @@
 import type { FormField, FormFieldConfig, FormFieldOption } from "@/lib/api";
 import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
+import { toPlainText } from "@/lib/markdown";
 
 // Branching: a single-select option may jump forward to a later question or
 // submit the form. Forward-only is what keeps the respondent's walk loop-free
@@ -34,7 +35,7 @@ export function branchTargetsFor(
       : [
           {
             id: f.id,
-            label: f.label.trim(),
+            label: toPlainText(f.label).trim(),
             position: i < position ? "above" : i === position + 1 ? "next" : "below",
           },
         ],

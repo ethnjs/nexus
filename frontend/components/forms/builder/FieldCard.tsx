@@ -8,6 +8,7 @@ import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
 import { RichTextInput } from "@/components/ui/RichTextInput";
 import { Switch } from "@/components/ui/Switch";
@@ -563,7 +564,10 @@ export function FieldCardDragPreview({ field }: { field: EditableField }) {
           whiteSpace: "nowrap",
         }}
       >
-        {field.label.trim() || "Untitled question"}
+        <FormattedText
+          markdown={field.label.trim().replace(/\n/g, " ") || "Untitled question"}
+          variant="inline"
+        />
       </span>
     </Card>
   );

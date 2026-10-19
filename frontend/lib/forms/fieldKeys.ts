@@ -1,3 +1,5 @@
+import { toPlainText } from "@/lib/markdown";
+
 // Shared slug rule for every TD-typed field_key: a plain question's
 // auto-derived key, or a part of an add-on's reserved key. Empty when the text
 // slugifies to nothing (e.g. only punctuation), so a key stays blank rather
@@ -15,7 +17,7 @@ export function slugifyFieldKey(text: string): string {
 // backend) and useFormValidation (what's checked for duplicates) so the two
 // can't disagree about what a blank-key field's real key is.
 export function effectiveFieldKey(field: { field_key: string; label: string }): string {
-  return field.field_key.trim() || slugifyFieldKey(field.label);
+  return field.field_key.trim() || slugifyFieldKey(toPlainText(field.label));
 }
 
 // Whether a validation message is about field_key specifically (vs.

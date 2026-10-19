@@ -9,6 +9,7 @@ import { useFieldExtension } from "@/lib/forms/builderAddon";
 import type { EditableField } from "@/lib/forms/editableField";
 import { isFieldKeyError } from "@/lib/forms/fieldKeys";
 import { KEY_IN_USE_MESSAGE } from "@/lib/forms/useFormValidation";
+import { toPlainText } from "@/lib/markdown";
 
 // The dashboard-facing identifier for a question — split out of the main
 // card into its own toolbar popover (rather than an always-visible Combobox
@@ -139,7 +140,7 @@ export function FieldKeyPopover({
               value={field.field_key}
               onChange={(e) => onFieldChange({ field_key: e.target.value })}
               onBlur={handleBlur}
-              placeholder={field.label.trim()}
+              placeholder={toPlainText(field.label).trim()}
               size="sm"
               fullWidth
               error={shownError}
