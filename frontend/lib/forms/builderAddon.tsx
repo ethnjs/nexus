@@ -2,7 +2,7 @@
 
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 import type { EditableOption } from "@/components/forms/OptionsEditor";
-import type { Form, FormFieldConfig, FormFieldOption, FormQuestionType } from "@/lib/api";
+import type { Form, FormFieldConfig, FormQuestionType } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import type { EditableField } from "@/lib/forms/editableField";
 
@@ -20,8 +20,8 @@ export interface ExtendableField {
 
 /** How an add-on changes one field. Every key is optional; absent means core behavior. */
 export interface FieldExtension {
-  /** Set when the add-on owns this field's key: the key popover locks and names the owner. */
-  keyOwner?: string;
+  /** Set when the add-on owns this field's key: the key popover locks and shows this. */
+  keyLockedReason?: string;
   allowedQuestionTypes?: FormQuestionType[];
   requiredLocked?: boolean;
   /** Defaults to true. */
@@ -33,8 +33,6 @@ export interface FieldExtension {
   keepsKeyOnDuplicate?: boolean;
   /** Replaces the core options editor for this field. */
   OptionsEditor?: ComponentType<AddonOptionsEditorProps>;
-  /** The collapsed preview's text for an option. */
-  optionLabel?: (option: FormFieldOption) => string;
 }
 
 export interface AddonOptionsEditorProps {
@@ -65,8 +63,8 @@ export interface AddonToolbarProps {
 export interface FormBuilderAddon {
   /** Wraps the builder and loads whatever the add-on's hooks and components read. */
   Provider: ComponentType<{ form: Form; children: ReactNode }>;
-  /** Per-field behavior. A hook, so it can read the add-on's own context. */
-  useFieldExtension: (field: ExtendableField) => FieldExtension;
+  /** Per-field behavior. Pure, so the core can ask from event handlers too. */
+  extendField: (field: ExtendableField) => FieldExtension;
   /** Keys already taken by other forms that share this form's owner. */
   useUsedFieldKeys: () => string[];
   /** The add-on's toolbar button and popover. */
@@ -77,7 +75,7 @@ export interface FormBuilderAddon {
   ownsIssue: (message: string) => boolean;
 }
 
-const NO_EXTENSION: FieldExtension = {};
+export const NO_EXTENSION: FieldExtension = {};
 const NO_KEYS: string[] = [];
 
 function PassThrough({ children }: { form: Form; children: ReactNode }) {
@@ -87,7 +85,7 @@ function PassThrough({ children }: { form: Form; children: ReactNode }) {
 /** Stands in when a form has no add-on, so core code calls the same hooks either way. */
 export const CORE_ONLY: FormBuilderAddon = {
   Provider: PassThrough,
-  useFieldExtension: () => NO_EXTENSION,
+  extendField: () => NO_EXTENSION,
   useUsedFieldKeys: () => NO_KEYS,
   Toolbar: null,
   issuesFor: () => [],
@@ -119,5 +117,5 @@ export function useFormBuilderAddon(): FormBuilderAddon {
 }
 
 export function useFieldExtension(field: ExtendableField): FieldExtension {
-  return useFormBuilderAddon().useFieldExtension(field);
+  return useFormBuilderAddon().extendField(field);
 }

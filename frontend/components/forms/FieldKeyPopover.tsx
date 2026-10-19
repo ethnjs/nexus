@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/Button";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconInfo, IconKey } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { useFieldExtension } from "@/lib/forms/builderAddon";
 import type { EditableField } from "@/lib/forms/editableField";
 import { isFieldKeyError } from "@/lib/forms/fieldKeys";
-import { activePresetKind, PRESETS } from "@/lib/forms/tournament/presets";
 
 // The dashboard-facing identifier for a question — split out of the main
 // card into its own toolbar popover (rather than an always-visible Combobox
@@ -36,17 +36,16 @@ export function FieldKeyPopover({
       alone can't distinguish "still has that old error" from "just failed
       Save again." 0 means "no attempt yet." */
   saveAttempt: number;
-  /** Owned by FieldToolbar (shared with PresetPopover) — only one of the two
-      can be open at a time, so this can't be local state. */
+  /** Owned by FieldToolbar (shared with the add-on's popover) — only one can
+      be open at a time, so this can't be local state. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const presetKind = activePresetKind(field.field_key);
+  const { keyLockedReason } = useFieldExtension(field);
   // Owns its own error state rather than deriving straight from `errors`
   // every render, specifically so it can clear the instant field_key
-  // changes for *any* reason (typing here, or a preset param edited in
-  // PresetPopover) — see below — rather than staying stuck until the next
-  // blur or Save.
+  // changes for *any* reason (typing here, or an add-on editing the key) —
+  // see below — rather than staying stuck until the next blur or Save.
   const [localError, setLocalError] = useState<string | undefined>(undefined);
   const [prevFieldKey, setPrevFieldKey] = useState(field.field_key);
   if (field.field_key !== prevFieldKey) {
@@ -54,10 +53,10 @@ export function FieldKeyPopover({
     setLocalError(undefined);
   }
 
-  // A preset field's key isn't editable here (see the locked-input branch
-  // below) — a key error on it is PresetPopover's to show and open, not
-  // this popover's.
-  const attemptError = saveAttempt === 0 || presetKind ? undefined : errors.find(isFieldKeyError);
+  // An add-on-owned key isn't editable here (see the locked-input branch
+  // below) — a key error on it is the add-on popover's to show and open.
+  const attemptError =
+    saveAttempt === 0 || keyLockedReason ? undefined : errors.find(isFieldKeyError);
   // Starts at 0, not saveAttempt: a popover mounted after a failed Save still shows its error.
   const [seenAttempt, setSeenAttempt] = useState(0);
   if (saveAttempt !== seenAttempt) {
@@ -126,7 +125,7 @@ export function FieldKeyPopover({
             </span>
             <KeyInfoHint />
           </div>
-          {presetKind ? (
+          {keyLockedReason ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Input value={field.field_key} locked size="sm" fullWidth />
               <span
@@ -136,7 +135,7 @@ export function FieldKeyPopover({
                   color: "var(--color-text-tertiary)",
                 }}
               >
-                Set by the {PRESETS[presetKind].label} preset — edit it from the presets icon below.
+                {keyLockedReason}
               </span>
             </div>
           ) : (

@@ -1,9 +1,23 @@
 "use client";
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { newEntityOption } from "@/components/forms/OptionsEditor";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { type Form, type Tournament, type TournamentTrack, tournamentsApi } from "@/lib/api";
-import { type AddonToolbarProps, CORE_ONLY, type FormBuilderAddon } from "@/lib/forms/builderAddon";
+import {
+  type AddonToolbarProps,
+  CORE_ONLY,
+  type ExtendableField,
+  type FieldExtension,
+  type FormBuilderAddon,
+  NO_EXTENSION,
+} from "@/lib/forms/builderAddon";
+import {
+  activePresetKind,
+  allowsCustomValues,
+  isEntityBackedPreset,
+  PRESETS,
+} from "@/lib/forms/tournament/presets";
 
 // The tournament add-on: reserved-key presets (availability, event
 // preference, lunch, track status) layered onto the core builder for
@@ -78,8 +92,23 @@ function PresetToolbar({
   );
 }
 
+function extendField(field: ExtendableField): FieldExtension {
+  const kind = activePresetKind(field.field_key);
+  if (!kind) return NO_EXTENSION;
+  return {
+    keyLockedReason: `Set by the ${PRESETS[kind].label} preset — edit it from the presets icon below.`,
+    allowedQuestionTypes: PRESETS[kind].allowedQuestionTypes,
+    // A track status answer is what moves the member's track, so it can't be skipped.
+    requiredLocked: kind === "track_status",
+    allowsCustomValues: allowsCustomValues(kind),
+    newOption: isEntityBackedPreset(kind) ? newEntityOption : undefined,
+    keepsKeyOnDuplicate: true,
+  };
+}
+
 export const tournamentAddon: FormBuilderAddon = {
   ...CORE_ONLY,
   Provider: TournamentBuilderProvider,
+  extendField,
   Toolbar: PresetToolbar,
 };

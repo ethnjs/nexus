@@ -36,7 +36,12 @@ import {
   tournamentsApi,
 } from "@/lib/api";
 import { deriveBranchingEnabled } from "@/lib/forms/branching";
-import { CORE_ONLY, type FormBuilderAddon, FormBuilderAddonScope } from "@/lib/forms/builderAddon";
+import {
+  CORE_ONLY,
+  type FormBuilderAddon,
+  FormBuilderAddonScope,
+  useFormBuilderAddon,
+} from "@/lib/forms/builderAddon";
 import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
 import { deriveCustomValuesEnabled } from "@/lib/forms/customValues";
 import {
@@ -46,7 +51,6 @@ import {
   withOptionClientKeys,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
-import { activePresetKind } from "@/lib/forms/tournament/presets";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 
 // How long a scroll-into-view keeps following a card that's still growing
@@ -91,6 +95,7 @@ export function FieldList({
 
 function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: string }) {
   const locked = !!lockedReason;
+  const addon = useFormBuilderAddon();
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
       .filter((f) => !f.is_archived)
@@ -403,9 +408,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     setPendingScrollKey(field.clientKey);
   }
 
-  // Cleared field_key on the copy — a reserved key (availability, ...) can
-  // only exist once per tournament, and a freeform key the TD chose
-  // deliberately shouldn't silently duplicate either.
   // Unarchiving is staged, not a request: the field joins the target list and
   // the next Save unarchives it. Keeping it in the same batch means it goes
   // through the same key-availability check as everything else — an archived
@@ -429,15 +431,15 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     const source = fields.find((f) => f.clientKey === clientKey);
     if (!source) return;
     const insertIndex = fields.findIndex((f) => f.clientKey === clientKey) + 1;
-    // A preset copy keeps its source's key and values, so it starts out
-    // colliding and the preset popover opens to make it distinct. A plain
+    // An add-on copy can keep its source's key and values, so it starts out
+    // colliding and the add-on's popover opens to make it distinct. A plain
     // question's key is just its label's slug, re-derived for the copy.
-    const isPreset = !!activePresetKind(source.field_key);
+    const keepKey = !!addon.extendField(source).keepsKeyOnDuplicate;
     const copy: EditableField = {
       ...source,
       clientKey: crypto.randomUUID(),
       id: null,
-      field_key: isPreset ? source.field_key : "",
+      field_key: keepKey ? source.field_key : "",
       originalFieldKey: "",
       config: source.config?.options
         ? {
@@ -457,7 +459,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     });
     setExpandedKey(copy.clientKey);
     setPendingScrollKey(copy.clientKey);
-    if (isPreset) setPopoverFor({ key: copy.clientKey, popover: "addon" });
+    if (keepKey) setPopoverFor({ key: copy.clientKey, popover: "addon" });
   }
 
   // Archiving the expanded card would otherwise drop the open count to zero —

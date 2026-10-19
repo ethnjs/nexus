@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { newOption } from "@/components/forms/OptionsEditor";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
 import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
+import { useFieldExtension } from "@/lib/forms/builderAddon";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
@@ -20,12 +21,7 @@ import {
   QUESTION_TYPE_OPTIONS,
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
-import {
-  activePresetKind,
-  isEntityBackedPreset,
-  isPresetError,
-  PRESETS,
-} from "@/lib/forms/tournament/presets";
+import { activePresetKind, isPresetError } from "@/lib/forms/tournament/presets";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
@@ -182,6 +178,7 @@ export function FieldCard({
   locked?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const extension = useFieldExtension(field);
   const presetKind = activePresetKind(field.field_key);
   // Key/preset errors surface exclusively through FieldToolbar's popovers
   // now (danger-colored trigger + inline message) — the card itself no
@@ -306,8 +303,8 @@ export function FieldCard({
   // non-option type, or a preset whose kind was just picked/changed) also
   // gets one starter row so there's always something ready to edit rather
   // than an empty list the TD has to click "Add option" to even start on —
-  // entity-backed presets get the entity-shaped starter (an empty id array
-  // to fill in via the picker), everything else gets the plain freeform one.
+  // an add-on can seed its own shape (an empty id array to fill in via a
+  // picker), everything else gets the plain freeform one.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
     // Per-option keys too — sanitizeConfigForType only knows config-level
@@ -316,7 +313,7 @@ export function FieldCard({
       config.options = config.options.map((option) => cleanOption(option, questionType));
     const needsStarterOption =
       OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
-    const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
+    const starterOption = (extension.newOption ?? newOption)();
     onFieldChange({
       question_type: questionType,
       config: needsStarterOption ? { ...config, options: [starterOption] } : config,
@@ -380,9 +377,9 @@ export function FieldCard({
                 value={field.question_type}
                 onChange={(v) => handleQuestionTypeChange(v as FormQuestionType)}
                 options={
-                  presetKind
+                  extension.allowedQuestionTypes
                     ? QUESTION_TYPE_OPTIONS.filter((o) =>
-                        PRESETS[presetKind].allowedQuestionTypes.includes(o.value),
+                        extension.allowedQuestionTypes?.includes(o.value),
                       )
                     : QUESTION_TYPE_OPTIONS
                 }
@@ -441,7 +438,7 @@ export function FieldCard({
                   onChange={(checked) =>
                     onFieldChange({ config: { ...field.config, required: checked } })
                   }
-                  locked={presetKind === "track_status"}
+                  locked={!!extension.requiredLocked}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>

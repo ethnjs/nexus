@@ -5,11 +5,10 @@ import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
 import { withoutBranching } from "@/lib/forms/branching";
-import { useFormBuilderAddon } from "@/lib/forms/builderAddon";
+import { useFieldExtension, useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { withoutCustomValues } from "@/lib/forms/customValues";
 import type { EditableField } from "@/lib/forms/editableField";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
-import { activePresetKind, allowsCustomValues } from "@/lib/forms/tournament/presets";
 
 export type ActivePopover = "key" | "addon" | null;
 
@@ -60,6 +59,7 @@ export function FieldToolbar({
   onToggleDisplayStyle: () => void;
 }) {
   const AddonToolbar = useFormBuilderAddon().Toolbar;
+  const extension = useFieldExtension(field);
 
   function toggleBranching() {
     if (!field.branchingEnabled) {
@@ -171,7 +171,7 @@ export function FieldToolbar({
           </Button>
         )}
         {OPTION_BEARING_TYPES.includes(field.question_type) &&
-          allowsCustomValues(activePresetKind(field.field_key)) && (
+          extension.allowsCustomValues !== false && (
             <Button
               type="button"
               variant={field.customValuesEnabled ? "primary" : "secondary"}
