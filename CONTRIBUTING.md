@@ -74,7 +74,7 @@ Discord is off unless `DISCORD_BOT_TOKEN` is set, and always off under pytest. W
    - Under Privileged Gateway Intents, turn on **Server Members Intent** and save. NEXUS needs it to see members join and to read a server's member list when it syncs roles, so lobot asks for it when it connects. Discord refuses a connection that asks for an intent the portal hasn't enabled, so without it lobot stays offline and the backend logs "Turn on the Server Members intent".
    - Keep **Public Bot** on.
    - Turn on **Requires OAuth2 Code Grant**, so lobot can only be added through "Add to Discord" in NEXUS. Turn it off for a moment if you ever need to add lobot with a plain invite link.
-5. **OAuth2:** paste the Client Secret into `DISCORD_CLIENT_SECRET`. Add these two redirects, exactly as written and without a trailing slash. They match `DISCORD_LINK_REDIRECT_URI` and `DISCORD_INSTALL_REDIRECT_URI`.
+5. **OAuth2:** paste the Client Secret into `DISCORD_CLIENT_SECRET`. Add these two redirects, exactly as written and without a trailing slash. NEXUS builds them from `FRONTEND_URL`, so with a different frontend URL, swap in its origin.
    - `http://localhost:3000/api/proxy/auth/oauth/discord/callback` (account linking)
    - `http://localhost:3000/api/proxy/discord/install/callback` (Add to Discord)
 

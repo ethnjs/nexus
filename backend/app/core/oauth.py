@@ -51,11 +51,7 @@ def is_google_configured() -> bool:
 
 def is_discord_link_configured() -> bool:
     settings = get_settings()
-    return bool(
-        settings.discord_application_id
-        and settings.discord_client_secret
-        and settings.discord_link_redirect_uri
-    )
+    return bool(settings.discord_application_id and settings.discord_client_secret)
 
 
 def get_google_oauth():
@@ -90,6 +86,16 @@ def frontend_redirect(path: str) -> str:
     # frontend_url is stored with a trailing slash.
     base = get_settings().frontend_url.rstrip("/")
     return base + path
+
+
+# Discord's OAuth redirects go through the frontend proxy, so the session cookie stays
+# first-party. They must match the Developer Portal's exactly, with no trailing slash.
+def discord_link_redirect_uri() -> str:
+    return frontend_redirect("/api/proxy/auth/oauth/discord/callback")
+
+
+def discord_install_redirect_uri() -> str:
+    return frontend_redirect("/api/proxy/discord/install/callback")
 
 
 def _name(value) -> str | None:

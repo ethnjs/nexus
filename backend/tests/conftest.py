@@ -466,8 +466,6 @@ def discord_on(client, db, monkeypatch):
         "discord_public_key": DISCORD_TEST_KEY.public_key().public_bytes_raw().hex(),
         "discord_bot_token": "bot-token",
         "discord_client_secret": "client-secret",
-        "discord_link_redirect_uri": "http://localhost:3000/api/proxy/auth/oauth/discord/callback",
-        "discord_install_redirect_uri": "http://localhost:3000/api/proxy/discord/install/callback",
         "frontend_url": "http://localhost:3000/",
     }
     for name, value in values.items():
