@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { IconEdit, IconLock } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -264,11 +265,11 @@ export default function FormViewPage() {
                   color: "var(--color-text-primary)",
                 }}
               >
-                {form.title}
+                <FormattedText markdown={form.title} variant="inline" />
               </h1>
             )}
             {form.description && (
-              <p
+              <div
                 style={{
                   fontFamily: "var(--font-sans)",
                   fontSize: "14px",
@@ -276,8 +277,8 @@ export default function FormViewPage() {
                   marginTop: "8px",
                 }}
               >
-                {form.description}
-              </p>
+                <FormattedText markdown={form.description} variant="rich" />
+              </div>
             )}
           </Card>
         )}

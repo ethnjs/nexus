@@ -297,6 +297,8 @@ export function FieldCard({
   // opens the card with that input focused.
   function handleCollapsedClick(e: ReactMouseEvent) {
     const el = e.target instanceof HTMLElement ? e.target : null;
+    // A link in the preview should open the card like any other text, not navigate.
+    if (el?.closest("a")) e.preventDefault();
     const optionRow = el?.closest<HTMLElement>("[data-option-value]");
     if (optionRow) {
       const rows = [

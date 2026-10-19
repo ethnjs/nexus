@@ -7,6 +7,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { Input } from "@/components/ui/Input";
 import { RadioList } from "@/components/ui/RadioList";
 import { RankedList } from "@/components/ui/RankedList";
@@ -113,24 +114,6 @@ interface QuestionRendererProps {
 // availability, where GET /forms/{id}/ resolves `value` into each grouped
 // shift's own start/end (see optionDisplayLabel) so the option can show its
 // time range alongside the TD-typed label.
-// The required marker rides the last word rather than following the label as
-// a free-floating node: a label that fills its line to within a few px would
-// otherwise wrap the lone asterisk onto a line of its own. Only the tail is
-// nowrap, so everything before it still wraps normally.
-function QuestionLabel({ label, required }: { label: string; required: boolean }) {
-  if (!required) return <>{label}</>;
-  const split = label.lastIndexOf(" ");
-  return (
-    <>
-      {split === -1 ? null : label.slice(0, split + 1)}
-      <span style={{ whiteSpace: "nowrap" }}>
-        {split === -1 ? label : label.slice(split + 1)}
-        <span style={{ color: "var(--color-danger)" }}> *</span>
-      </span>
-    </>
-  );
-}
-
 export function QuestionRenderer({
   field,
   mode = "view",
@@ -169,13 +152,18 @@ export function QuestionRenderer({
               color: "var(--color-text-primary)",
             }}
           >
-            <QuestionLabel
-              label={field.label || "Untitled question"}
-              required={!!config.required}
+            <FormattedText
+              markdown={field.label || "Untitled question"}
+              variant="inline"
+              trailing={
+                config.required ? (
+                  <span style={{ color: "var(--color-danger)" }}> *</span>
+                ) : undefined
+              }
             />
           </span>
           {field.description && (
-            <p
+            <div
               data-focus="description"
               style={{
                 fontFamily: "var(--font-sans)",
@@ -184,8 +172,8 @@ export function QuestionRenderer({
                 marginTop: "4px",
               }}
             >
-              {field.description}
-            </p>
+              <FormattedText markdown={field.description} variant="rich" />
+            </div>
           )}
         </div>
       )}
