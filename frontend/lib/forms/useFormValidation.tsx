@@ -8,11 +8,8 @@ import {
   type FormQuestionType,
   type TrackStatusAssignment,
 } from "@/lib/api";
-import {
-  activePresetKind,
-  effectiveFieldKey,
-  presetIncompleteMessage,
-} from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
+import { activePresetKind, presetIncompleteMessage } from "@/lib/forms/tournament/presets";
 
 // Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
 // rather than importing it — the hook only touches these five properties,

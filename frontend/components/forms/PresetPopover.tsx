@@ -11,15 +11,15 @@ import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import type { FormQuestionType, TournamentTrack } from "@/lib/api";
 import { cleanOption, type EditableField, hasCustomValues } from "@/lib/forms/editableField";
+import { effectiveFieldKey, isFieldKeyError, slugifyFieldKey } from "@/lib/forms/fieldKeys";
+import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import {
   activePresetKind,
   buildAvailabilityFieldKey,
   buildEventPreferenceFieldKey,
   buildLunchFieldKey,
   buildTrackStatusFieldKey,
-  effectiveFieldKey,
   isEntityBackedPreset,
-  isFieldKeyError,
   isPresetError,
   PRESETS,
   type PresetKind,
@@ -28,9 +28,7 @@ import {
   parseLunchFieldKey,
   parseTrackStatusFieldKey,
   presetIncompleteMessage,
-  slugifyFieldKey,
-} from "@/lib/forms/fieldKeyPresets";
-import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+} from "@/lib/forms/tournament/presets";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
 

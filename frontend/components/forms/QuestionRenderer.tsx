@@ -25,13 +25,13 @@ import type {
   Tournament,
   TournamentShift,
 } from "@/lib/api";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 import {
   activePresetKind,
   isEntityBackedPreset,
   parseAvailabilityFieldKey,
   parseEventPreferenceFieldKey,
-} from "@/lib/forms/fieldKeyPresets";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+} from "@/lib/forms/tournament/presets";
 import { formatTime } from "@/lib/timeFormat";
 
 // Only what rendering actually needs — not the full persisted FormField

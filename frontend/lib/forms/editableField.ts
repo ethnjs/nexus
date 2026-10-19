@@ -6,7 +6,7 @@ import type {
   FormFieldOption,
   FormQuestionType,
 } from "@/lib/api";
-import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`

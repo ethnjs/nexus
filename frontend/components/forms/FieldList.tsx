@@ -44,8 +44,8 @@ import {
   toFieldInput,
   withOptionClientKeys,
 } from "@/lib/forms/editableField";
-import { activePresetKind } from "@/lib/forms/fieldKeyPresets";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
+import { activePresetKind } from "@/lib/forms/tournament/presets";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 
 // How long a scroll-into-view keeps following a card that's still growing

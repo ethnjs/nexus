@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
 import type { TournamentTrack } from "@/lib/api";
 import type { EditableField } from "@/lib/forms/editableField";
-import { activePresetKind, allowsCustomValues } from "@/lib/forms/fieldKeyPresets";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { activePresetKind, allowsCustomValues } from "@/lib/forms/tournament/presets";
 
 export type ActivePopover = "key" | "preset" | null;
 

@@ -13,19 +13,18 @@ import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
-import {
-  activePresetKind,
-  effectiveFieldKey,
-  isEntityBackedPreset,
-  isFieldKeyError,
-  isPresetError,
-  PRESETS,
-} from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
   OPTION_BEARING_TYPES,
   QUESTION_TYPE_OPTIONS,
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
+import {
+  activePresetKind,
+  isEntityBackedPreset,
+  isPresetError,
+  PRESETS,
+} from "@/lib/forms/tournament/presets";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { backwardBranchTargetIds, issuesFor } from "@/lib/forms/useFormValidation";
 

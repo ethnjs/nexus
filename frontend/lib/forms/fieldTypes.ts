@@ -1,6 +1,6 @@
 import type { FormFieldConfig, FormQuestionType } from "@/lib/api";
 
-// Plain question_type options — no reserved presets here (see FIELD_KEY_PRESETS in fieldKeyPresets.ts).
+// Plain question_type options — no reserved presets here (see PRESETS in tournament/presets.ts).
 export const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
   { value: "short_text", label: "Short Answer" },
   { value: "long_text", label: "Paragraph" },

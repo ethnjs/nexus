@@ -6,7 +6,8 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { IconInfo, IconKey } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import type { EditableField } from "@/lib/forms/editableField";
-import { activePresetKind, isFieldKeyError, PRESETS } from "@/lib/forms/fieldKeyPresets";
+import { isFieldKeyError } from "@/lib/forms/fieldKeys";
+import { activePresetKind, PRESETS } from "@/lib/forms/tournament/presets";
 
 // The dashboard-facing identifier for a question — split out of the main
 // card into its own toolbar popover (rather than an always-visible Combobox
