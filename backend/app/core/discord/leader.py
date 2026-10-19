@@ -3,8 +3,9 @@ replicas, and the old and new process during a rolling deploy.
 
 Each process tries a session-level Postgres advisory lock on its own connection, outside the
 request pool. The holder is the leader and runs the background work (LeaderWork). The lock
-lives as long as that connection does, so if it drops, Postgres releases the lock and another
-process takes over. Two leaders can overlap for up to one check interval, which is harmless
+lives as long as that connection's session does, so if it drops, Postgres releases the lock and
+another process takes over; a session whose client vanished silently ends at
+IDLE_SESSION_TIMEOUT. Two leaders can overlap for up to one check interval, which is harmless
 because every job is idempotent. Doesn't work behind PgBouncer in transaction-pooling mode.
 """
 
@@ -28,6 +29,10 @@ log = logging.getLogger(__name__)
 # Any constant works; every process using the same database must agree on it.
 LOCK_KEY = 0x4E455855
 CHECK_INTERVAL = 30.0
+# A live leader pings every CHECK_INTERVAL, so only a session whose client vanished sits idle this
+# long. Postgres then ends it and frees the lock, instead of holding it until its TCP keepalive
+# fires hours later.
+IDLE_SESSION_TIMEOUT = f"{int(CHECK_INTERVAL * 4)}s"
 
 
 class Leader:
@@ -90,6 +95,7 @@ class Leader:
                 autocommit=True,
                 connect_timeout=10,
                 application_name="nexus-leader",
+                options=f"-c idle_session_timeout={IDLE_SESSION_TIMEOUT}",
                 keepalives=1,
                 keepalives_idle=30,
                 keepalives_interval=10,
