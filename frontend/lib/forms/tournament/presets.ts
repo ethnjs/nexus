@@ -1,4 +1,9 @@
-import type { FormFieldConfig, FormQuestionType } from "@/lib/api";
+import type {
+  FormFieldConfig,
+  FormFieldOption,
+  FormQuestionType,
+  TrackStatusAssignment,
+} from "@/lib/api";
 import { slugifyFieldKey } from "@/lib/forms/fieldKeys";
 
 // Reserved field_key patterns — mirrors backend/app/core/form/validation.py
@@ -185,6 +190,22 @@ export function isPresetError(message: string): boolean {
   return message.startsWith(PRESET_INCOMPLETE_PREFIX);
 }
 
+// The {id, status} pairs an option carries: its `value` on a track status
+// question, or `track_statuses` on an availability one that also updates
+// track status. Mirrors the backend's option_track_assignments.
+export function optionTrackAssignments(value: FormFieldOption["value"]): TrackStatusAssignment[] {
+  const list =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? value.track_statuses
+      : value;
+  return Array.isArray(list)
+    ? list.filter(
+        (item): item is TrackStatusAssignment =>
+          typeof item === "object" && item !== null && "id" in item && "status" in item,
+      )
+    : [];
+}
+
 // The checks a preset adds on top of the core's structural ones.
 export function presetIssuesFor(field: {
   field_key: string;
@@ -198,16 +219,10 @@ export function presetIssuesFor(field: {
   // collapse back to the bare "{prefix}_" until every parameter is filled in,
   // so a trailing "_" reliably means "still incomplete".
   if (field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(kind));
-  if (kind === "track_status") {
+  if (kind === "track_status" || (kind === "availability" && field.config?.track_status_enabled)) {
     const unset = (field.config?.options ?? [])
       .filter((option) => !option.is_archived)
-      .some(
-        (option) =>
-          Array.isArray(option.value) &&
-          option.value.some(
-            (item) => typeof item === "object" && item !== null && "status" in item && !item.status,
-          ),
-      );
+      .some((option) => optionTrackAssignments(option.value).some((item) => !item.status));
     if (unset) issues.push("Choose a status for every track.");
   }
   return issues;

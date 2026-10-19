@@ -24,11 +24,12 @@ import {
   type TrackStatusAssignment,
   tournamentEventsApi,
   tournamentShiftsApi,
-  tournamentTracksApi,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import type { BranchTarget } from "@/lib/forms/branching";
+import { optionTrackAssignments } from "@/lib/forms/tournament/presets";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
+import { isSimpleMode } from "@/lib/useTournament";
 
 type EntityFieldKey = "availability" | "event_preference" | "track_status";
 type Entity = TournamentShift | TournamentEvent;
@@ -116,14 +117,7 @@ function entityPickerLabel(
 }
 
 function assignmentsFor(option: EditableOption): TrackStatusAssignment[] {
-  return Array.isArray(option.value) ? (option.value as TrackStatusAssignment[]) : [];
-}
-
-/** The status an opted-in availability option sets on the field's own track. */
-function statusFor(option: EditableOption): TrackStatus | "" {
-  return typeof option.value === "object" && !Array.isArray(option.value)
-    ? ((option.value.track_status ?? "") as TrackStatus | "")
-    : "";
+  return optionTrackAssignments(option.value);
 }
 
 function shiftIdsFor(option: EditableOption): number[] {
@@ -153,10 +147,10 @@ export function EntityOptionsEditor({
   const isEntity = fieldKey !== "track_status";
   const hasTracks = fieldKey === "track_status" || trackStatusEnabled;
   const [entities, setEntities] = useState<Entity[] | null>(isEntity ? null : []);
-  // Fetched here rather than inside TrackPicker: that renders once per
-  // option, so a field with eight choices was making eight identical
-  // requests for the same catalog.
-  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  const tracks = tournament.tracks.filter((track) => !track.is_archived);
+  // A simple tournament's one track has nothing to choose, so each option
+  // just says what it sets that track to.
+  const soleTrack = isSimpleMode(tracks) ? tracks[0] : null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const existingEventIds = useMemo(
@@ -166,16 +160,6 @@ export function EntityOptionsEditor({
       ),
     [fieldKey, options],
   );
-
-  useEffect(() => {
-    // Also fetched for availability, which needs only its own track's name
-    // for the status row — one request either way.
-    if (!hasTracks) return;
-    tournamentTracksApi
-      .list(tournament.id, { public: true })
-      .then(setTracks)
-      .catch(() => {});
-  }, [hasTracks, tournament.id]);
 
   const trackName =
     trackId !== null ? tracks.find((track) => track.id === trackId)?.name : undefined;
@@ -217,8 +201,21 @@ export function EntityOptionsEditor({
 
   function withEntityIds(option: EditableOption, ids: number[]): EditableOption {
     return fieldKey === "availability" && trackStatusEnabled
-      ? { ...option, value: { shift_ids: ids, track_status: statusFor(option) } }
+      ? { ...option, value: { shift_ids: ids, track_statuses: assignmentsFor(option) } }
       : { ...option, value: ids };
+  }
+
+  function withAssignments(
+    option: EditableOption,
+    assignments: TrackStatusAssignment[],
+  ): EditableOption {
+    return fieldKey === "availability"
+      ? { ...option, value: { shift_ids: shiftIdsFor(option), track_statuses: assignments } }
+      : { ...option, value: assignments };
+  }
+
+  function replaceOption(next: EditableOption) {
+    onChange(options.map((item) => (item.clientKey === next.clientKey ? next : item)));
   }
 
   function toggleEntity(clientKey: string, entityId: number) {
@@ -322,43 +319,17 @@ export function EntityOptionsEditor({
               />
             )}
             {hasTracks &&
-              (fieldKey === "availability" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "12px",
-                      color: "var(--color-text-tertiary)",
-                    }}
-                  >
-                    Sets {trackName ?? "this track"} to
-                  </span>
-                  <TrackStatusMenu
-                    status={statusFor(option)}
-                    optional
-                    onChange={(status) =>
-                      onChange(
-                        options.map((item) =>
-                          item.clientKey === option.clientKey
-                            ? {
-                                ...item,
-                                value: { shift_ids: shiftIdsFor(item), track_status: status },
-                              }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                </div>
+              (soleTrack ? (
+                <SoleTrackStatus
+                  track={soleTrack}
+                  assignments={assignmentsFor(option)}
+                  onChange={(assignments) => replaceOption(withAssignments(option, assignments))}
+                />
               ) : (
-                <TrackPicker
+                <TrackStatusChips
                   tracks={tracks}
-                  option={option}
-                  onChange={(next) =>
-                    onChange(
-                      options.map((item) => (item.clientKey === next.clientKey ? next : item)),
-                    )
-                  }
+                  assignments={assignmentsFor(option)}
+                  onChange={(assignments) => replaceOption(withAssignments(option, assignments))}
                 />
               ))}
           </>
@@ -471,35 +442,62 @@ function EntityPicker({
   );
 }
 
-// track_status_* only — an availability field names one track in its key and
-// gets a single status menu instead (see above).
-function TrackPicker({
+// A simple tournament's one track: no chips to add, just the status this
+// option sets it to. "No change" stores no assignment at all.
+function SoleTrackStatus({
+  track,
+  assignments,
+  onChange,
+}: {
+  track: TournamentTrack;
+  assignments: TrackStatusAssignment[];
+  onChange: (assignments: TrackStatusAssignment[]) => void;
+}) {
+  const status = assignments.find((item) => item.id === track.id)?.status ?? "";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        Sets {track.name} to
+      </span>
+      <TrackStatusMenu
+        status={status}
+        optional
+        onChange={(next) => onChange(next ? [{ id: track.id, status: next }] : [])}
+      />
+    </div>
+  );
+}
+
+// The tracks an option moves, each a chip with its status pill.
+function TrackStatusChips({
   tracks,
-  option,
+  assignments,
   onChange,
 }: {
   tracks: TournamentTrack[];
-  option: EditableOption;
-  onChange: (option: EditableOption) => void;
+  assignments: TrackStatusAssignment[];
+  onChange: (assignments: TrackStatusAssignment[]) => void;
 }) {
-  const assignments = assignmentsFor(option);
   const selected = tracks.filter((track) =>
     assignments.some((assignment) => assignment.id === track.id),
   );
   const byName = new Map(selected.map((track) => [track.name, track]));
 
-  function replaceAssignments(nextAssignments: TrackStatusAssignment[]) {
-    onChange({ ...option, value: nextAssignments });
-  }
   function toggle(track: TournamentTrack) {
-    replaceAssignments(
+    onChange(
       assignments.some((item) => item.id === track.id)
         ? assignments.filter((item) => item.id !== track.id)
         : [...assignments, { id: track.id, status: "" as TrackStatus }],
     );
   }
   function setStatus(trackId: number, status: string) {
-    replaceAssignments(
+    onChange(
       assignments.map((item) =>
         item.id === trackId ? { ...item, status: status as TrackStatus } : item,
       ),
@@ -557,8 +555,8 @@ const STATUS_TONE: Record<TrackStatus | "", PillTone> = {
   declined: "danger",
 };
 
-// `optional` offers "No change" as a choice — an availability option may
-// leave its track's status alone.
+// `optional` offers "No change" as a choice — a sole track's option may leave
+// its status alone.
 function TrackStatusMenu({
   status,
   onChange,

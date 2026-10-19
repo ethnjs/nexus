@@ -178,21 +178,39 @@ class TestValidateFieldConfig:
             },
         )
 
-    def test_availability_option_with_unpicked_status_passes(self):
+    def test_availability_option_without_track_statuses_passes(self):
         config = validate_field_config(
             "single_select_radio",
             {
                 "required": False,
                 "options": [
-                    {
-                        "option_id": "opt_1",
-                        "value": {"shift_ids": [], "track_status": ""},
-                        "label": "Maybe",
-                    }
+                    {"option_id": "opt_1", "value": {"shift_ids": []}, "label": "Maybe"},
                 ],
             },
         )
-        assert config["options"][0]["value"]["track_status"] is None
+        assert config["options"][0]["value"]["track_statuses"] == []
+
+    def test_availability_option_naming_a_track_twice_rejected(self):
+        with pytest.raises(FormFieldValidationError, match="duplicate track_id"):
+            validate_field_config(
+                "single_select_radio",
+                {
+                    "required": False,
+                    "options": [
+                        {
+                            "option_id": "opt_1",
+                            "label": "Maybe",
+                            "value": {
+                                "shift_ids": [],
+                                "track_statuses": [
+                                    {"id": 7, "status": "interested"},
+                                    {"id": 7, "status": "declined"},
+                                ],
+                            },
+                        }
+                    ],
+                },
+            )
 
     def test_duplicate_option_id_still_rejected(self):
         """option_id is the durable identity — a collision there really does
@@ -499,7 +517,7 @@ class TestValidateAvailabilityOptions:
     ):
         config = {
             "track_status_enabled": True,
-            "options": [{"value": {"shift_ids": [], "track_status": None}, "label": "Maybe"}],
+            "options": [{"value": {"shift_ids": [], "track_statuses": []}, "label": "Maybe"}],
         }
         validate_availability_options(db, td_tournament.id, config)  # no raise
 
@@ -604,17 +622,20 @@ class TestOptionValueReaders:
         option = {"value": [{"id": 7, "status": "confirmed"}]}
         assert option_track_assignments(option) == [{"id": 7, "status": "confirmed"}]
 
-    def test_status_on_an_availability_value_takes_the_field_track(self):
-        """An availability option carries a bare status; the track it applies
-        to comes from the field's own key, since the key already names it."""
-        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
-        assert option_track_assignments(option, 7) == [{"id": 7, "status": "declined"}]
-
-    def test_availability_status_without_a_field_track_is_ignored(self):
-        """Nothing to attach the status to — a track_status_* field passes no
-        track id, and its options carry their ids inline instead."""
-        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
-        assert option_track_assignments(option) == []
+    def test_assignments_nested_in_an_availability_value(self):
+        option = {
+            "value": {
+                "shift_ids": [1, 2],
+                "track_statuses": [
+                    {"id": 7, "status": "declined"},
+                    {"id": 8, "status": "interested"},
+                ],
+            }
+        }
+        assert option_track_assignments(option) == [
+            {"id": 7, "status": "declined"},
+            {"id": 8, "status": "interested"},
+        ]
 
     def test_grouped_entity_ids_are_not_assignments(self):
         assert option_track_assignments({"value": [5, 9]}) == []
@@ -669,9 +690,10 @@ class TestValidateTrackStatusOptions:
                 {
                     "option_id": "yes",
                     "label": "Yes",
-                    # One status, no id: an availability field names its track
-                    # in its own key, so the option can't contradict it.
-                    "value": {"shift_ids": [1], "track_status": "interested"},
+                    "value": {
+                        "shift_ids": [1],
+                        "track_statuses": [{"id": track_id, "status": "interested"}],
+                    },
                 }
             ],
         }

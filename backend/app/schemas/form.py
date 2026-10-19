@@ -63,27 +63,20 @@ def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[Tra
 
 
 class AvailabilityTrackStatusValue(BaseModel):
-    """Raw builder value for an availability option that updates a track.
-
-    One status, not a list. An availability_{track_id} field names exactly one
-    track, so the only track this option could ever move is that one — a list
-    would let an option contradict its own field key, and every entry but one
-    would be dead weight. (A track_status_{suffix} field, which names no track
-    at all, keeps the list shape; that's what it exists for.)"""
+    """Raw builder value for an availability option that also updates track
+    statuses: the shifts it groups, plus a status for any of the tournament's
+    tracks — not only the one in the field's key (e.g. "Can't make Day 1"
+    declining Day 1 while marking interest in the Test Writing track)."""
 
     model_config = ConfigDict(extra="forbid")
 
     shift_ids: list[int]
-    track_status: str | None = None
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
 
-    @field_validator("track_status")
+    @field_validator("track_statuses")
     @classmethod
-    def _valid_status(cls, status: str | None) -> str | None:
-        # The builder sends "" for an option whose status was never picked.
-        status = status or None
-        if status is not None and status not in VALID_TRACK_STATUSES:
-            raise ValueError(f"track_status must be one of: {sorted(VALID_TRACK_STATUSES)}")
-        return status
+    def _unique(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
 
 
 class PlainOption(BaseModel):

@@ -106,11 +106,11 @@ A preset never adds a `question_type`; it changes what `value` holds on each opt
 ] }
 ```
 
-**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required `shift_ids` and an optional `track_status` for the field's own track. An empty string `track_status` is stored as `null`.
+**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required `shift_ids` and a `track_statuses` list of assignments (shape 5), which may name any of the tournament's tracks, not only the one in the key. A track appears at most once per option.
 
 ```json
 { "required": true, "track_status_enabled": true, "options": [
-  { "option_id": "a1b2c3d4e5", "label": "All day", "value": { "shift_ids": [3, 2, 5], "track_status": "confirmed" } }
+  { "option_id": "a1b2c3d4e5", "label": "All day", "value": { "shift_ids": [3, 2, 5], "track_statuses": [{ "id": 7, "status": "confirmed" }] } }
 ] }
 ```
 
@@ -141,7 +141,7 @@ A preset never adds a `question_type`; it changes what `value` holds on each opt
 
 An assignment is `{"id": <TournamentTrack id>, "status": "interested" | "confirmed" | "declined"}`, and both keys are required. Track ids must belong to the tournament; archived tracks stay valid so old fields still resolve. On `multi_select_checkbox`, two options may name the same track only with the same status. Nothing currently rejects one option naming a track twice; write-through applies the last entry.
 
-**Reading options.** `value` is a union (`str | list[int] | list[assignment] | {shift_ids, track_status}`) so switching presets rewrites one key instead of migrating between key sets. Its meaning depends on `field_key`, so read through the helpers (`option_shift_ids`, `option_track_assignments`) rather than checking `isinstance(value, list)`, which can't tell entity ids from assignments.
+**Reading options.** `value` is a union (`str | list[int] | list[assignment] | {shift_ids, track_statuses}`) so switching presets rewrites one key instead of migrating between key sets. Its meaning depends on `field_key`, so read through the helpers (`option_shift_ids`, `option_track_assignments`) rather than checking `isinstance(value, list)`, which can't tell entity ids from assignments.
 
 **Rendering.** `GET /forms/{id}/` resolves entity ids in place (`resolve_field_options`): an availability `value` becomes a list of `{id, label, start, end}` shifts ordered by start, and an event preference `value` becomes a list of `{id, name, division}` events.
 

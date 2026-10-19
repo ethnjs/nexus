@@ -372,7 +372,10 @@ export function PresetPopover({
                             )
                               ? (option.value as number[])
                               : [];
-                            return { ...option, value: { shift_ids: shiftIds, track_status: "" } };
+                            return {
+                              ...option,
+                              value: { shift_ids: shiftIds, track_statuses: [] },
+                            };
                           }
                           if (
                             !checked &&

@@ -180,10 +180,7 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
             return True
         if any(
             assignment.get("id") == track_id
-            for assignment in track_status_assignments(
-                field.config or {},
-                availability_field_track_id(field.field_key),
-            )
+            for assignment in track_status_assignments(field.config or {})
         ):
             return True
     return False

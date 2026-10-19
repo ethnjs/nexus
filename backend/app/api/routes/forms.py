@@ -1291,15 +1291,8 @@ def _write_through_reserved_fields(
         # into track statuses, so it feeds both this and the shift pool.
         in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
         if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
-            # An availability field's option carries a bare status; the track
-            # comes from its own key. A track_status_* field names no track,
-            # so its options carry the ids themselves and this is None.
-            own_track_id = availability_field_track_id(field.field_key)
             for option_id in selected:
-                for assignment in option_track_assignments(
-                    options_by_id.get(option_id) or {},
-                    own_track_id,
-                ):
+                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
                     intended_track_statuses[assignment["id"]] = {
                         "status": assignment["status"],
                         "field_id": field.id,

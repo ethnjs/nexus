@@ -3129,8 +3129,6 @@ class TestWriteThroughOnSubmit:
         )
         db.add(shift)
         db.flush()
-        # The status applies to the field's own track — the key already names
-        # it, so the option carries a bare status rather than an id list.
         track_id = primary_track_id(db, td_tournament.id)
         field = _make_field(
             db,
@@ -3144,7 +3142,10 @@ class TestWriteThroughOnSubmit:
                     {
                         "option_id": "opt_morning",
                         "label": "Morning",
-                        "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
+                        "value": {
+                            "shift_ids": [shift.id],
+                            "track_statuses": [{"id": track_id, "status": "confirmed"}],
+                        },
                     }
                 ],
             },
@@ -3390,9 +3391,9 @@ class TestWriteThroughOnSubmit:
         )
         db.add(shift)
         db.flush()
-        # The status lands on the field's own track — the key names it, so
-        # the option carries a bare status rather than a track id.
+        # An option can move tracks besides the one in its own key.
         track_id = primary_track_id(db, td_tournament.id)
+        other = self._track(db, td_tournament)
         field = _make_field(
             db,
             form,
@@ -3405,7 +3406,13 @@ class TestWriteThroughOnSubmit:
                     {
                         "option_id": "opt_morning",
                         "label": "Morning",
-                        "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
+                        "value": {
+                            "shift_ids": [shift.id],
+                            "track_statuses": [
+                                {"id": track_id, "status": "confirmed"},
+                                {"id": other.id, "status": "interested"},
+                            ],
+                        },
                     }
                 ],
             },
@@ -3422,6 +3429,7 @@ class TestWriteThroughOnSubmit:
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {shift.id}
         assert self._track_status(db, membership_id, track_id) == "confirmed"
+        assert self._track_status(db, membership_id, other.id) == "interested"
 
     def _flag(self, db, form, user, field):
         """Open a pending update on `field` so PATCH will accept it. Which

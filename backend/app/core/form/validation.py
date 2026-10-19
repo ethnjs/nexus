@@ -171,25 +171,16 @@ def _is_assignment(item: object) -> bool:
     return isinstance(item, dict) and "id" in item and "status" in item
 
 
-def option_track_assignments(option: dict, field_track_id: int | None = None) -> list[dict]:
-    """The track assignments one option carries, normalized to the
-    track_status_* shape whichever way they were written.
-
-    Two shapes, because the two field kinds differ in what they can know:
-    a `track_status_*` field names no track, so `value` *is* a list of
-    {id, status} pairs; an `availability_{track_id}` field already names its
-    track, so its option carries a bare `track_status` string and the id comes
-    from the field key (`field_track_id`).
-
-    The single place that knows how to dig them out; callers that hand-roll it
-    get the value shapes wrong (see _is_assignment)."""
+def option_track_assignments(option: dict) -> list[dict]:
+    """The {id, status} track assignments one option carries: `value` itself
+    on a `track_status_*` field, or its `track_statuses` on an opted-in
+    availability field. The single place that knows how to dig them out;
+    callers that hand-roll it get the value shapes wrong (see _is_assignment)."""
     value = option.get("value")
+    if isinstance(value, dict):
+        value = value.get("track_statuses")
     if isinstance(value, list):
         return [item for item in value if _is_assignment(item)]
-    if isinstance(value, dict):
-        status = value.get("track_status")
-        if status and field_track_id is not None:
-            return [{"id": field_track_id, "status": status}]
     return []
 
 
@@ -204,12 +195,12 @@ def option_shift_ids(option: dict) -> list[int]:
     return [item for item in (value or []) if isinstance(item, int)]
 
 
-def track_status_assignments(config: dict, field_track_id: int | None = None) -> list[dict]:
+def track_status_assignments(config: dict) -> list[dict]:
     """Every track assignment carried by a field's options."""
     return [
         assignment
         for option in config.get("options") or []
-        for assignment in option_track_assignments(option, field_track_id)
+        for assignment in option_track_assignments(option)
     ]
 
 
@@ -223,7 +214,7 @@ def validate_track_status_options(
     """Validate option-level track statuses for Track Status and opted-in
     Availability fields. Track mappings are tournament-only and catalog IDs
     remain valid after archival so historical fields can still be read."""
-    assignments = track_status_assignments(config, availability_field_track_id(field_key))
+    assignments = track_status_assignments(config)
     enabled = track_status_enabled(field_key, config)
 
     _require(
@@ -491,7 +482,7 @@ def validate_availability_options(
         if config.get("track_status_enabled"):
             _require(
                 isinstance(value, dict) and isinstance(value.get("shift_ids"), list),
-                f"availability option value '{value}' must contain shift_ids and track_status when track status is enabled",
+                f"availability option value '{value}' must contain shift_ids and track_statuses when track status is enabled",
             )
             value = value["shift_ids"]
         _require(
