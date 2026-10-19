@@ -50,6 +50,8 @@ DEV_DOCS = settings.app_env in ("development", "preview")
 
 if settings.app_env == "production" and settings.oauth_state_secret == DEV_OAUTH_STATE_SECRET:
     raise RuntimeError("OAUTH_STATE_SECRET must be set in production")
+if settings.app_env == "production" and settings.discord_dev_guild_id:
+    raise RuntimeError("DISCORD_DEV_GUILD_ID is for development only; unset it in production")
 
 
 def _read_app_version() -> str:
