@@ -11,9 +11,9 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
-import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
+import type { FormQuestionType } from "@/lib/api";
 import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
-import { useFieldExtension } from "@/lib/forms/builderAddon";
+import { useFieldExtension, useOptionLabel } from "@/lib/forms/builderAddon";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
@@ -25,10 +25,9 @@ import { activePresetKind, isPresetError } from "@/lib/forms/tournament/presets"
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
-// How long to keep waiting for the clicked input to exist. The entity-backed
-// editors (availability/event_preference) render "Loading shifts…" until their
-// fetch lands, so the option row a click was aimed at isn't in the DOM at the
-// moment the card expands.
+// How long to keep waiting for the clicked input to exist. An add-on's options
+// editor can show a loading state until its data lands, so the option row a
+// click was aimed at isn't in the DOM at the moment the card expands.
 const FOCUS_WAIT_MS = 4000;
 
 // Which editor input a click on the collapsed preview was aimed at. Options
@@ -133,13 +132,11 @@ export function FieldCard({
   onFieldChange,
   onDuplicate,
   onDelete,
-  tournament,
-  shifts,
   allFields,
   usedFieldKeys,
   errors,
   allowArchive = false,
-  onRequireTrack,
+  onOpenAddon,
   locked = false,
 }: {
   field: EditableField;
@@ -154,24 +151,13 @@ export function FieldCard({
   onFieldChange: (updates: Partial<EditableField>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  /** null hides the availability/event_preference entity-backed editor
-      (falls through to the plain preview instead) — a chapter-owned form has
-      no tournament to source shifts/events from. Also carries is_multi_day,
-      which decides how EntityOptionsEditor's shift chips/picker display. */
-  tournament: Tournament | null;
-  /** Collapsed-card preview only — lets an availability option's time range
-      resolve client-side (its `value` is still raw shift ids, not GET's
-      resolved shape) without every card fetching its own copy. null while
-      still loading, same as tournament. */
-  shifts: TournamentShift[] | null;
   allFields: EditableField[];
   /** Every field_key already saved elsewhere on this tournament — see
       duplicateKey below. */
   usedFieldKeys: string[];
   errors: string[];
-  /** Forwarded to the entity pickers — opens the toolbar's preset popover
-      when a picker is used before the question has a track. */
-  onRequireTrack?: () => void;
+  /** Opens this field's add-on popover — see AddonOptionsEditorProps.onOpenAddon. */
+  onOpenAddon?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
   /** Archived tournament — stays a read-only preview: no expanding, no dragging. */
@@ -179,6 +165,7 @@ export function FieldCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const extension = useFieldExtension(field);
+  const optionLabel = useOptionLabel(field);
   const presetKind = activePresetKind(field.field_key);
   // Key/preset errors surface exclusively through FieldToolbar's popovers
   // now (danger-colored trigger + inline message) — the card itself no
@@ -410,13 +397,12 @@ export function FieldCard({
               mode="edit"
               showHeader={false}
               onFieldChange={onFieldChange}
-              tournament={tournament}
               branchTargets={branchTargets}
               branchingEnabled={field.branchingEnabled}
               customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
               allowArchive={allowArchive}
-              onRequireTrack={onRequireTrack}
+              onOpenAddon={onOpenAddon}
             />
 
             <div
@@ -501,7 +487,7 @@ export function FieldCard({
                 because the targets are rendered by shared components that
                 the respondent-facing form uses too. */}
             <div className="field-preview">
-              <QuestionRenderer field={field} interactive={false} shifts={shifts} />
+              <QuestionRenderer field={field} interactive={false} optionLabel={optionLabel} />
             </div>
           </Card>
         )}

@@ -196,6 +196,15 @@ export function formatCountdown(msRemaining: number): string {
   return parts.join(" ");
 }
 
+// The clock times several windows cover together, earliest start to latest
+// end: "7:00 AM–5:00 PM". ISO strings from the backend share one format and
+// timezone, so they compare as strings in time order.
+export function formatTimeRange(windows: { start: string; end: string }[]): string {
+  const start = windows.reduce((min, w) => (w.start < min ? w.start : min), windows[0].start);
+  const end = windows.reduce((max, w) => (w.end > max ? w.end : max), windows[0].end);
+  return `${formatTime(start)}–${formatTime(end)}`;
+}
+
 // How long a start→end window lasts: "45m", "2h", "1h 30m". Not
 // formatDuration, which is how long *ago* something was.
 export function formatSpan(startIso: string, endIso: string): string {

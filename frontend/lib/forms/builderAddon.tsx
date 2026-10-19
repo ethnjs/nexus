@@ -2,7 +2,7 @@
 
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 import type { EditableOption } from "@/components/forms/OptionsEditor";
-import type { Form, FormFieldConfig, FormQuestionType } from "@/lib/api";
+import type { Form, FormFieldConfig, FormFieldOption, FormQuestionType } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import type { EditableField } from "@/lib/forms/editableField";
 
@@ -65,6 +65,9 @@ export interface FormBuilderAddon {
   Provider: ComponentType<{ form: Form; children: ReactNode }>;
   /** Per-field behavior. Pure, so the core can ask from event handlers too. */
   extendField: (field: ExtendableField) => FieldExtension;
+  /** The collapsed preview's text for an option, when it needs the add-on's
+   *  data (e.g. a shift's times). Undefined keeps the option's own label. */
+  useOptionLabel: (field: ExtendableField) => ((option: FormFieldOption) => string) | undefined;
   /** Keys already taken by other forms that share this form's owner. */
   useUsedFieldKeys: () => string[];
   /** The add-on's toolbar button and popover. */
@@ -86,6 +89,7 @@ function PassThrough({ children }: { form: Form; children: ReactNode }) {
 export const CORE_ONLY: FormBuilderAddon = {
   Provider: PassThrough,
   extendField: () => NO_EXTENSION,
+  useOptionLabel: () => undefined,
   useUsedFieldKeys: () => NO_KEYS,
   Toolbar: null,
   issuesFor: () => [],
@@ -118,4 +122,10 @@ export function useFormBuilderAddon(): FormBuilderAddon {
 
 export function useFieldExtension(field: ExtendableField): FieldExtension {
   return useFormBuilderAddon().extendField(field);
+}
+
+export function useOptionLabel(
+  field: ExtendableField,
+): ((option: FormFieldOption) => string) | undefined {
+  return useFormBuilderAddon().useOptionLabel(field);
 }

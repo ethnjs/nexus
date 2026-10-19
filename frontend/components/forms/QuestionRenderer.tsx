@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
 import { type EditableOption, OptionsEditor } from "@/components/forms/OptionsEditor";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -18,24 +17,17 @@ import type {
   FormFieldOption,
   FormQuestionType,
   ResolvedShiftOption,
-  Tournament,
-  TournamentShift,
 } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
+import { type ExtendableField, useFieldExtension } from "@/lib/forms/builderAddon";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
-import {
-  activePresetKind,
-  isEntityBackedPreset,
-  parseAvailabilityFieldKey,
-  parseEventPreferenceFieldKey,
-} from "@/lib/forms/tournament/presets";
-import { formatTime } from "@/lib/timeFormat";
+import { formatTimeRange } from "@/lib/timeFormat";
 
 // Only what rendering actually needs — not the full persisted FormField
 // (id, form_id, timestamps, ...), so an in-progress/unsaved draft field in
 // the builder (no id yet) can be rendered without a fake id to satisfy the type.
-// field_key is optional and only consulted by edit mode (reserved presets —
-// availability/event_preference/lunch — key off it); view mode never reads it.
+// field_key is optional and only consulted by edit mode (an add-on recognizes
+// its own questions by it); view mode never reads it.
 export interface QuestionFieldData {
   label: string;
   description: string | null;
@@ -70,23 +62,15 @@ interface QuestionRendererProps {
       inline slot yet, so the caller still has to render its own message for
       them). Not used at all in edit mode — see the `errors` prop instead. */
   error?: string;
-  /** view mode only — the tournament's shifts, so an availability option's
-      time range can resolve even when `value` is still the raw shift-id
-      list (the builder's collapsed card preview) rather than GET's already-
-      resolved shape. null/undefined = no range shown for the raw-id case
-      (an already-resolved `value` still renders its range regardless). */
-  shifts?: TournamentShift[] | null;
+  /** view mode only — overrides an option's text, for the builder's preview of
+      an add-on question whose `value` is still raw ids (see useOptionLabel). */
+  optionLabel?: (option: FormFieldOption) => string;
   /** Hide the label/description header — e.g. the builder's expanded card already
       shows the label via its own editable Input, so repeating it here would be
       redundant. */
   showHeader?: boolean;
   /** edit mode only — applies a partial update to the field being edited. */
   onFieldChange?: (updates: FieldUpdate) => void;
-  /** edit mode only — tournament scope for the availability/event_preference
-      presets' entity-backed options (id + is_multi_day, used by
-      EntityOptionsEditor). null/undefined hides those presets' editor
-      (falls through to the plain preview instead). */
-  tournament?: Tournament | null;
   /** edit mode only — candidate "jump to" fields for single_select_radio/dropdown's
       per-option branching. Omitted (or empty) hides the branch dropdown. */
   branchTargets?: BranchTarget[];
@@ -103,9 +87,8 @@ interface QuestionRendererProps {
       there's nothing to preserve, so removing an option just removes it and
       the extra control would be noise. */
   allowArchive?: boolean;
-  /** Forwarded to EntityOptionsEditor — see its own prop. Absent outside the
-      form builder, where there is no preset popover to open. */
-  onRequireTrack?: () => void;
+  /** edit mode only — forwarded to an add-on's options editor; see AddonOptionsEditorProps. */
+  onOpenAddon?: () => void;
   /** Read-only answers only — options a past answer picked that are no longer
       offered (archived, or gone from config). Shown in line with the live
       ones, marked Removed, so the answer still reads as given. */
@@ -156,16 +139,15 @@ export function QuestionRenderer({
   value,
   onChange,
   error,
-  shifts,
+  optionLabel,
   showHeader = true,
   onFieldChange,
-  tournament,
   branchTargets,
   branchingEnabled,
   customValuesEnabled,
   errors = [],
   allowArchive = false,
-  onRequireTrack,
+  onOpenAddon,
   removedOptions,
   answerNote,
 }: QuestionRendererProps) {
@@ -214,13 +196,12 @@ export function QuestionRenderer({
         <QuestionEditBody
           field={field}
           onFieldChange={onFieldChange ?? (() => {})}
-          tournament={tournament ?? null}
           branchTargets={branchTargets}
           branchingEnabled={branchingEnabled}
           customValuesEnabled={customValuesEnabled}
           errors={errors}
           allowArchive={allowArchive}
-          onRequireTrack={onRequireTrack}
+          onOpenAddon={onOpenAddon}
         />
       ) : (
         <QuestionBody
@@ -230,7 +211,7 @@ export function QuestionRenderer({
           value={value}
           onChange={onChange}
           error={error}
-          shifts={shifts}
+          optionLabel={optionLabel}
           removedOptions={removedOptions}
         />
       )}
@@ -238,54 +219,26 @@ export function QuestionRenderer({
   );
 }
 
-// number[] (unresolved, still-editing shape) elements are numbers;
 // ResolvedShiftOption[] (GET-resolved, respondent-facing shape) elements are
 // objects. ResolvedEventOption[] is also an array of objects but has no
 // start/end, so checking for 'start' is what actually distinguishes the two
-// resolved shapes (event_preference options must never hit timeRangeOf).
+// resolved shapes (event_preference options must never get a time range).
 function isResolvedShiftOptions(value: FormFieldOption["value"]): value is ResolvedShiftOption[] {
   return (
     Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && "start" in value[0]
   );
 }
 
-function isRawShiftIds(value: FormFieldOption["value"]): value is number[] {
-  return Array.isArray(value) && value.length > 0 && typeof value[0] === "number";
-}
-
-function timeRangeOf(starts: string[], ends: string[]): string {
-  // ISO strings compare lexicographically the same as chronologically here
-  // since they're all the same backend format/timezone, so plain string
-  // min/max works without parsing dates.
-  const start = starts.reduce((min, s) => (s < min ? s : min));
-  const end = ends.reduce((max, e) => (e > max ? e : max));
-  return `${formatTime(start)}–${formatTime(end)}`;
-}
-
 // availability's option label alone doesn't tell a respondent when it
 // actually is — this appends the span across every shift grouped under the
 // option (min start to max end, not one shift's own range) so "All Day"
 // reads as "All Day (7:00 AM–5:00 PM)" instead of leaving them to guess or
-// hunt down each shift individually. Handles both shapes `value` can be in
-// here: GET's already-resolved `{id, label, start, end}[]`, and the raw
-// shift-id list the builder's collapsed card preview still has — the latter
-// needs `shifts` (looked up by id) to find each one's start/end itself.
-function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] | null): string {
+// hunt down each shift individually. GET resolves `value` into those shifts;
+// the builder's preview still has raw ids, and gets its text from
+// `optionLabel` instead.
+function optionDisplayLabel(option: FormFieldOption): string {
   if (isResolvedShiftOptions(option.value)) {
-    const resolved = option.value;
-    return `${option.label} (${timeRangeOf(
-      resolved.map((s) => s.start),
-      resolved.map((s) => s.end),
-    )})`;
-  }
-  if (isRawShiftIds(option.value) && shifts) {
-    const matched = shifts.filter((s) => (option.value as number[]).includes(s.id));
-    if (matched.length > 0) {
-      return `${option.label} (${timeRangeOf(
-        matched.map((s) => s.start),
-        matched.map((s) => s.end),
-      )})`;
-    }
+    return `${option.label} (${formatTimeRange(option.value)})`;
   }
   return option.label;
 }
@@ -297,7 +250,7 @@ function QuestionBody({
   value,
   onChange,
   error,
-  shifts,
+  optionLabel = optionDisplayLabel,
   removedOptions = [],
 }: {
   field: QuestionFieldData;
@@ -305,7 +258,7 @@ function QuestionBody({
   value?: unknown;
   onChange?: (value: unknown) => void;
   error?: string;
-  shifts?: TournamentShift[] | null;
+  optionLabel?: (option: FormFieldOption) => string;
   locked?: boolean;
   removedOptions?: FormFieldOption[];
 }) {
@@ -383,7 +336,7 @@ function QuestionBody({
       const options = liveOptions;
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
-        label: optionDisplayLabel(opt, shifts),
+        label: optionLabel(opt),
         badge: badgeFor(opt.option_id),
       }));
       const selected = interactive ? ((value as string | undefined) ?? "") : "";
@@ -435,7 +388,7 @@ function QuestionBody({
       const options = liveOptions;
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
-        label: optionDisplayLabel(opt, shifts),
+        label: optionLabel(opt),
         badge: badgeFor(opt.option_id),
       }));
       const selected = interactive ? ((value as string[] | undefined) ?? []) : [];
@@ -515,59 +468,39 @@ function QuestionBody({
 
 // The TD-facing counterpart to QuestionBody — same question_type switch, but
 // each branch renders that type's config editor instead of an answer widget.
-// Reserved presets override the plain option-bearing-type editor only when
-// they're entity-backed (availability/event_preference, real tournament
-// data via EntityOptionsEditor) — lunch's options are freeform food choices,
-// so it shares the same OptionsEditor as any other select/checkbox field
-// (its date+category key derivation lives in PresetPopover, not here).
-// Branching/display_style support is purely a question_type property
-// (BRANCHING_TYPES/DISPLAY_STYLE_TYPES), not tied to whether the options
-// happen to be entity-backed — an availability field is still real,
-// addressable rows a TD can jump from or lay out as buttons, same as any
-// other single_select_radio/dropdown field.
+// An add-on can replace the options editor for its own questions (see
+// FieldExtension.OptionsEditor). Branching/display_style support is purely a
+// question_type property (BRANCHING_TYPES/DISPLAY_STYLE_TYPES), whichever
+// editor renders the rows.
 function QuestionEditBody({
   field,
   onFieldChange,
-  tournament,
   branchTargets,
   branchingEnabled,
   customValuesEnabled,
   errors = [],
   allowArchive = false,
-  onRequireTrack,
+  onOpenAddon,
 }: {
   field: QuestionFieldData;
   onFieldChange: (updates: FieldUpdate) => void;
-  tournament: Tournament | null;
   branchTargets?: BranchTarget[];
   branchingEnabled?: boolean;
   customValuesEnabled?: boolean;
   errors?: string[];
   allowArchive?: boolean;
-  onRequireTrack?: () => void;
+  onOpenAddon?: () => void;
 }) {
-  const presetKind = activePresetKind(field.field_key ?? "");
+  const extendable: ExtendableField = {
+    field_key: field.field_key ?? "",
+    question_type: field.question_type,
+    config: field.config,
+  };
+  const extension = useFieldExtension(extendable);
+  const AddonOptionsEditor = extension.OptionsEditor;
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type);
-  const isEntityBackedKind = isEntityBackedPreset(presetKind);
-  // The track named in the field's own key — scopes what the entity pickers
-  // may offer. track_status names no track, so it has none.
-  const presetTrackId =
-    presetKind === "availability"
-      ? parseAvailabilityFieldKey(field.field_key ?? "").trackId
-      : presetKind === "event_preference"
-        ? parseEventPreferenceFieldKey(field.field_key ?? "").trackId
-        : null;
-  const hasTracks =
-    presetKind === "track_status" ||
-    (presetKind === "availability" && !!field.config?.track_status_enabled);
-  // tournament null means the entity-backed editor has no scope to fetch
-  // shifts/events from — falls through to the read-only preview at the
-  // bottom instead (see the tournament prop doc on QuestionRenderer), never
-  // the plain freeform OptionsEditor: an availability/event_preference
-  // field's options are never TD-typed text, tournament or not.
-  const isEntity = isEntityBackedKind && !!tournament;
 
-  if (!isEntityBackedKind && field.question_type === "acknowledgment") {
+  if (field.question_type === "acknowledgment") {
     // Gated on the current config too, not just the errors snapshot from the
     // last Save attempt — otherwise typing into the field wouldn't clear its
     // own error until the next Save/validate() call re-ran.
@@ -577,8 +510,6 @@ function QuestionEditBody({
         : undefined;
     return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />;
   }
-
-  const usesTrackEditor = hasTracks && !!tournament;
 
   // Archived options reach the editor now that there's something to do with
   // them — OptionsEditor lists them separately with a restore action. They're
@@ -590,27 +521,19 @@ function QuestionEditBody({
   const setOptions = (options: EditableOption[]) =>
     onFieldChange({ config: { ...field.config, options } });
 
-  if (
-    isEntity ||
-    usesTrackEditor ||
-    (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))
-  ) {
+  if (OPTION_BEARING_TYPES.includes(field.question_type)) {
     return (
       <>
-        {isEntity || usesTrackEditor ? (
-          <EntityOptionsEditor
-            fieldKey={presetKind as "availability" | "event_preference" | "track_status"}
-            trackId={presetTrackId}
-            tournament={tournament!}
-            questionType={field.question_type}
+        {AddonOptionsEditor ? (
+          <AddonOptionsEditor
+            field={extendable}
             options={allOptions}
             onChange={setOptions}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             errors={errors}
-            trackStatusEnabled={hasTracks}
             allowArchive={allowArchive}
-            onRequireTrack={onRequireTrack}
+            onOpenAddon={onOpenAddon}
           />
         ) : (
           <OptionsEditor
@@ -624,14 +547,10 @@ function QuestionEditBody({
             errors={errors}
           />
         )}
-        {/* Ranks applies to ranked_choice regardless of whether its options
-            are entity-backed (event_preference) or freeform — the rank
-            mechanics are a property of the question type, not of where the
-            option rows come from. Duplicate ranks are different: an
-            event_preference field can never allow them (ranking the same
-            event twice is meaningless, and the backend rejects the config
-            outright — see validate_event_preference_options), so the toggle
-            is hidden rather than shown disabled. */}
+        {/* Ranks applies to ranked_choice whichever editor renders the rows —
+            the rank mechanics are a property of the question type. An add-on
+            can hide the duplicate-ranks toggle where duplicates can never be
+            allowed (hidden rather than shown disabled). */}
         {field.question_type === "ranked_choice" &&
           (() => {
             const options = liveOptions;
@@ -666,7 +585,7 @@ function QuestionEditBody({
                     fullWidth
                   />
                 </div>
-                {presetKind !== "event_preference" && (
+                {!extension.hideAllowDuplicates && (
                   <div
                     style={{
                       display: "flex",

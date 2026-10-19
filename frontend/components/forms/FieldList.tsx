@@ -24,17 +24,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
-import {
-  ApiError,
-  type FieldChange,
-  type Form,
-  type FormField,
-  formsApi,
-  type Tournament,
-  type TournamentShift,
-  tournamentShiftsApi,
-  tournamentsApi,
-} from "@/lib/api";
+import { ApiError, type FieldChange, type Form, type FormField, formsApi } from "@/lib/api";
 import { deriveBranchingEnabled } from "@/lib/forms/branching";
 import {
   CORE_ONLY,
@@ -54,8 +44,8 @@ import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 
 // How long a scroll-into-view keeps following a card that's still growing
-// (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
-// a slow connection, short enough that it can't surprise you later.
+// (see scrollCardIntoView) — long enough to cover an add-on's fetch on a
+// slow connection, short enough that it can't surprise you later.
 const SETTLE_MS = 2000;
 
 // How long a suspendCardScroll() call keeps the viewport still. Has to
@@ -111,14 +101,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
-  // The full tournament — this standalone /forms/ route sits outside the
-  // dashboard's TournamentProvider, so there's no shared context to read it
-  // from; fetched here and passed down as one object (id, start/end date,
-  // is_multi_day, ...) rather than threading the individual fields each
-  // consumer happens to need through every layer between here and them.
-  // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament).
-  const [tournament, setTournament] = useState<Tournament | null>(null);
   // Which toolbar popover is open, and on which field. A card's body can open
   // the add-on's with `demand` set — e.g. an entity picker used before its
   // question has a track sends the TD to where that's reported and fixed.
@@ -127,11 +109,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     popover: ActivePopover;
     demand?: boolean;
   } | null>(null);
-  // Fetched once here (not per-card) so every collapsed availability-preset
-  // card's preview can show its option's time range without each one
-  // re-fetching the same list — EntityOptionsEditor fetches its own copy
-  // too, but only while a field is actually expanded/being edited.
-  const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   // Questions taken out of use. Not part of `fields` — they must not join the
   // ordered list or read as branch targets — so they're fetched separately and
   // move between the two lists only when the TD restores one.
@@ -151,13 +128,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       .then(setArchivedFields)
       .catch(() => {});
   }, [form.id]);
-  useEffect(() => {
-    if (form.tournament_id == null) return;
-    tournamentShiftsApi
-      .list(form.tournament_id)
-      .then(setShifts)
-      .catch(() => {});
-  }, [form.tournament_id]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
@@ -238,9 +208,9 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
   // that does it. No-ops when it already fits, so it never yanks the page out
   // from under a scroll the user just made themselves.
   //
-  // Then keeps re-applying while the card is still settling: the entity-backed
-  // presets (availability, event_preference) fetch their shifts/events on
-  // expand, so those cards reach their real height a beat *after* we first
+  // Then keeps re-applying while the card is still settling: an add-on's
+  // options editor can fetch its data on expand, so those cards reach their
+  // real height a beat *after* we first
   // measure — one shot would scroll to a height that's about to change and
   // land short. The watch ends at the first sign of the user scrolling
   // themselves (our own smooth scroll doesn't fire these events, so it can't
@@ -378,15 +348,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     formsApi
       .listFieldKeysForTournament(form.tournament_id)
       .then(setUsedFieldKeys)
-      .catch(() => {});
-  }, [form.tournament_id]);
-
-  // Loaded eagerly on mount, not deferred until EntityOptionsEditor first renders.
-  useEffect(() => {
-    if (form.tournament_id == null) return;
-    tournamentsApi
-      .get(form.tournament_id)
-      .then(setTournament)
       .catch(() => {});
   }, [form.tournament_id]);
 
@@ -745,11 +706,9 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
                   onFieldChange={(updates) => updateField(field.clientKey, updates)}
                   onDuplicate={() => duplicateField(field.clientKey)}
                   onDelete={() => archiveField(field.clientKey)}
-                  tournament={tournament}
-                  shifts={shifts}
                   allFields={fields}
                   usedFieldKeys={usedFieldKeys}
-                  onRequireTrack={() =>
+                  onOpenAddon={() =>
                     setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
                   }
                   errors={validation.errorsFor(field.clientKey)}
