@@ -6,6 +6,7 @@ import { FieldList } from "@/components/forms/FieldList";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
 import { TitleCard } from "@/components/forms/TitleCard";
+import { tournamentAddon } from "@/components/forms/tournament/tournamentAddon";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 import { type Form, formsApi } from "@/lib/api";
@@ -90,7 +91,11 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
           </div>
         )}
         <TitleCard form={form} onUpdated={setForm} locked={!!lockedReason} />
-        <FieldList form={form} lockedReason={lockedReason} />
+        <FieldList
+          form={form}
+          lockedReason={lockedReason}
+          addon={form.tournament_id != null ? tournamentAddon : undefined}
+        />
       </div>
     </div>
   );

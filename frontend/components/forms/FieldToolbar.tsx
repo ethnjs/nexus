@@ -1,18 +1,17 @@
 "use client";
 
 import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
-import { PresetPopover } from "@/components/forms/PresetPopover";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
-import type { TournamentTrack } from "@/lib/api";
 import { withoutBranching } from "@/lib/forms/branching";
+import { useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { withoutCustomValues } from "@/lib/forms/customValues";
 import type { EditableField } from "@/lib/forms/editableField";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 import { activePresetKind, allowsCustomValues } from "@/lib/forms/tournament/presets";
 
-export type ActivePopover = "key" | "preset" | null;
+export type ActivePopover = "key" | "addon" | null;
 
 // The one toolbar shared by every field card (field key/presets, add a
 // field below, toggle the description input). It's absolutely positioned
@@ -29,12 +28,9 @@ export function FieldToolbar({
   allFields,
   errors,
   saveAttempt,
-  tracks,
-  onOpenPresets,
-  presetsEnabled,
   activePopover,
   onActivePopoverChange,
-  demandPresetComplete,
+  demandAddon,
   showDescription,
   onAddFieldBelow,
   onToggleDescription,
@@ -48,20 +44,14 @@ export function FieldToolbar({
   allFields: EditableField[];
   errors: string[];
   saveAttempt: number;
-  /** The tournament's individual running days — passed through to
-      PresetPopover's availability/lunch date pickers. */
-  tracks: TournamentTrack[];
-  /** Fires when the presets panel opens — see PresetPopover's onOpen. */
-  onOpenPresets?: () => void;
-  /** Which of the two popovers is open — only one can be at a time. Owned by
-      the caller so a card's body can pull the preset one open (an entity
+  /** Which popover is open — the key one or the add-on's, never both. Owned
+      by the caller so a card's body can pull the add-on's open (an entity
       picker used before the question has a track), and so switching fields
       closes whatever was left open. */
   activePopover: ActivePopover;
-  /** Forwarded to PresetPopover — see its `demandComplete`. */
-  demandPresetComplete?: boolean;
+  /** Forwarded to the add-on's toolbar — see AddonToolbarProps.demand. */
+  demandAddon?: boolean;
   onActivePopoverChange: (popover: ActivePopover) => void;
-  presetsEnabled: boolean;
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
@@ -69,8 +59,7 @@ export function FieldToolbar({
   displayStyle: "list" | "buttons" | undefined;
   onToggleDisplayStyle: () => void;
 }) {
-  // Only one of the key/preset popovers can be open at a time — setting one
-  // implicitly closes the other, since both read from this single slot.
+  const AddonToolbar = useFormBuilderAddon().Toolbar;
 
   function toggleBranching() {
     if (!field.branchingEnabled) {
@@ -145,18 +134,16 @@ export function FieldToolbar({
           open={activePopover === "key"}
           onOpenChange={(open) => onActivePopoverChange(open ? "key" : null)}
         />
-        {presetsEnabled && (
-          <PresetPopover
+        {AddonToolbar && (
+          <AddonToolbar
             field={field}
             onFieldChange={onFieldChange}
-            tracks={tracks}
-            onOpen={onOpenPresets}
+            allFields={allFields}
             errors={errors}
             saveAttempt={saveAttempt}
-            demandComplete={demandPresetComplete}
-            allFields={allFields}
-            open={activePopover === "preset"}
-            onOpenChange={(open) => onActivePopoverChange(open ? "preset" : null)}
+            demand={!!demandAddon}
+            open={activePopover === "addon"}
+            onOpenChange={(open) => onActivePopoverChange(open ? "addon" : null)}
           />
         )}
         {displayStyle && (

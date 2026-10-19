@@ -112,18 +112,16 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
   // is_multi_day, ...) rather than threading the individual fields each
   // consumer happens to need through every layer between here and them.
   // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament). `tracks` is what PresetPopover binds a preset to.
+  // tournament).
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  // Which toolbar popover is open, and on which field. A card's entity
-  // picker can set this to "preset" — using one before the question has a
-  // track sends the TD to the Track field, which is where that error is
-  // reported and fixed.
+  // Which toolbar popover is open, and on which field. A card's body can open
+  // the add-on's with `demand` set — e.g. an entity picker used before its
+  // question has a track sends the TD to where that's reported and fixed.
   const [popoverFor, setPopoverFor] = useState<{
     key: string;
     popover: ActivePopover;
-    demandComplete?: boolean;
+    demand?: boolean;
   } | null>(null);
-  const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
@@ -378,19 +376,14 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       .catch(() => {});
   }, [form.tournament_id]);
 
-  // Loaded eagerly on mount (not deferred until something that needs it —
-  // PresetPopover's date pickers, EntityOptionsEditor — first renders) and
-  // re-loaded every time a preset popover opens (see FieldToolbar's
-  // onOpenPresets below), so a tab left open a while doesn't show a
-  // page-load-stale tournament if its dates changed since.
-  function loadTournament() {
+  // Loaded eagerly on mount, not deferred until EntityOptionsEditor first renders.
+  useEffect(() => {
     if (form.tournament_id == null) return;
     tournamentsApi
       .get(form.tournament_id)
       .then(setTournament)
       .catch(() => {});
-  }
-  useEffect(loadTournament, [form.tournament_id]);
+  }, [form.tournament_id]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
@@ -464,7 +457,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     });
     setExpandedKey(copy.clientKey);
     setPendingScrollKey(copy.clientKey);
-    if (isPreset) setPopoverFor({ key: copy.clientKey, popover: "preset" });
+    if (isPreset) setPopoverFor({ key: copy.clientKey, popover: "addon" });
   }
 
   // Archiving the expanded card would otherwise drop the open count to zero —
@@ -755,7 +748,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
                   allFields={fields}
                   usedFieldKeys={usedFieldKeys}
                   onRequireTrack={() =>
-                    setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })
+                    setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
                   }
                   errors={validation.errorsFor(field.clientKey)}
                   allowArchive={hasResponses}
@@ -825,13 +818,8 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
             onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
             usedFieldKeys={usedFieldKeys}
             allFields={fields}
-            tracks={tracks}
-            presetsEnabled={form.tournament_id != null}
-            onOpenPresets={loadTournament}
             activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
-            demandPresetComplete={
-              popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete
-            }
+            demandAddon={popoverFor?.key === expandedField.clientKey && !!popoverFor.demand}
             onActivePopoverChange={(popover) =>
               setPopoverFor({ key: expandedField.clientKey, popover })
             }
