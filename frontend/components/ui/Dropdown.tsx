@@ -73,6 +73,8 @@ interface DropdownProps {
   label?: string;
   placeholder?: string;
   error?: string;
+  /** Gray note under the trigger — e.g. why it's locked. Hidden while `error` shows. */
+  helper?: string;
   locked?: boolean;
   fullWidth?: boolean;
   /** Marks the label with an asterisk, same as Input/Combobox. Display only
@@ -131,6 +133,7 @@ export function Dropdown({
   label,
   placeholder = "Select...",
   error,
+  helper,
   locked = false,
   fullWidth = false,
   required = false,
@@ -509,6 +512,17 @@ export function Dropdown({
             }}
           >
             {error}
+          </p>
+        )}
+        {helper && !error && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            {helper}
           </p>
         )}
       </div>

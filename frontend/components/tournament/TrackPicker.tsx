@@ -29,6 +29,7 @@ export function TrackPicker({
   size = "md",
   fullWidth,
   error,
+  helper,
 }: {
   label?: string;
   /** null = nothing picked yet. */
@@ -47,6 +48,8 @@ export function TrackPicker({
   size?: "sm" | "md";
   fullWidth?: boolean;
   error?: string;
+  /** Gray note under the picker — e.g. why it's locked. */
+  helper?: string;
 }) {
   // Fill in the sole track here rather than at each call site's state init:
   // the catalog is usually still loading when that state is created, so an
@@ -70,6 +73,7 @@ export function TrackPicker({
       size={size}
       fullWidth={fullWidth}
       error={error}
+      helper={helper}
     />
   );
 }

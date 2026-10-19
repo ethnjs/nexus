@@ -31,6 +31,7 @@ import {
   parseTrackStatusFieldKey,
   presetIncompleteMessage,
 } from "@/lib/forms/tournament/presets";
+import { isSimpleMode } from "@/lib/useTournament";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
 
@@ -484,16 +485,13 @@ function AvailabilityParams({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        emptyPlaceholder="Loading tracks…"
+      <PresetTrackPicker
         value={parsed.trackId}
         tracks={shiftTracks}
+        allTracks={tracks}
         onChange={setTrack}
-        error={showErrors && parsed.trackId === null ? "Track is required." : undefined}
+        showErrors={showErrors}
+        soleReason="Only one competition day track"
       />
       <Input
         label="Key (optional)"
@@ -504,6 +502,43 @@ function AvailabilityParams({
         fullWidth
       />
     </div>
+  );
+}
+
+// The track a preset binds to. A simple tournament's one track has nothing to
+// choose, so once TrackPicker has filled it in the picker hides. Otherwise,
+// when `tracks` narrows to one, it stays visible but locked, with `soleReason`.
+function PresetTrackPicker({
+  value,
+  tracks,
+  allTracks,
+  onChange,
+  showErrors,
+  soleReason,
+}: {
+  value: number | null;
+  /** The tracks this preset may bind to. */
+  tracks: TournamentTrack[];
+  /** Every live track, which decides whether the tournament is simple. */
+  allTracks: TournamentTrack[];
+  onChange: (trackId: number) => void;
+  showErrors: boolean;
+  soleReason: string;
+}) {
+  if (isSimpleMode(allTracks) && value !== null) return null;
+  return (
+    <TrackPicker
+      label="Track"
+      required
+      size="sm"
+      fullWidth
+      emptyPlaceholder="Loading tracks…"
+      value={value}
+      tracks={tracks}
+      onChange={onChange}
+      error={showErrors && value === null ? "Track is required." : undefined}
+      helper={tracks.length === 1 ? soleReason : undefined}
+    />
   );
 }
 
@@ -521,16 +556,13 @@ function EventPreferenceParams({
   const { trackId } = parseEventPreferenceFieldKey(field.field_key);
 
   return (
-    <TrackPicker
-      label="Track"
-      required
-      size="sm"
-      fullWidth
-      emptyPlaceholder="Loading tracks…"
+    <PresetTrackPicker
       value={trackId}
       tracks={tracks}
+      allTracks={tracks}
       onChange={(next) => onFieldChange({ field_key: buildEventPreferenceFieldKey(next) })}
-      error={showErrors && trackId === null ? "Track is required." : undefined}
+      showErrors={showErrors}
+      soleReason="Only one track"
     />
   );
 }
@@ -570,16 +602,13 @@ function LunchParams({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        emptyPlaceholder="Loading tracks…"
+      <PresetTrackPicker
         value={trackId}
         tracks={tracks}
+        allTracks={tracks}
         onChange={setTrack}
-        error={showErrors && trackId === null ? "Track is required." : undefined}
+        showErrors={showErrors}
+        soleReason="Only one track"
       />
       <Input
         label="Category"
