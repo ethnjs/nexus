@@ -12,12 +12,12 @@ export const REASON_LABELS: Record<PendingUpdateReason, string> = {
   option_regrouped: "An option covers different shifts or events",
   now_required: "This question is now required",
   key_changed: "Switched between a preset and a standard question",
-  text_changed: "The wording changed",
+  text_changed: "An option was renamed",
 };
 
 /** What the TD is actually weighing, for the judgment calls only. */
 export const REASON_CONSEQUENCES: Partial<Record<PendingUpdateReason, string>> = {
   key_changed:
     "Their answers won't reach availability, lunch or track status unless they resubmit.",
-  text_changed: "Only ask again if the new wording changes what you're asking for.",
+  text_changed: "Only ask again if the new name changes what picking that option means.",
 };

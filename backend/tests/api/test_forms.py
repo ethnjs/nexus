@@ -2079,8 +2079,6 @@ class TestClassifyFieldChanges:
     save confirmation. Writes nothing."""
 
     def _entry(self, field, **overrides):
-        # description included deliberately: omitting it means "clear it",
-        # which is itself a text change — the builder always sends it.
         entry = {
             "id": field.id,
             "label": field.label,
@@ -2160,33 +2158,47 @@ class TestClassifyFieldChanges:
             }
         ]
 
-    def test_wording_change_is_unlocked_and_defaults_off(self, client, db, td_user, td_tournament):
+    def test_option_rename_is_unlocked_and_defaults_off(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
+        field = _make_field(db, form, field_key="color")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        options = [{**field.config["options"][0], "label": "Crimson"}, field.config["options"][1]]
+        res = client.post(
+            f"/forms/{form.id}/fields/classify/",
+            json={
+                "fields": [self._entry(field, config={**field.config, "options": options})],
+            },
         )
+        assert res.json() == [
+            {
+                "field_id": field.id,
+                "label": "Favorite color",
+                "reasons": ["text_changed"],
+                "locked": False,
+                "notify_default": False,
+            }
+        ]
+
+    def test_question_text_and_description_edits_are_omitted(
+        self, client, db, td_user, td_tournament
+    ):
+        """Rewording or restyling a question doesn't change what a stored answer means."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color")
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         res = client.post(
             f"/forms/{form.id}/fields/classify/",
             json={
-                "fields": [self._entry(field, label="What colour?")],
+                "fields": [
+                    self._entry(field, label="What **colour**?", description="- Pick one"),
+                ],
             },
         )
-        assert res.json() == [
-            {
-                "field_id": field.id,
-                "label": "What colour?",
-                "reasons": ["text_changed"],
-                "locked": False,
-                "notify_default": False,
-            }
-        ]
+        assert res.json() == []
 
     def test_unchanged_and_new_fields_are_omitted(self, client, db, td_user, td_tournament):
         """The confirmation lists consequences, not a diff of the save."""

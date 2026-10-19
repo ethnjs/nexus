@@ -117,8 +117,6 @@ def classify_field_change(
     new_question_type: str,
     new_field_key: str,
     new_config: dict | None,
-    new_label: str,
-    new_description: str | None,
 ) -> set[str]:
     """Every reason this edit raises, mandatory and optional together. The
     caller decides which optional ones survive — see resolve_reasons."""
@@ -174,7 +172,10 @@ def classify_field_change(
         option_id in old_labels and old_labels[option_id] != label
         for option_id, label in new_labels.items()
     )
-    if new_label != old_field.label or new_description != old_field.description or label_changed:
+    # Question text and descriptions are left out: rewording or restyling them
+    # shouldn't prompt anyone to answer again, while a renamed option can
+    # change what a stored pick means.
+    if label_changed:
         reasons.add(TEXT_CHANGED)
 
     return reasons

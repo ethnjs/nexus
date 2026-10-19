@@ -557,8 +557,6 @@ def classify_field_changes(
             # either way they're absent from the old config, so they read as
             # added.
             new_config=assign_option_ids(entry.config),
-            new_label=entry.label,
-            new_description=entry.description,
         )
         if not reasons:
             continue
@@ -859,8 +857,6 @@ def bulk_update_fields(
                     new_question_type=entry.question_type,
                     new_field_key=new_field_key,
                     new_config=normalized_config,
-                    new_label=entry.label,
-                    new_description=entry.description,
                 )
                 reasons = changes.resolve_reasons(reasons, entry.notify_responders)
                 # The submitted option list is authoritative, including its

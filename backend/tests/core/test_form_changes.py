@@ -38,8 +38,6 @@ def _classify(field, **overrides):
         new_question_type=field.question_type,
         new_field_key=field.field_key,
         new_config=field.config,
-        new_label=field.label,
-        new_description=field.description,
     )
     args.update(overrides)
     return changes.classify_field_change(field, **args)
@@ -163,14 +161,6 @@ class TestFieldKey:
     def test_preset_to_different_preset_is_not_a_key_change(self):
         field = _field(field_key="availability_7")
         assert _classify(field, new_field_key="availability_8") == set()
-
-
-class TestText:
-    def test_label_edit_flags(self):
-        assert _classify(_field(), new_label="What colour do you like?") == {changes.TEXT_CHANGED}
-
-    def test_description_edit_flags(self):
-        assert _classify(_field(), new_description="Pick one") == {changes.TEXT_CHANGED}
 
 
 class TestResolveReasons:

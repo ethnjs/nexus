@@ -36,11 +36,11 @@ An added option flags everyone because a respondent may have settled for a lesse
 | Change | `reason` | Default |
 |---|---|---|
 | `field_key` moves between a preset and a plain key | `key_changed` | on |
-| Question label, description or option label changes | `text_changed` | off |
+| Option label changes | `text_changed` | off |
 
 `key_changed` defaults on because skipping it is invisible: write-through only runs on submit, so existing respondents never reach the structural tables unless they resubmit. The save-time confirmation modal (`POST /forms/{id}/fields/classify/`) lists every flagged question, shows mandatory reasons locked on, and lets the TD toggle the rest.
 
-**Never raised:** a `question_type` change within its shape class, an option `value` edit, archiving an option or field, and changes to order, `display_style` or branching targets.
+**Never raised:** a `question_type` change within its shape class, an option `value` edit, archiving an option or field, edits to the question label or description (rewording or formatting doesn't change what an answer means), and changes to order, `display_style` or branching targets.
 
 ### Shape classes
 
