@@ -46,7 +46,6 @@ import {
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
@@ -69,9 +68,10 @@ const SCROLL_MUTE_MS = 600;
 // snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
-/** `locked` (archived tournament) keeps every card a read-only preview — none
- *  can expand, so the toolbar and save bar never appear either. */
-export function FieldList({ form, locked = false }: { form: Form; locked?: boolean }) {
+/** `lockedReason` (archived tournament or form) keeps every card a read-only
+ *  preview — none can expand, so the toolbar and save bar never appear either. */
+export function FieldList({ form, lockedReason }: { form: Form; lockedReason?: string }) {
+  const locked = !!lockedReason;
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
       .filter((f) => !f.is_archived)
@@ -680,7 +680,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
                   size="sm"
                   onClick={() => addField()}
                   disabled={locked}
-                  title={locked ? ARCHIVED_REASON : undefined}
+                  title={lockedReason}
                 >
                   <IconPlus size={14} /> Add field
                 </Button>
@@ -708,7 +708,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
                 <FieldCard
                   key={field.clientKey}
                   field={field}
-                  expanded={expandedKey === field.clientKey}
+                  expanded={!locked && expandedKey === field.clientKey}
                   // Expanding grows the card downward from where it sat, so a
                   // click near the bottom of the viewport leaves most of the
                   // question you just opened below the fold.
@@ -763,7 +763,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         <ArchivedFieldsSection
           formId={form.id}
           fields={archivedFields}
-          locked={locked}
+          lockedReason={lockedReason}
           onUnarchive={unarchiveField}
           onDeleted={(fieldId) => {
             setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
@@ -789,7 +789,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         {/* Hidden mid-drag: it's absolutely positioned over the expanded card's
           box, which is now a one-line slot — a full-height toolbar of buttons
           floating beside it would just be in the way of the drop. */}
-        {expandedField && !draggingKey && (
+        {expandedField && !draggingKey && !locked && (
           <FieldToolbar
             // Remounts whenever the expanded field changes. The open popover
             // is keyed to its field (see popoverFor), so one left open doesn't

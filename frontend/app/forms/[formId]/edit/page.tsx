@@ -10,6 +10,7 @@ import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 import { type Form, formsApi } from "@/lib/api";
 import { builderLoadFailure } from "@/lib/forms/builderLoad";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 export default function FormEditPage({ params }: { params: Promise<{ formId: string }> }) {
@@ -67,6 +68,11 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   // This page lives outside the tournament layout, so the archive flag rides
   // on the form itself rather than coming from useTournament.
   const locked = !!form.tournament_is_archived;
+  const lockedReason = locked
+    ? ARCHIVED_REASON
+    : form.status === "archived"
+      ? FORM_ARCHIVED_REASON
+      : undefined;
 
   return (
     <div>
@@ -78,13 +84,13 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
         activeTab="questions"
       />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
-        {locked && (
+        {lockedReason && (
           <div style={{ marginBottom: "16px" }}>
-            <Banner variant="warning" message={ARCHIVED_REASON} />
+            <Banner variant="warning" message={lockedReason} />
           </div>
         )}
-        <TitleCard form={form} onUpdated={setForm} locked={locked} />
-        <FieldList form={form} locked={locked} />
+        <TitleCard form={form} onUpdated={setForm} locked={!!lockedReason} />
+        <FieldList form={form} lockedReason={lockedReason} />
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ from app.core.form import (
 )
 from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
 from app.core.form.permissions import (
+    require_form_editable,
     require_form_manage_access,
     require_form_not_archived,
     require_form_view_access,
@@ -607,6 +608,8 @@ def update_form(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    if payload.model_fields_set - {"status"}:
+        require_form_editable(form)
     if payload.status == "published" and form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -712,6 +715,7 @@ def bulk_update_fields(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    require_form_editable(form)
     is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
@@ -1377,6 +1381,7 @@ def invalidate_form_field(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    require_form_editable(form)
     field = (
         db.query(FormField).filter(FormField.form_id == form.id, FormField.id == field_id).first()
     )

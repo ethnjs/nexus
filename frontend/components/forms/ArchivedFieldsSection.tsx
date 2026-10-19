@@ -7,7 +7,6 @@ import { IconChevronDown, IconRestore, IconTrash } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, type FormField, formsApi } from "@/lib/api";
 import { QUESTION_TYPE_OPTIONS } from "@/lib/forms/fieldTypes";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 const TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -25,12 +24,12 @@ export function ArchivedFieldsSection({
   fields,
   onUnarchive,
   onDeleted,
-  locked = false,
+  lockedReason,
 }: {
   formId: string;
   fields: FormField[];
-  /** Archived tournament — the list stays browsable, both actions lock. */
-  locked?: boolean;
+  /** Archived tournament or form — the list stays browsable, both actions lock. */
+  lockedReason?: string;
   /** Hands the field to the builder, which unarchives it on the next Save —
       it isn't its own request, it's part of the target field list. */
   onUnarchive: (field: FormField) => void;
@@ -120,8 +119,8 @@ export function ArchivedFieldsSection({
                   variant="secondary"
                   size="xs"
                   onClick={() => onUnarchive(field)}
-                  disabled={locked}
-                  title={locked ? ARCHIVED_REASON : undefined}
+                  disabled={!!lockedReason}
+                  title={lockedReason}
                 >
                   <IconRestore size={12} /> Unarchive
                 </Button>
@@ -130,8 +129,8 @@ export function ArchivedFieldsSection({
                   variant="ghost"
                   size="xs"
                   iconOnly
-                  disabled={locked}
-                  title={locked ? ARCHIVED_REASON : "Delete permanently"}
+                  disabled={!!lockedReason}
+                  title={lockedReason ?? "Delete permanently"}
                   onClick={() => {
                     setError(undefined);
                     setConfirming(field);

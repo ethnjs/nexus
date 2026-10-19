@@ -151,6 +151,6 @@ An assignment is `{"id": <TournamentTrack id>, "status": "interested" | "confirm
 
 - Only a `published` form accepts responses. Submitting to any other returns 409.
 - Publishing validates the whole form (`validate_form_for_publish`): at least one live field, and every config and branching target valid together. Failures return 422.
-- An `archived` form can't be published directly. Move it back to `draft` first (409 otherwise).
+- An `archived` form is read-only: its questions, name, title, description and settings can't change (409). It can only be moved back to `draft`, or deleted if it has no responses. It can't be published directly.
 - A form with responses can be unpublished to `draft`, but its edits stay history-preserving: removing a field or option archives it instead of deleting it. Only a draft that has never been answered is edited destructively.
 - A form with responses can't be deleted (409); archive it instead.

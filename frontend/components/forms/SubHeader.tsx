@@ -11,6 +11,7 @@ import { EditableText } from "@/components/ui/EditableText";
 import { IconArrowLeft, IconEye } from "@/components/ui/Icons";
 import { TabStrip } from "@/components/ui/TabStrip";
 import { type Form, type FormStatus, formsApi } from "@/lib/api";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -42,7 +43,8 @@ export function SubHeader({
   form: Form;
   onUpdated: (form: Form) => void;
   onDeleted: () => void;
-  /** Archived tournament — name and status are frozen. */
+  /** Archived tournament — name and status are frozen. An archived form
+   *  freezes its name too, but keeps its status control so it can be restored. */
   locked?: boolean;
   activeTab: FormTab;
   /** The responses view is two-pane, so it runs wider than the builder. */
@@ -56,6 +58,11 @@ export function SubHeader({
   const { guard } = useUnsavedChanges();
   const backHref =
     form.owner_type === "tournament" ? `/dashboard/tournaments/${form.tournament_id}/forms` : null;
+  const nameLockedReason = locked
+    ? ARCHIVED_REASON
+    : form.status === "archived"
+      ? FORM_ARCHIVED_REASON
+      : undefined;
 
   // Two siblings, not one wrapper: sticky only holds within its parent, so
   // the tab row has to sit directly in the page to stay pinned while it scrolls.
@@ -87,8 +94,8 @@ export function SubHeader({
               value={form.name}
               onSave={async (name) => onUpdated(await formsApi.update(form.id, { name }))}
               textStyle={{ fontSize: "15px", fontWeight: 600 }}
-              title={locked ? ARCHIVED_REASON : "Click to edit name"}
-              locked={locked}
+              title={nameLockedReason ?? "Click to edit name"}
+              locked={!!nameLockedReason}
             />
             <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
           </div>

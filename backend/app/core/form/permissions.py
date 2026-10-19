@@ -37,6 +37,16 @@ def require_form_not_archived(form: Form) -> None:
         require_not_archived(form.tournament)
 
 
+def require_form_editable(form: Form) -> None:
+    """Call in routes that change a form's content. An archived form is
+    read-only until it's restored to draft."""
+    if form.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This form is archived — restore it to draft to edit it",
+        )
+
+
 def require_form_manage_access(
     form_id: str,
     db: Session = Depends(get_db),

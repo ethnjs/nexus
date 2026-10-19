@@ -13,6 +13,7 @@ import {
 import { Popover } from "@/components/ui/Popover";
 import { Switch } from "@/components/ui/Switch";
 import { ApiError, type FormStatus, formsApi } from "@/lib/api";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { useToast } from "@/lib/useToast";
 
 export type FormMenuKey =
@@ -58,6 +59,8 @@ export function FormActionsMenu({
 }) {
   const { show } = useToast();
   const [busy, setBusy] = useState(false);
+  const editsLockedReason =
+    lockedReason ?? (form.status === "archived" ? FORM_ARCHIVED_REASON : undefined);
 
   async function copyJson() {
     const full = await formsApi.get(form.id);
@@ -135,10 +138,10 @@ export function FormActionsMenu({
         isDisabled={(key) =>
           key === "copy-link"
             ? form.status !== "published"
-            : key === "allow-edits" && !!lockedReason
+            : key === "allow-edits" && !!editsLockedReason
         }
         disabledReason={(key) =>
-          key === "copy-link" ? "Publish the form to share its link." : lockedReason
+          key === "copy-link" ? "Publish the form to share its link." : editsLockedReason
         }
         onSelect={handleSelect}
         // The toggle row needs room for its label and switch side by side.

@@ -797,6 +797,37 @@ class TestUpdateArchiveDeleteForm:
         assert res.status_code == 200
         assert res.json()["status"] == "draft"
 
+    def test_archived_form_content_is_read_only(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        field = _make_field(db, form)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        for payload in (
+            {"name": "Renamed"},
+            {"title": "New title"},
+            {"description": "New description"},
+            {"allow_response_edits": True},
+            {"name": "Renamed", "status": "draft"},
+        ):
+            assert client.patch(f"/forms/{form.id}/", json=payload).status_code == 409
+        assert client.put(f"/forms/{form.id}/fields/", json={"fields": []}).status_code == 409
+        assert client.delete(f"/forms/{form.id}/fields/{field.id}/").status_code == 409
+
+        db.refresh(form)
+        assert form.status == "archived"
+        assert form.name != "Renamed"
+        assert db.query(FormField).filter(FormField.id == field.id).first() is not None
+
+    def test_archived_form_without_responses_can_be_deleted(
+        self, client, db, td_user, td_tournament
+    ):
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.delete(f"/forms/{form.id}/").status_code == 204
+
     def test_unpublish_published_form_to_draft(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         db.commit()
