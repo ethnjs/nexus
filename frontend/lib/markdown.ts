@@ -11,8 +11,8 @@ export type Block =
   | { type: "bullet"; items: Span[][] }
   | { type: "ordered"; start: number; items: Span[][] };
 
-// Also the order marks open in when serialized, so `marks` arrays are kept sorted by it.
-const MARK_ORDER: InlineMark[] = ["bold", "underline", "italic"];
+// The order marks open in when serialized; every `marks` array is kept sorted by it.
+export const INLINE_MARKS: InlineMark[] = ["bold", "underline", "italic"];
 const DELIMITER: Record<InlineMark, string> = { bold: "**", underline: "__", italic: "*" };
 
 const PUNCTUATION = /[!-/:-@[-`{-~]/;
@@ -238,7 +238,7 @@ function flatten(nodes: Node[], marks: InlineMark[], href: string | undefined, o
     } else if ("mark" in node) {
       const next = marks.includes(node.mark)
         ? marks
-        : MARK_ORDER.filter((mark) => mark === node.mark || marks.includes(mark));
+        : INLINE_MARKS.filter((mark) => mark === node.mark || marks.includes(mark));
       flatten(node.children, next, href, out);
     } else {
       flatten(node.children, marks, isSafeHref(node.href) ? node.href : href, out);
