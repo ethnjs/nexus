@@ -44,6 +44,7 @@ import {
   toFieldInput,
   withOptionClientKeys,
 } from "@/lib/forms/editableField";
+import { activePresetKind } from "@/lib/forms/fieldKeyPresets";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 
@@ -417,11 +418,15 @@ export function FieldList({ form, lockedReason }: { form: Form; lockedReason?: s
     const source = fields.find((f) => f.clientKey === clientKey);
     if (!source) return;
     const insertIndex = fields.findIndex((f) => f.clientKey === clientKey) + 1;
+    // A preset copy keeps its source's key and values, so it starts out
+    // colliding and the preset popover opens to make it distinct. A plain
+    // question's key is just its label's slug, re-derived for the copy.
+    const isPreset = !!activePresetKind(source.field_key);
     const copy: EditableField = {
       ...source,
       clientKey: crypto.randomUUID(),
       id: null,
-      field_key: "",
+      field_key: isPreset ? source.field_key : "",
       originalFieldKey: "",
       config: source.config?.options
         ? {
@@ -441,6 +446,7 @@ export function FieldList({ form, lockedReason }: { form: Form; lockedReason?: s
     });
     setExpandedKey(copy.clientKey);
     setPendingScrollKey(copy.clientKey);
+    if (isPreset) setPopoverFor({ key: copy.clientKey, popover: "preset" });
   }
 
   // Archiving the expanded card would otherwise drop the open count to zero —

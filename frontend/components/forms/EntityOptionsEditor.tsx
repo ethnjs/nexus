@@ -8,6 +8,7 @@ import {
   newEntityOption,
   OptionsEditor,
 } from "@/components/forms/OptionsEditor";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { ChipInput } from "@/components/ui/ChipInput";
@@ -176,23 +177,26 @@ export function EntityOptionsEditor({
   // there is nothing to pick from until the preset names one.
   const trackMissing = isEntity && trackId === null;
 
-  // An event that doesn't run on this question's track can't be offered:
-  // the backend rejects the option outright. Greyed with the reason rather
-  // than hidden, so a TD looking for it learns why it isn't pickable.
+  // A shift or event that isn't on this question's track can't be offered:
+  // the backend rejects the option outright. One already picked stays as a
+  // danger chip (a duplicate moved to another track, say) until the TD
+  // removes it, rather than being dropped behind their back.
   function offTrackReason(entity: Entity): string | undefined {
-    if (fieldKey !== "event_preference" || trackId === null) return undefined;
-    const event = entity as TournamentEvent;
-    return event.tracks.some((track) => track.id === trackId) ? undefined : "Not on this track";
+    if (!isEntity || trackId === null) return undefined;
+    const onTrack =
+      fieldKey === "availability"
+        ? (entity as TournamentShift).track_id === trackId
+        : (entity as TournamentEvent).tracks.some((track) => track.id === trackId);
+    return onTrack ? undefined : "Not on this track";
   }
 
   useEffect(() => {
     if (!isEntity) return;
-    // Availability asks the server for the track's shifts; events come back
-    // whole, since one that doesn't run on the track is still worth showing
-    // as unavailable rather than vanishing (see offTrackReason).
+    // The whole catalog, not just this track's: picks from another track
+    // still have to render (see offTrackReason).
     const list =
       fieldKey === "availability"
-        ? tournamentShiftsApi.list(tournament.id, trackId !== null ? { trackId } : {})
+        ? tournamentShiftsApi.list(tournament.id)
         : tournamentEventsApi.list(tournament.id);
     list
       .then(setEntities)
@@ -203,20 +207,23 @@ export function EntityOptionsEditor({
             : `Failed to load ${fieldKey === "availability" ? "shifts" : "events"}.`,
         ),
       );
-  }, [fieldKey, isEntity, trackId, tournament.id]);
+  }, [fieldKey, isEntity, tournament.id]);
+
+  function withEntityIds(option: EditableOption, ids: number[]): EditableOption {
+    return fieldKey === "availability" && trackStatusEnabled
+      ? { ...option, value: { shift_ids: ids, track_status: statusFor(option) } }
+      : { ...option, value: ids };
+  }
 
   function toggleEntity(clientKey: string, entityId: number) {
     onChange(
       options.map((option) => {
         if (option.clientKey !== clientKey) return option;
         const ids = shiftIdsFor(option);
-        const nextIds = ids.includes(entityId)
-          ? ids.filter((id) => id !== entityId)
-          : [...ids, entityId];
-        if (fieldKey === "availability" && trackStatusEnabled) {
-          return { ...option, value: { shift_ids: nextIds, track_status: statusFor(option) } };
-        }
-        return { ...option, value: nextIds };
+        return withEntityIds(
+          option,
+          ids.includes(entityId) ? ids.filter((id) => id !== entityId) : [...ids, entityId],
+        );
       }),
     );
   }
@@ -224,6 +231,26 @@ export function EntityOptionsEditor({
   const loading = entities === null;
   const loaded = entities ?? [];
   const noun = fieldKey === "availability" ? "shifts" : "events";
+  // Archived options count too: the backend validates every option it stores.
+  const offTrackIds = new Set(
+    loaded.filter((entity) => offTrackReason(entity)).map((entity) => entity.id),
+  );
+  const offTrackPickCount = isEntity
+    ? options.reduce(
+        (count, option) => count + shiftIdsFor(option).filter((id) => offTrackIds.has(id)).length,
+        0,
+      )
+    : 0;
+
+  function removeOffTrackPicks() {
+    onChange(
+      options.map((option) => {
+        const ids = shiftIdsFor(option);
+        const kept = ids.filter((id) => !offTrackIds.has(id));
+        return kept.length === ids.length ? option : withEntityIds(option, kept);
+      }),
+    );
+  }
   const emptyMessage = loading
     ? `Loading ${noun}...`
     : fieldKey === "availability"
@@ -244,6 +271,19 @@ export function EntityOptionsEditor({
           {loadError}
         </p>
       )}
+      {offTrackPickCount > 0 && (
+        <div style={{ marginBottom: "10px" }}>
+          <Banner
+            variant="error"
+            message={`${offTrackPickCount} ${offTrackPickCount === 1 ? noun.slice(0, -1) : noun} ${offTrackPickCount === 1 ? "isn't" : "aren't"} on ${trackName ?? "this question's track"}.`}
+            action={
+              <Button type="button" variant="secondary" size="xs" onClick={removeOffTrackPicks}>
+                Remove {offTrackPickCount === 1 ? "it" : "them"}
+              </Button>
+            }
+          />
+        </div>
+      )}
       <OptionsEditor
         options={options}
         onChange={onChange}
@@ -260,6 +300,13 @@ export function EntityOptionsEditor({
               <EntityPicker
                 selectedIds={shiftIdsFor(option)}
                 entities={loaded}
+                // Another track's shifts are left out of the list entirely —
+                // a multi-day tournament has too many to show greyed out.
+                pickable={
+                  fieldKey === "availability"
+                    ? loaded.filter((entity) => !offTrackReason(entity))
+                    : loaded
+                }
                 fieldKey={fieldKey as Exclude<EntityFieldKey, "track_status">}
                 isMultiDay={tournament.is_multi_day}
                 emptyMessage={emptyMessage}
@@ -342,6 +389,7 @@ export function EntityOptionsEditor({
 function EntityPicker({
   selectedIds,
   entities,
+  pickable,
   fieldKey,
   isMultiDay,
   emptyMessage,
@@ -351,6 +399,8 @@ function EntityPicker({
 }: {
   selectedIds: number[];
   entities: Entity[];
+  /** What the add list offers; `entities` is everything a chip may name. */
+  pickable: Entity[];
   fieldKey: Exclude<EntityFieldKey, "track_status">;
   isMultiDay: boolean;
   emptyMessage: string;
@@ -362,6 +412,8 @@ function EntityPicker({
   onRequireTrack?: () => void;
 }) {
   const selectedEntities = entities.filter((entity) => selectedIds.includes(entity.id));
+  const entityForChip = (chip: string) =>
+    selectedEntities.find((item) => entityLabel(fieldKey, item, isMultiDay) === chip);
   function handleChipsChange(chips: string[]) {
     const removed = selectedEntities.find(
       (entity) => !chips.includes(entityLabel(fieldKey, entity, isMultiDay)),
@@ -376,11 +428,14 @@ function EntityPicker({
       variant="transparent"
       size="sm"
       fullWidth
+      getChipStatus={(chip) => {
+        const entity = entityForChip(chip);
+        return entity && disabledReason?.(entity) ? "error" : "default";
+      }}
       getChipTooltip={(chip) => {
-        const entity = selectedEntities.find(
-          (item) => entityLabel(fieldKey, item, isMultiDay) === chip,
-        );
-        return entity ? entityTooltip(fieldKey, entity, isMultiDay) : undefined;
+        const entity = entityForChip(chip);
+        if (!entity) return undefined;
+        return disabledReason?.(entity) ?? entityTooltip(fieldKey, entity, isMultiDay);
       }}
       addButton={
         onRequireTrack ? (
@@ -394,7 +449,7 @@ function EntityPicker({
                 <IconPlus size={11} /> {fieldKey === "availability" ? "Shifts" : "Events"}
               </Button>
             }
-            items={entities}
+            items={pickable}
             getKey={(entity) => entity.id}
             renderLabel={(entity) => entityPickerLabel(fieldKey, entity, isMultiDay)}
             onToggle={(entity) => onToggle(entity.id)}

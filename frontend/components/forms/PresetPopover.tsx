@@ -17,6 +17,7 @@ import {
   buildEventPreferenceFieldKey,
   buildLunchFieldKey,
   buildTrackStatusFieldKey,
+  effectiveFieldKey,
   isEntityBackedPreset,
   isFieldKeyError,
   isPresetError,
@@ -76,6 +77,14 @@ function carryOptions(
   }));
 }
 
+const SAME_FORM_DUPLICATE_MESSAGE: Record<PresetKind, string> = {
+  availability: "Another question here already uses this track and key. Change one of them.",
+  event_preference:
+    "Another question here already asks for this track's events. Pick another track.",
+  lunch: "Another question here already asks this track and category. Change one of them.",
+  track_status: "Another question here already uses this key. Change it.",
+};
+
 const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
@@ -100,9 +109,12 @@ export function PresetPopover({
   demandComplete,
   open,
   onOpenChange,
+  allFields,
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
+  /** The form's staged questions, for the live same-form duplicate check. */
+  allFields: EditableField[];
   /** The tournament's live tracks — every reserved key but track_status is
       scoped to one. Empty while still loading (or on a chapter-owned form
       with no tournament). */
@@ -151,7 +163,21 @@ export function PresetPopover({
     setPrevFieldKey(field.field_key);
     setDupDismissed(true);
   }
-  const duplicateError = dupDismissed ? undefined : rawDuplicateError;
+  // Checked live, unlike the cross-form collision above: a duplicated question
+  // starts out sharing its source's preset, and should say so right away.
+  const sameFormDuplicate =
+    !!presetKind &&
+    !field.field_key.endsWith("_") &&
+    allFields.some(
+      (other) =>
+        other.clientKey !== field.clientKey && effectiveFieldKey(other) === field.field_key,
+    );
+  const duplicateError =
+    presetKind && sameFormDuplicate
+      ? SAME_FORM_DUPLICATE_MESSAGE[presetKind]
+      : dupDismissed
+        ? undefined
+        : rawDuplicateError;
   const keyError = incompleteError ?? duplicateError;
 
   const attemptFailed = saveAttempt > 0 && !!(incompleteError || rawDuplicateError);

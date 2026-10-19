@@ -162,6 +162,7 @@ export function FieldToolbar({
             errors={errors}
             saveAttempt={saveAttempt}
             demandComplete={demandPresetComplete}
+            allFields={allFields}
             open={activePopover === "preset"}
             onOpenChange={(open) => onActivePopoverChange(open ? "preset" : null)}
           />
