@@ -20,6 +20,7 @@ from app.core.oauth import (
     AccountInactive,
     EmailUnverified,
     IdentityLinkError,
+    discord_link_redirect_uri,
     email_and_sub,
     frontend_redirect,
     get_google_oauth,
@@ -197,7 +198,7 @@ def discord_start(
         {"discord_state": state, "oauth_link_user_id": session_row.user_id, "oauth_redirect": dest}
     )
     url = discord_oauth.authorize_url(
-        redirect_uri=get_settings().discord_link_redirect_uri, state=state, scopes=["identify"]
+        redirect_uri=discord_link_redirect_uri(), state=state, scopes=["identify"]
     )
     return RedirectResponse(url, status_code=302)
 
@@ -227,7 +228,7 @@ def discord_callback(
         return fail("discord_failed")
 
     try:
-        token = discord_oauth.exchange_code(code, get_settings().discord_link_redirect_uri)
+        token = discord_oauth.exchange_code(code, discord_link_redirect_uri())
         profile = discord_oauth.fetch_current_user(token["access_token"])
         account_id = str(profile["id"])
     except (discord_oauth.DiscordOAuthError, KeyError):

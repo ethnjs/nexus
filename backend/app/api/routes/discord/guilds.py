@@ -23,7 +23,6 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_active_session
-from app.core.config import get_settings
 from app.core.discord import build as discord_build
 from app.core.discord.deps import require_discord_enabled
 from app.core.discord.links import (
@@ -37,7 +36,7 @@ from app.core.discord.links import (
 )
 from app.core.discord.marks import mark_full
 from app.core.discord.previews import PreviewExpired, sign, verify
-from app.core.oauth import frontend_redirect, with_query
+from app.core.oauth import discord_install_redirect_uri, frontend_redirect, with_query
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
     DISCORD_SERVER_LINKED,
@@ -126,7 +125,7 @@ def start_install(
     }
     # `identify` is what makes Discord's token response carry the `guild` object.
     url = discord_oauth.authorize_url(
-        redirect_uri=get_settings().discord_install_redirect_uri,
+        redirect_uri=discord_install_redirect_uri(),
         state=state,
         scopes=["bot", "applications.commands", "identify"],
         permissions=str(ADMINISTRATOR),
@@ -179,7 +178,7 @@ def finish_install(
         return bounce(error="discord_failed")
 
     try:
-        token = discord_oauth.exchange_code(code, get_settings().discord_install_redirect_uri)
+        token = discord_oauth.exchange_code(code, discord_install_redirect_uri())
     except DiscordOAuthError as exc:
         log.warning("Discord install code exchange failed: %s", exc)
         return bounce(error="discord_failed")
