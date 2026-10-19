@@ -781,6 +781,7 @@ export function FieldList({ form, lockedReason }: { form: Form; lockedReason?: s
               ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.`
               : validation.saveError || undefined
           }
+          errorDetails={validation.hasErrors ? undefined : validation.saveErrorDetails}
           onSave={handleSave}
           onCancel={handleDiscard}
           onHeightChange={handleSaveBarHeight}

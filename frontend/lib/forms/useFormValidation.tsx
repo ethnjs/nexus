@@ -170,9 +170,17 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
 // than a per-row {errors, warnings} shape.
 export function useFormValidation() {
   const [validationErrors, setValidationErrors] = useState<FieldValidationIssue[]>([]);
-  const [saveError, setSaveError] = useState("");
+  const [saveError, setSaveErrorMessage] = useState("");
+  // The full text of a 422, which can run to dozens of lines of pydantic
+  // errors — the save bar shows a one-liner and keeps this behind Details.
+  const [saveErrorDetails, setSaveErrorDetails] = useState<string>();
 
   const hasErrors = validationErrors.length > 0;
+
+  function setSaveError(message: string) {
+    setSaveErrorMessage(message);
+    setSaveErrorDetails(undefined);
+  }
 
   function validate(fields: ValidatableField[]): FieldValidationIssue[] {
     const issues = validateFields(fields);
@@ -213,6 +221,13 @@ export function useFormValidation() {
       setSaveError("");
       return issues;
     }
+    if (e.status === 422) {
+      setSaveErrorMessage("Couldn't save these changes.");
+      setSaveErrorDetails(
+        typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail, null, 2),
+      );
+      return [];
+    }
     setSaveError(e.message);
     return [];
   }
@@ -235,6 +250,7 @@ export function useFormValidation() {
     validationErrors,
     hasErrors,
     saveError,
+    saveErrorDetails,
     setSaveError,
     validate,
     errorsFor,
