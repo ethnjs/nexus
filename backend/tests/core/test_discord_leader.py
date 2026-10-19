@@ -73,3 +73,13 @@ async def test_lost_connection_stops_the_work_and_competes_again():
         assert events == [("a", "elected"), ("a", "deposed"), ("a", "elected")]
     finally:
         await a.stop()
+
+
+def test_a_dead_leaders_session_times_out_on_the_server():
+    conn = _contender("a", [])._try_acquire()
+    assert conn is not None
+    try:
+        row = conn.execute("SHOW idle_session_timeout").fetchone()
+        assert row is not None and row[0] == "2min"
+    finally:
+        conn.close()
