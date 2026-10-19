@@ -1,6 +1,7 @@
 import httpx2
 import pytest
 
+from app.services.discord import rest
 from app.services.discord.rest import DiscordRest, InteractionReplyError
 
 
@@ -18,3 +19,11 @@ async def test_a_failed_reply_edit_raises_without_the_token(monkeypatch):
         await DiscordRest("token").edit_interaction_reply("secret-token", {"content": "Hi"})
     assert str(caught.value) == "editing the interaction reply failed: ReadTimeout"
     assert caught.value.__suppress_context__
+
+
+async def test_long_rate_limit_waits_raise_instead_of_stalling():
+    http = rest._http_client()
+    try:
+        assert http.max_ratelimit_timeout == rest.MAX_RATE_LIMIT_WAIT
+    finally:
+        await http.close()
