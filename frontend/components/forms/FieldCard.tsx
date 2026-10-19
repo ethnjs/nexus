@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { type BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,6 +12,7 @@ import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
+import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
@@ -26,7 +27,7 @@ import {
   PRESETS,
 } from "@/lib/forms/tournament/presets";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
-import { backwardBranchTargetIds, issuesFor } from "@/lib/forms/useFormValidation";
+import { issuesFor } from "@/lib/forms/useFormValidation";
 
 // How long to keep waiting for the clicked input to exist. The entity-backed
 // editors (availability/event_preference) render "Loading shifts…" until their
@@ -236,18 +237,7 @@ export function FieldCard({
   // that broke the branch lands.
   const hasBackwardBranch = backwardBranchTargetIds(field, allFields).size > 0;
   const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError || hasBackwardBranch;
-  const position = allFields.findIndex((f) => f.clientKey === field.clientKey);
-  const branchTargets = allFields.flatMap<BranchTarget>((f, i) =>
-    i === position
-      ? []
-      : [
-          {
-            id: f.id,
-            label: f.label.trim(),
-            position: i < position ? "above" : i === position + 1 ? "next" : "below",
-          },
-        ],
-  );
+  const branchTargets = branchTargetsFor(field, allFields);
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't

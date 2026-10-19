@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EventOptionsPickerModal } from "@/components/forms/EventOptionsPickerModal";
 import {
-  type BranchTarget,
   type EditableOption,
   newEntityOption,
   OptionsEditor,
@@ -28,6 +27,7 @@ import {
   tournamentTracksApi,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
+import type { BranchTarget } from "@/lib/forms/branching";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 type EntityFieldKey = "availability" | "event_preference" | "track_status";

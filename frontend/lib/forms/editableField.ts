@@ -19,8 +19,8 @@ import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 // branchingEnabled/customValuesEnabled are the same kind of draft-only UI
 // state, now living on the field (not a component's local useState) so they
 // survive FieldToolbar remounting on every expanded-field switch — see
-// deriveBranchingEnabled/deriveCustomValuesEnabled below for how a loaded
-// field's initial value is worked out from its actual option data.
+// deriveBranchingEnabled (branching.ts) and deriveCustomValuesEnabled
+// (customValues.ts) for how a loaded field's initial value is worked out.
 // originalFieldKey is the key this field is already known to own on the
 // server ("" for a field with no id, which can't own one yet) — the fixed
 // point a live cross-form duplicate check (FieldCard's duplicateKey) needs
@@ -34,22 +34,6 @@ export type EditableField = Omit<FormField, "id"> & {
   customValuesEnabled: boolean;
   originalFieldKey: string;
 };
-
-// A field's options actually use branching/custom values yet — used to seed
-// branchingEnabled/customValuesEnabled when a field is first loaded (or
-// reloaded after Save), so the toggle reflects real data instead of
-// defaulting to off and hiding a branch/value an earlier session set up.
-export function deriveBranchingEnabled(field: FormField): boolean {
-  return (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null);
-}
-
-export function hasCustomValues(options: FormFieldOption[] | null | undefined): boolean {
-  return (options ?? []).some((o) => typeof o.value === "string" && o.value !== o.label);
-}
-
-export function deriveCustomValuesEnabled(field: FormField): boolean {
-  return hasCustomValues(field.config?.options);
-}
 
 type StagedOption = FormFieldOption & { clientKey?: string };
 

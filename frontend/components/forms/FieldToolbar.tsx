@@ -1,12 +1,13 @@
 "use client";
 
 import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
-import type { EditableOption } from "@/components/forms/OptionsEditor";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
 import type { TournamentTrack } from "@/lib/api";
+import { withoutBranching } from "@/lib/forms/branching";
+import { withoutCustomValues } from "@/lib/forms/customValues";
 import type { EditableField } from "@/lib/forms/editableField";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 import { activePresetKind, allowsCustomValues } from "@/lib/forms/tournament/presets";
@@ -71,22 +72,14 @@ export function FieldToolbar({
   // Only one of the key/preset popovers can be open at a time — setting one
   // implicitly closes the other, since both read from this single slot.
 
-  // Turning a toggle off doesn't just hide the extra UI — it resets the data
-  // those rows were carrying back to the "off" default, so a TD who turns
-  // branching/custom values back on later starts from a clean slate instead
-  // of silently-still-there jump targets/values from before.
   function toggleBranching() {
     if (!field.branchingEnabled) {
       onFieldChange({ branchingEnabled: true });
       return;
     }
-    const options = (field.config?.options as EditableOption[] | undefined) ?? [];
     onFieldChange({
       branchingEnabled: false,
-      config: {
-        ...field.config,
-        options: options.map((o) => ({ ...o, next_field_id: null, action: null })),
-      },
+      config: { ...field.config, options: withoutBranching(field.config?.options ?? []) },
     });
   }
 
@@ -95,10 +88,9 @@ export function FieldToolbar({
       onFieldChange({ customValuesEnabled: true });
       return;
     }
-    const options = (field.config?.options as EditableOption[] | undefined) ?? [];
     onFieldChange({
       customValuesEnabled: false,
-      config: { ...field.config, options: options.map((o) => ({ ...o, value: o.label })) },
+      config: { ...field.config, options: withoutCustomValues(field.config?.options ?? []) },
     });
   }
 

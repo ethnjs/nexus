@@ -8,6 +8,7 @@ import {
   type FormQuestionType,
   type TrackStatusAssignment,
 } from "@/lib/api";
+import { backwardBranchTargetIds } from "@/lib/forms/branching";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
 import { activePresetKind, presetIncompleteMessage } from "@/lib/forms/tournament/presets";
 
@@ -98,22 +99,6 @@ export function issuesFor(field: ValidatableField): string[] {
   }
 
   return issues;
-}
-
-// Jump targets that sit at or above `field` in `fields`. Branches only go
-// forward, so a reorder can leave one of these behind.
-export function backwardBranchTargetIds(
-  field: ValidatableField,
-  fields: ValidatableField[],
-): Set<string> {
-  const position = fields.findIndex((f) => f.clientKey === field.clientKey);
-  const upToHere = new Set(fields.slice(0, position + 1).map((f) => f.id));
-  return new Set(
-    (field.config?.options ?? [])
-      .filter((o) => !o.is_archived)
-      .map((o) => o.next_field_id)
-      .filter((id): id is string => id != null && upToHere.has(id)),
-  );
 }
 
 // Matches the 409 forms.py raises on a Save-time field_key collision

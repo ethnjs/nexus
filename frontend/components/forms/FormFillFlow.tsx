@@ -8,48 +8,11 @@ import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { Form, FormField, FormFieldOption, PendingUpdateReason } from "@/lib/api";
+import type { Form, FormField, PendingUpdateReason } from "@/lib/api";
+import { computeWalk } from "@/lib/forms/branching";
 import { REASON_LABELS } from "@/lib/forms/changeClassification";
-import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
 import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
-
-// Mirrors backend/app/core/form/branching.py's compute_reachable_field_ids —
-// same walk (lowest-order field first, following each branching option's
-// next_field_id/action, falling through to the next field by order
-// otherwise, ending at a revisited field rather than looping forever) so
-// every viewer's question sequence always matches what a real respondent
-// would see and what the server would accept.
-function computeWalk(fields: FormField[], answers: Record<string, unknown>): FormField[] {
-  if (fields.length === 0) return [];
-  const byOrder = [...fields].sort((a, b) => a.order - b.order);
-  const byId = new Map(fields.map((f) => [f.id, f]));
-  const reached: FormField[] = [];
-  const reachedIds = new Set<string>();
-  let current: FormField | null = byOrder[0];
-
-  while (current && !reachedIds.has(current.id)) {
-    reachedIds.add(current.id);
-    reached.push(current);
-
-    let next: FormField | null = null;
-    if (BRANCHING_TYPES.includes(current.question_type)) {
-      const answer: unknown = answers[current.id];
-      const options: FormFieldOption[] = current.config?.options ?? [];
-      const matched = options.find((o) => o.option_id === answer);
-      if (matched) {
-        if (matched.action === "submit_form") return reached;
-        if (matched.next_field_id) next = byId.get(matched.next_field_id) ?? null;
-      }
-    }
-    if (!next) {
-      const idx = byOrder.indexOf(current);
-      next = idx + 1 < byOrder.length ? byOrder[idx + 1] : null;
-    }
-    current = next;
-  }
-  return reached;
-}
 
 // Mirrors backend/app/core/form/branching.py's _is_blank.
 function isBlank(value: unknown): boolean {

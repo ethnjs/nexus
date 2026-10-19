@@ -2,11 +2,7 @@
 
 import type { ReactNode } from "react";
 import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
-import {
-  type BranchTarget,
-  type EditableOption,
-  OptionsEditor,
-} from "@/components/forms/OptionsEditor";
+import { type EditableOption, OptionsEditor } from "@/components/forms/OptionsEditor";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -25,6 +21,7 @@ import type {
   Tournament,
   TournamentShift,
 } from "@/lib/api";
+import type { BranchTarget } from "@/lib/forms/branching";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 import {
   activePresetKind,

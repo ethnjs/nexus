@@ -10,7 +10,8 @@ import { IconPresets, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import type { FormQuestionType, TournamentTrack } from "@/lib/api";
-import { cleanOption, type EditableField, hasCustomValues } from "@/lib/forms/editableField";
+import { hasCustomValues } from "@/lib/forms/customValues";
+import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError, slugifyFieldKey } from "@/lib/forms/fieldKeys";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import {

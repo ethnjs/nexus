@@ -35,10 +35,10 @@ import {
   tournamentShiftsApi,
   tournamentsApi,
 } from "@/lib/api";
+import { deriveBranchingEnabled } from "@/lib/forms/branching";
 import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
+import { deriveCustomValuesEnabled } from "@/lib/forms/customValues";
 import {
-  deriveBranchingEnabled,
-  deriveCustomValuesEnabled,
   type EditableField,
   newField,
   toFieldInput,
