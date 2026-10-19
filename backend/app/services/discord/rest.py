@@ -15,6 +15,9 @@ GUILD_TEXT = 0
 GUILD_CATEGORY = 4
 ROLE_OVERWRITE = 0
 MEMBER_OVERWRITE = 1
+# Longer rate-limit waits raise discord.RateLimited instead. A build or sync that waited one out
+# would go over two minutes without a heartbeat, and its claim would be taken for dead.
+MAX_RATE_LIMIT_WAIT = 60.0
 
 
 class DiscordRest:
@@ -30,7 +33,7 @@ class DiscordRest:
                 self._login = asyncio.Lock()
             async with self._login:
                 if self._http is None:
-                    http = HTTPClient(asyncio.get_running_loop())
+                    http = _http_client()
                     user = await http.static_login(self._token)
                     self.bot_user_id = int(user["id"])
                     self._http = http
@@ -204,6 +207,10 @@ class InteractionReplyError(Exception):
 
     def __init__(self, reason: str) -> None:
         super().__init__(f"editing the interaction reply failed: {reason}")
+
+
+def _http_client() -> HTTPClient:
+    return HTTPClient(asyncio.get_running_loop(), max_ratelimit_timeout=MAX_RATE_LIMIT_WAIT)
 
 
 _rest: DiscordRest | None = None
