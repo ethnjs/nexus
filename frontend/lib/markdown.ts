@@ -1,7 +1,7 @@
 // The markdown subset stored in form titles, descriptions and question text.
 // Discord-flavored: `**bold**`, `*italic*` / `_italic_`, `__underline__`, and
 // every newline is a line break. "rich" (descriptions) adds `[text](url)`,
-// bare URLs, and flat `- ` / `1. ` lists; "inline" shows those as typed.
+// bare URLs and emails, and flat `- ` / `1. ` lists; "inline" shows those as typed.
 
 export type MarkdownVariant = "inline" | "rich";
 export type InlineMark = "bold" | "underline" | "italic";
@@ -19,11 +19,17 @@ const PUNCTUATION = /[!-/:-@[-`{-~]/;
 const WHITESPACE = /\s/;
 const ALPHANUMERIC = /[\p{L}\p{N}]/u;
 const AUTOLINK = /https?:\/\/[^\s<>]+/iy;
+const EMAIL = /[A-Za-z0-9][\w.%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/y;
+const EMAIL_CHARACTER = /[\w.%+-]/;
 const BULLET_LINE = /^-(?: (.*))?$/;
 const ORDERED_LINE = /^(\d{1,9})\.(?: (.*))?$/;
 
 export function isSafeHref(href: string): boolean {
   return /^(https?:|mailto:)/i.test(href);
+}
+
+export function isEmailAddress(text: string): boolean {
+  return matchEmail(text, 0) === text;
 }
 
 export function parseMarkdown(markdown: string, variant: MarkdownVariant): Block[] {
@@ -130,6 +136,16 @@ function parseNodes(source: string, links: boolean): Node[] {
       }
     }
 
+    if (links && /[A-Za-z0-9]/.test(char)) {
+      const email = matchEmail(source, i);
+      if (email) {
+        flush();
+        current().push({ href: `mailto:${email}`, children: [{ text: email }] });
+        i += email.length;
+        continue;
+      }
+    }
+
     if (links && char === "[") {
       const link = matchLink(source, i);
       if (link) {
@@ -210,6 +226,12 @@ function matchAutolink(source: string, start: number): string | null {
   return /^https?:\/\/./i.test(url) ? url : null;
 }
 
+function matchEmail(source: string, start: number): string | null {
+  if (EMAIL_CHARACTER.test(source[start - 1] ?? "")) return null;
+  EMAIL.lastIndex = start;
+  return EMAIL.exec(source)?.[0] ?? null;
+}
+
 function matchLink(
   source: string,
   start: number,
@@ -264,17 +286,12 @@ function serializeInline(spans: Span[], variant: MarkdownVariant): string {
     let end = start + 1;
     while (end < spans.length && (variant === "rich" ? spans[end].href : undefined) === href) end++;
     const group = trimMarkedWhitespace(spans.slice(start, end));
-    const text = group.map((span) => span.text).join("");
-    const next = spans[end]?.text[0];
 
     if (!href) {
       out += serializeMarks(group, escapeText);
     } else if (
-      text === href &&
       group.length === 1 &&
-      matchAutolink(text, 0) === text &&
-      !isAlphanumeric(out[out.length - 1]) &&
-      (next === undefined || /[\s.,;:!?'"]/.test(next))
+      isBareLink(group[0], out[out.length - 1], spans[end]?.text ?? "")
     ) {
       out += serializeMarks(group, (raw) => raw);
     } else {
@@ -283,6 +300,23 @@ function serializeInline(spans: Span[], variant: MarkdownVariant): string {
     start = end;
   }
   return out;
+}
+
+// Whether a link can be written as its bare text and still parse back to
+// itself, given the characters that will surround it.
+function isBareLink(span: Span, before: string | undefined, after: string): boolean {
+  const innermost = span.marks[span.marks.length - 1];
+  const edge = innermost ? DELIMITER[innermost] : undefined;
+  if (span.href === span.text) {
+    return (
+      matchAutolink(span.text + (edge ?? after), 0) === span.text && !isAlphanumeric(edge ?? before)
+    );
+  }
+  if (span.href === `mailto:${span.text}`) {
+    const lead = edge ?? before ?? "";
+    return matchEmail(lead + span.text + (edge ?? after), lead.length) === span.text;
+  }
+  return false;
 }
 
 // A delimiter only opens before and closes after non-whitespace, so whitespace
@@ -334,9 +368,12 @@ function escapeLinkText(text: string): string {
   return text.replace(/[\\*_[\]]/g, "\\$&");
 }
 
-// Escaping the colon keeps a URL the TD unlinked from becoming a link again.
+// Escaping the colon or the @ keeps a URL or email the TD unlinked from
+// becoming a link again.
 function escapeRichText(text: string): string {
-  return escapeLinkText(text).replace(/(https?):\/\//gi, "$1\\://");
+  return escapeLinkText(text)
+    .replace(/(https?):\/\//gi, "$1\\://")
+    .replace(/@(?=[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g, "\\@");
 }
 
 function encodeHref(href: string): string {

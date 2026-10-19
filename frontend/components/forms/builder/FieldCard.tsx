@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
+import { RichTextInput } from "@/components/ui/RichTextInput";
 import { Switch } from "@/components/ui/Switch";
-import { Textarea } from "@/components/ui/Textarea";
 import type { FormQuestionType } from "@/lib/api";
 import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
 import { useFieldExtension, useFormBuilderAddon, useOptionLabel } from "@/lib/forms/builderAddon";
@@ -39,19 +39,44 @@ export type FocusIntent = {
   offset: number | null;
 } | null;
 
-// Character offset of a viewport point within its own text node. Chrome/Firefox
-// expose caretPositionFromPoint; WebKit only has the older caretRangeFromPoint.
-function caretOffsetFromPoint(x: number, y: number): number | null {
+// Character offset of a viewport point, counted from the start of `within`'s
+// text when given (formatted text spans several text nodes), else within its
+// own text node. Chrome/Firefox expose caretPositionFromPoint; WebKit only
+// has the older caretRangeFromPoint.
+function caretOffsetFromPoint(x: number, y: number, within?: HTMLElement): number | null {
   const doc = document as Document & {
     caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
   };
   const pos = doc.caretPositionFromPoint?.(x, y);
-  if (pos) return pos.offsetNode.nodeType === Node.TEXT_NODE ? pos.offset : null;
-  const range = document.caretRangeFromPoint?.(x, y);
+  const range = pos ? null : document.caretRangeFromPoint?.(x, y);
+  const node = pos ? pos.offsetNode : range?.startContainer;
+  const offset = pos ? pos.offset : range?.startOffset;
   // Outside a text node the "offset" is a child index, which would be a
   // meaningless caret position — better to fall back to the end of the value.
-  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
-  return range.startOffset;
+  if (!node || offset === undefined || node.nodeType !== Node.TEXT_NODE) return null;
+  if (!within) return offset;
+  if (!within.contains(node)) return null;
+  const before = document.createRange();
+  before.setStart(within, 0);
+  before.setEnd(node, offset);
+  return before.toString().length;
+}
+
+// The rich-text editor counterpart of setSelectionRange: ProseMirror follows
+// the DOM selection, so collapsing it at a text offset moves the editor's caret.
+function placeCaretInEditable(root: HTMLElement, offset: number | null) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset ?? Number.POSITIVE_INFINITY;
+  let last: Text | null = null;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (remaining <= node.length) {
+      window.getSelection()?.collapse(node, remaining);
+      return;
+    }
+    remaining -= node.length;
+    last = node;
+  }
+  if (last) window.getSelection()?.collapse(last, last.length);
 }
 
 // An option row leads with its bullet — a real <input type="checkbox"/"radio">
@@ -87,7 +112,13 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
     const active = document.activeElement;
     // The user got there first while we were waiting on a fetch — stealing
     // focus out from under them mid-keystroke is worse than not landing it.
-    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    ) {
+      return;
+    }
 
     const target = resolveTarget(root, intent.target);
     if (!target) {
@@ -95,6 +126,10 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
       return;
     }
     target.focus();
+    if (target.isContentEditable) {
+      placeCaretInEditable(target, intent.offset);
+      return;
+    }
     // selectionStart is null on input types that don't support selection
     // (checkbox, radio, ...) — reading it is the sanctioned way to ask,
     // and calling setSelectionRange on one throws InvalidStateError.
@@ -180,7 +215,7 @@ export function FieldCard({
   const liveIssues = issuesFor(field, allFields, addon);
   const liveNonKeyErrors =
     nonKeyErrors.length > 0 ? liveIssues.filter((e) => !isToolbarError(e)) : [];
-  // Routed straight onto the label Textarea's own error prop below, rather
+  // Routed straight onto the label input's own error prop below, rather
   // than a shared list — the rest of liveNonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
   // QuestionRenderer's edit body.
@@ -262,17 +297,22 @@ export function FieldCard({
   // opens the card with that input focused.
   function handleCollapsedClick(e: ReactMouseEvent) {
     const el = e.target instanceof HTMLElement ? e.target : null;
-    const offset = caretOffsetFromPoint(e.clientX, e.clientY);
     const optionRow = el?.closest<HTMLElement>("[data-option-value]");
     if (optionRow) {
       const rows = [
         ...(rootRef.current?.querySelectorAll<HTMLElement>("[data-option-value]") ?? []),
       ];
+      const offset = caretOffsetFromPoint(e.clientX, e.clientY);
       onExpand({ target: `option:${rows.indexOf(optionRow)}`, offset });
       return;
     }
-    const focus = el?.closest<HTMLElement>("[data-focus]")?.dataset.focus;
-    onExpand(focus === "label" || focus === "description" ? { target: focus, offset } : null);
+    const focusEl = el?.closest<HTMLElement>("[data-focus]");
+    const focus = focusEl?.dataset.focus;
+    if (focusEl && (focus === "label" || focus === "description")) {
+      onExpand({ target: focus, offset: caretOffsetFromPoint(e.clientX, e.clientY, focusEl) });
+    } else {
+      onExpand(null);
+    }
   }
 
   // Every question_type switch drops whatever config keys belonged to the
@@ -338,20 +378,14 @@ export function FieldCard({
                 marginBottom: field.showDescription ? "10px" : "16px",
               }}
             >
-              <Textarea
+              <RichTextInput
                 data-focus="label"
+                variant="inline"
                 value={field.label}
-                onChange={(e) => onFieldChange({ label: e.target.value })}
+                onChange={(label) => onFieldChange({ label })}
                 placeholder="Question"
-                rows={1}
-                autoGrow
                 fullWidth
                 error={labelError}
-                style={{
-                  padding: "7px 16px",
-                  lineHeight: "20px",
-                  borderRadius: "var(--radius-md)",
-                }}
               />
               <Dropdown
                 value={field.question_type}
@@ -368,20 +402,14 @@ export function FieldCard({
             </div>
             {field.showDescription && (
               <div style={{ marginBottom: "16px" }}>
-                <Textarea
+                <RichTextInput
                   data-focus="description"
+                  variant="rich"
                   value={field.description ?? ""}
-                  onChange={(e) => onFieldChange({ description: e.target.value })}
+                  onChange={(description) => onFieldChange({ description })}
                   placeholder="Description"
-                  rows={1}
-                  autoGrow
                   size="sm"
                   fullWidth
-                  style={{
-                    padding: "5px 10px",
-                    lineHeight: "16px",
-                    borderRadius: "var(--radius-md)",
-                  }}
                 />
               </div>
             )}

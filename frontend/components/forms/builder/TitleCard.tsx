@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
+import { RichTextInput } from "@/components/ui/RichTextInput";
 import { ApiError, type Form, formsApi } from "@/lib/api";
 
 // Respondent-facing title/description — the first, most prominent card in
-// the field list. Always editable-looking (not click-to-reveal like the
-// sub-header's dashboard-facing name), using the app's standard Input/
-// Textarea rather than an underline-only Google-Forms-style treatment.
+// the field list. Always editable-looking, unlike the sub-header's
+// click-to-reveal dashboard-facing name.
 export function TitleCard({
   form,
   onUpdated,
@@ -54,23 +52,23 @@ export function TitleCard({
         gap: "12px",
       }}
     >
-      <Input
+      <RichTextInput
         label="Title"
+        variant="inline"
+        singleLine
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={setTitle}
         onBlur={saveTitle}
-        font="sans"
         size="lg"
         fullWidth
         locked={locked}
       />
-      <Textarea
+      <RichTextInput
         label="Description"
+        variant="rich"
         value={description}
-        onChange={(e) => setDescription(e.target.value)}
+        onChange={setDescription}
         onBlur={saveDescription}
-        font="sans"
-        rows={2}
         fullWidth
         locked={locked}
       />

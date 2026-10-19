@@ -19,6 +19,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tiptap/extension-bold": "^3.32.0",
     "@tiptap/extension-document": "^3.32.0",
+    "@tiptap/extension-hard-break": "^3.32.0",
     "@tiptap/extension-italic": "^3.32.0",
     "@tiptap/extension-link": "^3.32.0",
     "@tiptap/extension-list": "^3.32.0",

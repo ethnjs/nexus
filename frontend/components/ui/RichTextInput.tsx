@@ -7,6 +7,7 @@ import Bold, {
   underscorePasteRegex,
 } from "@tiptap/extension-bold";
 import Document from "@tiptap/extension-document";
+import HardBreak from "@tiptap/extension-hard-break";
 import Italic from "@tiptap/extension-italic";
 import Link from "@tiptap/extension-link";
 import { BulletList, ListItem, ListKeymap, OrderedList } from "@tiptap/extension-list";
@@ -57,6 +58,7 @@ import { Input } from "@/components/ui/Input";
 import {
   type Block,
   INLINE_MARKS,
+  isEmailAddress,
   isSafeHref,
   type MarkdownVariant,
   parseMarkdown,
@@ -118,6 +120,10 @@ const UnderlineMark = Underline.extend({
 
 const FlatListItem = ListItem.extend({ content: "paragraph" });
 
+// Only a target for pasted <br>s, which splitPastedLines turns into separate
+// lines — so no Shift+Enter to type one.
+const PastedLineBreak = HardBreak.extend({ addKeyboardShortcuts: () => ({}) });
+
 const SingleLineKeymap = Extension.create({
   name: "singleLineKeymap",
   addKeyboardShortcuts: () => ({ Enter: () => true }),
@@ -131,6 +137,7 @@ function buildExtensions(variant: MarkdownVariant, singleLine: boolean, placehol
     BoldMark,
     Italic,
     UnderlineMark,
+    PastedLineBreak,
     UndoRedo,
     Placeholder.configure({ placeholder, emptyEditorClass: styles.emptyEditor }),
   ];
@@ -140,9 +147,10 @@ function buildExtensions(variant: MarkdownVariant, singleLine: boolean, placehol
       Link.configure({
         openOnClick: false,
         defaultProtocol: "https",
-        isAllowedUri: (url) => isSafeHref(url),
-        // Matches lib/markdown.ts, which only links bare URLs with a scheme.
-        shouldAutoLink: (url) => /^https?:\/\//i.test(url),
+        // Autolinking checks the typed text, so a bare email arrives here without its mailto:.
+        isAllowedUri: (url) => isSafeHref(url) || isEmailAddress(url),
+        // Matches lib/markdown.ts, which links bare URLs only when they have a scheme.
+        shouldAutoLink: (url) => /^https?:\/\//i.test(url) || isEmailAddress(url),
         HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
       }),
       BulletList,
@@ -212,18 +220,62 @@ function docToMarkdown(doc: ProseMirrorNode, variant: MarkdownVariant): string {
   return serializeMarkdown(blocks, variant).replace(/\n+$/, "");
 }
 
+// ProseMirror's own plain-text parser merges runs of newlines, dropping blank lines.
+function parsePastedText(text: string, context: ResolvedPos, schema: Schema): Slice {
+  const lines = text.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n");
+  const marks = context.marks();
+  const paragraphs = lines.map((line) =>
+    schema.nodes.paragraph.create(null, line ? schema.text(line, marks) : null),
+  );
+  return new Slice(Fragment.from(paragraphs), 1, 1);
+}
+
+function splitAtLineBreaks(textblock: ProseMirrorNode): ProseMirrorNode[] {
+  const lines: ProseMirrorNode[][] = [[]];
+  textblock.forEach((child) => {
+    if (child.type.name === "hardBreak") lines.push([]);
+    else lines[lines.length - 1].push(child);
+  });
+  // A <br> closing a block draws no extra line in the browser either.
+  if (lines.length > 1 && !lines[lines.length - 1].length) lines.pop();
+  return lines.map((line) => textblock.type.create(textblock.attrs, line));
+}
+
+// Pasted HTML breaks lines with <br>. Stored text has a line per paragraph, so
+// each textblock splits at its breaks, and a list item into one item per line.
+function splitPastedLines(fragment: Fragment): Fragment {
+  const nodes: ProseMirrorNode[] = [];
+  fragment.forEach((node) => {
+    if (node.isTextblock) nodes.push(...splitAtLineBreaks(node));
+    else if (node.type.name === "listItem") {
+      splitPastedLines(node.content).forEach((line) => {
+        nodes.push(node.type.create(node.attrs, line));
+      });
+    } else nodes.push(node.copy(splitPastedLines(node.content)));
+  });
+  return Fragment.from(nodes);
+}
+
+function transformPastedLines(slice: Slice, schema: Schema): Slice {
+  if (!slice.content.firstChild?.isInline) {
+    return new Slice(splitPastedLines(slice.content), slice.openStart, slice.openEnd);
+  }
+  const paragraph = schema.nodes.paragraph.create(null, slice.content);
+  return new Slice(Fragment.from(splitAtLineBreaks(paragraph)), 1, 1);
+}
+
 // Pasting several paragraphs into a one-paragraph document would fail to fit,
 // so their inline content is joined with spaces first.
 function joinPastedLines(slice: Slice, schema: Schema): Slice {
-  const first = slice.content.firstChild;
-  if (!first || first.isInline) return slice;
   const inline: ProseMirrorNode[] = [];
+  const add = (node: ProseMirrorNode) => {
+    inline.push(node.type.name === "hardBreak" ? schema.text(" ") : node);
+  };
+  if (slice.content.firstChild?.isInline) slice.content.forEach(add);
   slice.content.descendants((node) => {
-    if (!node.isTextblock) return true;
+    if (!node.isTextblock) return !node.isInline;
     if (inline.length && node.childCount) inline.push(schema.text(" "));
-    node.forEach((child) => {
-      inline.push(child);
-    });
+    node.forEach(add);
     return false;
   });
   return new Slice(Fragment.from(schema.nodes.paragraph.create(null, inline)), 1, 1);
@@ -250,7 +302,7 @@ function linkHrefAt(position: ResolvedPos): string | undefined {
 function normalizeHref(input: string): string {
   const href = input.trim();
   if (/^[a-z][a-z\d+.-]*:/i.test(href)) return href;
-  return /^[^/\s]+@[^/\s]+$/.test(href) ? `mailto:${href}` : `https://${href}`;
+  return isEmailAddress(href) ? `mailto:${href}` : `https://${href}`;
 }
 
 function applyLink(editor: Editor, href: string) {
@@ -400,8 +452,12 @@ export function RichTextInput({
         ...(label ? { "aria-labelledby": labelId } : {}),
         ...(dataFocus ? { "data-focus": dataFocus } : {}),
       },
+      clipboardTextParser: (text, context, _plain, view) =>
+        parsePastedText(text, context, view.state.schema),
       transformPasted: (slice, view) =>
-        singleLine ? joinPastedLines(slice, view.state.schema) : slice,
+        singleLine
+          ? joinPastedLines(slice, view.state.schema)
+          : transformPastedLines(slice, view.state.schema),
       handleKeyDown: (view, event) => {
         if (variant !== "rich" || !(event.metaKey || event.ctrlKey) || event.key !== "k") {
           return false;
