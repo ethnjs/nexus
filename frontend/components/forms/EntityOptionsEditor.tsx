@@ -282,6 +282,7 @@ export function EntityOptionsEditor({
                   </span>
                   <TrackStatusMenu
                     status={statusFor(option)}
+                    optional
                     onChange={(status) =>
                       onChange(
                         options.map((item) =>
@@ -495,18 +496,24 @@ const STATUS_TONE: Record<TrackStatus | "", PillTone> = {
   declined: "danger",
 };
 
+// `optional` offers "No change" as a choice — an availability option may
+// leave its track's status alone.
 function TrackStatusMenu({
   status,
   onChange,
+  optional = false,
 }: {
   status: TrackStatus | "";
-  onChange: (status: TrackStatus) => void;
+  onChange: (status: TrackStatus | "") => void;
+  optional?: boolean;
 }) {
   return (
     <PillMenu
-      label={STATUS_LABEL[status]}
+      label={optional && !status ? "No change" : STATUS_LABEL[status]}
       tone={STATUS_TONE[status]}
-      items={STATUS_OPTIONS}
+      items={
+        optional ? [...STATUS_OPTIONS, { value: "" as const, label: "No change" }] : STATUS_OPTIONS
+      }
       getKey={(opt) => opt.value}
       renderLabel={(opt) => opt.label}
       onSelect={(opt) => onChange(opt.value)}

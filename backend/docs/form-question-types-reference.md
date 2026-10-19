@@ -96,7 +96,7 @@ A bare `availability` or `event_preference` with no track id is not reserved.
 
 ### Preset config shapes
 
-A preset never adds a `question_type`; it changes what `value` holds on each option. There are five shapes.
+A preset never adds a `question_type`; it changes what `value` holds on each option. There are five shapes. Any option may group nothing (no shifts, events or track statuses), for answers like "Can't make it" or "No preference". Picking an empty availability option clears the member's shifts on that track.
 
 **1. `availability_{track}`.** `value` is the grouped `TournamentShift` ids.
 
@@ -106,7 +106,7 @@ A preset never adds a `question_type`; it changes what `value` holds on each opt
 ] }
 ```
 
-**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required, non-empty `shift_ids` and an optional `track_status` for the field's own track.
+**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required `shift_ids` and an optional `track_status` for the field's own track. An empty string `track_status` is stored as `null`.
 
 ```json
 { "required": true, "track_status_enabled": true, "options": [

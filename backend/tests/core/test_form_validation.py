@@ -178,6 +178,22 @@ class TestValidateFieldConfig:
             },
         )
 
+    def test_availability_option_with_unpicked_status_passes(self):
+        config = validate_field_config(
+            "single_select_radio",
+            {
+                "required": False,
+                "options": [
+                    {
+                        "option_id": "opt_1",
+                        "value": {"shift_ids": [], "track_status": ""},
+                        "label": "Maybe",
+                    }
+                ],
+            },
+        )
+        assert config["options"][0]["value"]["track_status"] is None
+
     def test_duplicate_option_id_still_rejected(self):
         """option_id is the durable identity — a collision there really does
         make selection ambiguous."""
@@ -474,10 +490,18 @@ class TestValidateAvailabilityOptions:
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
 
-    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
-        config = {"options": [{"value": [], "label": "Whenever"}]}
-        with pytest.raises(FormFieldValidationError):
-            validate_availability_options(db, td_tournament.id, config)
+    def test_option_without_shifts_passes(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "Can't make it"}]}
+        validate_availability_options(db, td_tournament.id, config)  # no raise
+
+    def test_option_without_shifts_or_status_passes_when_track_status_enabled(
+        self, db, td_user, td_tournament
+    ):
+        config = {
+            "track_status_enabled": True,
+            "options": [{"value": {"shift_ids": [], "track_status": None}, "label": "Maybe"}],
+        }
+        validate_availability_options(db, td_tournament.id, config)  # no raise
 
 
 # ---------------------------------------------------------------------------
@@ -521,10 +545,11 @@ class TestValidateEventPreferenceOptions:
         with pytest.raises(FormFieldValidationError):
             validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
 
-    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
-        config = {"options": [{"value": [], "label": "Whenever"}]}
-        with pytest.raises(FormFieldValidationError):
-            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+    def test_option_without_events_passes(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "No preference"}]}
+        validate_event_preference_options(
+            db, td_tournament.id, "multi_select_checkbox", config
+        )  # no raise
 
     def test_event_in_two_options_rejected(self, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)

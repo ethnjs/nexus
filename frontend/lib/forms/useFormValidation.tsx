@@ -95,15 +95,6 @@ export function issuesFor(field: ValidatableField): string[] {
       );
       if (unset) issues.push("Choose a status for every track.");
     }
-    if (presetKind === "availability" && config.track_status_enabled) {
-      const unset = options.some(
-        (option) =>
-          typeof option.value === "object" &&
-          !Array.isArray(option.value) &&
-          !option.value.track_status,
-      );
-      if (unset) issues.push("Choose a status for every option.");
-    }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {
       issues.push("Ranks can't exceed the number of options.");
     }

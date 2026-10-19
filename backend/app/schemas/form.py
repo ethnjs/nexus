@@ -73,12 +73,14 @@ class AvailabilityTrackStatusValue(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    shift_ids: list[int] = Field(min_length=1)
+    shift_ids: list[int]
     track_status: str | None = None
 
     @field_validator("track_status")
     @classmethod
     def _valid_status(cls, status: str | None) -> str | None:
+        # The builder sends "" for an option whose status was never picked.
+        status = status or None
         if status is not None and status not in VALID_TRACK_STATUSES:
             raise ValueError(f"track_status must be one of: {sorted(VALID_TRACK_STATUSES)}")
         return status

@@ -464,11 +464,12 @@ def validate_availability_options(
 ) -> None:
     """A field with field_key matching AVAILABILITY_FIELD_KEY_PATTERN
     (single_select_radio or multi_select_checkbox) must have every option's
-    `value` be a non-empty
-    list[int] of real TournamentShift ids belonging to the field's own
-    tournament — one option groups one or more shifts under a single
-    TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). Validated strictly
-    since a bad value directly corrupts MembershipAvailability write-through.
+    `value` be a list[int] of real TournamentShift ids belonging to the
+    field's own tournament — one option groups shifts under a single
+    TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). An empty option ("Can't
+    make it") is allowed: picking it clears the member's shifts on the track.
+    Validated strictly since a bad value directly corrupts
+    MembershipAvailability write-through.
 
     `field_track_id` additionally pins every referenced shift to the track in
     the field_key; see the check itself for why a stray shift from another
@@ -494,8 +495,8 @@ def validate_availability_options(
             )
             value = value["shift_ids"]
         _require(
-            isinstance(value, list) and len(value) > 0 and all(isinstance(v, int) for v in value),
-            f"availability option value '{value}' must be a non-empty list of TournamentShift ids",
+            isinstance(value, list) and all(isinstance(v, int) for v in value),
+            f"availability option value '{value}' must be a list of TournamentShift ids",
         )
         shift_ids.update(value)
 
@@ -532,9 +533,10 @@ def validate_event_preference_options(
     field_track_id: int | None = None,
 ) -> None:
     """A field with field_key matching EVENT_PREFERENCE_FIELD_KEY_PATTERN must
-    have every option's `value` be a non-empty list[int] of real
-    TournamentEvent ids belonging to the field's own tournament — one option
-    groups one or more events under a single TD-labeled choice.
+    have every option's `value` be a list[int] of real TournamentEvent ids
+    belonging to the field's own tournament — one option groups events under
+    a single TD-labeled choice. An empty option ("No preference") writes no
+    preference rows.
 
     Unlike availability (where a shift may appear in multiple options), an
     event may not appear in more than one option: write-through expands each
@@ -570,8 +572,8 @@ def validate_event_preference_options(
     for option in options:
         value = option.get("value")
         _require(
-            isinstance(value, list) and len(value) > 0 and all(isinstance(v, int) for v in value),
-            f"event_preference option value '{value}' must be a non-empty list of TournamentEvent ids",
+            isinstance(value, list) and all(isinstance(v, int) for v in value),
+            f"event_preference option value '{value}' must be a list of TournamentEvent ids",
         )
         duplicated |= seen_ids & set(value)
         seen_ids |= set(value)
