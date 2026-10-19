@@ -36,6 +36,7 @@ import {
   tournamentsApi,
 } from "@/lib/api";
 import { deriveBranchingEnabled } from "@/lib/forms/branching";
+import { CORE_ONLY, type FormBuilderAddon, FormBuilderAddonScope } from "@/lib/forms/builderAddon";
 import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
 import { deriveCustomValuesEnabled } from "@/lib/forms/customValues";
 import {
@@ -70,8 +71,25 @@ const SCROLL_MUTE_MS = 600;
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
 /** `lockedReason` (archived tournament or form) keeps every card a read-only
- *  preview — none can expand, so the toolbar and save bar never appear either. */
-export function FieldList({ form, lockedReason }: { form: Form; lockedReason?: string }) {
+ *  preview — none can expand, so the toolbar and save bar never appear either.
+ *  `addon` layers owner-specific question kinds onto the core builder. */
+export function FieldList({
+  form,
+  lockedReason,
+  addon = CORE_ONLY,
+}: {
+  form: Form;
+  lockedReason?: string;
+  addon?: FormBuilderAddon;
+}) {
+  return (
+    <FormBuilderAddonScope addon={addon} form={form}>
+      <FieldListBody form={form} lockedReason={lockedReason} />
+    </FormBuilderAddonScope>
+  );
+}
+
+function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: string }) {
   const locked = !!lockedReason;
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
