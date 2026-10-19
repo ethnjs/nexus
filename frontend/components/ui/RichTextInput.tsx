@@ -281,6 +281,38 @@ function joinPastedLines(slice: Slice, schema: Schema): Slice {
   return new Slice(Fragment.from(schema.nodes.paragraph.create(null, inline)), 1, 1);
 }
 
+// Shared by every field, and installed on first focus rather than at import.
+let pointerDown = false;
+let trackingPointer = false;
+
+function trackPointer() {
+  if (trackingPointer) return;
+  trackingPointer = true;
+  const release = () => {
+    pointerDown = false;
+  };
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      pointerDown = true;
+    },
+    true,
+  );
+  window.addEventListener("pointerup", release, true);
+  window.addEventListener("pointercancel", release, true);
+}
+
+// Collapsing the toolbar shifts everything below it, so when a mouse press
+// moved focus away, wait until that click has landed. The timeout runs after
+// the click event, which the browser dispatches right after pointerup.
+function whenPointerReleased(callback: () => void) {
+  if (!pointerDown) {
+    callback();
+    return;
+  }
+  window.addEventListener("pointerup", () => setTimeout(callback), { once: true, capture: true });
+}
+
 function clearFormatting(editor: Editor) {
   const { from, empty } = editor.state.selection;
   const chain = editor.chain().focus();
@@ -388,11 +420,13 @@ function ToolbarButton({
   return (
     <Button
       type="button"
-      variant={active ? "primary" : "ghost"}
+      variant="ghost"
       size="xs"
       iconOnly
       title={title}
       aria-pressed={active}
+      // Only when active: an undefined backgroundColor would still override the hover fill.
+      style={active ? { backgroundColor: "var(--color-accent-subtle)" } : undefined}
       // Keeps focus, and so the selection, in the editor.
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
@@ -504,7 +538,9 @@ export function RichTextInput({
   function leave() {
     if (!focusedRef.current) return;
     focusedRef.current = false;
-    setFocused(false);
+    whenPointerReleased(() => {
+      if (!focusedRef.current) setFocused(false);
+    });
     onBlur?.();
   }
 
@@ -518,12 +554,13 @@ export function RichTextInput({
   }
 
   const sizing = SIZE_MAP[size];
-  const showToolbar = !!editor && !locked && (focused || linkDraft !== null);
+  const toolbarOpen = focused || linkDraft !== null;
 
   return (
     <div
       ref={wrapperRef}
       onFocus={() => {
+        trackPointer();
         focusedRef.current = true;
         setFocused(true);
       }}
@@ -552,7 +589,7 @@ export function RichTextInput({
           {label}
         </div>
       )}
-      <div style={{ position: "relative" }}>
+      <div>
         <div
           className={styles.box}
           data-error={error ? "" : undefined}
@@ -574,110 +611,114 @@ export function RichTextInput({
         >
           <EditorContent editor={editor} />
         </div>
-        {showToolbar && (
+        {editor && !locked && (
+          // Animating grid rows from 0fr to 1fr slides the row open to its natural height.
           <div
+            inert={!toolbarOpen}
             style={{
-              position: "absolute",
-              top: "calc(100% + 4px)",
-              left: 0,
-              zIndex: 20,
-              display: "flex",
-              alignItems: "center",
-              gap: "2px",
-              padding: "3px",
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              boxShadow: "var(--shadow-md)",
+              display: "grid",
+              gridTemplateRows: toolbarOpen ? "1fr" : "0fr",
+              opacity: toolbarOpen ? 1 : 0,
+              transition:
+                "grid-template-rows var(--duration-base) ease, opacity var(--duration-base) ease",
             }}
           >
-            <ToolbarButton
-              title={`Bold (${MOD}B)`}
-              active={active?.bold}
-              onClick={() => editor.chain().focus().toggleBold().run()}
-            >
-              <IconBold size={12} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={`Italic (${MOD}I)`}
-              active={active?.italic}
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-            >
-              <IconItalic size={12} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={`Underline (${MOD}U)`}
-              active={active?.underline}
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-            >
-              <IconUnderline size={12} />
-            </ToolbarButton>
-            {variant === "rich" && (
-              <>
-                <ToolbarDivider />
-                <FormPopover
-                  width={280}
-                  align="left"
-                  open={linkDraft !== null}
-                  onOpenChange={(open) =>
-                    open
-                      ? setLinkDraft({
-                          href: linkHrefAt(editor.state.selection.$from) ?? "",
-                          autoFocus: true,
-                        })
-                      : closeLink()
-                  }
-                  trigger={
-                    <ToolbarButton title={`Link (${MOD}K)`} active={active?.link}>
-                      <IconLink size={12} />
+            <div style={{ minHeight: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "2px", paddingTop: "4px" }}>
+                <ToolbarButton
+                  title={`Bold (${MOD}B)`}
+                  active={active?.bold}
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                >
+                  <IconBold size={12} />
+                </ToolbarButton>
+                <ToolbarButton
+                  title={`Italic (${MOD}I)`}
+                  active={active?.italic}
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                >
+                  <IconItalic size={12} />
+                </ToolbarButton>
+                <ToolbarButton
+                  title={`Underline (${MOD}U)`}
+                  active={active?.underline}
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                >
+                  <IconUnderline size={12} />
+                </ToolbarButton>
+                {variant === "rich" && (
+                  <>
+                    <ToolbarDivider />
+                    <FormPopover
+                      width={280}
+                      align="left"
+                      open={linkDraft !== null}
+                      onOpenChange={(open) =>
+                        open
+                          ? setLinkDraft({
+                              href: linkHrefAt(editor.state.selection.$from) ?? "",
+                              autoFocus: true,
+                            })
+                          : closeLink()
+                      }
+                      trigger={
+                        <ToolbarButton title={`Link (${MOD}K)`} active={active?.link}>
+                          <IconLink size={12} />
+                        </ToolbarButton>
+                      }
+                    >
+                      {() =>
+                        linkDraft && (
+                          <LinkForm
+                            initialHref={linkDraft.href}
+                            autoFocus={linkDraft.autoFocus}
+                            onApply={(href) => {
+                              applyLink(editor, href);
+                              setLinkDraft(null);
+                            }}
+                            onRemove={
+                              active?.link
+                                ? () => {
+                                    editor
+                                      .chain()
+                                      .focus()
+                                      .extendMarkRange("link")
+                                      .unsetLink()
+                                      .run();
+                                    setLinkDraft(null);
+                                  }
+                                : undefined
+                            }
+                            onCancel={() => {
+                              editor.commands.focus();
+                              setLinkDraft(null);
+                            }}
+                          />
+                        )
+                      }
+                    </FormPopover>
+                    <ToolbarButton
+                      title="Bulleted list"
+                      active={active?.bulletList}
+                      onClick={() => editor.chain().focus().toggleBulletList().run()}
+                    >
+                      <IconBulletList size={12} />
                     </ToolbarButton>
-                  }
-                >
-                  {() =>
-                    linkDraft && (
-                      <LinkForm
-                        initialHref={linkDraft.href}
-                        autoFocus={linkDraft.autoFocus}
-                        onApply={(href) => {
-                          applyLink(editor, href);
-                          setLinkDraft(null);
-                        }}
-                        onRemove={
-                          active?.link
-                            ? () => {
-                                editor.chain().focus().extendMarkRange("link").unsetLink().run();
-                                setLinkDraft(null);
-                              }
-                            : undefined
-                        }
-                        onCancel={() => {
-                          editor.commands.focus();
-                          setLinkDraft(null);
-                        }}
-                      />
-                    )
-                  }
-                </FormPopover>
-                <ToolbarButton
-                  title="Bulleted list"
-                  active={active?.bulletList}
-                  onClick={() => editor.chain().focus().toggleBulletList().run()}
-                >
-                  <IconBulletList size={12} />
+                    <ToolbarButton
+                      title="Numbered list"
+                      active={active?.orderedList}
+                      onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                    >
+                      <IconNumberedList size={12} />
+                    </ToolbarButton>
+                  </>
+                )}
+                <ToolbarDivider />
+                <ToolbarButton title="Clear formatting" onClick={() => clearFormatting(editor)}>
+                  <IconClearFormatting size={12} />
                 </ToolbarButton>
-                <ToolbarButton
-                  title="Numbered list"
-                  active={active?.orderedList}
-                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                >
-                  <IconNumberedList size={12} />
-                </ToolbarButton>
-              </>
-            )}
-            <ToolbarDivider />
-            <ToolbarButton title="Clear formatting" onClick={() => clearFormatting(editor)}>
-              <IconClearFormatting size={12} />
-            </ToolbarButton>
+              </div>
+            </div>
           </div>
         )}
       </div>
