@@ -551,6 +551,35 @@ class TestDrain:
         assert built.last_sync_error is None
         assert _marks(db) == []
 
+    async def test_a_member_sync_clears_the_error_once_nothing_is_retrying(
+        self, db, built, scope, mock_discord_rest, monkeypatch
+    ):
+        async def broken(guild_id, user_id):
+            raise RuntimeError("Discord is down")
+
+        working = mock_discord_rest.member
+        monkeypatch.setattr(mock_discord_rest, "member", broken)
+        mark_member(db, built.id, TD_DISCORD)
+        mark_member(db, built.id, 7002)
+        db.commit()
+        await _sync(scope)
+        monkeypatch.setattr(mock_discord_rest, "member", working)
+
+        # One retry succeeds while the other is still backing off: the error stays.
+        first, second = db.query(DiscordSyncMark).order_by(DiscordSyncMark.id).all()
+        first.next_attempt_at = utcnow()
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error == "Discord is down"
+
+        second.next_attempt_at = utcnow()
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error is None
+        assert _marks(db) == []
+
 
 class TestGatewayEvents:
     async def test_member_join_marks_the_member(self, db, built):

@@ -201,7 +201,7 @@ class Syncer:
             _settle(db, [m.id for m in marks if m not in failed], claimed_at)
             if failed:
                 _fail(db, link_id, failed, errors[-1])
-            elif above_bot:
+            elif above_bot or not _retrying(db, link_id):
                 _succeeded(db, link_id, above_bot_message(above_bot), whole_server=False)
 
         await self._in_db(done)
@@ -294,6 +294,16 @@ def _succeeded(db: Session, link_id: int, warning: str | None, *, whole_server: 
     link.last_sync_error = None
     if whole_server or warning is not None:
         link.last_sync_warning = warning
+
+
+def _retrying(db: Session, link_id: int) -> bool:
+    """Whether a mark for this link is backing off after a failure, whose error should stay."""
+    return (
+        db.query(DiscordSyncMark.id)
+        .filter(DiscordSyncMark.link_id == link_id, DiscordSyncMark.attempts > 0)
+        .first()
+        is not None
+    )
 
 
 def _fail(db: Session, link_id: int, marks: list[Claimed], exc: Exception) -> None:
