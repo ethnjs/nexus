@@ -1,4 +1,4 @@
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import type {
   FormField,
   FormFieldConfig,

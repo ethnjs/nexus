@@ -2,10 +2,10 @@
 
 import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
-import { FieldList } from "@/components/forms/FieldList";
+import { FieldList } from "@/components/forms/builder/FieldList";
+import { TitleCard } from "@/components/forms/builder/TitleCard";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
-import { TitleCard } from "@/components/forms/TitleCard";
 import { tournamentAddon } from "@/components/forms/tournament/tournamentAddon";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";

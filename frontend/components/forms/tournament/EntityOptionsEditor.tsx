@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { EventOptionsPickerModal } from "@/components/forms/EventOptionsPickerModal";
 import {
   type EditableOption,
-  newEntityOption,
+  newOption,
   OptionsEditor,
-} from "@/components/forms/OptionsEditor";
+} from "@/components/forms/builder/OptionsEditor";
+import { EventOptionsPickerModal } from "@/components/forms/tournament/EventOptionsPickerModal";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
@@ -32,6 +32,12 @@ import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 type EntityFieldKey = "availability" | "event_preference" | "track_status";
 type Entity = TournamentShift | TournamentEvent;
+
+// An entity-backed option's starting shape — value is a to-be-filled id
+// array, not freeform text (see isEntityBackedPreset).
+export function newEntityOption(): EditableOption {
+  return { ...newOption(), value: [] };
+}
 
 interface EntityOptionsEditorProps {
   fieldKey: EntityFieldKey;

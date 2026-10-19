@@ -1,9 +1,11 @@
 "use client";
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
-import { newEntityOption } from "@/components/forms/OptionsEditor";
-import { PresetPopover } from "@/components/forms/PresetPopover";
+import {
+  EntityOptionsEditor,
+  newEntityOption,
+} from "@/components/forms/tournament/EntityOptionsEditor";
+import { PresetPopover } from "@/components/forms/tournament/PresetPopover";
 import {
   type Form,
   type FormFieldOption,

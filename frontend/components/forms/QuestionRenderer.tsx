@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { type EditableOption, OptionsEditor } from "@/components/forms/OptionsEditor";
+import { type EditableOption, OptionsEditor } from "@/components/forms/builder/OptionsEditor";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";

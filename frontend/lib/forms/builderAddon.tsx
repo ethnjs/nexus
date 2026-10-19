@@ -1,7 +1,7 @@
 "use client";
 
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import type { Form, FormFieldConfig, FormFieldOption, FormQuestionType } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import type { EditableField } from "@/lib/forms/editableField";

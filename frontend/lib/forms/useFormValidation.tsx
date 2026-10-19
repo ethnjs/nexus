@@ -7,10 +7,8 @@ import { backwardBranchTargetIds } from "@/lib/forms/branching";
 import { type FormBuilderAddon, useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
 
-// Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
-// rather than importing it — the hook only touches these five properties,
-// and importing a type from a page module for a value the hook never
-// constructs isn't worth the coupling.
+// Duck-typed against EditableField (lib/forms/editableField.ts) rather than
+// importing it — the hook only touches these properties.
 export interface ValidatableField {
   id: string | null;
   clientKey: string;

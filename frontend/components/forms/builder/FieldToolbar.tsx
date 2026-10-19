@@ -1,6 +1,6 @@
 "use client";
 
-import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
+import { FieldKeyPopover } from "@/components/forms/builder/FieldKeyPopover";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";

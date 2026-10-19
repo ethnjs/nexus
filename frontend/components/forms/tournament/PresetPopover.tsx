@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { newOption } from "@/components/forms/builder/OptionsEditor";
+import { newEntityOption } from "@/components/forms/tournament/EntityOptionsEditor";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";

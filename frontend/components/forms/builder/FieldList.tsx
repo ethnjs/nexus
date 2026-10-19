@@ -13,11 +13,15 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
-import { FieldCard, FieldCardDragPreview, type FocusIntent } from "@/components/forms/FieldCard";
-import { type ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
-import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import { ArchivedFieldsSection } from "@/components/forms/builder/ArchivedFieldsSection";
+import {
+  FieldCard,
+  FieldCardDragPreview,
+  type FocusIntent,
+} from "@/components/forms/builder/FieldCard";
+import { type ActivePopover, FieldToolbar } from "@/components/forms/builder/FieldToolbar";
+import { NotifyRespondersModal } from "@/components/forms/builder/NotifyRespondersModal";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
