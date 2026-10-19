@@ -75,7 +75,7 @@ export function FieldKeyPopover({
       return;
     }
     // Exclude this field's own current key from both lists before checking —
-    // usedFieldKeys includes every field already saved on this tournament,
+    // usedFieldKeys includes every field already saved on the owner's forms,
     // this field's own prior save included, and allFields includes this
     // field itself.
     const takenByOtherSaved = usedFieldKeys.some((k) => k === key && k !== field.field_key);

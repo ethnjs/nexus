@@ -2,15 +2,10 @@
 
 import { useState } from "react";
 import { Banner } from "@/components/ui/Banner";
-import {
-  ApiError,
-  type FormFieldConfig,
-  type FormQuestionType,
-  type TrackStatusAssignment,
-} from "@/lib/api";
+import { ApiError, type FormFieldConfig, type FormQuestionType } from "@/lib/api";
 import { backwardBranchTargetIds } from "@/lib/forms/branching";
+import { type FormBuilderAddon, useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
-import { activePresetKind, presetIncompleteMessage } from "@/lib/forms/tournament/presets";
 
 // Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
 // rather than importing it — the hook only touches these five properties,
@@ -40,12 +35,7 @@ const OPTION_BEARING = new Set<FormQuestionType>([
 // Structural checks only — matches the backend's per-config Pydantic models
 // (backend/app/schemas/form.py) closely enough to catch the same problems
 // before a round trip, but the backend remains the source of truth.
-// Exported so callers that already know a field had errors as of the last
-// validate() pass (e.g. FieldCard) can re-run just this field's structural
-// checks against its live, currently-being-edited data — letting an error
-// (and whatever border/highlight it drives) disappear the moment it's
-// actually fixed, instead of staying stuck until the next full validate().
-export function issuesFor(field: ValidatableField): string[] {
+function coreIssuesFor(field: ValidatableField): string[] {
   const issues: string[] = [];
   const config = field.config ?? {};
 
@@ -56,16 +46,6 @@ export function issuesFor(field: ValidatableField): string[] {
   // slug at save time (see effectiveFieldKey/toFieldInput). A truly empty
   // label is already caught by the check above; nothing else needs a key
   // of its own to be valid.
-  //
-  // A preset's sentinel-only key (e.g. "availability_", picked but not yet
-  // given a date) is a *complete-looking* string, not an empty one — it
-  // needs its own check rather than falling through as if it were a valid
-  // custom key. build{Availability,EventPreference,Lunch}FieldKey all
-  // collapse back to the bare "{prefix}_" sentinel unless every one of
-  // their parameters is filled in, so a trailing "_" reliably means
-  // "still incomplete" — a real date/suffix/category never leaves one.
-  const presetKind = activePresetKind(field.field_key);
-  if (presetKind && field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(presetKind));
 
   if (field.question_type === "acknowledgment" && !config.confirm_label?.trim()) {
     issues.push("Confirmation text is required.");
@@ -80,25 +60,25 @@ export function issuesFor(field: ValidatableField): string[] {
       const labels = options.map((o) => o.label.trim().toLowerCase());
       if (new Set(labels).size !== labels.length) issues.push("Option labels must be unique.");
     }
-    if (presetKind === "track_status") {
-      const onlyAssignments = (items: unknown[]): TrackStatusAssignment[] =>
-        items.filter(
-          (item): item is TrackStatusAssignment =>
-            typeof item === "object" && item !== null && "id" in item && "status" in item,
-        );
-      const unset = options.some(
-        (option) =>
-          Array.isArray(option.value) &&
-          onlyAssignments(option.value).some((assignment) => !assignment.status),
-      );
-      if (unset) issues.push("Choose a status for every track.");
-    }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {
       issues.push("Ranks can't exceed the number of options.");
     }
   }
 
   return issues;
+}
+
+// One field's core and add-on checks. Exported so callers that already know a
+// field had errors as of the last validate() pass (e.g. FieldCard) can re-run
+// them against its live, currently-being-edited data — letting an error (and
+// whatever border/highlight it drives) disappear the moment it's actually
+// fixed, instead of staying stuck until the next full validate().
+export function issuesFor(
+  field: ValidatableField,
+  fields: ValidatableField[],
+  addon: FormBuilderAddon,
+): string[] {
+  return [...coreIssuesFor(field), ...addon.issuesFor(field, fields)];
 }
 
 // Matches the 409 forms.py raises on a Save-time field_key collision
@@ -109,7 +89,10 @@ export function issuesFor(field: ValidatableField): string[] {
 // isn't this specific error.
 const DUPLICATE_FIELD_KEY_PATTERN = /^field_key '([^']+)' is already in use/;
 
-function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
+function validateFields(
+  fields: ValidatableField[],
+  addon: FormBuilderAddon,
+): FieldValidationIssue[] {
   const issues: FieldValidationIssue[] = [];
   const keyCounts = new Map<string, number>();
 
@@ -123,7 +106,7 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
   }
 
   for (const field of fields) {
-    for (const message of issuesFor(field)) {
+    for (const message of issuesFor(field, fields, addon)) {
       issues.push({ clientKey: field.clientKey, message });
     }
     if (backwardBranchTargetIds(field, fields).size > 0) {
@@ -151,6 +134,7 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
 // the forms PUT .../fields/ route returns a single message string rather
 // than a per-row {errors, warnings} shape.
 export function useFormValidation() {
+  const addon = useFormBuilderAddon();
   const [validationErrors, setValidationErrors] = useState<FieldValidationIssue[]>([]);
   const [saveError, setSaveErrorMessage] = useState("");
   // The full text of a 422, which can run to dozens of lines of pydantic
@@ -165,7 +149,7 @@ export function useFormValidation() {
   }
 
   function validate(fields: ValidatableField[]): FieldValidationIssue[] {
-    const issues = validateFields(fields);
+    const issues = validateFields(fields, addon);
     setValidationErrors(issues);
     setSaveError("");
     return issues;

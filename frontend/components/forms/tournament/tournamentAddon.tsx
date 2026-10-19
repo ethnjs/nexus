@@ -7,6 +7,7 @@ import { PresetPopover } from "@/components/forms/PresetPopover";
 import {
   type Form,
   type FormFieldOption,
+  formsApi,
   type Tournament,
   type TournamentShift,
   type TournamentTrack,
@@ -16,7 +17,6 @@ import {
 import {
   type AddonOptionsEditorProps,
   type AddonToolbarProps,
-  CORE_ONLY,
   type ExtendableField,
   type FieldExtension,
   type FormBuilderAddon,
@@ -26,9 +26,11 @@ import {
   activePresetKind,
   allowsCustomValues,
   isEntityBackedPreset,
+  isPresetError,
   PRESETS,
   parseAvailabilityFieldKey,
   parseEventPreferenceFieldKey,
+  presetIssuesFor,
 } from "@/lib/forms/tournament/presets";
 import { formatTimeRange } from "@/lib/timeFormat";
 
@@ -45,6 +47,8 @@ interface TournamentBuilderData {
   tracks: TournamentTrack[];
   /** Every shift, for previewing an availability option's times. null until loaded. */
   shifts: TournamentShift[] | null;
+  /** Every live field_key on the tournament's forms, which must all be distinct. */
+  usedFieldKeys: string[];
   /** Refetches the tournament, so a tab left open a while doesn't bind presets to stale tracks. */
   reloadTournament: () => void;
 }
@@ -53,12 +57,14 @@ const TournamentBuilderContext = createContext<TournamentBuilderData>({
   tournament: null,
   tracks: [],
   shifts: null,
+  usedFieldKeys: [],
   reloadTournament: () => {},
 });
 
 function TournamentBuilderProvider({ form, children }: { form: Form; children: ReactNode }) {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
+  const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
   const tournamentId = form.tournament_id;
 
   const reloadTournament = useCallback(() => {
@@ -78,9 +84,19 @@ function TournamentBuilderProvider({ form, children }: { form: Form; children: R
       .catch(() => {});
   }, [tournamentId]);
 
+  useEffect(() => {
+    if (tournamentId == null) return;
+    formsApi
+      .listFieldKeysForTournament(tournamentId)
+      .then(setUsedFieldKeys)
+      .catch(() => {});
+  }, [tournamentId]);
+
   const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   return (
-    <TournamentBuilderContext.Provider value={{ tournament, tracks, shifts, reloadTournament }}>
+    <TournamentBuilderContext.Provider
+      value={{ tournament, tracks, shifts, usedFieldKeys, reloadTournament }}
+    >
       {children}
     </TournamentBuilderContext.Provider>
   );
@@ -207,10 +223,17 @@ function shiftIdsOf(value: FormFieldOption["value"]): number[] {
   return Array.isArray(list) ? list.filter((id): id is number => typeof id === "number") : [];
 }
 
+function useUsedFieldKeys(): string[] {
+  return useTournamentBuilder().usedFieldKeys;
+}
+
 export const tournamentAddon: FormBuilderAddon = {
-  ...CORE_ONLY,
   Provider: TournamentBuilderProvider,
   extendField,
   useOptionLabel,
+  useUsedFieldKeys,
   Toolbar: PresetToolbar,
+  issuesFor: presetIssuesFor,
+  // An unfinished preset is fixed in the presets popover, so it's flagged there.
+  ownsIssue: isPresetError,
 };

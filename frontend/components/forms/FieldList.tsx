@@ -100,7 +100,8 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       })),
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
-  const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
+  // Keys the owner's other forms already use — every card's key check shares one list.
+  const usedFieldKeys = addon.useUsedFieldKeys();
   // Which toolbar popover is open, and on which field. A card's body can open
   // the add-on's with `demand` set — e.g. an entity picker used before its
   // question has a track sends the TD to where that's reported and fixed.
@@ -340,16 +341,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     list.addEventListener("focusin", onFocusIn);
     return () => list.removeEventListener("focusin", onFocusIn);
   }, []);
-
-  // Fetched once per form-editing session (not per field card) — every
-  // field's FieldKeyPopover shares this list to flag already-used keys.
-  useEffect(() => {
-    if (form.tournament_id == null) return;
-    formsApi
-      .listFieldKeysForTournament(form.tournament_id)
-      .then(setUsedFieldKeys)
-      .catch(() => {});
-  }, [form.tournament_id]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));

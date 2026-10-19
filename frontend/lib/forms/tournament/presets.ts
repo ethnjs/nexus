@@ -1,4 +1,4 @@
-import type { FormQuestionType } from "@/lib/api";
+import type { FormFieldConfig, FormQuestionType } from "@/lib/api";
 import { slugifyFieldKey } from "@/lib/forms/fieldKeys";
 
 // Reserved field_key patterns — mirrors backend/app/core/form/validation.py
@@ -183,4 +183,32 @@ export function presetIncompleteMessage(kind: PresetKind): string {
 // PresetPopover instead of the field card, same idea as isFieldKeyError.
 export function isPresetError(message: string): boolean {
   return message.startsWith(PRESET_INCOMPLETE_PREFIX);
+}
+
+// The checks a preset adds on top of the core's structural ones.
+export function presetIssuesFor(field: {
+  field_key: string;
+  config: FormFieldConfig | null;
+}): string[] {
+  const kind = activePresetKind(field.field_key);
+  if (!kind) return [];
+  const issues: string[] = [];
+  // A preset's sentinel-only key (e.g. "availability_", picked but not yet
+  // given a track) looks complete but isn't. The build*FieldKey helpers
+  // collapse back to the bare "{prefix}_" until every parameter is filled in,
+  // so a trailing "_" reliably means "still incomplete".
+  if (field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(kind));
+  if (kind === "track_status") {
+    const unset = (field.config?.options ?? [])
+      .filter((option) => !option.is_archived)
+      .some(
+        (option) =>
+          Array.isArray(option.value) &&
+          option.value.some(
+            (item) => typeof item === "object" && item !== null && "status" in item && !item.status,
+          ),
+      );
+    if (unset) issues.push("Choose a status for every track.");
+  }
+  return issues;
 }

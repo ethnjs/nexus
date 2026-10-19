@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import type { FormQuestionType } from "@/lib/api";
 import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
-import { useFieldExtension, useOptionLabel } from "@/lib/forms/builderAddon";
+import { useFieldExtension, useFormBuilderAddon, useOptionLabel } from "@/lib/forms/builderAddon";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
@@ -21,7 +21,6 @@ import {
   QUESTION_TYPE_OPTIONS,
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
-import { activePresetKind, isPresetError } from "@/lib/forms/tournament/presets";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
@@ -117,8 +116,8 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
-// label/type chrome here (field key + reserved presets live in FieldToolbar
-// now, not inline — see FieldKeyPopover/PresetPopover), plus whatever body
+// label/type chrome here (the field key and any add-on popover live in
+// FieldToolbar, not inline), plus whatever body
 // QuestionRenderer's edit mode renders for this question_type (options
 // list, ranks, confirm text, entity picker, ...). Splitting it that way
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
@@ -152,37 +151,35 @@ export function FieldCard({
   onDuplicate: () => void;
   onDelete: () => void;
   allFields: EditableField[];
-  /** Every field_key already saved elsewhere on this tournament — see
-      duplicateKey below. */
+  /** Every field_key already saved on the owner's forms — see duplicateKey below. */
   usedFieldKeys: string[];
   errors: string[];
   /** Opens this field's add-on popover — see AddonOptionsEditorProps.onOpenAddon. */
   onOpenAddon?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
-  /** Archived tournament — stays a read-only preview: no expanding, no dragging. */
+  /** Archived tournament or form — stays a read-only preview: no expanding, no dragging. */
   locked?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const addon = useFormBuilderAddon();
   const extension = useFieldExtension(field);
   const optionLabel = useOptionLabel(field);
-  const presetKind = activePresetKind(field.field_key);
-  // Key/preset errors surface exclusively through FieldToolbar's popovers
-  // now (danger-colored trigger + inline message) — the card itself no
-  // longer shows the key or flags it, so it shouldn't double-report the
-  // same problem in its own border/error list either.
-  const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
-  // Re-run just this field's structural checks against its live, currently-
-  // being-edited data — but only once the last validate() pass actually
-  // found something here (so a never-touched field doesn't start flashing
-  // errors as soon as you glance at it). This is what lets the card's danger
-  // border, and every error message routed off of it below, disappear the
-  // moment the underlying problem is actually fixed, rather than waiting on
-  // the next Save/validate() call.
+  // Key errors and the add-on's own surface exclusively through FieldToolbar's
+  // popovers (danger-colored trigger + inline message) — the card itself
+  // doesn't show the key, so it shouldn't double-report the same problem in
+  // its own border/error list either.
+  const isToolbarError = (e: string) => isFieldKeyError(e) || addon.ownsIssue(e);
+  const nonKeyErrors = errors.filter((e) => !isToolbarError(e));
+  // Re-run just this field's checks against its live, currently-being-edited
+  // data — but only once the last validate() pass actually found something
+  // here (so a never-touched field doesn't start flashing errors as soon as
+  // you glance at it). This is what lets the card's danger border, and every
+  // error message routed off of it below, disappear the moment the underlying
+  // problem is actually fixed, rather than waiting on the next Save.
+  const liveIssues = issuesFor(field, allFields, addon);
   const liveNonKeyErrors =
-    nonKeyErrors.length > 0
-      ? issuesFor(field).filter((e) => !isFieldKeyError(e) && !isPresetError(e))
-      : [];
+    nonKeyErrors.length > 0 ? liveIssues.filter((e) => !isToolbarError(e)) : [];
   // Routed straight onto the label Textarea's own error prop below, rather
   // than a shared list — the rest of liveNonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
@@ -191,36 +188,37 @@ export function FieldCard({
     ? "Question text is required."
     : undefined;
   const bodyErrors = liveNonKeyErrors.filter((e) => e !== "Question text is required.");
-  // Key/preset errors themselves still surface only through FieldToolbar's
+  // Toolbar errors themselves still surface only through FieldToolbar's
   // popovers (danger-colored trigger + inline message) — this doesn't
   // duplicate that message here, it just decides whether the card border
   // should flag that *something* in the toolbar needs attention. Same
   // gate-then-recheck pattern as liveNonKeyErrors above: only bothers once
-  // the last validate() pass actually flagged a key/preset problem on this
+  // the last validate() pass actually flagged a toolbar problem on this
   // field, then re-derives it from live data so fixing it via either popover
   // clears the border immediately.
-  const hadKeyOrPresetError = errors.some((e) => isFieldKeyError(e) || isPresetError(e));
-  const presetIncomplete = !!presetKind && field.field_key.endsWith("_");
+  const hadToolbarError = errors.some(isToolbarError);
+  const addonIssueOpen = liveIssues.some(addon.ownsIssue);
   const effKey = effectiveFieldKey(field);
-  // A same-form collision is checked live against the other staged fields; a
-  // preset key can also collide with a *different* form's field, which only
-  // the tournament-wide usedFieldKeys snapshot (not allFields) would catch —
-  // a plain custom key relies on FieldKeyPopover's own blur-time check for
-  // that instead, so this half is preset-only. `effKey !== field.originalFieldKey`
-  // excludes the field's own already-saved key — usedFieldKeys otherwise
-  // always contains it too, which would flag every untouched existing preset
-  // field as a duplicate of itself. Both halves are naturally self-correcting
-  // as the TD edits: once the key changes, it just stops matching either
-  // check, no stale-error bookkeeping required.
+  // A same-form collision is checked live against the other staged fields; an
+  // add-on-owned key can also collide with a *different* form's field, which
+  // only the usedFieldKeys snapshot (not allFields) would catch — a plain
+  // custom key relies on FieldKeyPopover's own blur-time check for that
+  // instead. `effKey !== field.originalFieldKey` excludes the field's own
+  // already-saved key — usedFieldKeys otherwise always contains it too, which
+  // would flag every untouched existing field as a duplicate of itself. Both
+  // halves are naturally self-correcting as the TD edits: once the key
+  // changes, it just stops matching either check.
   const duplicateKey =
     !!effKey &&
     (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
-      (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey)));
-  const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
+      (!!extension.keyLockedReason &&
+        effKey !== field.originalFieldKey &&
+        usedFieldKeys.includes(effKey)));
+  const hasToolbarCardError = hadToolbarError && (addonIssueOpen || duplicateKey);
   // Flagged without waiting for Save, so the card turns red as the reorder
   // that broke the branch lands.
   const hasBackwardBranch = backwardBranchTargetIds(field, allFields).size > 0;
-  const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError || hasBackwardBranch;
+  const hasCardError = liveNonKeyErrors.length > 0 || hasToolbarCardError || hasBackwardBranch;
   const branchTargets = branchTargetsFor(field, allFields);
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
