@@ -2,6 +2,7 @@
 writes are to the Discord tables (sync marks and build status)."""
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -51,6 +52,8 @@ PROGRESS_INTERVAL_SECONDS = 3
 # (guild id, Discord user id) -> when they last clicked Verify, for the last cooldown's worth of
 # clicks. Per worker, which is enough to stop a burst of clicks from writing a mark each.
 _verify_clicks: dict[tuple[int, int], float] = {}
+# The interactions route is sync, so requests reach the cooldown from FastAPI's thread pool.
+_verify_clicks_lock = threading.Lock()
 
 # Runs a coroutine after the response is sent: FastAPI's BackgroundTasks.add_task.
 Schedule = Callable[..., None]
@@ -137,14 +140,15 @@ def handle(db: Session, payload: dict[str, Any], schedule: Schedule) -> dict[str
 
 def _verify_cooldown(guild_id: int, discord_user_id: int) -> int:
     """Seconds before this person may click Verify again; 0 means go ahead, and records the click."""
-    now = time.monotonic()
-    last = _verify_clicks.get((guild_id, discord_user_id))
-    if last is not None and now - last < VERIFY_COOLDOWN_SECONDS:
-        return int(VERIFY_COOLDOWN_SECONDS - (now - last)) + 1
-    for key in [k for k, t in _verify_clicks.items() if now - t >= VERIFY_COOLDOWN_SECONDS]:
-        del _verify_clicks[key]
-    _verify_clicks[(guild_id, discord_user_id)] = now
-    return 0
+    with _verify_clicks_lock:
+        now = time.monotonic()
+        last = _verify_clicks.get((guild_id, discord_user_id))
+        if last is not None and now - last < VERIFY_COOLDOWN_SECONDS:
+            return int(VERIFY_COOLDOWN_SECONDS - (now - last)) + 1
+        for key in [k for k, t in _verify_clicks.items() if now - t >= VERIFY_COOLDOWN_SECONDS]:
+            del _verify_clicks[key]
+        _verify_clicks[(guild_id, discord_user_id)] = now
+        return 0
 
 
 def _verify(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[str, Any]:
