@@ -84,7 +84,9 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
         locked={locked}
         activeTab="questions"
       />
-      <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
+      <div
+        style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px 120px" }}
+      >
         {lockedReason && (
           <div style={{ marginBottom: "16px" }}>
             <Banner variant="warning" message={lockedReason} />

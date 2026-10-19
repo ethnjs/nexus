@@ -12,7 +12,8 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AddFieldGap } from "@/components/forms/builder/AddFieldGap";
 import { ArchivedFieldsSection } from "@/components/forms/builder/ArchivedFieldsSection";
 import {
   FieldCard,
@@ -350,10 +351,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
   }
 
-  function addField(afterClientKey?: string) {
-    const insertIndex = afterClientKey
-      ? fields.findIndex((f) => f.clientKey === afterClientKey) + 1
-      : fields.length;
+  function addField(insertIndex = fields.length) {
     const field = newField(insertIndex + 1);
     setFields((prev) => {
       const next = [...prev];
@@ -679,38 +677,56 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
               items={fields.map((f) => f.clientKey)}
               strategy={verticalListSortingStrategy}
             >
-              {fields.map((field) => (
-                <FieldCard
-                  key={field.clientKey}
-                  field={field}
-                  expanded={!locked && expandedKey === field.clientKey}
-                  // Expanding grows the card downward from where it sat, so a
-                  // click near the bottom of the viewport leaves most of the
-                  // question you just opened below the fold.
-                  onExpand={(intent) => {
-                    setExpandedKey(field.clientKey);
-                    setPendingScrollKey(field.clientKey);
-                    setFocusRequest({
-                      key: field.clientKey,
-                      intent,
-                      nonce: focusNonceRef.current++,
-                    });
-                  }}
-                  focusIntent={focusRequest?.key === field.clientKey ? focusRequest.intent : null}
-                  focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
-                  onFieldChange={(updates) => updateField(field.clientKey, updates)}
-                  onDuplicate={() => duplicateField(field.clientKey)}
-                  onDelete={() => archiveField(field.clientKey)}
-                  allFields={fields}
-                  usedFieldKeys={usedFieldKeys}
-                  onOpenAddon={() =>
-                    setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
-                  }
-                  errors={validation.errorsFor(field.clientKey)}
-                  allowArchive={hasResponses}
-                  locked={locked}
+              {/* Its own column with no flex gap: the AddFieldGaps are the
+                  spacing. The top one's negative margin keeps the resting
+                  distance to the title card unchanged. */}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <AddFieldGap
+                  onAdd={() => addField(0)}
+                  disabled={locked || !!draggingKey}
+                  style={{ marginTop: "-12px" }}
                 />
-              ))}
+                {fields.map((field, index) => (
+                  <Fragment key={field.clientKey}>
+                    <FieldCard
+                      field={field}
+                      expanded={!locked && expandedKey === field.clientKey}
+                      // Expanding grows the card downward from where it sat, so a
+                      // click near the bottom of the viewport leaves most of the
+                      // question you just opened below the fold.
+                      onExpand={(intent) => {
+                        setExpandedKey(field.clientKey);
+                        setPendingScrollKey(field.clientKey);
+                        setFocusRequest({
+                          key: field.clientKey,
+                          intent,
+                          nonce: focusNonceRef.current++,
+                        });
+                      }}
+                      focusIntent={
+                        focusRequest?.key === field.clientKey ? focusRequest.intent : null
+                      }
+                      focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
+                      onFieldChange={(updates) => updateField(field.clientKey, updates)}
+                      onDuplicate={() => duplicateField(field.clientKey)}
+                      onDelete={() => archiveField(field.clientKey)}
+                      allFields={fields}
+                      usedFieldKeys={usedFieldKeys}
+                      onOpenAddon={() =>
+                        setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
+                      }
+                      errors={validation.errorsFor(field.clientKey)}
+                      allowArchive={hasResponses}
+                      locked={locked}
+                    />
+                    <AddFieldGap
+                      onAdd={() => addField(index + 1)}
+                      disabled={locked || !!draggingKey}
+                      alwaysOpen={index === fields.length - 1}
+                    />
+                  </Fragment>
+                ))}
+              </div>
             </SortableContext>
             {/* dropAnimation off: the default animates the overlay into the
               drop slot's rect, which would stretch this compact preview back
@@ -782,7 +798,9 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
             errors={validation.errorsFor(expandedField.clientKey)}
             saveAttempt={saveAttempt}
             showDescription={expandedField.showDescription}
-            onAddFieldBelow={() => addField(expandedField.clientKey)}
+            onAddFieldBelow={() =>
+              addField(fields.findIndex((f) => f.clientKey === expandedField.clientKey) + 1)
+            }
             onToggleDescription={() =>
               updateField(expandedField.clientKey, {
                 showDescription: !expandedField.showDescription,
