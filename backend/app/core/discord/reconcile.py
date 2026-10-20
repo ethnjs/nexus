@@ -1,6 +1,6 @@
-"""Keeping a built server in step with NEXUS between builds: who holds which managed roles, and
-that managed roles and channels exist. Never how they're configured (permissions, tiers,
-overwrites, names of channels, the layout, order); that's /reset.
+"""Keeping a built server in step with NEXUS between builds: who holds which managed roles,
+members' nicknames, and that managed roles and channels exist. Never how they're configured
+(permissions, tiers, overwrites, names of channels, the layout, order); that's /reset.
 
 A structure reconcile plans with the build's actions (build.py) but matches channels by the
 events they cover rather than by the layout's keys, so a layout change waits for /reset: an
@@ -8,6 +8,7 @@ event joining a merged channel's group joins that channel, an event that leaves 
 shrinks its key, and only events no managed channel covers get a new one.
 """
 
+import logging
 from dataclasses import dataclass
 
 from app.core.discord.build import (
@@ -35,9 +36,12 @@ from app.core.discord.build import (
     _verify_overwrites,
     parse_roles,
 )
+from app.core.discord.eligibility import DesiredMember
 from app.core.discord.layout import VERIFIED_KEY, ChannelSpec, channel_key, event_role_key
 from app.services.discord.permissions import VIEW_CHANNEL
 from app.services.discord.rest import GUILD_CATEGORY, GUILD_TEXT, DiscordRest
+
+log = logging.getLogger(__name__)
 
 MEMBERS_PAGE = 1000
 
@@ -318,11 +322,13 @@ def plan_structure(snapshot: Snapshot, live: Live) -> tuple[Plan, set[str]]:
 
 async def fetch_roles(rest: DiscordRest, snapshot: Snapshot) -> Live:
     """The roles half of the live state, all a member reconcile needs."""
-    roles = parse_roles((await rest.guild(snapshot.guild_id))["roles"])
+    guild = await rest.guild(snapshot.guild_id)
+    roles = parse_roles(guild["roles"])
     me = await rest.member(snapshot.guild_id, await rest.me())
     bot_roles = {int(r) for r in (me or {}).get("roles", []) if int(r) in roles}
     return Live(
         guild_id=snapshot.guild_id,
+        owner_id=int(guild["owner_id"]),
         roles=roles,
         channels={},
         bot_role_ids=bot_roles,
@@ -331,21 +337,23 @@ async def fetch_roles(rest: DiscordRest, snapshot: Snapshot) -> Live:
     )
 
 
-async def apply_member_roles(
+async def apply_member(
     rest: DiscordRest,
     snapshot: Snapshot,
     live: Live,
     member: dict,
-    keys: set[str],
+    desired: DesiredMember | None,
     above_bot: set[str],
 ) -> None:
-    """Gives one member the managed roles in `keys` and takes away every other managed role,
-    one role per call so roles NEXUS doesn't manage are never touched. Bots are left alone, and
-    roles above the bot are skipped and added to `above_bot`."""
+    """Gives one member the managed roles and nickname in `desired`, or none of the managed roles
+    if None, and takes away every other managed role, one role per call so roles NEXUS doesn't
+    manage are never touched. Bots are left alone, and roles above the bot are skipped and added
+    to `above_bot`."""
     if member["user"].get("bot"):
         return
     user_id = int(member["user"]["id"])
     managed = {role_id for role_id in snapshot.role_ids.values() if role_id in live.roles}
+    keys = desired.role_keys if desired else set()
     wanted = {snapshot.role_ids[k] for k in keys if snapshot.role_ids.get(k) in managed}
     held = {int(r) for r in member["roles"]}
     for role_id in sorted(wanted - held):
@@ -358,6 +366,13 @@ async def apply_member_roles(
             await rest.remove_member_role(snapshot.guild_id, user_id, role_id)
         else:
             above_bot.add(live.roles[role_id].name)
+    nick = desired.nick if desired else None
+    # Discord lets no bot rename the server owner, or anyone holding a role at or above its own.
+    renamable = user_id != live.owner_id and all(live.below_bot(r) for r in held if r in live.roles)
+    if nick is not None and member.get("nick") != nick and renamable:
+        # A name Discord refuses mustn't fail the sync for everyone else in the server.
+        if not await rest.edit_member_nick(snapshot.guild_id, user_id, nick):
+            log.warning("Discord refused the nickname for %s in server %s", user_id, live.guild_id)
 
 
 async def all_members(rest: DiscordRest, guild_id: int) -> list[dict]:

@@ -15,7 +15,7 @@ MENTION_EVERYONE = 1 << 17
 MUTE_MEMBERS = 1 << 22
 DEAFEN_MEMBERS = 1 << 23
 MOVE_MEMBERS = 1 << 24
-MANAGE_NICKNAMES = 1 << 27
+CHANGE_NICKNAME = 1 << 26
 MANAGE_EVENTS = 1 << 33
 MANAGE_THREADS = 1 << 34
 CREATE_PUBLIC_THREADS = 1 << 35
@@ -27,8 +27,8 @@ PIN_MESSAGES = 1 << 51
 BYPASS_SLOWMODE = 1 << 52
 
 # Server-level permissions for roles with manage_discord but not manage_tournament. Left out on
-# purpose: Administrator, Manage Server, Manage Roles (staff can't fight the sync), Manage
-# Webhooks (webhooks can impersonate anyone), Ban Members and Manage Expressions.
+# purpose: Administrator, Manage Server, Manage Roles and Manage Nicknames (staff can't fight the
+# sync), Manage Webhooks (webhooks can impersonate anyone), Ban Members, and Manage Expressions.
 STAFF_PERMISSIONS = (
     VIEW_CHANNEL
     | READ_MESSAGE_HISTORY
@@ -44,7 +44,6 @@ STAFF_PERMISSIONS = (
     | SEND_MESSAGES_IN_THREADS
     | MODERATE_MEMBERS
     | KICK_MEMBERS
-    | MANAGE_NICKNAMES
     | CREATE_EVENTS
     | MANAGE_EVENTS
     | MUTE_MEMBERS
@@ -56,6 +55,10 @@ STAFF_PERMISSIONS = (
 # The one channel overwrite the bot adds for a staff role. Allow beats deny across roles, so it
 # overrides @everyone's deny and any other role's.
 STAFF_OVERWRITE = VIEW_CHANNEL | READ_MESSAGE_HISTORY
+
+# Taken from @everyone at the server level by the first build and /reset. Verified gives back
+# View Channels; nicknames are the sync's.
+EVERYONE_REVOKED = {VIEW_CHANNEL: "View Channels", CHANGE_NICKNAME: "Change Nickname"}
 
 VERIFY_EVERYONE_ALLOW = VIEW_CHANNEL | READ_MESSAGE_HISTORY
 VERIFY_EVERYONE_DENY = (

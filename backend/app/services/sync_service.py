@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.discord.marks import mark_if_renamed
 from app.core.phone import normalize_phone
 from app.models.models import SheetConfig, Tournament, TournamentMembership, User
 from app.schemas.sheet_config import (
@@ -605,6 +606,7 @@ def sync_sheet(
 
             user = db.query(User).filter(User.email == email).first()
             if user:
+                mark_if_renamed(db, user, user_fields)
                 for k, v in user_fields.items():
                     setattr(user, k, v)
                 db.flush()
