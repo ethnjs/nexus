@@ -21,8 +21,9 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   const [runCount, setRunCount] = useState(0);
 
   useEffect(() => {
-    // getForEdit only gates the page to managers; the preview renders get's respondent shape.
-    Promise.allSettled([formsApi.get(formId), formsApi.getForEdit(formId)]).then(
+    // listArchivedFields only gates the page to managers (the smallest manage-access read);
+    // the preview renders get's respondent shape.
+    Promise.allSettled([formsApi.get(formId), formsApi.listArchivedFields(formId)]).then(
       ([loaded, gate]) => {
         if (loaded.status === "fulfilled" && gate.status === "fulfilled") {
           setForm(loaded.value);

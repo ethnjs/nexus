@@ -125,9 +125,13 @@ def needs_tournament_onboarding(
     permissions: set[str],
 ) -> bool:
     """Whether the member is held to the onboarding sequence before reaching
-    the rest of the tournament. Anyone holding a tournament permission is
-    exempt, and so is everyone in an archived tournament, where nothing can be
-    answered."""
-    if permissions or membership.tournament.is_archived:
+    the rest of the tournament."""
+    if exempt_from_onboarding(membership, permissions):
         return False
     return next_required_onboarding_form_id(db, membership) is not None
+
+
+def exempt_from_onboarding(membership: TournamentMembership, permissions: set[str]) -> bool:
+    """Anyone holding a tournament permission is exempt, and so is everyone in an
+    archived tournament, where nothing can be answered."""
+    return bool(permissions) or membership.tournament.is_archived

@@ -58,7 +58,7 @@ from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import (
-    needs_tournament_onboarding,
+    exempt_from_onboarding,
     next_required_onboarding_form_id,
     recompute_onboarding,
 )
@@ -238,8 +238,8 @@ def list_my_tournament_forms(
         .all()
     }
     next_onboarding_form_id = next_required_onboarding_form_id(db, membership)
-    held_to_onboarding = needs_tournament_onboarding(
-        db, membership, get_user_permissions(current_user, tournament_id, db)
+    held_to_onboarding = next_onboarding_form_id is not None and not exempt_from_onboarding(
+        membership, get_user_permissions(current_user, tournament_id, db)
     )
 
     result = []

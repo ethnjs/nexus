@@ -116,16 +116,15 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     demand?: boolean;
   } | null>(null);
   // Questions taken out of use. Not part of `fields` — they must not join the
-  // ordered list or read as branch targets — so they're fetched separately and
-  // move between the two lists only when the TD restores one.
-  const [archivedFields, setArchivedFields] = useState<FormField[]>([]);
+  // ordered list or read as branch targets — so they're kept separately and
+  // move between the two lists only when the TD restores one. Newest first,
+  // matching listArchivedFields.
+  const [archivedFields, setArchivedFields] = useState<FormField[]>(() =>
+    form.fields
+      .filter((f) => f.is_archived)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+  );
   const [confirmingSave, setConfirmingSave] = useState(false);
-  useEffect(() => {
-    formsApi
-      .listArchivedFields(form.id)
-      .then(setArchivedFields)
-      .catch(() => {});
-  }, [form.id]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
