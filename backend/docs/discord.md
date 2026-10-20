@@ -165,7 +165,7 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 | Role created or renamed | structure, every server |
 | Role deleted; event deleted or removed from a track | structure, plus member for former holders, queried first |
 | Event created or renamed, or its tracks change | structure, every server |
-| Zone or shift deleted; track default-role reassign | member for the rows that cascade or move |
+| Zone deleted; track default-role reassign | member for the rows that cascade or move |
 | Discord link and unlink; account deletion, deactivation, admin status change; a name change that changes the nickname (profile edit or Sheets import, `mark_if_renamed`) | member for the account in every server where the user counts (tracks they hold roles on, plus tournaments where they hold a tournament-wide role or are the owner), member lists never scanned |
 | Ownership transferred | member, old and new owner, every server |
 | Unarchive; track deletion cancelled; lobot added back | full |
