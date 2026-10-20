@@ -21,15 +21,15 @@ import {
   type FocusIntent,
 } from "@/components/forms/builder/FieldCard";
 import { type ActivePopover, FieldToolbar } from "@/components/forms/builder/FieldToolbar";
-import { NotifyRespondersModal } from "@/components/forms/builder/NotifyRespondersModal";
 import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
-import { ApiError, type FieldChange, type Form, type FormField, formsApi } from "@/lib/api";
+import { ApiError, type Form, type FormField, formsApi } from "@/lib/api";
 import { deriveBranchingEnabled } from "@/lib/forms/branching";
 import {
   CORE_ONLY,
@@ -119,15 +119,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
   // ordered list or read as branch targets — so they're fetched separately and
   // move between the two lists only when the TD restores one.
   const [archivedFields, setArchivedFields] = useState<FormField[]>([]);
-  // Set when a save on a form with responses turns out to change something
-  // consequential — the save waits here until the TD decides who gets asked
-  // to re-answer. null means no save is pending confirmation.
-  const [pendingChanges, setPendingChanges] = useState<FieldChange[] | null>(null);
-  const [notifyByKey, setNotifyByKey] = useState<Record<string, boolean>>({});
-  // field_id -> the TD's decision. Only these questions carry one; everything
-  // else in the payload omits notify_responders and takes the server's
-  // defaults.
-  const notifyRef = useRef<Record<string, boolean>>({});
+  const [confirmingSave, setConfirmingSave] = useState(false);
   useEffect(() => {
     formsApi
       .listArchivedFields(form.id)
@@ -453,9 +445,8 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
     return [...err.message.matchAll(/'([^']+)'/g)].map((m) => m[1]);
   }
 
-  // A form nobody has answered can't strand anyone, so edits apply silently;
-  // once responses exist, every consequential edit is the TD's call.
-  const hasResponses = form.status === "published" || form.response_count > 0;
+  // Mirrors the server's history-preserving rule: removing a question archives it.
+  const isHistoryPreserving = form.status === "published" || form.response_count > 0;
 
   async function handleSave() {
     const issues = validation.validate(fields);
@@ -470,50 +461,23 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       return;
     }
 
-    if (hasResponses && pendingChanges === null) {
-      // The server owns the rules — see backend/app/core/form/changes.py. The
-      // round trip is affordable because this only happens on a deliberate
-      // save of a form that already has responses.
-      setSaving(true);
-      validation.setSaveError("");
-      try {
-        const changes = await formsApi.classifyFieldChanges(
-          form.id,
-          fields.map((f) => toFieldInput(f)),
-        );
-        if (changes.length > 0) {
-          setNotifyByKey(Object.fromEntries(changes.map((c) => [c.field_id, c.notify_default])));
-          setPendingChanges(changes);
-          return;
-        }
-      } catch {
-        // Stop rather than save anyway. The PUT would apply each change's
-        // default, which is exactly the decision this step exists to give the
-        // TD — saving past a failed check would quietly take it away. Nothing
-        // has been written, so pressing Save again just retries.
-        validation.setSaveError(
-          "Couldn't check which questions changed, so nothing was saved. Try saving again.",
-        );
-        return;
-      } finally {
-        setSaving(false);
-      }
+    if (form.response_count > 0) {
+      setConfirmingSave(true);
+      return;
     }
     await commitSave();
   }
 
   async function commitSave() {
-    setPendingChanges(null);
     setSaving(true);
     try {
       // A not-yet-saved field's clientKey is a client UUID that the server
       // response replaces with String(new id) — track position instead of
       // identity so the same card stays open across that swap.
       const expandedIndex = fields.findIndex((f) => f.clientKey === expandedKey);
-      const decided = notifyRef.current;
       const updated = await formsApi.putFields(
         form.id,
-        fields.map((f) => toFieldInput(f, f.id ? decided[f.id] : undefined)),
+        fields.map((f) => toFieldInput(f)),
       );
       const next = updated
         .filter((f) => !f.is_archived)
@@ -561,7 +525,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
         }
       }
     } finally {
-      notifyRef.current = {};
       setSaving(false);
     }
   }
@@ -713,7 +676,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
                         setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
                       }
                       errors={validation.errorsFor(field.clientKey)}
-                      allowArchive={hasResponses}
+                      allowArchive={isHistoryPreserving}
                       locked={locked}
                     />
                     <AddFieldGap
@@ -733,17 +696,14 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
             </DragOverlay>
           </DndContext>
         )}
-        {pendingChanges && (
-          <NotifyRespondersModal
-            changes={pendingChanges}
-            notify={notifyByKey}
-            onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
-            onCancel={() => setPendingChanges(null)}
-            onConfirm={() => {
-              notifyRef.current = notifyByKey;
-              commitSave();
-            }}
-            saving={saving}
+        {confirmingSave && (
+          <ConfirmModal
+            title="Save changes?"
+            description={`${form.response_count} ${form.response_count === 1 ? "person has" : "people have"} already responded. Your changes apply to new responses only; submitted answers stay as they were.`}
+            confirmLabel="Save"
+            variant="primary"
+            onConfirm={commitSave}
+            onClose={() => setConfirmingSave(false)}
           />
         )}
         <ArchivedFieldsSection

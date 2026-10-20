@@ -2147,9 +2147,6 @@ class FormResponse(Base):
     answers: Mapped[list["FormAnswer"]] = relationship(
         "FormAnswer", back_populates="response", cascade="all, delete-orphan"
     )
-    pending_updates: Mapped[list["FormResponsePendingUpdate"]] = relationship(
-        "FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan"
-    )
 
     __table_args__ = (UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),)
 
@@ -2182,45 +2179,6 @@ class FormAnswer(Base):
     field: Mapped["FormField"] = relationship("FormField", back_populates="answer")
 
     __table_args__ = (UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),)
-
-
-# ---------------------------------------------------------------------------
-# FormResponsePendingUpdate — flags that a response's answer to a field needs
-# another look, because the TD changed the question in a way that may have
-# invalidated it. One row per (response, field_id).
-#
-# Keyed on field_id, never field_key: a key is a TD-editable display name, so
-# keying history on it strands the flag the moment the question is renamed.
-# The field a flag points at is therefore stable across every edit.
-#
-# `reasons` is a set, not a single value: one save can legitimately trigger
-# several on the same field (an option added *and* the wording changed), so
-# they union rather than override. A row is cleared when the respondent
-# patches that field, and is deleted outright if the field is archived or
-# invalidated — a flag on a question that can no longer be answered is
-# unclearable by construction. See backend/docs/form-edit-lifecycle.md.
-# ---------------------------------------------------------------------------
-class FormResponsePendingUpdate(Base):
-    __tablename__ = "form_response_pending_updates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    response_id: Mapped[str] = mapped_column(
-        String(12), ForeignKey("form_responses.id", ondelete="CASCADE")
-    )
-    field_id: Mapped[str] = mapped_column(
-        String(12), ForeignKey("form_fields.id", ondelete="CASCADE")
-    )
-    # See app/core/form/changes.py for the values and what raises each.
-    reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    response: Mapped["FormResponse"] = relationship(
-        "FormResponse", back_populates="pending_updates"
-    )
-
-    __table_args__ = (
-        UniqueConstraint("response_id", "field_id", name="uq_pending_update_per_response_field"),
-    )
 
 
 # ---------------------------------------------------------------------------

@@ -272,9 +272,8 @@ export function OptionsEditor({
     onChange(options.filter((o) => o.clientKey !== clientKey));
   }
 
-  // Archiving keeps the option in storage so past answers still resolve, and
-  // asks nobody to re-answer — "we ran out", not "this was never valid".
-  // Removing it outright is the other verb, and does flag whoever picked it.
+  // Archiving keeps the option in storage so past answers still resolve —
+  // "we ran out", not "this was never valid".
   function setArchived(clientKey: string, is_archived: boolean) {
     suspendCardScroll();
     onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, is_archived } : o)));

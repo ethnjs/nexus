@@ -17,7 +17,7 @@ Applies when a form response sets a status, through a `track_status_{suffix}` qu
 | `confirmed` | ✗ | ✓ | ✓ |
 | `declined` | ✓ | ✓ | ✓ |
 
-This keeps statuses ordered without comparing submission times. A TD can flag a track question on an *older* form, and the respondent's patch to it could otherwise demote a track a newer form already confirmed. A demotion is the only damage an out-of-order write can do, so refusing it closes the hole.
+This keeps statuses ordered without comparing submission times. With response edits on, a member can patch a track question on an *older* form, which could otherwise demote a track a newer form already confirmed. A demotion is the only damage an out-of-order write can do, so refusing it closes the hole.
 
 `declined` is deliberately not a floor. A member who opts out on their own page and later tells a form they're interested is giving newer information, and treating the opt-out as final made that form silently do nothing.
 

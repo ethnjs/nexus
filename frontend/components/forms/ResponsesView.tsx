@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import styles from "@/components/forms/ResponsesView.module.css";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -157,7 +156,6 @@ export function ResponsesView({
                     >
                       {respondentName(r.respondent)}
                     </span>
-                    {r.pending_updates.length > 0 && <Badge variant="warning">Needs update</Badge>}
                   </span>
                   <span
                     style={{
@@ -218,11 +216,6 @@ function ResponseDetail({
   onBack: () => void;
   onDelete: () => void;
 }) {
-  const flagged = useMemo(
-    () => new Set(response.pending_updates.map((p) => p.field_id)),
-    [response.pending_updates],
-  );
-
   return (
     <>
       {/* Mobile only — the panes stack there, so the list needs a way back.
@@ -280,7 +273,7 @@ function ResponseDetail({
         </Button>
       </Card>
 
-      <ResponseAnswers fields={fields} answers={response.answers} flaggedFieldIds={flagged} />
+      <ResponseAnswers fields={fields} answers={response.answers} />
     </>
   );
 }

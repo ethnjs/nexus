@@ -255,11 +255,8 @@ function QuestionBody({
   // locked and every handler is a no-op. `interactive` still decides whether
   // there is an answer to show at all.
   const editable = interactive && !locked;
-  // An archived option stays in `config.options` forever so old answers
-  // referencing its option_id keep resolving (see apply_option_archiving on
-  // the backend) — it is storage, never a choice to present. Respondents
-  // whose answer pointed at one are asked to re-answer via the
-  // "option_archived" pending-update flow instead.
+  // An archived option stays in `config.options` so old answers referencing
+  // its option_id keep resolving; it's storage, never a choice to present.
   const removedIds = new Set(removedOptions.map((opt) => opt.option_id));
   const liveOptions: FormFieldOption[] = [
     ...(config.options ?? []).filter((opt) => !opt.is_archived && !removedIds.has(opt.option_id)),

@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import styles from "@/components/forms/FormFlow.module.css";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import type { FormAnswer, FormField } from "@/lib/api";
 import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
@@ -15,13 +14,10 @@ import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/
 export function ResponseAnswers({
   fields,
   answers,
-  flaggedFieldIds,
 }: {
   /** Live questions only, with option values hydrated (formsApi.get). */
   fields: FormField[];
   answers: FormAnswer[];
-  /** Managers' view only — questions waiting on an updated answer. */
-  flaggedFieldIds?: Set<string>;
 }) {
   // Raw stored values: the input shape and any no-longer-offered picks both
   // derive from them.
@@ -33,11 +29,6 @@ export function ResponseAnswers({
         const stored = byField.get(field.id);
         return (
           <Card key={field.id} radius="lg" className={styles.card}>
-            {flaggedFieldIds?.has(field.id) && (
-              <div style={{ marginBottom: "10px" }}>
-                <Badge variant="warning">Waiting on an updated answer</Badge>
-              </div>
-            )}
             <QuestionRenderer
               field={field}
               interactive

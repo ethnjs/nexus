@@ -15,7 +15,6 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
-    FormResponsePendingUpdate,
     TournamentEvent,
     TournamentForm,
     TournamentMembership,
@@ -1170,7 +1169,7 @@ class TestBulkUpdateFieldsPublished:
 
     def test_key_freed_and_taken_in_one_save(self, client, db, td_user, td_tournament):
         """The second question takes the key the first gives up in the same
-        save. Published, so the save also classifies each key change."""
+        save."""
         form = _make_form(db, td_user, td_tournament)
         first, second = self._two_keyed_fields(db, form, "a", "b")
         db.commit()
@@ -1461,9 +1460,7 @@ class TestBulkUpdateFieldsPublished:
             },
         )
 
-    def test_archiving_an_option_keeps_it_and_flags_nobody(
-        self, client, db, td_user, td_tournament
-    ):
+    def test_archiving_an_option_keeps_it(self, client, db, td_user, td_tournament):
         """Archive means "we ran out" — the option stops being offered, but
         everyone who already picked it still has a valid answer."""
         form = _make_form(db, td_user, td_tournament)
@@ -1472,11 +1469,10 @@ class TestBulkUpdateFieldsPublished:
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(
+        client.post(
             f"/forms/{form.id}/responses/",
             json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
         )
-        response_id = res.json()["id"]
 
         res = self._save_options(
             client,
@@ -1500,24 +1496,21 @@ class TestBulkUpdateFieldsPublished:
             "opt_blue"
         }
 
-        assert self._pending(db, response_id, field.id) is None
-
-    def test_invalidating_an_option_removes_it_and_flags_who_picked_it(
+    def test_invalidating_an_option_removes_it_and_keeps_the_answer(
         self, client, db, td_user, td_tournament
     ):
         """Omitting an option entirely is the invalidate verb: it leaves
-        storage, and whoever chose it is asked to answer again."""
+        storage, and answers that picked it keep their snapshot."""
         form = _make_form(db, td_user, td_tournament)
         field = self._colour_field(db, form)
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        res = client.post(
+        client.post(
             f"/forms/{form.id}/responses/",
             json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
         )
-        response_id = res.json()["id"]
 
         res = self._save_options(client, form, field, [self.OPTIONS[1]])
         assert res.status_code == 200, res.json()
@@ -1526,152 +1519,14 @@ class TestBulkUpdateFieldsPublished:
         db.refresh(field)
         assert {o["option_id"] for o in field.config["options"]} == {"opt_blue"}
 
-        # The stored answer still renders from its own snapshot — flagged as
-        # stale, not corrupted.
         answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
         assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
 
-        pending = self._pending(db, response_id, field.id)
-        assert pending is not None
-        assert pending.reasons == ["option_invalidated"]
-
-    def test_invalidating_an_option_spares_who_did_not_pick_it(
+    def test_cross_shape_type_change_keeps_the_stored_answer(
         self, client, db, td_user, td_tournament
     ):
-        form = _make_form(db, td_user, td_tournament)
-        field = self._colour_field(db, form)
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
-        )
-        response_id = res.json()["id"]
-
-        self._save_options(client, form, field, [self.OPTIONS[1]])
-        assert self._pending(db, response_id, field.id) is None
-
-    def test_unarchiving_an_option_flags_everyone(self, client, db, td_user, td_tournament):
-        """An option coming back is the same as a new one: someone may have
-        settled for a lesser choice while it was unavailable."""
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="multi_select_checkbox",
-            config={
-                "required": False,
-                "options": [
-                    {**self.OPTIONS[0], "is_archived": True},
-                    dict(self.OPTIONS[1]),
-                ],
-            },
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
-        )
-        response_id = res.json()["id"]
-
-        res = self._save_options(
-            client,
-            form,
-            field,
-            [
-                {**self.OPTIONS[0], "is_archived": False},
-                self.OPTIONS[1],
-            ],
-        )
-        assert res.status_code == 200, res.json()
-
-        pending = self._pending(db, response_id, field.id)
-        assert pending is not None
-        assert pending.reasons == ["option_added"]
-
-    def test_pending_update_cleared_on_fresh_submission(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="multi_select_checkbox",
-            config={
-                "required": False,
-                "options": [
-                    {"option_id": "opt_red", "value": "red", "label": "Red"},
-                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
-                ],
-            },
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]},
-        )
-        response_id = res.json()["id"]
-
-        client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "label": "Favorite color",
-                        "question_type": "multi_select_checkbox",
-                        "config": {
-                            "required": False,
-                            "options": [
-                                {"option_id": "opt_blue", "value": "blue", "label": "Blue"}
-                            ],
-                        },
-                    },
-                ]
-            },
-        )
-        assert (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id)
-            .count()
-            == 1
-        )
-
-        # Answering the flagged question clears it. That goes through PATCH —
-        # POST no longer resubmits.
-        res = client.patch(
-            f"/forms/{form.id}/responses/me/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]},
-        )
-        assert res.status_code == 200, res.json()
-        assert (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id)
-            .count()
-            == 0
-        )
-
-    def _pending(self, db, response_id, field_id):
-        return (
-            db.query(FormResponsePendingUpdate)
-            .filter(
-                FormResponsePendingUpdate.response_id == response_id,
-                FormResponsePendingUpdate.field_id == field_id,
-            )
-            .first()
-        )
-
-    def test_cross_shape_type_change_flags_pending_update(self, client, db, td_user, td_tournament):
-        """short_text -> single_select_radio turns a plain string answer into
-        an option reference, so the stored answer no longer means anything."""
+        """The answer keeps the type it was given under, so it still reads as
+        the text the respondent typed."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
             db,
@@ -1710,46 +1565,9 @@ class TestBulkUpdateFieldsPublished:
         )
         assert res.status_code == 200, res.json()
 
-        # Edited in place, so the flag points at the field directly.
-        pending = self._pending(db, response_id, field.id)
-        assert pending is not None
-        assert pending.reasons == ["question_type_changed"]
-
-    def test_within_shape_type_change_flags_nobody(self, client, db, td_user, td_tournament):
-        """short_text -> long_text is a rendering choice; both store a plain
-        string, so no previous answer was invalidated."""
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "blue"}]},
-        )
-        response_id = res.json()["id"]
-
-        client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "label": "Color",
-                        "question_type": "long_text",
-                        "config": {"required": False, "max_length": 500},
-                    }
-                ]
-            },
-        )
-        assert self._pending(db, response_id, field.id) is None
+        answer = db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one()
+        assert answer.value == "blue"
+        assert answer.question_type == "short_text"
 
     def test_archived_field_can_be_unarchived_and_keeps_its_answers(
         self, client, db, td_user, td_tournament
@@ -1800,43 +1618,6 @@ class TestBulkUpdateFieldsPublished:
         assert field.is_archived is False
         answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
         assert answer.value == "blue"
-
-    def test_unarchiving_raises_no_pending_update(self, client, db, td_user, td_tournament):
-        """The question is exactly as it was left, so there's nothing for a
-        previous responder to review."""
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "blue"}]},
-        )
-        response_id = res.json()["id"]
-
-        client.put(f"/forms/{form.id}/fields/", json={"fields": []})
-        client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "label": "Color",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 50},
-                    }
-                ]
-            },
-        )
-        assert self._pending(db, response_id, field.id) is None
 
     def test_unarchiving_rejected_when_key_was_claimed(self, client, db, td_user, td_tournament):
         """An archived field doesn't reserve its key, so the name may be gone
@@ -1891,83 +1672,6 @@ class TestBulkUpdateFieldsPublished:
             },
         )
         assert res.status_code == 409
-
-    def test_retiring_a_field_deletes_its_open_flags(self, client, db, td_user, td_tournament):
-        """A flag on a question nobody can answer any more could never clear,
-        so retirement takes them with it."""
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        keep = _make_field(
-            db,
-            form,
-            order=2,
-            field_key="name",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        self._publish(client, form)
-
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={
-                "answers": [
-                    {"field_id": field.id, "value": "blue"},
-                    {"field_id": keep.id, "value": "sam"},
-                ]
-            },
-        )
-        response_id = res.json()["id"]
-
-        # Flag it via a cross-shape type change, then retire it.
-        client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "label": "Color",
-                        "question_type": "single_select_radio",
-                        "config": {
-                            "required": False,
-                            "options": [
-                                {"option_id": "opt_blue", "value": "blue", "label": "Blue"}
-                            ],
-                        },
-                    },
-                    {
-                        "id": keep.id,
-                        "label": "Name",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 50},
-                    },
-                ]
-            },
-        )
-        assert self._pending(db, response_id, field.id) is not None
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": keep.id,
-                        "label": "Name",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 50},
-                    }
-                ]
-            },
-        )
-        assert res.status_code == 200, res.json()
-        assert self._pending(db, response_id, field.id) is None
 
     def test_option_without_option_id_gets_one_generated(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -2074,199 +1778,6 @@ class TestBulkUpdateFieldsPublished:
 # ---------------------------------------------------------------------------
 
 
-class TestClassifyFieldChanges:
-    """POST /forms/{id}/fields/classify/ — the dry run behind the builder's
-    save confirmation. Writes nothing."""
-
-    def _entry(self, field, **overrides):
-        entry = {
-            "id": field.id,
-            "label": field.label,
-            "description": field.description,
-            "question_type": field.question_type,
-            "config": field.config,
-        }
-        entry.update(overrides)
-        return entry
-
-    def test_draft_form_reports_nothing(self, client, db, td_user, td_tournament):
-        """Nobody has answered, so no edit can strand anyone."""
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [
-                    self._entry(
-                        field,
-                        question_type="single_select_radio",
-                        config={
-                            "required": False,
-                            "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
-                        },
-                    )
-                ],
-            },
-        )
-        assert res.status_code == 200
-        assert res.json() == []
-
-    def test_mandatory_change_is_locked_and_defaults_on(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [
-                    self._entry(
-                        field,
-                        question_type="single_select_radio",
-                        config={
-                            "required": False,
-                            "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
-                        },
-                    )
-                ],
-            },
-        )
-        assert res.status_code == 200
-        assert res.json() == [
-            {
-                "field_id": field.id,
-                "label": "Favorite color",
-                "reasons": ["question_type_changed"],
-                "locked": True,
-                "notify_default": True,
-            }
-        ]
-
-    def test_option_rename_is_unlocked_and_defaults_off(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color")
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        options = [{**field.config["options"][0], "label": "Crimson"}, field.config["options"][1]]
-        res = client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [self._entry(field, config={**field.config, "options": options})],
-            },
-        )
-        assert res.json() == [
-            {
-                "field_id": field.id,
-                "label": "Favorite color",
-                "reasons": ["text_changed"],
-                "locked": False,
-                "notify_default": False,
-            }
-        ]
-
-    def test_question_text_and_description_edits_are_omitted(
-        self, client, db, td_user, td_tournament
-    ):
-        """Rewording or restyling a question doesn't change what a stored answer means."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color")
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [
-                    self._entry(field, label="What **colour**?", description="- Pick one"),
-                ],
-            },
-        )
-        assert res.json() == []
-
-    def test_unchanged_and_new_fields_are_omitted(self, client, db, td_user, td_tournament):
-        """The confirmation lists consequences, not a diff of the save."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        res = client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [
-                    self._entry(field),
-                    {
-                        "field_key": "brand_new",
-                        "label": "New",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 50},
-                    },
-                ],
-            },
-        )
-        assert res.json() == []
-
-    def test_writes_nothing(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key="color",
-            question_type="short_text",
-            config={"required": False, "max_length": 50},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        client.post(
-            f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "blue"}]},
-        )
-
-        client.post(
-            f"/forms/{form.id}/fields/classify/",
-            json={
-                "fields": [self._entry(field, label="What colour?")],
-            },
-        )
-
-        db.refresh(field)
-        assert field.label == "Favorite color"
-        assert db.query(FormResponsePendingUpdate).count() == 0
-
-    def test_requires_manage_access(self, client, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        db.commit()
-        grant_role(db, td_tournament, other_user, "Runner")
-        login(client, "other@test.com", "otherpass")
-        assert (
-            client.post(f"/forms/{form.id}/fields/classify/", json={"fields": []}).status_code
-            == 403
-        )
-
-
 class TestListArchivedFields:
     def test_lists_only_archived_fields(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -2324,7 +1835,7 @@ class TestInvalidateField:
     """DELETE /forms/{id}/fields/{field_id}/ — the one destructive field
     action: archive the question *and* destroy what it collected."""
 
-    def test_answers_and_flags_are_purged(self, client, db, td_user, td_tournament):
+    def test_answers_are_purged(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
             db,
@@ -2344,7 +1855,7 @@ class TestInvalidateField:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(
+        client.post(
             f"/forms/{form.id}/responses/",
             json={
                 "answers": [
@@ -2353,13 +1864,6 @@ class TestInvalidateField:
                 ]
             },
         )
-        response_id = res.json()["id"]
-        db.add(
-            FormResponsePendingUpdate(
-                response_id=response_id, field_id=field.id, reasons=["text_changed"]
-            )
-        )
-        db.commit()
 
         field_id = field.id
         res = client.delete(f"/forms/{form.id}/fields/{field_id}/")
@@ -2367,12 +1871,6 @@ class TestInvalidateField:
 
         assert db.query(FormField).filter(FormField.id == field_id).first() is None
         assert db.query(FormAnswer).filter(FormAnswer.field_id == field_id).count() == 0
-        assert (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.field_id == field_id)
-            .count()
-            == 0
-        )
 
         # Only that question's data goes.
         assert db.query(FormAnswer).filter(FormAnswer.field_id == keep.id).count() == 1
@@ -2599,8 +2097,8 @@ class TestInvalidateField:
 
 
 class TestPatchResponse:
-    """PATCH /forms/{id}/responses/me/ — the only way to change a submitted
-    answer, and only for questions the TD flagged."""
+    """PATCH /forms/{id}/responses/me/ — open only on a form with
+    allow_response_edits."""
 
     def _submit(self, client, db, form, field, value):
         res = client.post(
@@ -2610,44 +2108,7 @@ class TestPatchResponse:
         assert res.status_code == 200, res.json()
         return res.json()["id"]
 
-    def _flag(self, db, response_id, field, reasons=("text_changed",)):
-        db.add(
-            FormResponsePendingUpdate(
-                response_id=response_id, field_id=field.id, reasons=list(reasons)
-            )
-        )
-        db.commit()
-
-    def test_flagged_field_can_be_patched_and_clears_the_flag(
-        self, client, db, td_user, td_tournament
-    ):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color")
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        response_id = self._submit(client, db, form, field, ["opt_1"])
-        self._flag(db, response_id, field)
-
-        res = client.patch(
-            f"/forms/{form.id}/responses/me/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
-        )
-        assert res.status_code == 200, res.json()
-
-        answer = (
-            db.query(FormAnswer)
-            .filter(FormAnswer.response_id == response_id, FormAnswer.field_id == field.id)
-            .one()
-        )
-        assert answer.value == ["opt_2"]
-        assert (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id)
-            .count()
-            == 0
-        )
-
-    def test_unflagged_field_is_rejected(self, client, db, td_user, td_tournament):
+    def test_rejected_when_edits_are_off(self, client, db, td_user, td_tournament):
         """The lock is server-side: a respondent can't revise an answer just
         because the UI let them see it."""
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -2665,43 +2126,10 @@ class TestPatchResponse:
         answer = db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one()
         assert answer.value == ["opt_1"]
 
-    def test_patching_only_one_of_several_flagged_leaves_the_rest_open(
-        self, client, db, td_user, td_tournament
-    ):
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(db, form, field_key="color")
-        other = _make_field(db, form, order=2, field_key="shirt")
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        res = client.post(
-            f"/forms/{form.id}/responses/",
-            json={
-                "answers": [
-                    {"field_id": field.id, "value": ["opt_1"]},
-                    {"field_id": other.id, "value": ["opt_1"]},
-                ]
-            },
-        )
-        response_id = res.json()["id"]
-        self._flag(db, response_id, field)
-        self._flag(db, response_id, other)
-
-        client.patch(
-            f"/forms/{form.id}/responses/me/",
-            json={"answers": [{"field_id": field.id, "value": ["opt_2"]}]},
-        )
-
-        remaining = (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id)
-            .all()
-        )
-        assert [row.field_id for row in remaining] == [other.id]
-
     def test_unpatched_answers_are_untouched(self, client, db, td_user, td_tournament):
-        """A patch carries only the flagged fields — it isn't a full replace,
+        """A patch carries only the changed fields — it isn't a full replace,
         so nothing else on the response may be disturbed."""
-        form = _make_form(db, td_user, td_tournament, status="published")
+        form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
         field = _make_field(db, form, field_key="color")
         other = _make_field(db, form, order=2, field_key="shirt")
         db.commit()
@@ -2716,7 +2144,6 @@ class TestPatchResponse:
             },
         )
         response_id = res.json()["id"]
-        self._flag(db, response_id, field)
 
         client.patch(
             f"/forms/{form.id}/responses/me/",
@@ -2731,7 +2158,7 @@ class TestPatchResponse:
         assert untouched.value == ["opt_2"]
 
     def test_patch_without_a_response_is_404(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="published")
+        form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
         field = _make_field(db, form, field_key="color")
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -2790,7 +2217,7 @@ class TestAllowResponseEdits:
         assert res.status_code == 200
         assert res.json()["allow_response_edits"] is True
 
-    def test_unflagged_field_editable_when_on(self, client, db, td_user, td_tournament):
+    def test_any_live_field_editable_when_on(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published", allow_response_edits=True)
         field = _make_field(
             db,
@@ -2924,8 +2351,7 @@ class TestSubmitResponse:
         assert data["answers"][0]["value"] == ["opt_1"]
 
     def test_second_submission_rejected(self, client, db, td_user, td_tournament):
-        """POST creates; it no longer resubmits. Editing goes through PATCH,
-        which only accepts flagged questions."""
+        """POST creates; it no longer resubmits. Editing goes through PATCH."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(db, form, field_key="color")
         db.commit()
@@ -3460,7 +2886,7 @@ class TestWriteThroughOnSubmit:
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._track_status(db, membership_id, track.id) == "confirmed"
 
-        self._flag(db, form, td_user, patched)
+        self._allow_edits(db, form)
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
             json={"answers": [{"field_id": patched.id, "value": "opt_yes"}]},
@@ -3524,19 +2950,8 @@ class TestWriteThroughOnSubmit:
         assert self._track_status(db, membership_id, track_id) == "confirmed"
         assert self._track_status(db, membership_id, other.id) == "interested"
 
-    def _flag(self, db, form, user, field):
-        """Open a pending update on `field` so PATCH will accept it. Which
-        reason doesn't matter here — the gate only checks that one exists."""
-        response = (
-            db.query(FormResponse)
-            .filter(FormResponse.form_id == form.id, FormResponse.user_id == user.id)
-            .one()
-        )
-        db.add(
-            FormResponsePendingUpdate(
-                response_id=response.id, field_id=field.id, reasons=["option_invalidated"]
-            )
-        )
+    def _allow_edits(self, db, form):
+        form.allow_response_edits = True
         db.commit()
 
     def test_deselecting_option_keeps_shift_still_covered_by_another(
@@ -3584,9 +2999,7 @@ class TestWriteThroughOnSubmit:
             json={"answers": [{"field_id": field.id, "value": ["opt_morning", "opt_all_day"]}]},
         )
         # Deselect "All Day" — "Morning" alone still covers the morning shift.
-        # Changing a submitted answer means PATCH, which needs the question
-        # flagged first.
-        self._flag(db, form, td_user, field)
+        self._allow_edits(db, form)
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
             json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]},
@@ -3712,7 +3125,7 @@ class TestWriteThroughOnSubmit:
             ],
         }
         flag_modified(field, "config")
-        self._flag(db, form, td_user, field)
+        self._allow_edits(db, form)
 
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
@@ -3889,7 +3302,7 @@ class TestWriteThroughOnSubmit:
         )
         # Blank the Saturday field — Sunday's shift should survive untouched,
         # even though write-through recomputes the union across both fields.
-        self._flag(db, form, td_user, field_sat)
+        self._allow_edits(db, form)
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
             json={
@@ -4305,7 +3718,7 @@ class TestWriteThroughOnSubmit:
         assert res.status_code == 200, res.json()
         membership_id = self._membership_id(db, td_user, td_tournament)
 
-        self._flag(db, form, td_user, morning)
+        self._allow_edits(db, form)
         res = client.patch(
             f"/forms/{form.id}/responses/me/",
             json={"answers": [{"field_id": morning.id, "value": []}]},
@@ -4480,11 +3893,6 @@ class TestDeleteResponse:
         db.add(response)
         db.flush()
         db.add(FormAnswer(response_id=response.id, field_id=field.id, value="blue"))
-        db.add(
-            FormResponsePendingUpdate(
-                response_id=response.id, field_id=field.id, reasons=["text_changed"]
-            )
-        )
         db.commit()
         return form, response
 
@@ -4498,12 +3906,6 @@ class TestDeleteResponse:
         db.expire_all()
         assert db.query(FormResponse).filter(FormResponse.id == response.id).first() is None
         assert db.query(FormAnswer).filter(FormAnswer.response_id == response.id).count() == 0
-        assert (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response.id)
-            .count()
-            == 0
-        )
 
     def test_draft_form_allowed(self, client, db, td_user, td_tournament, other_user):
         form, response = self._response(db, td_user, td_tournament, other_user, status="draft")

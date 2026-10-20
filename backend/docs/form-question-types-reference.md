@@ -20,7 +20,7 @@ This is the shape of form fields, their `config`, and their answers. Config sche
 
 - **`question_type`** is structural: how the question renders and what shape its answer has.
 - **`field_key`** is semantic. Every field has one, slugified from a TD-typed name (lowercase letters, digits and underscores). It must be unique among the **live** fields of all of a tournament's forms; an archived field releases its key. A reserved key (below) layers validation and write-through onto an ordinary `question_type`.
-- **`field_id`**, not `field_key`, is the field's identity. Answers, branching and pending updates all reference the id, so renaming a key is free.
+- **`field_id`**, not `field_key`, is the field's identity. Answers and branching reference the id, so renaming a key is free.
 
 Because archived keys can be reused, two different questions may have carried the same key at different times. Answers stay unambiguous (each records its `field_id` and the key it was given under), but a view that groups by key alone merges them.
 

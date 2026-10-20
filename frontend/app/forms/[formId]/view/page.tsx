@@ -140,7 +140,6 @@ export default function FormViewPage() {
       status: form.status,
       allow_response_edits: form.allow_response_edits,
       tournamentArchived: !!form.tournament_is_archived,
-      hasFlaggedQuestions: existing.pending_updates.length > 0,
     });
   }, [form, existing]);
 
@@ -154,16 +153,9 @@ export default function FormViewPage() {
   }, [form, checkedExisting, editRequested, editing, formId, router]);
 
   const existingResponse = useMemo<ExistingResponse | null>(() => {
-    if (!form || !existing) return null;
-    const flagged = new Map(existing.pending_updates.map((p) => [p.field_id, p.reasons]));
-    return {
-      stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])),
-      editableIds: form.allow_response_edits
-        ? new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.id))
-        : new Set(flagged.keys()),
-      flagged,
-    };
-  }, [form, existing]);
+    if (!existing) return null;
+    return { stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])) };
+  }, [existing]);
 
   // Both writes land back on the read-only view (unless a redirect says otherwise).
   async function afterWrite(message: string) {
@@ -224,25 +216,12 @@ export default function FormViewPage() {
   }
 
   if (existing && existingResponse && editing) {
-    const flaggedCount = existing.pending_updates.length;
     return (
       <FormFillFlow
         // A fresh flow per saved version, so its prefilled state can't go stale.
         key={existing.updated_at}
         form={form}
         existing={existingResponse}
-        banner={
-          flaggedCount > 0 ? (
-            <Banner
-              variant="warning"
-              message={
-                flaggedCount === 1
-                  ? "One question changed since you answered. Please take another look."
-                  : `${flaggedCount} questions changed since you answered. Please take another look.`
-              }
-            />
-          ) : undefined
-        }
         successMessage="Your changes were saved."
         onComplete={patchResponse}
       />

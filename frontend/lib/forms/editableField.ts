@@ -97,7 +97,7 @@ export function newField(order: number): EditableField {
 // short_text -> ranked_choice -> short_text leaves it stripped by
 // sanitizeConfigForType on the way in, since ranked_choice's config schema
 // doesn't carry it either.
-export function toFieldInput(field: EditableField, notifyResponders?: boolean): FormFieldInput {
+export function toFieldInput(field: EditableField): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
   // A type that takes no options must not carry the key at all — the text
   // config schemas are extra="forbid", so even `options: []` 422s the whole
@@ -136,9 +136,5 @@ export function toFieldInput(field: EditableField, notifyResponders?: boolean): 
     description: field.showDescription ? field.description : null,
     question_type: field.question_type,
     config,
-    // Omitted unless the confirmation modal actually asked — the server falls
-    // back to each change's own default, which is what an unprompted save
-    // (draft form, or nothing consequential changed) should get.
-    ...(notifyResponders === undefined ? {} : { notify_responders: notifyResponders }),
   };
 }

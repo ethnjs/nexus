@@ -1982,12 +1982,6 @@ export interface FormFieldInput {
   description?: string | null;
   question_type: FormQuestionType;
   config?: FormFieldConfig | null;
-  /** The TD's answer, for this question, to "ask previous responders to
-      review this?" — collected by the save-time confirmation modal.
-      Governs only the judgment-call changes (wording, and moving between a
-      preset and a standard key); changes that actually invalidate an answer
-      prompt regardless. Omit to accept each change's own default. */
-  notify_responders?: boolean | null;
 }
 
 export type PrerequisiteMatch = "any" | "all";
@@ -2070,7 +2064,7 @@ export interface Form {
   chapter_id: number | null;
   /** null once the creator's account is deleted. */
   created_by: number | null;
-  /** Members may revise any answer after submitting, not just flagged ones. */
+  /** Members may revise their answers after submitting. */
   allow_response_edits: boolean;
   created_at: string;
   updated_at: string;
@@ -2137,39 +2131,6 @@ export interface FormAnswerInput {
   value: unknown;
 }
 
-/** Why a question was flagged for another look. Several can apply at once —
-    one save can add an option *and* reword the question. */
-export type PendingUpdateReason =
-  | "question_type_changed"
-  | "option_added"
-  | "option_invalidated"
-  | "option_regrouped"
-  | "now_required"
-  | "key_changed"
-  | "text_changed";
-
-/** One question a proposed save would ask previous responders to review —
-    the server's verdict, from classifyFieldChanges. */
-export interface FieldChange {
-  field_id: string;
-  label: string;
-  reasons: PendingUpdateReason[];
-  /** At least one reason is mandatory: the TD sees it but can't switch it
-      off, because the change invalidated the stored answer. */
-  locked: boolean;
-  /** What notify_responders should default to if the TD doesn't touch it. */
-  notify_default: boolean;
-}
-
-/** A question this response is being asked to revisit. `field_id` is the only
-    thing `patchResponse` will accept — everything else on the response is
-    locked. */
-export interface FormPendingUpdate {
-  field_id: string;
-  reasons: PendingUpdateReason[];
-  created_at: string;
-}
-
 export interface FormResponse {
   id: string;
   form_id: string;
@@ -2177,7 +2138,6 @@ export interface FormResponse {
   submitted_at: string;
   updated_at: string;
   answers: FormAnswer[];
-  pending_updates: FormPendingUpdate[];
 }
 
 /** Who submitted a response — matches FormRespondentRead. Managers only. */
@@ -2263,11 +2223,6 @@ export const formsApi = {
   // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
-  // Dry run for the save confirmation: given the same payload putFields
-  // takes, which questions would be sent back to previous responders and
-  // why. Writes nothing, and returns [] on a form nobody has answered.
-  classifyFieldChanges: (formId: string, fields: FormFieldInput[]) =>
-    api.post<FieldChange[]>(`/forms/${formId}/fields/classify/`, { fields }),
   // Questions taken out of use. Config comes back raw, so an entry can go
   // straight back into putFields — which is how a question is unarchived.
   listArchivedFields: (formId: string) => api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
@@ -2280,13 +2235,12 @@ export const formsApi = {
   // through patchResponse.
   submitResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
-  // Edits a submitted response, limited to questions carrying a pending
-  // update — anything else 403s. Send only the questions being changed; the
-  // rest of the response is left alone, not overwritten.
+  // Edits a submitted response; 403s unless the form allows response edits.
+  // Send only the questions being changed; the rest is left alone.
   patchResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.patch<FormResponse>(`/forms/${formId}/responses/me/`, { answers }),
   listResponses: (formId: string) => api.get<FormResponseManager[]>(`/forms/${formId}/responses/`),
-  // Manager-only. Answers and pending flags go with it; roster data the
+  // Manager-only. Answers go with it; roster data the
   // response wrote through (availability, lunch…) stays. 409s on an archived form.
   deleteResponse: (formId: string, responseId: string) =>
     api.delete<void>(`/forms/${formId}/responses/${responseId}/`),

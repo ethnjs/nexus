@@ -9,10 +9,9 @@ import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormattedText } from "@/components/ui/FormattedText";
-import type { Form, FormField, PendingUpdateReason } from "@/lib/api";
+import type { Form, FormField } from "@/lib/api";
 import { computeWalk } from "@/lib/forms/branching";
-import { REASON_LABELS } from "@/lib/forms/changeClassification";
-import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
+import { removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
 // Mirrors backend/app/core/form/branching.py's _is_blank.
@@ -43,10 +42,6 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
 export interface ExistingResponse {
   /** Stored answers by field id, raw (snapshots and all). */
   stored: Record<string, unknown>;
-  /** Questions the respondent may change; the rest render read-only. */
-  editableIds: Set<string>;
-  /** Questions the TD flagged — they start blank and show why. */
-  flagged: Map<string, PendingUpdateReason[]>;
 }
 
 function sameAnswer(a: unknown, b: unknown): boolean {
@@ -63,7 +58,7 @@ interface FormFillFlowProps {
   /** Called after Submit's validation passes. Without it nothing is saved, as in the preview. */
   onComplete?: (answers: Record<string, unknown>) => void | Promise<void>;
   /** Revising a response: answers start prefilled, and onComplete receives only the changed
-      editable ones, since an unchanged answer sent back would re-fire its write-through. */
+      ones, since an unchanged answer sent back would re-fire its write-through. */
   existing?: ExistingResponse;
 }
 
@@ -76,13 +71,11 @@ export function FormFillFlow({
   onComplete,
   existing,
 }: FormFillFlowProps) {
-  // Flagged questions start blank on purpose — prefilling the answer being
-  // questioned invites a reflexive resubmit.
   const initialAnswers = useMemo(() => {
     if (!existing) return {};
     const prefilled: Record<string, unknown> = {};
     for (const [fieldId, value] of Object.entries(existing.stored)) {
-      if (!existing.flagged.has(fieldId)) prefilled[fieldId] = storedAnswerToInput(value);
+      prefilled[fieldId] = storedAnswerToInput(value);
     }
     return prefilled;
   }, [existing]);
@@ -104,24 +97,11 @@ export function FormFillFlow({
   const fields = useMemo(() => form.fields.filter((f) => !f.is_archived), [form.fields]);
   const walk = useMemo(() => computeWalk(fields, answers), [fields, answers]);
 
-  const isLocked = (field: FormField) => !!existing && !existing.editableIds.has(field.id);
-  // A locked answer can't be fixed here, so it never blocks; a flagged one
-  // has to be answered again even if the question is optional.
-  function errorFor(field: FormField, value: unknown): string | undefined {
-    if (isLocked(field)) return undefined;
-    if (existing?.flagged.has(field.id) && isBlank(value)) return "Please answer this again.";
-    return fieldErrorMessage(field, value);
-  }
-  // Editable answers that differ from what was stored, plus every flagged one.
   function changedAnswers(): Record<string, unknown> {
     if (!existing) return answers;
     const changed: Record<string, unknown> = {};
     for (const field of fields) {
-      if (isLocked(field)) continue;
-      if (
-        existing.flagged.has(field.id) ||
-        !sameAnswer(answers[field.id], initialAnswers[field.id])
-      ) {
+      if (!sameAnswer(answers[field.id], initialAnswers[field.id])) {
         changed[field.id] = answers[field.id] ?? null;
       }
     }
@@ -131,7 +111,7 @@ export function FormFillFlow({
   const allContinued = walk.length > 0 && revealCount > walk.length;
   const showSuccess = submitSucceeded;
   const invalidCount = walk.filter(
-    (f) => attemptedIds.has(f.id) && errorFor(f, answers[f.id]) !== undefined,
+    (f) => attemptedIds.has(f.id) && fieldErrorMessage(f, answers[f.id]) !== undefined,
   ).length;
   // When revising, dirty means changed from what was stored, not merely non-blank.
   const isDirty =
@@ -216,7 +196,7 @@ export function FormFillFlow({
 
   function handleContinue(field: FormField) {
     setAttemptedIds((prev) => new Set(prev).add(field.id));
-    if (errorFor(field, answers[field.id])) return;
+    if (fieldErrorMessage(field, answers[field.id])) return;
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
@@ -225,7 +205,7 @@ export function FormFillFlow({
 
   async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
-    const firstInvalid = walk.find((f) => errorFor(f, answers[f.id]) !== undefined);
+    const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
     if (firstInvalid) {
       setSubmitSucceeded(false);
       setPendingScrollId(firstInvalid.id);
@@ -305,10 +285,8 @@ export function FormFillFlow({
         visibleFields.map((field, i) => {
           const isActive = i === visibleFields.length - 1 && !allContinued;
           const errorMessage = attemptedIds.has(field.id)
-            ? errorFor(field, answers[field.id])
+            ? fieldErrorMessage(field, answers[field.id])
             : undefined;
-          const locked = isLocked(field);
-          const reasons = existing?.flagged.get(field.id);
           // Only ranked_choice has an inline error slot; other types show it as text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
@@ -319,44 +297,15 @@ export function FormFillFlow({
               variant={errorMessage ? "danger" : "normal"}
               className={styles.card}
             >
-              {reasons && (
-                <div
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "12px",
-                    color: "var(--color-text-secondary)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  {reasons.map((r) => REASON_LABELS[r]).join(" · ")}
-                </div>
-              )}
               <QuestionRenderer
                 field={field}
                 interactive
-                locked={locked}
                 value={answers[field.id]}
                 onChange={(v) => setAnswer(field.id, v)}
                 error={isRanked ? errorMessage : undefined}
                 // A past pick that's no longer offered still shows, marked Removed.
                 removedOptions={
-                  existing && !reasons
-                    ? removedPickedOptions(field, existing.stored[field.id])
-                    : undefined
-                }
-                answerNote={
-                  locked && isBlankAnswer(answers[field.id]) ? (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        fontSize: "13px",
-                        fontStyle: "italic",
-                        color: "var(--color-text-tertiary)",
-                      }}
-                    >
-                      Not answered
-                    </span>
-                  ) : undefined
+                  existing ? removedPickedOptions(field, existing.stored[field.id]) : undefined
                 }
               />
               {!isRanked && errorMessage && (

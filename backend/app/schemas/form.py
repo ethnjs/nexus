@@ -230,29 +230,6 @@ class BulkFieldEntry(BaseModel):
     description: str | None = None
     question_type: str
     config: dict[str, Any] | None = None
-    # The TD's answer, for this field, to "ask previous responders to review
-    # this?" — it only governs the judgment-call changes (wording, and moving
-    # between a preset and a standard key). Changes that actually invalidate
-    # an answer prompt regardless. None means the caller didn't decide, so
-    # each such change falls back to its own default; see
-    # app/core/form/changes.py.
-    notify_responders: bool | None = None
-
-
-class FieldChangeRead(BaseModel):
-    """One question a proposed save would ask previous responders to review.
-    Returned by the classify dry-run so the builder's confirmation can show
-    the server's own verdict instead of re-deriving the rules client-side."""
-
-    field_id: str
-    label: str
-    reasons: list[str]
-    # True when at least one reason is mandatory — the TD can see it but not
-    # switch it off, because the change invalidated the stored answer.
-    locked: bool
-    # What notify_responders should default to for this field if the TD
-    # doesn't touch it.
-    notify_default: bool
 
 
 class BulkFieldsUpdate(BaseModel):
@@ -433,18 +410,6 @@ class FormResponseCreate(BaseModel):
     answers: list[FormAnswerCreate]
 
 
-class FormPendingUpdateRead(BaseModel):
-    """A question this response is being asked to look at again. `field_id` is
-    the only field PATCH .../responses/me/ will accept — see
-    backend/docs/form-edit-lifecycle.md."""
-
-    field_id: str
-    reasons: list[str] = []
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class FormResponseRead(BaseModel):
     id: str
     form_id: str
@@ -452,7 +417,6 @@ class FormResponseRead(BaseModel):
     submitted_at: datetime
     updated_at: datetime
     answers: list[FormAnswerRead] = []
-    pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
 
