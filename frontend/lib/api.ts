@@ -170,6 +170,23 @@ export interface VolunteerExperience {
   notes: VolunteerExperienceNotes | null;
 }
 
+// One entry of a full-list replace; `id` marks an entry that's already saved.
+export interface CompetitionExperienceItem {
+  id?: number;
+  event_id: number;
+  school: string;
+  notes?: string | null;
+}
+
+export interface VolunteerExperienceItem {
+  id?: number;
+  tournament_name: string;
+  year: number;
+  role: string;
+  event_id?: number | null;
+  notes?: VolunteerExperienceNotes | null;
+}
+
 // Matches UserSlimResponse — minimal, public-safe identity. No account-internal
 // fields (email_verified/role/status/timestamps) — those live on AdminUserSlim.
 // Shown to other users (e.g. chapter members), not just self/admin views.
@@ -329,6 +346,8 @@ export const usersApi = {
   ) => api.patch<CompetitionExperience>(`/users/me/competition-experience/${id}/`, body),
   deleteCompetitionExperience: (id: number) =>
     api.delete<void>(`/users/me/competition-experience/${id}/`),
+  replaceCompetitionExperience: (items: CompetitionExperienceItem[]) =>
+    api.put<CompetitionExperience[]>("/users/me/competition-experience/", items),
 
   addVolunteerExperience: (body: {
     tournament_name: string;
@@ -349,6 +368,8 @@ export const usersApi = {
   ) => api.patch<VolunteerExperience>(`/users/me/volunteer-experience/${id}/`, body),
   deleteVolunteerExperience: (id: number) =>
     api.delete<void>(`/users/me/volunteer-experience/${id}/`),
+  replaceVolunteerExperience: (items: VolunteerExperienceItem[]) =>
+    api.put<VolunteerExperience[]>("/users/me/volunteer-experience/", items),
 
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),

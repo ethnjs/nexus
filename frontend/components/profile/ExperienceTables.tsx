@@ -15,7 +15,13 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Textarea } from "@/components/ui/Textarea";
 import { Tooltip } from "@/components/ui/Tooltip";
-import type { CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api";
+import type {
+  CanonicalEvent,
+  CompetitionExperience,
+  CompetitionExperienceItem,
+  VolunteerExperience,
+  VolunteerExperienceItem,
+} from "@/lib/api";
 import { useIsMobile } from "@/lib/useIsMobile";
 
 export type ExperienceTableMode = "view" | "view-edit" | "edit";
@@ -88,6 +94,27 @@ export function competitionExperienceToDraft(
   };
 }
 
+export function competitionDraftToItem(row: CompetitionExperienceDraft): CompetitionExperienceItem {
+  return {
+    id: row.id,
+    event_id: row.event_id as number,
+    school: row.school,
+    notes: row.notes || null,
+  };
+}
+
+// An unmatched typed event gets no message here: Combobox already shows its
+// own "select one from the list" hint for it.
+function competitionRowErrors(row: CompetitionExperienceDraft): {
+  school?: string;
+  event?: string;
+} {
+  return {
+    school: row.school.trim() ? undefined : "Required",
+    event: row.event_id === null && !row.event_name.trim() ? "Required" : undefined,
+  };
+}
+
 function emptyCompetitionDraft(school = ""): CompetitionExperienceDraft {
   return { school, event_id: null, event_name: "", notes: "" };
 }
@@ -102,6 +129,7 @@ interface CompetitionExperienceSpreadsheetProps {
 
   // "edit" mode: local-only, parent owns state, diffed & saved elsewhere
   onChange?: (rows: CompetitionExperienceDraft[]) => void;
+  showErrors?: boolean;
 
   // "view-edit" mode: instant per-row CRUD
   onAdd?: (row: CompetitionExperienceDraft) => Promise<CompetitionExperienceDraft>;
@@ -259,6 +287,7 @@ export function CompetitionExperienceSpreadsheet({
   rows,
   events,
   onChange,
+  showErrors = false,
   onAdd,
   onUpdate,
   onDelete,
@@ -424,6 +453,8 @@ export function CompetitionExperienceSpreadsheet({
     editModeFull = false,
   ) {
     const valid = isCompetitionRowValid(draft);
+    const fieldErrors: ReturnType<typeof competitionRowErrors> =
+      editModeFull && showErrors ? competitionRowErrors(draft) : {};
 
     function patch(p: Partial<CompetitionExperienceDraft>) {
       if (editModeFull) {
@@ -440,6 +471,7 @@ export function CompetitionExperienceSpreadsheet({
             type="text"
             value={draft.school}
             onChange={(e) => patch({ school: e.target.value })}
+            error={fieldErrors.school}
             size="sm"
             fullWidth
           />
@@ -454,6 +486,7 @@ export function CompetitionExperienceSpreadsheet({
             onChange={(text, matched) =>
               patch({ event_name: text, event_id: matched ? matched.id : null })
             }
+            error={fieldErrors.event}
             size="sm"
           />
         </CardEditField>
@@ -468,8 +501,7 @@ export function CompetitionExperienceSpreadsheet({
         </CardEditField>
 
         {/* The desktop row puts this in a Tooltip on a hover-revealed button;
-            with no hover to carry it, the message has to be on the page.
-            Bulk edit mode has no save step, so nothing to warn about yet. */}
+            with no hover to carry it, the message has to be on the page. */}
         {!editModeFull && (saveError || !valid) && (
           <p
             style={{
@@ -700,6 +732,8 @@ export function CompetitionExperienceSpreadsheet({
   ) {
     const draft = editModeFull ? row : (editDraft as CompetitionExperienceDraft);
     const cs = cellStyle(isLastRow);
+    const fieldErrors: ReturnType<typeof competitionRowErrors> =
+      editModeFull && showErrors ? competitionRowErrors(draft) : {};
 
     function patch(p: Partial<CompetitionExperienceDraft>) {
       if (editModeFull) {
@@ -725,6 +759,7 @@ export function CompetitionExperienceSpreadsheet({
                   type="text"
                   value={draft.school}
                   onChange={(e) => patch({ school: e.target.value })}
+                  error={fieldErrors.school}
                   size="sm"
                   fullWidth
                 />
@@ -762,6 +797,7 @@ export function CompetitionExperienceSpreadsheet({
             onChange={(text, matched) =>
               patch({ event_name: text, event_id: matched ? matched.id : null })
             }
+            error={fieldErrors.event}
             size="sm"
           />
         </td>
@@ -1063,6 +1099,37 @@ export function volunteerExperienceToDraft(exp: VolunteerExperience): VolunteerE
   };
 }
 
+export function volunteerDraftToItem(row: VolunteerExperienceDraft): VolunteerExperienceItem {
+  const customEvent = row.event_id === null ? row.event_name.trim() : "";
+  const notesOther = row.notes_other.trim();
+  return {
+    id: row.id,
+    tournament_name: row.tournament_name,
+    year: Number(row.year),
+    role: row.role,
+    event_id: row.event_id,
+    notes:
+      customEvent || notesOther
+        ? {
+            ...(customEvent ? { event: customEvent } : {}),
+            ...(notesOther ? { other: notesOther } : {}),
+          }
+        : null,
+  };
+}
+
+function volunteerRowErrors(row: VolunteerExperienceDraft): {
+  tournament_name?: string;
+  year?: string;
+  role?: string;
+} {
+  return {
+    tournament_name: row.tournament_name.trim() ? undefined : "Required",
+    year: !row.year ? "Required" : /^\d{4}$/.test(row.year) ? undefined : "Enter a 4-digit year",
+    role: row.role.trim() ? undefined : "Required",
+  };
+}
+
 function emptyVolunteerDraft(): VolunteerExperienceDraft {
   return {
     tournament_name: "",
@@ -1083,6 +1150,7 @@ interface VolunteerExperienceSpreadsheetProps {
   events: CanonicalEvent[];
 
   onChange?: (rows: VolunteerExperienceDraft[]) => void;
+  showErrors?: boolean;
 
   onAdd?: (row: VolunteerExperienceDraft) => Promise<VolunteerExperienceDraft>;
   onUpdate?: (id: number, row: VolunteerExperienceDraft) => Promise<VolunteerExperienceDraft>;
@@ -1094,6 +1162,7 @@ export function VolunteerExperienceSpreadsheet({
   rows,
   events,
   onChange,
+  showErrors = false,
   onAdd,
   onUpdate,
   onDelete,
@@ -1211,6 +1280,9 @@ export function VolunteerExperienceSpreadsheet({
     key: string,
     editModeFull = false,
   ) {
+    const fieldErrors: ReturnType<typeof volunteerRowErrors> =
+      editModeFull && showErrors ? volunteerRowErrors(draft) : {};
+
     function patch(p: Partial<VolunteerExperienceDraft>) {
       if (editModeFull) {
         onChange?.(rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
@@ -1227,6 +1299,7 @@ export function VolunteerExperienceSpreadsheet({
             charset="alpha"
             value={draft.tournament_name}
             onChange={(e) => patch({ tournament_name: e.target.value })}
+            error={fieldErrors.tournament_name}
             size="sm"
             fullWidth
           />
@@ -1238,6 +1311,7 @@ export function VolunteerExperienceSpreadsheet({
             maxLength={4}
             value={draft.year}
             onChange={(e) => patch({ year: e.target.value })}
+            error={fieldErrors.year}
             size="sm"
             fullWidth
           />
@@ -1260,6 +1334,7 @@ export function VolunteerExperienceSpreadsheet({
             type="text"
             value={draft.role}
             onChange={(e) => patch({ role: e.target.value })}
+            error={fieldErrors.role}
             size="sm"
             fullWidth
           />
@@ -1458,6 +1533,8 @@ export function VolunteerExperienceSpreadsheet({
   ) {
     const draft = editModeFull ? row : (editDraft as VolunteerExperienceDraft);
     const cs = cellStyle(isLastRow);
+    const fieldErrors: ReturnType<typeof volunteerRowErrors> =
+      editModeFull && showErrors ? volunteerRowErrors(draft) : {};
 
     function patch(p: Partial<VolunteerExperienceDraft>) {
       if (editModeFull) {
@@ -1476,6 +1553,7 @@ export function VolunteerExperienceSpreadsheet({
             maxLength={4}
             value={draft.year}
             onChange={(e) => patch({ year: e.target.value })}
+            error={fieldErrors.year}
             size="sm"
             fullWidth
           />
@@ -1486,6 +1564,7 @@ export function VolunteerExperienceSpreadsheet({
             charset="alpha"
             value={draft.tournament_name}
             onChange={(e) => patch({ tournament_name: e.target.value })}
+            error={fieldErrors.tournament_name}
             size="sm"
             fullWidth
           />
@@ -1508,6 +1587,7 @@ export function VolunteerExperienceSpreadsheet({
             type="text"
             value={draft.role}
             onChange={(e) => patch({ role: e.target.value })}
+            error={fieldErrors.role}
             size="sm"
             fullWidth
           />
