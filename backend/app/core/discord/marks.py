@@ -6,12 +6,14 @@ Marking again an existing mark re-arms it rather than adding a row: `created_at`
 so a reconcile already running for the older change doesn't delete it on success (see drain.py).
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from sqlalchemy import func, or_, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.discord.layout import nickname
 from app.core.discord.links import CHANNEL
 from app.models.discord import DiscordGuildLink, DiscordSyncMark
 from app.models.models import (
@@ -20,6 +22,7 @@ from app.models.models import (
     Tournament,
     TournamentMembership,
     TournamentTrackAssignment,
+    User,
 )
 
 
@@ -206,3 +209,12 @@ def mark_user_everywhere(db: Session, user_id: int) -> None:
     account = discord_accounts(db, [user_id]).get(user_id)
     if account is not None:
         mark_account_everywhere(db, user_id, account)
+
+
+def mark_if_renamed(db: Session, user: User, updates: Mapping[str, Any]) -> None:
+    """Marks the user everywhere if applying `updates` would change their Discord nickname.
+    Call before applying them."""
+    first = updates.get("first_name", user.first_name)
+    last = updates.get("last_name", user.last_name)
+    if nickname(first, last) != nickname(user.first_name, user.last_name):
+        mark_user_everywhere(db, user.id)

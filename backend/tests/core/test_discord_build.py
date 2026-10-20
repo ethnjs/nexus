@@ -30,6 +30,7 @@ from app.models.models import (
 )
 from app.services.discord.permissions import (
     ADMINISTRATOR,
+    CHANGE_NICKNAME,
     READ_MESSAGE_HISTORY,
     SEND_MESSAGES,
     STAFF_OVERWRITE,
@@ -97,7 +98,7 @@ class TestFirstBuild:
         assert int(guild.role("Volunteer Coordinator")["permissions"]) == STAFF_PERMISSIONS
         assert int(guild.role("Runner")["permissions"]) == 0
         assert int(guild.role("Verified")["permissions"]) == VIEW_CHANNEL
-        assert not int(guild.roles[GUILD_ID]["permissions"]) & VIEW_CHANNEL
+        assert not int(guild.roles[GUILD_ID]["permissions"]) & (VIEW_CHANNEL | CHANGE_NICKNAME)
 
         assert guild.category_names() == ["Rowland Hall", "Other Events"]
         rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
@@ -381,14 +382,14 @@ class TestReset:
             "deny": "0",
         }
         circuit["permission_overwrites"].append(member_overwrite)
-        guild.roles[GUILD_ID]["permissions"] = str(VIEW_CHANNEL)
+        guild.roles[GUILD_ID]["permissions"] = str(VIEW_CHANNEL | CHANGE_NICKNAME)
 
         plan = await _preview(link, scope, reset=True)
         assert sorted(dict(plan.groups())["Undo hand edits"]) == sorted(
             [
                 "Volunteer Coordinator: renamed from VC, permissions",
                 "#circuit-lab-c: renamed from #circuits, moved from Other Events",
-                "@everyone: View Channels",
+                "@everyone: View Channels, Change Nickname",
             ]
         )
         await _build(db, link, scope, reset=True)
@@ -399,7 +400,7 @@ class TestReset:
         assert circuit["topic"] == "Bring a multimeter"
         assert circuit["parent_id"] == guild.channel("Rowland Hall", GUILD_CATEGORY)["id"]
         assert member_overwrite in circuit["permission_overwrites"]
-        assert not int(guild.roles[GUILD_ID]["permissions"]) & VIEW_CHANNEL
+        assert not int(guild.roles[GUILD_ID]["permissions"]) & (VIEW_CHANNEL | CHANGE_NICKNAME)
         assert (await _preview(link, scope, reset=True)).empty
 
     async def test_restores_managed_overwrites_and_keeps_unmanaged_roles(

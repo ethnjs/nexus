@@ -69,7 +69,7 @@ lobot creates these roles, in this order, directly below its own role (named **l
 A NEXUS role's Discord permissions depend on its NEXUS permissions:
 
 - **Roles with Manage Tournament** get **Administrator**. They're also created with **Display role members separately from online members** turned on, so your leads show as their own group in the member list.
-- **Roles with Manage Discord, but not Manage Tournament,** are *staff roles*. They see every channel and get a moderator's permissions: View Channels, Read Message History, View Audit Log, Manage Channels, Manage Messages, Pin Messages, Bypass Slowmode, Mention @everyone, @here, and All Roles, the thread permissions, Timeout Members, Kick Members, Manage Nicknames, Create Events, Manage Events, and the voice moderation permissions. They don't get Administrator, Manage Server, Manage Roles, Manage Webhooks, Ban Members, or Manage Expressions. Without Manage Roles, staff can't hand-edit lobot's roles or channel permissions, so they can't end up fighting the sync.
+- **Roles with Manage Discord, but not Manage Tournament,** are *staff roles*. They see every channel and get a moderator's permissions: View Channels, Read Message History, View Audit Log, Manage Channels, Manage Messages, Pin Messages, Bypass Slowmode, Mention @everyone, @here, and All Roles, the thread permissions, Timeout Members, Kick Members, Create Events, Manage Events, and the voice moderation permissions. They don't get Administrator, Manage Server, Manage Roles, Manage Nicknames, Manage Webhooks, Ban Members, or Manage Expressions. Without Manage Roles and Manage Nicknames, staff can't hand-edit lobot's roles, channel permissions, or members' nicknames, so they can't end up fighting the sync.
 - **Every other role** gets no permissions of its own. Its holders see the server through Verified and their event roles.
 
 New roles get no color. You can set colors, icons, and hoist yourself; lobot never changes them.
@@ -83,6 +83,12 @@ New roles get no color. You can set colors, icons, and hoist yourself; lobot nev
 
 Changing **Division merge** or **Categories by** after the first build, or moving events to a different building or zone, takes effect only the next time you [reset the server](#reset-to-defaults). lobot never regroups channels on its own.
 
+### Nicknames
+
+Every verified member's server nickname is their NEXUS name, as their first name and last initial, like **Pat S.** lobot takes **Change Nickname** away from `@everyone` in the server's role permissions, so members can't change their own. When someone changes their name in NEXUS, their nickname follows within a few seconds.
+
+lobot can't rename the server's owner, or anyone holding a role above lobot's, so their nicknames are left as they are. Members who aren't verified keep whatever nickname they have, and so does someone who loses access later.
+
 ### Your existing roles and channels
 
 lobot manages only the roles and channels it creates (or adopts, below). Anything else is yours, with two exceptions:
@@ -94,13 +100,14 @@ If a role or channel already has the exact name lobot would use, and only one do
 
 ## What syncs on its own
 
-Once a server is built, lobot keeps it in step with NEXUS by itself. Changes reach Discord within seconds, and every 15 minutes lobot checks every member of every server, which catches anything missed and puts back hand edits to members' roles.
+Once a server is built, lobot keeps it in step with NEXUS by itself. Changes reach Discord within seconds, and every 15 minutes lobot checks every member of every server, which catches anything missed and puts back hand edits to members' roles and nicknames.
 
 The rule of thumb: **changes about people sync on their own; changes about how the server is set up wait for a reset.**
 
 | In NEXUS, you… | In Discord |
 |---|---|
 | Assign someone to a role, event, shift, or zone, or remove them | Their roles update on their own. |
+| Someone changes their first or last name | Their nickname updates. |
 | Remove someone from the tournament, or they unlink Discord | They lose lobot's roles and see only `#verify`. They aren't kicked. |
 | Transfer the tournament's ownership | **Tournament Owner** moves to the new owner. |
 | Add a role, or add an event to the track | lobot creates the role, and the event's channel. |
@@ -137,7 +144,7 @@ To reset the whole server, click **Reset to defaults** on **Settings → Discord
 
 - Restores the permissions and order of lobot's roles, and the staff or admin permissions that match each role's current NEXUS permissions.
 - Restores the names, categories, and order of lobot's channels, and their `@everyone` and lobot-role overwrites. Overwrites you added for your own roles or for individual members stay.
-- Restores the `#verify` gate.
+- Restores the `#verify` gate, and takes Change Nickname away from `@everyone` again.
 - Applies the current division merge and category settings, buildings, and zones, moving channels into their new categories and archiving channels that no longer fit.
 
 A reset never changes topics, slowmode, colors, icons, or hoist, and never touches your own roles and channels.
@@ -155,6 +162,7 @@ When a Discord admin edits lobot's roles or channels by hand, whether the edit l
 | An admin in Discord… | The automatic sync | `/setup` | `/reset` |
 |---|---|---|---|
 | Gives or removes one of lobot's roles on a member, Verified included | Puts it back | Puts it back | Puts it back |
+| Changes a verified member's nickname | Puts it back within 15 minutes | Puts it back | Puts it back |
 | Renames one of lobot's roles | Renames it back | Renames it back | Renames it back |
 | Deletes one of lobot's roles, channels, or categories, or `#verify` or its message | Recreates it | Recreates it | Recreates it |
 | Changes the permissions or position of one of lobot's roles | Kept | Kept | Restored |
@@ -162,11 +170,11 @@ When a Discord admin edits lobot's roles or channels by hand, whether the edit l
 | Renames or moves one of lobot's channels, or edits its `@everyone` or lobot-role overwrites | Kept | Kept | Restored |
 | Denies a staff role View Channels on a channel | Kept | Kept | Restored to allowed on lobot's channels; kept on yours |
 | Deletes a staff role's overwrite from a channel entirely, or Verified's from `#verify` | Added back | Added back | Restored |
-| Gives `@everyone` View Channels in the server's role permissions | Kept | Kept | Removed again |
+| Gives `@everyone` View Channels or Change Nickname in the server's role permissions | Kept | Kept | Removed again |
 | Edits the topic, slowmode, or other settings of one of lobot's channels, or adds overwrites there for other roles or members | Kept | Kept | Kept |
 | Creates or edits their own roles and channels, gives out roles lobot doesn't manage, or edits an archived channel | Kept (a new channel gets the staff overwrite) | Kept | Kept |
 
-Members' roles always follow NEXUS. To give someone access, give them a role or assignment in NEXUS rather than a role in Discord.
+Members' roles and nicknames always follow NEXUS. To give someone access, give them a role or assignment in NEXUS rather than a role in Discord.
 
 ## Unlink or remove lobot
 

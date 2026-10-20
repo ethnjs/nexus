@@ -10,6 +10,7 @@ from app.core.discord.layout import (
     Place,
     channel_key,
     compute_layout,
+    nickname,
     role_tier,
     slug,
 )
@@ -103,6 +104,22 @@ class TestNames:
     )
     def test_slug(self, name, expected):
         assert slug(name) == expected
+
+    @pytest.mark.parametrize(
+        ("first", "last", "expected"),
+        [
+            ("Pat", "Smith", "Pat S."),
+            ("  Mary   Ann ", " van Dyke", "Mary Ann V."),
+            ("Pat", None, "Pat"),
+            ("Pat", "  ", "Pat"),
+            (None, "Smith", None),
+            ("  ", "Smith", None),
+            ("x" * 40, "Smith", "x" * 29 + " S."),
+            ("x" * 40, None, "x" * 32),
+        ],
+    )
+    def test_nickname(self, first, last, expected):
+        assert nickname(first, last) == expected
 
     def test_channel_keys_sort_event_ids(self):
         assert channel_key([13, 2, 12]) == "event:2,12,13"

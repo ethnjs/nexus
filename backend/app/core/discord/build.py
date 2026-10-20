@@ -50,6 +50,7 @@ from app.models.models import (
 from app.services.discord import rest as discord_rest
 from app.services.discord.permissions import (
     ADMINISTRATOR,
+    EVERYONE_REVOKED,
     STAFF_OVERWRITE,
     VERIFY_EVERYONE_ALLOW,
     VERIFY_EVERYONE_DENY,
@@ -83,7 +84,10 @@ UNDO = "Undo hand edits"
 STAFF = "Staff access"
 ARCHIVE = "Archive"
 GROUP_ORDER = (CREATE, ADOPT, UNDO, STAFF, ARCHIVE)
-GATE_NOTICE = "Unverified members will no longer see any channel except #verify."
+GATE_NOTICE = (
+    "Unverified members will no longer see any channel except #verify, and members' nicknames "
+    "will be set to their NEXUS names."
+)
 
 EVERYONE = "everyone"
 TOP = "top"
@@ -218,6 +222,7 @@ class LiveChannel:
 @dataclass
 class Live:
     guild_id: int
+    owner_id: int
     roles: dict[int, LiveRole]
     channels: dict[int, LiveChannel]
     bot_role_ids: set[int]
@@ -283,6 +288,7 @@ async def fetch_live(rest: DiscordRest, snapshot: Snapshot) -> Live:
     )
     return Live(
         guild_id=snapshot.guild_id,
+        owner_id=int(guild["owner_id"]),
         roles=roles,
         channels=channels,
         bot_role_ids={r.id for r in bot_roles},
@@ -881,12 +887,13 @@ class _Planner:
         if self.first:
             self.plan.gate = True
         everyone = self.live.everyone
-        if (self.first or self.reset) and everyone.permissions & VIEW_CHANNEL:
+        held = [name for bit, name in EVERYONE_REVOKED.items() if everyone.permissions & bit]
+        if (self.first or self.reset) and held:
             self.add(
                 SetEveryonePermissions(
                     None if self.first else UNDO,
-                    "@everyone: View Channels",
-                    everyone.permissions & ~VIEW_CHANNEL,
+                    f"@everyone: {', '.join(held)}",
+                    everyone.permissions & ~sum(EVERYONE_REVOKED),
                 )
             )
 

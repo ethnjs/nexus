@@ -244,6 +244,76 @@ class TestMembers:
         assert len(member_queries) == 1
 
 
+class TestNicknames:
+    async def test_eligible_members_get_their_nexus_name(self, built, guild):
+        assert guild.nicks[TD_DISCORD] == "TD U."
+
+    async def test_the_sweep_puts_back_a_hand_edited_nickname(self, db, built, guild, scope):
+        guild.nicks[TD_DISCORD] = "Boss"
+        mark_all_full(db)
+        await _sync(scope)
+        assert guild.nicks[TD_DISCORD] == "TD U."
+
+    async def test_ineligible_and_unlinked_members_keep_theirs(self, db, built, guild, scope):
+        _user(db, "nobody@test.com", 6004)
+        guild.join(6004, nick="Nobody")
+        guild.join(6005, nick="Stranger")
+        mark_full(db, built.id)
+        db.commit()
+        await _sync(scope)
+        assert (guild.nicks[6004], guild.nicks[6005]) == ("Nobody", "Stranger")
+
+    async def test_a_user_without_a_first_name_keeps_theirs(self, db, built, guild, scope, td_user):
+        td_user.first_name = None
+        guild.nicks[TD_DISCORD] = "Boss"
+        mark_member(db, built.id, TD_DISCORD)
+        db.commit()
+        await _sync(scope)
+        assert guild.nicks[TD_DISCORD] == "Boss"
+
+    async def test_a_refused_nickname_doesnt_fail_the_sync(
+        self, db, built, guild, scope, td_tournament
+    ):
+        volunteer = _user(db, "vol@test.com", 6009)
+        guild.join(6009)
+        grant_role(db, td_tournament, volunteer, "Runner", track_id=built.track_id)
+        guild.refused_nicks.add("TD U.")
+        guild.nicks[TD_DISCORD] = "Boss"
+        mark_full(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert guild.nicks[TD_DISCORD] == "Boss"
+        assert guild.nicks[6009] == "Pat V."
+        assert built.last_sync_error is None
+        assert _marks(db) == []
+
+    async def test_the_server_owner_is_skipped(self, db, built, guild, scope):
+        guild.owner_id = TD_DISCORD
+        guild.nicks[TD_DISCORD] = "Owner"
+        mark_full(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert guild.nicks[TD_DISCORD] == "Owner"
+        assert built.last_sync_error is None
+
+    async def test_members_with_a_role_above_the_bot_are_skipped(
+        self, db, built, guild, scope, td_tournament
+    ):
+        volunteer = _user(db, "vol@test.com", 6008)
+        founders = guild.add_role("Founders", top=True)
+        guild.join(6008, founders, nick="Founder")
+        grant_role(db, td_tournament, volunteer, "Runner", track_id=built.track_id)
+        mark_member(db, built.id, 6008)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert guild.nicks[6008] == "Founder"
+        assert guild.member_role_names(6008) == {"Founders", "Verified", "Runner"}
+        assert built.last_sync_error is None
+
+
 class TestStructure:
     async def _full(self, db, link, scope):
         mark_full(db, link.id)

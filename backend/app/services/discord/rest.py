@@ -98,6 +98,20 @@ class DiscordRest:
         except discord.NotFound:
             return
 
+    async def edit_member_nick(self, guild_id: int, user_id: int, nick: str) -> bool:
+        """False if Discord refused the nickname, as its validation or the server's AutoMod can.
+        Server errors still raise."""
+        route = Route(
+            "PATCH", "/guilds/{guild_id}/members/{user_id}", guild_id=guild_id, user_id=user_id
+        )
+        try:
+            await self._request(route, json={"nick": nick})
+        except discord.DiscordServerError:
+            raise
+        except discord.HTTPException:
+            return False
+        return True
+
     async def leave_guild(self, guild_id: int) -> None:
         route = Route("DELETE", "/users/@me/guilds/{guild_id}", guild_id=guild_id)
         try:
