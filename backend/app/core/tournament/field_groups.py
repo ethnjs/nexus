@@ -57,6 +57,7 @@ ALWAYS_KEYS = frozenset(
         "is_owner",
         "permissions",
         "needs_age_consent",
+        "needs_onboarding",
         # Set by apply_display_config, not by fields — see the note on
         # MembershipFullResponse.hidden_sections.
         "hidden_sections",
