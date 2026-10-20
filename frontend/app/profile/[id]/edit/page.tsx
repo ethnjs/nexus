@@ -1,16 +1,18 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import {
   type CompetitionExperienceDraft,
   CompetitionExperienceSpreadsheet,
+  competitionDraftToItem,
   competitionExperienceToDraft,
   isCompetitionRowValid,
   isVolunteerRowValid,
   type VolunteerExperienceDraft,
   VolunteerExperienceSpreadsheet,
+  volunteerDraftToItem,
   volunteerExperienceToDraft,
 } from "@/components/profile/ExperienceTables";
 import styles from "@/components/profile/Profile.module.css";
@@ -46,6 +48,8 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
+
+const NO_EXPERIENCE_ROWS = "Add at least one entry, or answer No above.";
 
 interface ProfileDraft {
   pronouns?: string;
@@ -99,6 +103,10 @@ export default function ProfileEditPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [showCompetitionRowErrors, setShowCompetitionRowErrors] = useState(false);
+  const [showVolunteerRowErrors, setShowVolunteerRowErrors] = useState(false);
+  const competitionSectionRef = useRef<HTMLDivElement>(null);
+  const volunteerSectionRef = useRef<HTMLDivElement>(null);
 
   // ── Load ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -175,28 +183,14 @@ export default function ProfileEditPage() {
     setVolunteerRows(original.volunteer_experience.map(volunteerExperienceToDraft));
     setErrors({});
     setSaveError(undefined);
+    setShowCompetitionRowErrors(false);
+    setShowVolunteerRowErrors(false);
   }
 
   // guard(), not a plain push: the provider's click interceptor only catches
   // <a> elements, and this is a button.
   function handleBack() {
     guard(() => router.push(`/profile/${profileId}`));
-  }
-
-  // ── Row diffing helpers ─────────────────────────────────────────────────
-  function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
-    const originalIds = new Set(originalRows.filter((r) => r.id !== undefined).map((r) => r.id));
-    const currentIds = new Set(currentRows.filter((r) => r.id !== undefined).map((r) => r.id));
-
-    const toAdd = currentRows.filter((r) => r.id === undefined);
-    const toDelete = originalRows.filter((r) => r.id !== undefined && !currentIds.has(r.id));
-    const toUpdate = currentRows.filter((r) => {
-      if (r.id === undefined || !originalIds.has(r.id)) return false;
-      const orig = originalRows.find((o) => o.id === r.id);
-      return JSON.stringify(orig) !== JSON.stringify(r);
-    });
-
-    return { toAdd, toUpdate, toDelete };
   }
 
   // ── Save ────────────────────────────────────────────────────────────────
@@ -206,27 +200,27 @@ export default function ProfileEditPage() {
     setSaveError(undefined);
     setErrors({});
 
-    // Validate rows before saving anything
-    if (!competitionRows.every(isCompetitionRowValid)) {
-      setErrors((er) => ({
-        ...er,
-        competition_exp: "Every entry needs a school and a matched event.",
-      }));
+    const ers: Record<string, string | undefined> = {};
+    if (effectiveHasCompetitionExp && competitionRows.length === 0) {
+      ers.competition_exp = NO_EXPERIENCE_ROWS;
+    }
+    if (effectiveHasVolunteerExp && volunteerRows.length === 0) {
+      ers.volunteering_exp = NO_EXPERIENCE_ROWS;
+    }
+    const competitionRowsOk = competitionRows.every(isCompetitionRowValid);
+    const volunteerRowsOk = volunteerRows.every(isVolunteerRowValid);
+    setShowCompetitionRowErrors(!competitionRowsOk);
+    setShowVolunteerRowErrors(!volunteerRowsOk);
+    const competitionOk = !ers.competition_exp && competitionRowsOk;
+    const volunteerOk = !ers.volunteering_exp && volunteerRowsOk;
+    if (!competitionOk || !volunteerOk) {
+      setErrors((er) => ({ ...er, ...ers }));
+      (competitionOk ? volunteerSectionRef : competitionSectionRef).current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
       setSaving(false);
       return;
-    }
-    if (!volunteerRows.every(isVolunteerRowValid)) {
-      setErrors((er) => ({
-        ...er,
-        volunteering_exp: "Every entry needs a tournament name, a 4-digit year, and a role.",
-      }));
-      setSaving(false);
-      return;
-    }
-
-    const dobErr = null; // DOB not editable on this page
-    if (dobErr) {
-      /* unreachable, kept for parity with sign-up validation shape */
     }
 
     if (draft.graduation_year && (draft.graduation_year < 1000 || draft.graduation_year > 9999)) {
@@ -271,56 +265,13 @@ export default function ProfileEditPage() {
 
     try {
       await usersApi.updateMe(cleaned);
-
-      const compDiff = diffRows(
-        original.competition_experience.map(competitionExperienceToDraft),
-        competitionRows,
-      );
       await Promise.all([
-        ...compDiff.toAdd.map((row) =>
-          usersApi.addCompetitionExperience({
-            event_id: row.event_id as number,
-            school: row.school,
-            notes: row.notes || null,
-          }),
+        usersApi.replaceCompetitionExperience(
+          effectiveHasCompetitionExp ? competitionRows.map(competitionDraftToItem) : [],
         ),
-        ...compDiff.toUpdate.map((row) =>
-          usersApi.updateCompetitionExperience(row.id as number, {
-            event_id: row.event_id as number,
-            school: row.school,
-            notes: row.notes || null,
-          }),
+        usersApi.replaceVolunteerExperience(
+          effectiveHasVolunteerExp ? volunteerRows.map(volunteerDraftToItem) : [],
         ),
-        ...compDiff.toDelete.map((row) => usersApi.deleteCompetitionExperience(row.id as number)),
-      ]);
-
-      const volDiff = diffRows(
-        original.volunteer_experience.map(volunteerExperienceToDraft),
-        volunteerRows,
-      );
-      function volunteerBody(row: VolunteerExperienceDraft) {
-        const hasCustomEvent = row.event_id === null && row.event_name.trim();
-        const hasNotesOther = row.notes_other.trim();
-        return {
-          tournament_name: row.tournament_name,
-          year: Number(row.year),
-          role: row.role,
-          event_id: row.event_id ?? undefined,
-          notes:
-            hasCustomEvent || hasNotesOther
-              ? {
-                  ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
-                  ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
-                }
-              : undefined,
-        };
-      }
-      await Promise.all([
-        ...volDiff.toAdd.map((row) => usersApi.addVolunteerExperience(volunteerBody(row))),
-        ...volDiff.toUpdate.map((row) =>
-          usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row)),
-        ),
-        ...volDiff.toDelete.map((row) => usersApi.deleteVolunteerExperience(row.id as number)),
       ]);
 
       router.push(`/profile/${profileId}`);
@@ -476,26 +427,32 @@ export default function ProfileEditPage() {
           </ProfileQuestion>
 
           {effectiveHasCompetitionExp && (
-            <ProfileQuestion question="Competition experience">
-              <CompetitionExperienceSpreadsheet
-                mode="edit"
-                rows={competitionRows}
-                onChange={setCompetitionRows}
-                events={events}
-              />
-              {errors.competition_exp && (
-                <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "13px",
-                    color: "var(--color-danger)",
-                    marginTop: "6px",
+            <div ref={competitionSectionRef}>
+              <ProfileQuestion question="Competition experience">
+                <CompetitionExperienceSpreadsheet
+                  mode="edit"
+                  rows={competitionRows}
+                  onChange={(rows) => {
+                    setCompetitionRows(rows);
+                    setErrors((er) => ({ ...er, competition_exp: undefined }));
                   }}
-                >
-                  {errors.competition_exp}
-                </p>
-              )}
-            </ProfileQuestion>
+                  showErrors={showCompetitionRowErrors}
+                  events={events}
+                />
+                {errors.competition_exp && (
+                  <p
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      color: "var(--color-danger)",
+                      marginTop: "6px",
+                    }}
+                  >
+                    {errors.competition_exp}
+                  </p>
+                )}
+              </ProfileQuestion>
+            </div>
           )}
         </ProfileCard>
 
@@ -523,26 +480,32 @@ export default function ProfileEditPage() {
           </ProfileQuestion>
 
           {effectiveHasVolunteerExp && (
-            <ProfileQuestion question="Volunteer experience">
-              <VolunteerExperienceSpreadsheet
-                mode="edit"
-                rows={volunteerRows}
-                onChange={setVolunteerRows}
-                events={events}
-              />
-              {errors.volunteering_exp && (
-                <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "13px",
-                    color: "var(--color-danger)",
-                    marginTop: "6px",
+            <div ref={volunteerSectionRef}>
+              <ProfileQuestion question="Volunteer experience">
+                <VolunteerExperienceSpreadsheet
+                  mode="edit"
+                  rows={volunteerRows}
+                  onChange={(rows) => {
+                    setVolunteerRows(rows);
+                    setErrors((er) => ({ ...er, volunteering_exp: undefined }));
                   }}
-                >
-                  {errors.volunteering_exp}
-                </p>
-              )}
-            </ProfileQuestion>
+                  showErrors={showVolunteerRowErrors}
+                  events={events}
+                />
+                {errors.volunteering_exp && (
+                  <p
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      color: "var(--color-danger)",
+                      marginTop: "6px",
+                    }}
+                  >
+                    {errors.volunteering_exp}
+                  </p>
+                )}
+              </ProfileQuestion>
+            </div>
           )}
         </ProfileCard>
 
