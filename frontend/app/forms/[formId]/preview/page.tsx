@@ -5,14 +5,12 @@ import { use, useEffect, useState } from "react";
 import { FormFillFlow } from "@/components/forms/FormFillFlow";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { type Form, formsApi } from "@/lib/api";
 import { builderLoadFailure } from "@/lib/forms/builderLoad";
 
-// TD-only, read-only-but-simulated view of the form as a respondent would
-// see it — must work on draft forms (that's the point of previewing before
-// publishing). FormFillFlow's onComplete is left unset, so Submit only ever
-// runs validation; no FormResponse is ever created here.
+// Must work on draft forms. Without onComplete, Submit only validates and nothing is saved.
 export default function FormPreviewPage({ params }: { params: Promise<{ formId: string }> }) {
   const { formId } = use(params);
 
@@ -20,10 +18,10 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [noAccess, setNoAccess] = useState(false);
   const [missing, setMissing] = useState(false);
+  const [runCount, setRunCount] = useState(0);
 
   useEffect(() => {
-    // getForEdit only gates the page to managers; the preview renders the
-    // respondent's hydrated shape from get.
+    // getForEdit only gates the page to managers; the preview renders get's respondent shape.
     Promise.allSettled([formsApi.get(formId), formsApi.getForEdit(formId)]).then(
       ([loaded, gate]) => {
         if (loaded.status === "fulfilled" && gate.status === "fulfilled") {
@@ -62,11 +60,22 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
     );
   }
 
+  function startOver() {
+    setRunCount((n) => n + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <FormFillFlow
+      key={runCount}
       form={form}
       banner={<Banner variant="info" message="Preview mode — nothing submitted here is saved." />}
       successMessage="This preview is complete — no response was recorded."
+      successAction={
+        <Button type="button" variant="secondary" size="sm" onClick={startOver}>
+          Start over
+        </Button>
+      }
     />
   );
 }

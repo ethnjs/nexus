@@ -24,14 +24,7 @@ function isBlank(value: unknown): boolean {
   return false;
 }
 
-// ranked_choice has a second validation rule beyond plain required/blank:
-// a required question needs every rank slot filled (not just one), and an
-// *optional* one — once the respondent has picked anything at all — also
-// needs every slot filled (a half-finished ranking isn't a meaningful
-// answer to leave in). `pickedCount < ranks` alone covers both: when
-// required, `pickedCount === 0` already satisfies it (0 < ranks); when
-// optional, the `pickedCount > 0` guard is what stops an untouched
-// question from being flagged.
+// A started ranking must fill every slot, even on an optional question.
 function fieldErrorMessage(field: FormField, value: unknown): string | undefined {
   const required = !!field.config?.required;
   if (field.question_type === "ranked_choice") {
@@ -62,34 +55,24 @@ function sameAnswer(a: unknown, b: unknown): boolean {
 
 interface FormFillFlowProps {
   form: Form;
-  /** Rendered above the title card — e.g. the builder preview's "nothing
-      submitted here is saved" notice. Omit for a real respondent viewer. */
+  /** Rendered above the title card. */
   banner?: ReactNode;
-  /** Shown in the success banner once every reachable question passes
-      validation and Submit is clicked — differs between "no response was
-      recorded" (preview) and an actual confirmation (a real viewer). */
   successMessage: string;
-  /** Called once, after Submit's validation passes — a real viewer wires
-      this to formsApi.submitResponse; omitted (the default), nothing is
-      persisted, which is what makes this safe to use for a TD's preview. */
+  /** Rendered in the success banner's action slot. */
+  successAction?: ReactNode;
+  /** Called after Submit's validation passes. Without it nothing is saved, as in the preview. */
   onComplete?: (answers: Record<string, unknown>) => void | Promise<void>;
-  /** Revising a submitted response: answers start prefilled so the
-      respondent can click straight through, and onComplete receives only
-      the editable answers that changed — an unchanged answer sent back
-      would re-fire its write-through. */
+  /** Revising a response: answers start prefilled, and onComplete receives only the changed
+      editable ones, since an unchanged answer sent back would re-fire its write-through. */
   existing?: ExistingResponse;
 }
 
-// One question revealed at a time (Continue advances; Submit only appears
-// once every reachable question has been continued past), sharing the same
-// branching walk, required/completeness validation, and stale-answer
-// cleanup between every place a form gets filled out — the builder's own
-// /preview page and any other embedded viewer alike, so they can never
-// drift out of sync with each other or with the server's own validation.
+// Reveals one question at a time; Submit appears once every reachable question is continued past.
 export function FormFillFlow({
   form,
   banner,
   successMessage,
+  successAction,
   onComplete,
   existing,
 }: FormFillFlowProps) {
@@ -104,38 +87,18 @@ export function FormFillFlow({
     return prefilled;
   }, [existing]);
   const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers);
-  // How many steps deep into the branching walk the respondent has
-  // advanced — not tied to specific field ids, so if an earlier (still-
-  // editable) answer's branch changes, re-slicing the freshly recomputed
-  // walk at the same depth naturally reveals whatever's actually next now,
-  // rather than a stale field.
+  // A depth rather than a field id, so a changed branch reveals what's next in the new walk.
   const [revealCount, setRevealCount] = useState(1);
-  // Fields Continue/Submit has been clicked on at least once — drives which
-  // rows show a validation error, live-clearing the moment that field's
-  // value stops being invalid (same reactive-recheck pattern as FieldCard's
-  // liveNonKeyErrors).
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
-  // True only across the span from a Submit click that found nothing
-  // invalid to the next answer edit — reset by setAnswer, so fixing the
-  // last error by itself never flips this true; Submit has to actually be
-  // clicked again once things are fixed.
+  // Cleared by any answer edit, so fixing the last error still needs another Submit click.
   const [submitSucceeded, setSubmitSucceeded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
-  // Field to scroll to once its Card is actually in the DOM — set alongside
-  // the state change that reveals/flags it (revealCount, attemptedIds), so
-  // the effect below only ever fires after that same render has committed,
-  // never against a stale layout.
+  // Scrolled to in an effect, after the render that reveals its card commits.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
-  // On the final Continue, the current card loses its button while the
-  // submit bar appears. Keep this separately from the ordinary next-card
-  // scroll: the bar's measured footprint and the card's new height both need
-  // to settle before we can tell whether the card is covered.
+  // On the final Continue the submit bar slides in and the card drops its button; both have
+  // to settle before we can tell whether the bar covers the card.
   const [pendingBarClearanceId, setPendingBarClearanceId] = useState<string | null>(null);
-  // Reported live by FloatingSubmitBar (its own measured height, which
-  // grows when the error summary line wraps) — applied as bottom padding so
-  // the bar never covers the last question(s), same pattern as FieldList's
-  // saveBarHeight for FloatingSaveBar.
   const [submitBarHeight, setSubmitBarHeight] = useState(0);
 
   const fields = useMemo(() => form.fields.filter((f) => !f.is_archived), [form.fields]);
@@ -165,19 +128,12 @@ export function FormFillFlow({
     return changed;
   }
   const visibleFields = walk.slice(0, revealCount);
-  // True once Continue has been clicked past the walk's actual last field —
-  // not just "the active field happens to be last" (that field still needs
-  // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
   const showSuccess = submitSucceeded;
   const invalidCount = walk.filter(
     (f) => attemptedIds.has(f.id) && errorFor(f, answers[f.id]) !== undefined,
   ).length;
-  // Broader than the submit bar's own visibility (allContinued) — leaving
-  // partway through, before ever reaching the end, should still warn if the
-  // respondent has actually answered something. Only clears once Submit
-  // has succeeded, same as showSuccess.
-  // Revising: dirty means changed from what was stored, not merely non-blank.
+  // When revising, dirty means changed from what was stored, not merely non-blank.
   const isDirty =
     !showSuccess &&
     (existing
@@ -185,13 +141,8 @@ export function FormFillFlow({
       : Object.values(answers).some((v) => !isBlank(v)));
   useBlockNavigation(isDirty);
 
-  // A branching answer changing (editing an already-passed radio/dropdown)
-  // can make an earlier answer's downstream fields unreachable — those
-  // fields keep whatever the respondent answered before the branch changed
-  // unless explicitly cleared, so this drops anything no longer in `walk`.
-  // Effect (not derived state): it mutates `answers`, and only when there's
-  // actually something stale to drop — an unchanged `prev` triggers no
-  // re-render, so this can't loop against the walk/answers memo above.
+  // Drops answers a changed branch made unreachable. Returning `prev` when nothing is stale
+  // keeps this from looping with the walk memo.
   useEffect(() => {
     const reachableIds = new Set(walk.map((f) => f.id));
     setAnswers((prev) => {
@@ -203,9 +154,6 @@ export function FormFillFlow({
     });
   }, [walk]);
 
-  // data-form-field on each Card is the only handle this needs — same
-  // "measure after commit, offset past the topbar" approach as FieldList's
-  // own pendingScrollKey effect.
   useEffect(() => {
     if (!pendingScrollId) return;
     const el = document.querySelector<HTMLElement>(`[data-form-field="${pendingScrollId}"]`);
@@ -226,14 +174,9 @@ export function FormFillFlow({
       return;
     }
 
-    // FloatingBar measures itself before it slides in, while the just-finished
-    // card is simultaneously dropping its Continue button. Wait through both
-    // the next paint and the card-height animation window before measuring.
+    // Wait through the next paint and the card-height animation before measuring.
     let frame = 0;
-    // Plain number, and window.clearTimeout to match: @types/node merges its
-    // own setTimeout into globalThis, so both the bare global and
-    // window.setTimeout type as returning NodeJS.Timeout here — while the
-    // browser hands back a numeric handle.
+    // @types/node types setTimeout as returning NodeJS.Timeout; the browser returns a number.
     let timer: number | undefined;
     const apply = () => {
       const safeTop = TOPBAR_HEIGHT + 12;
@@ -246,8 +189,7 @@ export function FormFillFlow({
         if (rect.top < safeTop) delta = rect.top - safeTop - 8;
         else if (rect.bottom > safeBottom) delta = rect.bottom - safeBottom + 8;
       } else if (rect.top < safeTop || rect.top >= safeBottom) {
-        // An oversized question cannot entirely fit above the bar; put its
-        // beginning in the readable band instead of leaving it obscured.
+        // Too tall to fit above the bar, so show its top.
         delta = rect.top - safeTop - 8;
       }
 
@@ -268,9 +210,6 @@ export function FormFillFlow({
 
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
-    // Whatever Submit last validated is now stale — require clicking it
-    // again rather than letting showSuccess flip true the instant the last
-    // error happens to clear.
     setSubmitSucceeded(false);
     setSubmitError(undefined);
   }
@@ -314,8 +253,7 @@ export function FormFillFlow({
   return (
     <div
       className={styles.page}
-      // Only the measured submit-bar reserve stays inline — it's a runtime
-      // value. It overrides the stylesheet's padding-bottom, as inline does.
+      // Inline because the submit bar's height is measured at runtime.
       style={{
         paddingBottom: `${22 + submitBarHeight}px`,
         transition: "padding-bottom 0.25s ease",
@@ -371,9 +309,7 @@ export function FormFillFlow({
             : undefined;
           const locked = isLocked(field);
           const reasons = existing?.flagged.get(field.id);
-          // ranked_choice surfaces its own error on the add-combobox (via
-          // QuestionRenderer's `error` prop) — every other type has no
-          // inline slot for it yet, so it falls back to plain text below.
+          // Only ranked_choice has an inline error slot; other types show it as text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
             <Card
@@ -452,7 +388,7 @@ export function FormFillFlow({
         })
       )}
 
-      {showSuccess && <Banner variant="success" message={successMessage} />}
+      {showSuccess && <Banner variant="success" message={successMessage} action={successAction} />}
 
       <FloatingSubmitBar
         visible={allContinued && !showSuccess}
