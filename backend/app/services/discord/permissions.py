@@ -56,6 +56,10 @@ STAFF_PERMISSIONS = (
 # overrides @everyone's deny and any other role's.
 STAFF_OVERWRITE = VIEW_CHANNEL | READ_MESSAGE_HISTORY
 
+# Posting, threads included. The Information category denies it to @everyone and gives it to staff
+# roles; members otherwise post through @everyone's server-level defaults.
+POSTING = SEND_MESSAGES | SEND_MESSAGES_IN_THREADS | CREATE_PUBLIC_THREADS | CREATE_PRIVATE_THREADS
+
 # Taken from @everyone at the server level by the first build and /reset. Verified gives back
 # View Channels; nicknames are the sync's.
 EVERYONE_REVOKED = {VIEW_CHANNEL: "View Channels", CHANGE_NICKNAME: "Change Nickname"}

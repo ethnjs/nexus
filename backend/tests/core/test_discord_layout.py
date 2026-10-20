@@ -4,6 +4,8 @@ import pytest
 
 from app.core.discord.layout import (
     CATEGORY_CAPACITY,
+    FIXED_CATEGORIES,
+    CategorySpec,
     LayoutEvent,
     LayoutRole,
     LayoutSettings,
@@ -42,6 +44,10 @@ def _event(
         building=building,
         zone=zone,
     )
+
+
+def _event_categories(layout) -> tuple[CategorySpec, ...]:
+    return layout.categories[len(FIXED_CATEGORIES) :]
 
 
 def _channels(layout) -> list[tuple[str, str, str]]:
@@ -179,7 +185,7 @@ class TestMerge:
         ]
         layout = compute_layout([], events, MERGE_BY_ZONE)
         assert _channels(layout) == [("zone:10", "circuit-lab-bc", "event:1,2")]
-        assert [(c.key, c.name) for c in layout.categories] == [("zone:10", "North Zone")]
+        assert [(c.key, c.name) for c in _event_categories(layout)] == [("zone:10", "North Zone")]
 
 
 class TestCategories:
@@ -190,7 +196,7 @@ class TestCategories:
             _event(3, "Chemistry"),
         ]
         layout = compute_layout([], events, BY_BUILDING)
-        assert [(c.key, c.name) for c in layout.categories] == [
+        assert [(c.key, c.name) for c in _event_categories(layout)] == [
             ("building:1", "Rowland Hall"),
             ("building:2", "Steinhaus"),
             ("other", "Other Events"),
@@ -203,16 +209,16 @@ class TestCategories:
 
     def test_events_when_nothing_is_placed(self):
         layout = compute_layout([], [_event(1, "Anatomy"), _event(2, "Botany")], BY_BUILDING)
-        assert [(c.key, c.name) for c in layout.categories] == [("other", "Events")]
+        assert [(c.key, c.name) for c in _event_categories(layout)] == [("other", "Events")]
 
     def test_no_other_category_when_everything_is_placed(self):
         layout = compute_layout([], [_event(1, "Anatomy", building=ROWLAND)], BY_BUILDING)
-        assert [c.key for c in layout.categories] == ["building:1"]
+        assert [c.key for c in _event_categories(layout)] == ["building:1"]
 
     def test_zone_grouping_ignores_buildings(self):
         events = [_event(1, "Anatomy", building=ROWLAND), _event(2, "Botany", zone=NORTH)]
         layout = compute_layout([], events, MERGE_BY_ZONE)
-        assert [(c.key, c.name) for c in layout.categories] == [
+        assert [(c.key, c.name) for c in _event_categories(layout)] == [
             ("zone:10", "North Zone"),
             ("other", "Other Events"),
         ]
@@ -229,7 +235,7 @@ class TestCategories:
             _event(i, f"Event {i:03d}", building=ROWLAND) for i in range(CATEGORY_CAPACITY + 3)
         ]
         layout = compute_layout([], events, BY_BUILDING)
-        assert [(c.key, c.name) for c in layout.categories] == [
+        assert [(c.key, c.name) for c in _event_categories(layout)] == [
             ("building:1", "Rowland Hall"),
             ("building:1:2", "Rowland Hall (2)"),
         ]
@@ -238,9 +244,18 @@ class TestCategories:
         assert len(first) == CATEGORY_CAPACITY
         assert [c.name for c in second] == ["event-050-c", "event-051-c", "event-052-c"]
 
-    def test_empty_track_has_no_categories(self):
+    def test_empty_track_has_only_the_fixed_categories(self):
         layout = compute_layout([], [], BY_BUILDING)
-        assert layout.categories == ()
+        assert [(c.key, c.name) for c in layout.categories] == [
+            ("information", "Information"),
+            ("volunteers", "Volunteers"),
+        ]
+        assert [(c.category_key, c.name) for c in layout.fixed_channels] == [
+            ("information", "announcements"),
+            ("information", "useful-links"),
+            ("volunteers", "general"),
+            ("volunteers", "random"),
+        ]
         assert layout.channels == ()
 
 

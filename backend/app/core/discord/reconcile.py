@@ -1,5 +1,5 @@
 """Keeping a built server in step with NEXUS between builds: who holds which managed roles,
-members' nicknames, and that managed roles and channels exist. Never how they're configured
+members' nicknames, and that managed roles and channels exist, the fixed channels included. Never how they're configured
 (permissions, tiers, overwrites, names of channels, the layout, order); that's /reset.
 
 A structure reconcile plans with the build's actions (build.py) but matches channels by the
@@ -37,7 +37,13 @@ from app.core.discord.build import (
     parse_roles,
 )
 from app.core.discord.eligibility import DesiredMember
-from app.core.discord.layout import VERIFIED_KEY, ChannelSpec, channel_key, event_role_key
+from app.core.discord.layout import (
+    FIXED_CHANNEL_KEYS,
+    VERIFIED_KEY,
+    ChannelSpec,
+    channel_key,
+    event_role_key,
+)
 from app.services.discord.permissions import VIEW_CHANNEL
 from app.services.discord.rest import GUILD_CATEGORY, GUILD_TEXT, DiscordRest
 
@@ -164,7 +170,7 @@ class _SyncPlanner:
                 spec.name,
                 GUILD_CATEGORY,
                 TOP,
-                _category_overwrites(self.staff_keys),
+                _category_overwrites(key, self.staff_keys),
             )
         )
 
@@ -181,7 +187,7 @@ class _SyncPlanner:
                     ARCHIVED_CATEGORY_NAME,
                     GUILD_CATEGORY,
                     TOP,
-                    _category_overwrites(self.staff_keys),
+                    _category_overwrites(ARCHIVED_KEY, self.staff_keys),
                 )
             )
 
@@ -221,7 +227,7 @@ class _SyncPlanner:
             covered_by.update(dict.fromkeys(uncovered, joined))
 
         for key, channel_id in self.s.channel_ids.items():
-            if key.startswith("event:") or key in (VERIFY_KEY, ARCHIVED_KEY):
+            if key.startswith("event:") or key in (VERIFY_KEY, ARCHIVED_KEY, *FIXED_CHANNEL_KEYS):
                 continue
             if channel_id not in self.live.channels:
                 if key in category_keys:
@@ -264,6 +270,31 @@ class _SyncPlanner:
             self.ensure_category(spec.category_key)
             self._create_event_channel(spec)
 
+    def fixed_step(self) -> None:
+        for spec in self.s.layout.fixed_channels:
+            channel_id = self.live_channel(spec.key)
+            if channel_id is None:
+                self.ensure_category(spec.category_key)
+                self.add(
+                    CreateChannel(
+                        None,
+                        f"#{spec.name}",
+                        spec.key,
+                        spec.name,
+                        GUILD_TEXT,
+                        spec.category_key,
+                        _category_overwrites(spec.category_key, self.staff_keys),
+                    )
+                )
+                continue
+            channel = self.live.channels[channel_id]
+            if channel.parent_id is None and spec.category_key in self.recreated_categories:
+                self.add(
+                    SetUpChannel(
+                        None, f"#{channel.name}", spec.key, channel_id, parent=spec.category_key
+                    )
+                )
+
     def _create_event_channel(self, spec: ChannelSpec) -> None:
         self.add(
             CreateChannel(
@@ -303,11 +334,14 @@ class _SyncPlanner:
             self.add(AddOverwrite(None, "#verify", channel_id, VERIFIED_KEY, 0, VIEW_CHANNEL))
 
     def staff_step(self) -> None:
+        channel_keys = {v: k for k, v in self.s.channel_ids.items()}
         for channel in self.live.channels.values():
             for key in self.staff_keys:
                 role_id = self.roles[key]
                 if role_id is None or role_id not in channel.overwrites:
-                    self.add(_staff_overwrite(None, f"Staff on {channel.name}", channel.id, key))
+                    label = f"Staff on {channel.name}"
+                    channel_key = channel_keys.get(channel.id)
+                    self.add(_staff_overwrite(None, label, channel.id, channel_key, key))
 
 
 def plan_structure(snapshot: Snapshot, live: Live) -> tuple[Plan, set[str]]:
@@ -315,6 +349,7 @@ def plan_structure(snapshot: Snapshot, live: Live) -> tuple[Plan, set[str]]:
     planner = _SyncPlanner(snapshot, live)
     planner.roles_step()
     planner.channels_step()
+    planner.fixed_step()
     planner.verify_step()
     planner.staff_step()
     return planner.plan, planner.above_bot
