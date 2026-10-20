@@ -266,15 +266,19 @@ def validate_branching_options(
     config: dict,
     field: FormField | None = None,
 ) -> None:
-    """`next_field_id` must reference an existing, non-archived field in the
-    same form that comes after `field`, the field the options belong to.
-    Forward-only is what keeps the respondent's walk free of loops."""
+    """A live option's `next_field_id` must reference an existing, non-archived
+    field in the same form that comes after `field`, the field the options
+    belong to. Forward-only is what keeps the respondent's walk free of loops.
+    Archived options are skipped: nobody can pick them, and the builder gives
+    them no branch control, so a TD couldn't fix one that a reorder left behind."""
     if question_type not in BRANCHING_QUESTION_TYPES:
         return
 
     options = config.get("options") or []
     next_field_ids = {
-        option["next_field_id"] for option in options if option.get("next_field_id") is not None
+        option["next_field_id"]
+        for option in options
+        if not option.get("is_archived") and option.get("next_field_id") is not None
     }
     if not next_field_ids:
         return

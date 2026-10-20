@@ -413,6 +413,28 @@ class TestValidateBranchingOptions:
         with pytest.raises(FormFieldValidationError, match="after its own"):
             validate_branching_options(db, form.id, "single_select_radio", config, field=field)
 
+    def test_archived_option_jump_is_ignored(self, db, td_user, td_tournament):
+        """It keeps its next_field_id, but the builder offers no way to change it after a reorder."""
+        form = _make_form(db, td_user, td_tournament)
+        earlier = _make_field(db, form, order=1, field_key="earlier")
+        field = _make_field(db, form, order=2, field_key="source")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [
+                {"value": "yes", "label": "Yes", "next_field_id": earlier.id, "is_archived": True},
+                {
+                    "value": "gone",
+                    "label": "Gone",
+                    "next_field_id": "deleted0000",
+                    "is_archived": True,
+                },
+            ],
+        }
+        validate_branching_options(
+            db, form.id, "single_select_radio", config, field=field
+        )  # no raise
+
     def test_later_target_passes(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form, order=1, field_key="source")
