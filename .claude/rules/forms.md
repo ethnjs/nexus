@@ -29,6 +29,6 @@ Invariants that are easy to break:
 - **Write-through runs forward only**, at submit and `PATCH`. Stored answers are never replayed or rewritten. The one exception is a field that becomes a lunch question, which backfills once.
 - **Reserved keys** (`availability_{track_id}[_{suffix}]`, `event_preference_{track_id}`, `lunch_{track_id}_{category}`, `track_status_{suffix}`) reuse ordinary question types. The number is a track id.
 - **Availability is scoped by track.** Every availability question feeds one shared pool per member, and a submission only changes shifts on the tracks it asked about.
-- **Track-status rules are deliberately asymmetric.** Write-through never moves `confirmed → interested`, while the member's own page allows it. Don't "fix" one to match the other.
+- **Write-through never moves a track from `confirmed` back to `interested`.** That rule keeps statuses ordered when an older form's answer is edited, so don't relax it to allow walking a confirm back.
 - An option's `value` changes shape by `field_key`. Read it through `option_shift_ids` / `option_track_assignments`, not `isinstance` checks.
 - Config and option schemas use `extra="forbid"`, so new keys need schema changes.

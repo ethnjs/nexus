@@ -466,10 +466,6 @@ export interface TournamentTrack {
   // something still references the track, cleared by POST .../restore/.
   // Never PATCH-able, and only ever visible in the settings listing.
   is_archived: boolean;
-  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
-  allow_confirm: boolean;
-  /** TD-controlled: closes the track to member edits entirely, declining included. */
-  lock_responses: boolean;
   // The role the assignments board grants a member placed on this track with
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
@@ -489,7 +485,6 @@ export interface TournamentTrackCreate {
   university_id?: number | null;
   location?: string | null;
   division?: TournamentDivision[] | null;
-  allow_confirm?: boolean;
   default_role_id?: number | null;
 }
 
@@ -650,8 +645,8 @@ export interface TournamentShiftInput {
   end: string;
 }
 
-// Reading the shift catalog is membership-gated, not manage_events — the
-// member edit page needs it, and TournamentShift carries nothing
+// Reading the shift catalog is membership-gated, not manage_events — a
+// member's signup cards need it, and TournamentShift carries nothing
 // confidential. Writes still require manage_events, so there is no `public`
 // variant of this one.
 export const tournamentShiftsApi = {
@@ -904,14 +899,6 @@ export interface MembershipTrackStatus {
   // "pending" is read-only — a track the member has no row for at all. It is
   // never writable, hence TrackStatus (the write-side union) not carrying it.
   status: TrackStatus | "pending";
-  // Whether the member may confirm themselves on this track. Carried here
-  // because GET /tracks/ is manage_tournament-gated, so a member page has no
-  // other way to learn it.
-  allow_confirm: boolean;
-  // The TD has closed this track to member edits. Carried for the same
-  // reason as allow_confirm — the overview card needs it to explain why the
-  // Edit button is disabled.
-  lock_responses: boolean;
   // Null on a pending entry: no row, so nothing has been updated.
   updated_at: string | null;
 }
@@ -1358,91 +1345,7 @@ export const membersApi = {
     ),
   ) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
-
-  // ---- Self-service: what the member may change about themselves --------
-  // One request backs the whole member edit page.
-  getMyOptions: (tournamentId: number) =>
-    api.get<MyOptionsResponse>(`/tournaments/${tournamentId}/members/me/options/`),
-  // Whole-set within the track — anything left out is a withdrawal. `status`
-  // travels with the shifts because the two move together: "Not available"
-  // is `{ shift_ids: [], status: "declined" }` in one call, so a member can
-  // never be left declined with shifts still selected.
-  updateMyAvailability: (
-    tournamentId: number,
-    trackId: number,
-    body: { shift_ids: number[]; status?: TrackStatus },
-  ) =>
-    api.put<MembershipAvailability[]>(
-      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`,
-      body,
-    ),
-  // Send `option_ids` for a question with options, `text` for a free-text
-  // one — the question's type decides, and the wrong one is a 422.
-  updateMyLunch: (
-    tournamentId: number,
-    trackId: number,
-    category: string,
-    body: { option_ids?: string[]; text?: string | null },
-  ) =>
-    api.put<MembershipLunch[]>(
-      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`,
-      body,
-    ),
-  // Whole-set for the track. Ranks are required and must be contiguous from
-  // 1 on ranked_choice, and omitted on every other question type.
-  updateMyEventPreferences: (
-    tournamentId: number,
-    trackId: number,
-    selections: MyEventPreferenceSelection[],
-  ) =>
-    api.put<MembershipEventPreference[]>(
-      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`,
-      { selections },
-    ),
-  // See backend/docs/track-status-rules.md: `declined` always; `confirmed` only
-  // with the track's allow_confirm; `interested` only without it.
-  updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
-    api.put<MembershipTrackStatus>(
-      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`,
-      { status },
-    ),
 };
-
-// GET /members/me/options/ — everything the member edit page needs, grouped
-// the way the page is laid out: one section per live track. A track with no
-// questions still appears, since its status is always the member's to set.
-export interface MyTrackOptions {
-  track_id: number;
-  track_name: string;
-  is_primary: boolean;
-  allow_confirm: boolean;
-  // The TD has closed this track to member edits — it is dropped from the
-  // edit page entirely rather than rendered inert.
-  lock_responses: boolean;
-  // Null when the member has no row for this track at all.
-  status: TrackStatus | null;
-  // Fields come back in get_form_for_rendering shape with config.options
-  // already resolved, which is what lets the page reuse QuestionRenderer
-  // instead of growing a second set of answer widgets.
-  availability: FormField[];
-  // This member's currently-selected shifts *on this track* — the whole-set
-  // that a PUT to this track replaces.
-  selected_shift_ids: number[];
-  lunch: (FormField & { category: string })[];
-  lunch_selections: { category: string; value: string; label: string }[];
-  // At most one preference question per track, by construction.
-  event_preferences: FormField | null;
-  event_preference_selections: { tournament_event_id: number; rank: number | null }[];
-}
-
-export interface MyOptionsResponse {
-  tracks: MyTrackOptions[];
-}
-
-export interface MyEventPreferenceSelection {
-  option_id: string;
-  rank?: number | null;
-}
 
 // -------------------------------------------------------------------------
 // Tournament Roles — nested under /tournaments/{id}/roles/

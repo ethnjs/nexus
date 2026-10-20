@@ -8,7 +8,6 @@ import { LunchCategoryRows } from "@/components/tournament/members/sections/Lunc
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { IconLock } from "@/components/ui/Icons";
 import {
   type MembershipAvailability,
   type MembershipEventPreference,
@@ -21,8 +20,6 @@ import {
   tournamentShiftsApi,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
-import { TRACK_LOCKED_REASON } from "@/lib/responseLock";
-import { useArchiveLock } from "@/lib/useArchiveLock";
 
 // Its own getMe rather than widening useMyMembership's: that provider loads
 // on every page, and only this card needs availability and lunch.
@@ -34,7 +31,6 @@ const TOP_EVENTS = 3;
 /** One card per live track: what the member answered for it, and a way to change it. */
 export function MySignupCards({ tournamentId }: { tournamentId: number }) {
   const router = useRouter();
-  const { isArchived, archivedReason } = useArchiveLock();
   const [me, setMe] = useState<MembershipMe | null>(null);
   // Every offered shift, so each timeline spans its whole day rather than
   // just the member's own shifts.
@@ -70,12 +66,6 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
           lunch={(me.lunch ?? []).filter((l) => l.track_id === track.track_id)}
           eventPreference={me.event_preferences?.find((p) => p.track_id === track.track_id) ?? null}
           onView={() => router.push(memberPath)}
-          onEdit={() => router.push(`${memberPath}/edit`)}
-          // A locked track still shows everything the member answered — only
-          // changing it is closed, and the card says who to ask.
-          lockedReason={
-            isArchived ? archivedReason : track.lock_responses ? TRACK_LOCKED_REASON : undefined
-          }
         />
       ))}
     </>
@@ -89,8 +79,6 @@ function TrackSignupCard({
   lunch,
   eventPreference,
   onView,
-  onEdit,
-  lockedReason,
 }: {
   track: MembershipTrackStatus;
   availability: MembershipAvailability[];
@@ -98,15 +86,9 @@ function TrackSignupCard({
   lunch: MembershipLunch[];
   eventPreference: MembershipEventPreference | null;
   onView: () => void;
-  onEdit: () => void;
-  /** Set when the member can't change anything here; says why. */
-  lockedReason?: string;
 }) {
   const pending = track.status === "pending";
-  const locked = !!lockedReason;
-  // Details don't matter once they've said no, and don't exist before they
-  // answer. Before then there is nothing to edit either: the first answer
-  // always goes through a form, so the card says so rather than offering one.
+  // Details don't matter once they've said no, and don't exist before they answer.
   const summary = pending
     ? "You haven't answered for this track yet."
     : track.status === "declined"
@@ -115,14 +97,7 @@ function TrackSignupCard({
 
   return (
     <OverviewCard title={track.name} action={<Badge variant={track.status}>{track.status}</Badge>}>
-      {/* Spelled out rather than left to the button's `title`: a disabled
-          button fires no mouse events, so that tooltip never opens. Above any
-          answers, which are still worth reading on a locked track. */}
-      {lockedReason && <LockNotice reason={lockedReason} />}
-
-      {/* Nothing answered and nothing answerable: the notice is the whole
-          story, so no prompt to answer under it. */}
-      {locked && pending ? null : summary ? (
+      {summary ? (
         <FieldValue muted>{summary}</FieldValue>
       ) : (
         <>
@@ -159,54 +134,8 @@ function TrackSignupCard({
         <Button type="button" variant="ghost" size="sm" onClick={onView}>
           View all
         </Button>
-        {/* Only ever an edit: there is no answering from here (see summary). */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={onEdit}
-          disabled={locked || pending}
-        >
-          Edit
-        </Button>
       </div>
     </OverviewCard>
-  );
-}
-
-/** The lock, said once at the top of the card. EmptyState's look — dashed,
- *  centred, stacked — without its fixed 240px height, which would dwarf a
- *  card that otherwise holds two lines. */
-function LockNotice({ reason }: { reason: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "8px",
-        padding: "16px",
-        textAlign: "center",
-        border: "1px dashed var(--color-border)",
-        borderRadius: "var(--radius-lg)",
-        background: "var(--color-surface)",
-      }}
-    >
-      <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
-        <IconLock size={20} />
-      </span>
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "13px",
-          color: "var(--color-text-secondary)",
-          maxWidth: "300px",
-          margin: 0,
-        }}
-      >
-        {reason}
-      </p>
-    </div>
   );
 }
 

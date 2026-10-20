@@ -36,8 +36,8 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/shifts", tags=["tourname
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/shifts/ — any member.
 #
-# Not manage_events-gated: the member edit page needs the catalog to render
-# its own availability, and a shift is only a label and a time range. Any
+# Not manage_events-gated: a member's signup cards need the catalog to draw
+# their availability, and a shift is only a label and a time range. Any
 # member who has answered an availability question has already seen these
 # resolved into its options. Writes below still require manage_events.
 #

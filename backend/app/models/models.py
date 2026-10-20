@@ -1175,30 +1175,6 @@ class TournamentTrack(Base):
     # hard-deleted automatically once the last such reference is repointed.
     # A TD can restore it from tournament settings until that happens.
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Whether a member may move themselves to "confirmed" on this track from
-    # their own member page. Off by default: on most tracks `confirmed` means
-    # the TD staffed them, and only the TD knows when that's true. Opting
-    # *out* never consults this — declining is not something confirmation
-    # being closed should block. (`lock_responses` below does block it: that
-    # one closes the track to changes of every kind.)
-    allow_confirm: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Freezes this track's member-editable answers — availability, lunch,
-    # event preferences and status. Set once the TD has staffed the day out of
-    # those answers, at which point a member quietly changing one pulls the
-    # ground out from under the assignments board.
-    #
-    # Unlike allow_confirm this covers opting *out* too: on a locked track a
-    # member can't decline either. That deliberately overrides the rule that
-    # declining is always the member's own call (see
-    # TournamentMembershipTrackStatus) — a locked track is one people are
-    # already staffed on, so a late withdrawal is a conversation with the TD
-    # rather than a button.
-    #
-    # Forms are out of scope: they write the same rows and keep doing so.
-    #
-    # A track created through the API starts locked — the default lives on
-    # TournamentTrackCreate, not here.
-    lock_responses: Mapped[bool] = mapped_column(Boolean, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,
     # a competition day's is more often a general volunteer role. SET NULL
@@ -2266,9 +2242,9 @@ class TournamentMembershipLunch(Base):
 # ever upserts here, never deletes (see backend/docs/form-edit-lifecycle.md).
 #
 # Writes are guarded by a transition rule rather than by submission ordering:
-# a track never falls back to `interested` once it's moved past it, so a stale
-# answer replayed out of order can never demote a track someone already
-# confirmed. See can_set_track_status in app/core/form/write_through.py.
+# a confirmed track never falls back to `interested`, so an edit to an older
+# form's answer can't demote a track a newer form confirmed. See
+# can_set_track_status in app/core/form/write_through.py.
 # ---------------------------------------------------------------------------
 class TournamentMembershipTrackStatus(Base):
     __tablename__ = "tournament_membership_track_statuses"

@@ -160,9 +160,8 @@ GROUPS: dict[str, FieldGroup] = {
     ),
     # Not `built`: the raw rows are the right answer for a manager reading
     # the roster. /members/me additionally pads every live track the member
-    # has no row for as "pending" (build_track_statuses), because those are
-    # exactly the tracks its self-service control needs to offer — that is a
-    # property of the route, not of the group.
+    # has no row for as "pending" (build_track_statuses) — a property of the
+    # route, not of the group.
     TRACKS: FieldGroup(
         name=TRACKS,
         keys=frozenset({"track_statuses"}),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsRow";
 import { TrackFields } from "@/components/tournament/TrackFields";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +10,6 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconLocation,
-  IconLock,
   IconPlus,
   IconRestore,
   IconTrash,
@@ -18,7 +17,6 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
-import { Switch } from "@/components/ui/Switch";
 import {
   ApiError,
   type Role,
@@ -54,8 +52,6 @@ export interface TrackEditor {
   errors: Record<number, Record<string, string>>;
   isDirty: boolean;
   setDraft: (key: number, updates: Partial<TrackDraft>) => void;
-  /** Sets lock_responses on every live track's draft, saved and unsaved. */
-  setAllLocked: (locked: boolean) => void;
   /** Appends an empty row and returns its key, so the caller can expand it. */
   addRow: () => number;
   discardRow: (key: number) => void;
@@ -124,24 +120,6 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
   const setDraft = useCallback((key: number, updates: Partial<TrackDraft>) => {
     setDrafts((current) => ({ ...current, [key]: { ...current[key], ...updates } }));
   }, []);
-
-  // Drafts, not an immediate write: it lands behind the same save bar as a
-  // single track's toggle, so flipping it is as undoable as flipping that.
-  // Pending-delete tracks are left alone — nobody can answer on them anyway.
-  const setAllLocked = useCallback(
-    (locked: boolean) => {
-      const keys = [
-        ...(tracks ?? []).filter((track) => !track.is_archived).map((track) => track.id),
-        ...newRows.map((row) => row.key),
-      ];
-      setDrafts((current) => {
-        const next = { ...current };
-        for (const key of keys) next[key] = { ...next[key], lock_responses: locked };
-        return next;
-      });
-    },
-    [tracks, newRows],
-  );
 
   const addRow = useCallback(() => {
     // Negative and decreasing — never collides with a real track id.
@@ -272,7 +250,6 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
     errors,
     isDirty,
     setDraft,
-    setAllLocked,
     addRow,
     discardRow,
     reset,
@@ -318,13 +295,6 @@ export function TracksSection({
   }
 
   const livePrimaryCount = (tracks ?? []).filter((t) => t.is_primary && !t.is_archived).length;
-  // Read off the drafts so it tracks unsaved per-track toggles too, and
-  // shows off (not on) for a tournament with nothing to lock.
-  const liveKeys = [
-    ...(tracks ?? []).filter((t) => !t.is_archived).map((t) => t.id),
-    ...newRows.map((row) => row.key),
-  ];
-  const allLocked = liveKeys.length > 0 && liveKeys.every((key) => drafts[key]?.lock_responses);
   // Saved and unsaved rows in one list — they render identically apart from
   // the badge and what their trash button does.
   const rows: { key: number; track: TournamentTrack | null }[] = [
@@ -381,16 +351,6 @@ export function TracksSection({
         >
           {loadError}
         </p>
-      )}
-
-      {tracks !== null && liveKeys.length > 0 && (
-        <SettingsRow
-          label="Lock all tracks"
-          helper="Closes every track to member edits at once. Forms still take responses."
-          last
-        >
-          <Switch checked={allLocked} onChange={editor.setAllLocked} locked={locked} />
-        </SettingsRow>
       )}
 
       {tracks === null ? (
@@ -589,15 +549,6 @@ function TrackRow({
 
         {isNew && <Badge>Unsaved</Badge>}
         {track?.is_primary && <Badge>Competition day</Badge>}
-        {/* The draft, not the saved row, so an unsaved toggle shows here
-            before the save bar is pressed. Not on a pending-delete track,
-            which nobody can answer on regardless. */}
-        {draft.lock_responses && !track?.is_archived && (
-          <Badge style={{ gap: "4px" }}>
-            <IconLock size={10} />
-            Locked
-          </Badge>
-        )}
         {track?.is_archived && <Badge variant="removed">Pending delete</Badge>}
 
         <div style={{ display: "flex", gap: "6px" }}>
