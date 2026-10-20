@@ -49,7 +49,6 @@ export function ResponsesView({
 
   return (
     <div className={styles.layout} data-selected={selected ? "true" : "false"}>
-      {/* Search and list pin together, under the sticky tab row. */}
       <div className={styles.list}>
         <Input
           placeholder="Search name or email"
@@ -62,7 +61,10 @@ export function ResponsesView({
           variant="secondary"
           fullWidth
         />
-        <Card radius="lg" style={{ padding: "6px" }}>
+        <Card
+          radius="lg"
+          style={{ padding: "6px", display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           {visible.length === 0 ? (
             <EmptyState
               size="sm"

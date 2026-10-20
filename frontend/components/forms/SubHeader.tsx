@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { StatusControl } from "@/components/forms/StatusControl";
-import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -22,8 +21,7 @@ export const CONTENT_MAX_WIDTH = 800;
 
 export type FormTab = "questions" | "responses";
 
-/** The sticky tab row's fixed height, so content pinned below it can offset by it. */
-export const FORM_TABS_HEIGHT = 64;
+const FORM_TABS_HEIGHT = 64;
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
@@ -38,7 +36,6 @@ export function SubHeader({
   locked = false,
   activeTab,
   maxWidth = CONTENT_MAX_WIDTH,
-  stickyTabs = false,
 }: {
   form: Form;
   onUpdated: (form: Form) => void;
@@ -49,9 +46,6 @@ export function SubHeader({
   activeTab: FormTab;
   /** The responses view is two-pane, so it runs wider than the builder. */
   maxWidth?: number;
-  /** Pins the tab row under the topbar. Off in the builder, whose field
-   *  toolbar already pins itself there. */
-  stickyTabs?: boolean;
 }) {
   const router = useRouter();
   // Leaving the builder mid-edit must still prompt — the tabs are separate routes.
@@ -64,8 +58,6 @@ export function SubHeader({
       ? FORM_ARCHIVED_REASON
       : undefined;
 
-  // Two siblings, not one wrapper: sticky only holds within its parent, so
-  // the tab row has to sit directly in the page to stay pinned while it scrolls.
   return (
     <>
       <div style={{ maxWidth: `${maxWidth}px`, margin: "0 auto", padding: "16px 24px 0" }}>
@@ -131,9 +123,6 @@ export function SubHeader({
           boxSizing: "border-box",
           paddingTop: "8px",
           background: "var(--color-bg)",
-          ...(stickyTabs
-            ? { position: "sticky" as const, top: `${TOPBAR_HEIGHT}px`, zIndex: 5 }
-            : null),
         }}
       >
         <div style={{ maxWidth: `${maxWidth}px`, margin: "0 auto", padding: "0 24px" }}>

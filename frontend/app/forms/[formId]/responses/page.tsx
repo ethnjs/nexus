@@ -4,7 +4,7 @@ import { notFound, useRouter } from "next/navigation";
 import { type CSSProperties, use, useEffect, useState } from "react";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponsesView, respondentName } from "@/components/forms/ResponsesView";
-import { FORM_TABS_HEIGHT, SubHeader } from "@/components/forms/SubHeader";
+import { SubHeader } from "@/components/forms/SubHeader";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Spinner } from "@/components/ui/Spinner";
@@ -106,7 +106,6 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
         locked={tournamentArchived}
         activeTab="responses"
         maxWidth={RESPONSES_MAX_WIDTH}
-        stickyTabs
       />
       <div
         style={
@@ -114,8 +113,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
             maxWidth: `${RESPONSES_MAX_WIDTH}px`,
             margin: "0 auto",
             padding: "0 24px 22px",
-            // The respondent list pins itself just under the sticky tab row.
-            "--list-top": `${TOPBAR_HEIGHT + FORM_TABS_HEIGHT}px`,
+            "--list-top": `${TOPBAR_HEIGHT + 16}px`,
           } as CSSProperties
         }
       >
