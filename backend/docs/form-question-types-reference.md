@@ -86,7 +86,7 @@ The number in a reserved key is a `TournamentTrack` id, not a date. A track carr
 
 A bare `availability` or `event_preference` with no track id is not reserved.
 
-**Availability.** A track may have several availability questions, distinguished by the optional suffix (`availability_7`, `availability_7_judges`), typically on different forms. They all feed one per-member pool of available shifts. Each option groups shifts from the field's own track. On submit, the selected options expand to shift ids and the pool is diffed only within the tracks the submission asked about (see `form-edit-lifecycle.md`). A shift can't be deleted while availability rows or a live option reference it.
+**Availability.** A track may have several availability questions, distinguished by the optional suffix (`availability_7`, `availability_7_judges`), typically on different forms. They all feed one per-member pool of available shifts. Each option groups shifts from the field's own track. On submit, the selected options expand to shift ids and the pool is diffed only within the tracks the submission asked about (see `form-edit-lifecycle.md`). Deleting a shift removes it from members' availability and from every option that lists it, live or archived; an option left with no shifts stays, as a "Can't make it" choice. Stored answers keep their snapshot.
 
 **Event preference.** There is exactly one question per track, so it owns that track's preference rows outright. Options group events linked to the track, and no event may appear in two options. `ranked_choice` writes each option's rank, `single_select_dropdown` writes rank 1, and `multi_select_checkbox` writes no rank. On `ranked_choice`, `allow_duplicates` must be `false`.
 

@@ -8,7 +8,9 @@ from app.models.models import (
     FormField,
     TournamentMembership,
     TournamentMembershipAvailability,
+    TournamentRole,
     TournamentShift,
+    TournamentTrackAssignment,
 )
 from tests.conftest import grant_role, login, primary_track_id
 
@@ -401,43 +403,19 @@ def test_delete_shift_attached_to_two_events_detaches_both(client, td_user, td_t
     assert e2["shifts"] == []
 
 
-def test_delete_shift_blocked_when_referenced_by_availability(client, db, td_user, td_tournament):
-    login(client, "td@test.com", "tdpass")
-    shift = _make_shift(client, td_tournament.id).json()
-
-    membership = (
+def _td_membership(db, td_user, td_tournament):
+    return (
         db.query(TournamentMembership)
         .filter(
             TournamentMembership.user_id == td_user.id,
             TournamentMembership.tournament_id == td_tournament.id,
         )
-        .first()
+        .one()
     )
-    db.add(
-        TournamentMembershipAvailability(
-            membership_id=membership.id, tournament_shift_id=shift["id"]
-        )
-    )
-    db.commit()
-
-    response = client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
-    assert response.status_code == 409
-    assert "1" in response.json()["detail"]
-
-    # Not deleted.
-    listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
-    assert any(s["id"] == shift["id"] for s in listed)
 
 
-def test_delete_shift_blocked_when_referenced_by_live_field_option(
-    client, db, td_user, td_tournament
-):
-    """Guard fires even with zero answers — a shift grouped into a live
-    availability option can't be pulled out from under it, independent of
-    the separate MembershipAvailability guard above."""
-    login(client, "td@test.com", "tdpass")
-    shift = _make_shift(client, td_tournament.id).json()
-
+def _availability_form(db, td_user, td_tournament, *fields):
+    """A form holding `fields`, each a (field_key, options, is_archived) triple."""
     form = Form(
         owner_type="tournament",
         tournament_id=td_tournament.id,
@@ -446,53 +424,49 @@ def test_delete_shift_blocked_when_referenced_by_live_field_option(
     )
     db.add(form)
     db.flush()
-    db.add(
+    rows = [
         FormField(
             form_id=form.id,
-            order=1,
+            order=order,
             label="Availability",
-            field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
+            field_key=field_key,
             question_type="multi_select_checkbox",
-            config={
-                "options": [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}]
-            },
-            is_archived=False,
+            config={"options": options},
+            is_archived=is_archived,
         )
-    )
+        for order, (field_key, options, is_archived) in enumerate(fields, start=1)
+    ]
+    db.add_all(rows)
     db.commit()
-
-    response = client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
-    assert response.status_code == 409
-
-    listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
-    assert any(s["id"] == shift["id"] for s in listed)
+    return rows
 
 
-def test_delete_shift_allowed_when_only_referenced_by_archived_field(
-    client, db, td_user, td_tournament
-):
+def _pin_staffing(db, td_tournament, user, event_id, shift):
+    membership = grant_role(db, td_tournament, user, "Test Writer")
+    role = (
+        db.query(TournamentRole)
+        .filter_by(tournament_id=td_tournament.id, label="Test Writer")
+        .one()
+    )
+    row = TournamentTrackAssignment(
+        membership_id=membership.id,
+        role_id=role.id,
+        tournament_event_id=event_id,
+        tournament_shift_id=shift["id"],
+        tournament_track_id=shift["track_id"],
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_delete_shift_removes_it_from_member_availability(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     shift = _make_shift(client, td_tournament.id).json()
-
-    form = Form(
-        owner_type="tournament",
-        tournament_id=td_tournament.id,
-        name="Old form",
-        created_by=td_user.id,
-    )
-    db.add(form)
-    db.flush()
     db.add(
-        FormField(
-            form_id=form.id,
-            order=1,
-            label="Availability",
-            field_key="availability_archived_1",
-            question_type="multi_select_checkbox",
-            config={
-                "options": [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}]
-            },
-            is_archived=True,
+        TournamentMembershipAvailability(
+            membership_id=_td_membership(db, td_user, td_tournament).id,
+            tournament_shift_id=shift["id"],
         )
     )
     db.commit()
@@ -500,6 +474,170 @@ def test_delete_shift_allowed_when_only_referenced_by_archived_field(
     assert (
         client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
     )
+    remaining = db.query(TournamentMembershipAvailability).filter_by(
+        tournament_shift_id=shift["id"]
+    )
+    assert remaining.count() == 0
+
+
+def test_delete_shift_removes_it_from_every_option(client, db, td_user, td_tournament):
+    """Live and archived options on live and archived fields, in both value shapes. An option
+    left with no shifts stays, as a "Can't make it" choice."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    kept = _make_shift(
+        client,
+        td_tournament.id,
+        label="Shift 2",
+        start=EVENT_DATE + "T13:00:00Z",
+        end=EVENT_DATE + "T17:00:00Z",
+    ).json()
+    track_id = primary_track_id(db, td_tournament.id)
+    statuses = [{"id": track_id, "status": "interested"}]
+    live, with_statuses, archived = _availability_form(
+        db,
+        td_user,
+        td_tournament,
+        (
+            f"availability_{track_id}",
+            [
+                {"option_id": "opt_1", "value": [shift["id"], kept["id"]], "label": "All Day"},
+                {"option_id": "opt_2", "value": [shift["id"]], "label": "Morning"},
+                {"option_id": "opt_3", "value": [shift["id"]], "label": "Old", "is_archived": True},
+            ],
+            False,
+        ),
+        (
+            f"availability_{track_id}_judges",
+            [
+                {
+                    "option_id": "opt_1",
+                    "value": {"shift_ids": [shift["id"]], "track_statuses": statuses},
+                    "label": "Morning",
+                }
+            ],
+            False,
+        ),
+        (
+            f"availability_{track_id}_old",
+            [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}],
+            True,
+        ),
+    )
+
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
+    )
+    for field in (live, with_statuses, archived):
+        db.refresh(field)
+    assert [o["value"] for o in live.config["options"]] == [[kept["id"]], [], []]
+    assert with_statuses.config["options"][0]["value"] == {
+        "shift_ids": [],
+        "track_statuses": statuses,
+    }
+    assert archived.config["options"][0]["value"] == []
+
+
+def test_delete_shift_unpins_staffing(client, db, td_user, td_tournament, other_user):
+    """The member stays on the event; only the time goes."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    event = _make_event(client, td_tournament.id)
+    _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+    row = _pin_staffing(db, td_tournament, other_user, event["id"], shift)
+
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
+    )
+    db.refresh(row)
+    assert row.tournament_shift_id is None
+    assert row.tournament_event_id == event["id"]
+
+
+def test_delete_shift_drops_a_pinned_row_already_held_unpinned(
+    client, db, td_user, td_tournament, other_user
+):
+    """uq_track_assignment_event allows one unpinned row per member, role, event and track."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    event = _make_event(client, td_tournament.id)
+    _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+    pinned = _pin_staffing(db, td_tournament, other_user, event["id"], shift)
+    db.add(
+        TournamentTrackAssignment(
+            membership_id=pinned.membership_id,
+            role_id=pinned.role_id,
+            tournament_event_id=event["id"],
+            tournament_shift_id=None,
+            tournament_track_id=shift["track_id"],
+        )
+    )
+    db.commit()
+
+    assert (
+        client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
+    )
+    rows = (
+        db.query(TournamentTrackAssignment)
+        .filter_by(membership_id=pinned.membership_id, tournament_event_id=event["id"])
+        .all()
+    )
+    assert [r.tournament_shift_id for r in rows] == [None]
+
+
+def test_shift_delete_impact(client, db, td_user, td_tournament, other_user):
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    untouched = _make_shift(
+        client,
+        td_tournament.id,
+        label="Shift 2",
+        start=EVENT_DATE + "T13:00:00Z",
+        end=EVENT_DATE + "T17:00:00Z",
+    ).json()
+    db.add(
+        TournamentMembershipAvailability(
+            membership_id=_td_membership(db, td_user, td_tournament).id,
+            tournament_shift_id=shift["id"],
+        )
+    )
+    track_id = primary_track_id(db, td_tournament.id)
+    _availability_form(
+        db,
+        td_user,
+        td_tournament,
+        (
+            f"availability_{track_id}",
+            [
+                {"option_id": "opt_1", "value": [shift["id"]], "label": "Morning"},
+                {"option_id": "opt_2", "value": [shift["id"]], "label": "Old", "is_archived": True},
+            ],
+            False,
+        ),
+    )
+    event = _make_event(client, td_tournament.id)
+    _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+    _pin_staffing(db, td_tournament, other_user, event["id"], shift)
+
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/shifts/delete-impact/",
+        params={"ids": [shift["id"], untouched["id"]]},
+    )
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "shift_id": shift["id"],
+            "availability_count": 1,
+            "option_count": 2,
+            "assignment_count": 1,
+        },
+        {
+            "shift_id": untouched["id"],
+            "availability_count": 0,
+            "option_count": 0,
+            "assignment_count": 0,
+        },
+    ]
 
 
 def test_shift_write_routes_require_manage_events(client, td_user, other_tournament, db):
@@ -521,6 +659,7 @@ def test_shift_write_routes_require_manage_events(client, td_user, other_tournam
     )
     assert client.patch(f"{base}1/", json={"label": "Nope"}).status_code == 403
     assert client.delete(f"{base}1/").status_code == 403
+    assert client.get(f"{base}delete-impact/", params={"ids": [1]}).status_code == 403
 
 
 # ---------------------------------------------------------------------------

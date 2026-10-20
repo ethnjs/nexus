@@ -1121,14 +1121,6 @@ class TournamentShift(Base):
         UniqueConstraint("track_id", "label", name="uq_tournament_shift_track_label"),
     )
 
-    # Unlike event_count (advisory only — deletion still cascades through
-    # events), a nonzero availability_count hard-blocks deletion — see
-    # delete_shift. Availability write-through is membership-owned data,
-    # not something a shift edit should silently detach.
-    @property
-    def availability_count(self) -> int:
-        return len(self.membership_availabilities)
-
 
 # ---------------------------------------------------------------------------
 # TournamentTrack — a TD-managed volunteer track such as Test Writing or

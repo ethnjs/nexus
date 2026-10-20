@@ -1,12 +1,15 @@
 import re
 import secrets
+from collections import Counter
 
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     TRACK_STATUS_FIELD_KEY_PATTERN,
+    option_shift_ids,
     track_status_assignments,
 )
 from app.models.models import (
@@ -172,35 +175,40 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
     return False
 
 
-def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
-    """True if `shift_id` appears inside any non-archived availability_*
-    field's option `value` (the list of grouped TournamentShift ids) on
-    any form owned by `tournament_id` — used by the shift deletion guard
-    so a shift can't be pulled out from under a live option's grouping,
-    independent of whether anyone's answered yet (that's the separate,
-    pre-existing MembershipAvailability guard). `FormField.config` is a
-    plain JSON column (not JSONB), which has no containment operators, so
-    this is a Python-side scan rather than a DB-side containment query —
-    same reasoning as the pending-updates scan over FormAnswer.value.
-    field_key matching is Python-side too (rather
-    than a DB LIKE) so it goes through the one real pattern, same as every
-    other reserved-key check."""
+def _availability_fields(db: Session, tournament_id: int) -> list[FormField]:
+    # `config` is plain JSON with no containment operators, so the shift lookup is a Python scan.
     fields = (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
-        .filter(
-            Form.tournament_id == tournament_id,
-            FormField.is_archived == False,
-        )
+        .filter(Form.tournament_id == tournament_id)
         .all()
     )
-    for field in fields:
-        if not AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
-            continue
+    return [field for field in fields if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)]
+
+
+def count_options_with_shifts(db: Session, tournament_id: int, shift_ids: set[int]) -> Counter[int]:
+    """How many availability options, live or archived, list each of `shift_ids`."""
+    counts: Counter[int] = Counter()
+    for field in _availability_fields(db, tournament_id):
         for option in (field.config or {}).get("options", []):
-            if not option.get("is_archived") and shift_id in (option.get("value") or []):
-                return True
-    return False
+            counts.update(shift_ids.intersection(option_shift_ids(option)))
+    return counts
+
+
+def remove_shift_from_options(db: Session, tournament_id: int, shift_id: int) -> None:
+    """Drops `shift_id` from every availability option, live or archived, on the
+    tournament's forms. An option left with no shifts stays, as a "Can't make it" choice."""
+    for field in _availability_fields(db, tournament_id):
+        options = (field.config or {}).get("options", [])
+        if not any(shift_id in option_shift_ids(option) for option in options):
+            continue
+        for option in options:
+            value = option.get("value")
+            if isinstance(value, dict):
+                value["shift_ids"] = [i for i in value.get("shift_ids") or [] if i != shift_id]
+            elif isinstance(value, list):
+                option["value"] = [i for i in value if i != shift_id]
+        flag_modified(field, "config")
 
 
 def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[dict, list[str]]:

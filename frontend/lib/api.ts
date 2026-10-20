@@ -666,6 +666,15 @@ export interface TournamentShiftInput {
   end: string;
 }
 
+// GET /tournaments/{id}/shifts/delete-impact/ — what deleting a shift would change.
+export interface ShiftDeleteImpact {
+  shift_id: number;
+  availability_count: number;
+  option_count: number;
+  // Staffing rows pinned to the shift; they stay on the event, unpinned.
+  assignment_count: number;
+}
+
 // Reading the shift catalog is membership-gated, not manage_events — a
 // member's signup cards need it, and TournamentShift carries nothing
 // confidential. Writes still require manage_events, so there is no `public`
@@ -681,7 +690,14 @@ export const tournamentShiftsApi = {
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
     api.patch<TournamentShift>(`/tournaments/${tournamentId}/shifts/${id}/`, body),
-  // Cascades — detaches from any events it was attached to, no confirmation guard.
+  deleteImpact: (tournamentId: number, ids: number[]) => {
+    const params = new URLSearchParams();
+    for (const id of ids) params.append("ids", String(id));
+    return api.get<ShiftDeleteImpact[]>(
+      `/tournaments/${tournamentId}/shifts/delete-impact/?${params.toString()}`,
+    );
+  },
+  // Never refused: see deleteImpact for what it takes with it.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
 };
