@@ -239,7 +239,7 @@ class TestAssignments:
         assert td.delete(f"/tournaments/{td_tournament.id}/zones/{zone.id}/").status_code == 204
         assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
 
-    def test_deleting_a_shift_marks_the_staff_pinned_to_it(
+    def test_deleting_a_shift_unpins_its_staff_without_marks(
         self, db, td, td_tournament, links, volunteer, event, day1
     ):
         membership = grant_role(db, td_tournament, volunteer, "Volunteer", track_id=day1)
@@ -254,19 +254,21 @@ class TestAssignments:
         db.add(shift)
         db.flush()
         db.add(TournamentEventShift(tournament_event_id=event.id, tournament_shift_id=shift.id))
-        db.add(
-            TournamentTrackAssignment(
-                membership_id=membership.id,
-                role_id=_role(db, td_tournament.id, "Volunteer").id,
-                tournament_track_id=day1,
-                tournament_event_id=event.id,
-                tournament_shift_id=shift.id,
-            )
+        row = TournamentTrackAssignment(
+            membership_id=membership.id,
+            role_id=_role(db, td_tournament.id, "Volunteer").id,
+            tournament_track_id=day1,
+            tournament_event_id=event.id,
+            tournament_shift_id=shift.id,
         )
+        db.add(row)
         db.commit()
         _clear(db)
         assert td.delete(f"/tournaments/{td_tournament.id}/shifts/{shift.id}/").status_code == 204
-        assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+        db.refresh(row)
+        # Still on the event, so nothing changes in Discord.
+        assert row.tournament_shift_id is None
+        assert _marks(db, links) == set()
 
     def test_marking_many_members_takes_the_same_few_queries(self, db, td_tournament, links, day1):
         memberships = [

@@ -5,7 +5,6 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.discord.marks import mark_memberships, row_scope
 from app.core.form import count_options_with_shifts, remove_shift_from_options
 from app.core.tournament import (
     get_scoped_or_404,
@@ -302,11 +301,6 @@ def delete_shift(
         detach_shifts_from_assignments(db, event.id, {shift.id})
     remove_shift_from_options(db, tournament_id, shift.id)
 
-    # Rows still pinned to the shift cascade, and a cascade writes no marks of its own.
-    pinned = db.query(TournamentTrackAssignment).filter(
-        TournamentTrackAssignment.tournament_shift_id == shift.id
-    )
-    mark_memberships(db, tournament_id, [row_scope(row) for row in pinned])
     db.delete(shift)
     db.flush()
     # That may have been the track's last shift — see the PATCH above.
