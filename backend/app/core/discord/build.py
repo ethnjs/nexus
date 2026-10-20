@@ -22,9 +22,12 @@ from sqlalchemy import ColumnElement, or_
 from sqlalchemy.orm import Session
 
 from app.core.discord.layout import (
+    FIXED_CHANNEL_KEYS,
+    INFORMATION_KEYS,
     OWNER_KEY,
     VERIFIED_KEY,
     ChannelSpec,
+    FixedChannelSpec,
     Layout,
     LayoutEvent,
     LayoutRole,
@@ -51,6 +54,7 @@ from app.services.discord import rest as discord_rest
 from app.services.discord.permissions import (
     ADMINISTRATOR,
     EVERYONE_REVOKED,
+    POSTING,
     STAFF_OVERWRITE,
     VERIFY_EVERYONE_ALLOW,
     VERIFY_EVERYONE_DENY,
@@ -114,7 +118,7 @@ class Snapshot:
     layout: Layout
     role_ids: dict[str, int]
     tiers: dict[str, str | None]
-    # Live (unarchived) managed categories and event channels, plus VERIFY_KEY and ARCHIVED_KEY.
+    # Live (unarchived) managed categories, event and fixed channels, VERIFY_KEY and ARCHIVED_KEY.
     channel_ids: dict[str, int]
     verify_message_id: int | None
 
@@ -348,7 +352,12 @@ class Store:
                     .first()
                 )
                 if row is None:
-                    kind = "event" if key.startswith("event:") else "category"
+                    if key.startswith("event:"):
+                        kind = "event"
+                    elif key in FIXED_CHANNEL_KEYS:
+                        kind = "channel"
+                    else:
+                        kind = "category"
                     row = DiscordManagedChannel(link_id=link_id, key=key, kind=kind)
                     db.add(row)
                 row.discord_channel_id = channel_id
@@ -582,8 +591,16 @@ class AddOverwrite(Action):
             )
 
 
-def _staff_overwrite(group: str | None, label: str, channel_id: int, role_key: str) -> AddOverwrite:
-    return AddOverwrite(group, label, channel_id, role_key, STAFF_OVERWRITE)
+def staff_allow(channel_key: str | None) -> int:
+    """What a staff role's overwrite allows on the channel with this key: staff post in
+    Information."""
+    return STAFF_OVERWRITE | POSTING if channel_key in INFORMATION_KEYS else STAFF_OVERWRITE
+
+
+def _staff_overwrite(
+    group: str | None, label: str, channel_id: int, channel_key: str | None, role_key: str
+) -> AddOverwrite:
+    return AddOverwrite(group, label, channel_id, role_key, staff_allow(channel_key))
 
 
 @dataclass
@@ -593,9 +610,10 @@ class RemoveStaffAllow(Action):
     channel_id: int
     role_id: int
     current: Overwrite
+    staff_allow: int
 
     async def run(self, ctx: Context) -> None:
-        allow = self.current.allow & ~STAFF_OVERWRITE
+        allow = self.current.allow & ~self.staff_allow
         if allow == 0 and self.current.deny == 0:
             await ctx.rest.delete_overwrite(self.channel_id, self.role_id)
         else:
@@ -775,8 +793,10 @@ def _event_channel_overwrites(spec: ChannelSpec, staff: list[str]) -> OverwriteS
     }
 
 
-def _category_overwrites(staff: list[str]) -> OverwriteSpec:
-    return {k: (STAFF_OVERWRITE, 0) for k in staff}
+def _category_overwrites(key: str, staff: list[str]) -> OverwriteSpec:
+    """A category's overwrites, which the fixed channels in it share."""
+    everyone: OverwriteSpec = {EVERYONE: (0, POSTING)} if key in INFORMATION_KEYS else {}
+    return everyone | {k: (staff_allow(key), 0) for k in staff}
 
 
 def _verify_overwrites(staff: list[str]) -> OverwriteSpec:
@@ -1000,8 +1020,19 @@ class _Planner:
                 spec.name,
                 GUILD_CATEGORY,
                 TOP,
-                _category_overwrites(self.staff_keys),
+                _category_overwrites(spec.key, self.staff_keys),
                 label=f"Category: {spec.name}",
+            )
+
+    def plan_fixed_channels(self) -> None:
+        for spec in self.s.layout.fixed_channels:
+            self.plan_object(
+                spec.key,
+                spec.name,
+                GUILD_TEXT,
+                spec.category_key,
+                _category_overwrites(spec.category_key, self.staff_keys),
+                label=f"#{spec.name}",
             )
 
     def plan_channels(self) -> None:
@@ -1033,8 +1064,13 @@ class _Planner:
     def plan_archive(self) -> None:
         if not self.reset:
             return
-        layout_keys = {c.key for c in self.s.layout.channels} | {
-            c.key for c in self.s.layout.categories
+        layout_keys = {
+            c.key
+            for c in (
+                *self.s.layout.channels,
+                *self.s.layout.categories,
+                *self.s.layout.fixed_channels,
+            )
         }
         archive = []
         for key, channel_id in self.s.channel_ids.items():
@@ -1057,7 +1093,7 @@ class _Planner:
                     ARCHIVED_CATEGORY_NAME,
                     GUILD_CATEGORY,
                     TOP,
-                    _category_overwrites(self.staff_keys),
+                    _category_overwrites(ARCHIVED_KEY, self.staff_keys),
                 )
             )
         for key, live in archive:
@@ -1088,6 +1124,7 @@ class _Planner:
 
     def plan_staff_access(self) -> None:
         names = {spec.key: spec.name for spec in self.s.layout.roles}
+        channel_keys = {v: k for k, v in self.channels.items() if v is not None}
         for channel in self.live.channels.values():
             if channel.id in self.overwritten:
                 continue
@@ -1099,6 +1136,7 @@ class _Planner:
                             STAFF,
                             f"Add {names.get(key, key)} to {_display(channel)}",
                             channel.id,
+                            channel_keys.get(channel.id),
                             key,
                         )
                     )
@@ -1120,6 +1158,7 @@ class _Planner:
                             channel.id,
                             role_id,
                             current,
+                            staff_allow(channel_keys.get(channel.id)),
                         )
                     )
 
@@ -1140,7 +1179,8 @@ class _Planner:
                 )
 
         category_keys = [c.key for c in self.s.layout.categories]
-        channel_keys = [c.key for c in self.s.layout.channels]
+        channels = [*self.s.layout.fixed_channels, *self.s.layout.channels]
+        channel_keys = [c.key for c in channels]
         channels_added = any(
             isinstance(a, CreateChannel | ArchiveChannel)
             or (isinstance(a, SetUpChannel) and a.parent is not None)
@@ -1150,7 +1190,7 @@ class _Planner:
             category_keys, self.channels, self.live.channels
         ) or any(
             self._out_of_order(
-                [c.key for c in self.s.layout.channels if c.category_key == category],
+                [c.key for c in channels if c.category_key == category],
                 self.channels,
                 self.live.channels,
             )
@@ -1218,6 +1258,7 @@ def plan_build(snapshot: Snapshot, live: Live, *, reset: bool) -> Plan:
     planner.plan_gate()
     planner.plan_categories()
     planner.plan_channels()
+    planner.plan_fixed_channels()
     planner.plan_verify()
     planner.plan_archive()
     planner.plan_missing_overwrites()
@@ -1292,17 +1333,21 @@ def _plan_role_reset(planner: _Planner, snapshot: Snapshot, live: Live, role_id:
                 spec.tier,
             )
         )
-    managed_channels = set(snapshot.channel_ids.values())
+    channel_keys = {v: k for k, v in snapshot.channel_ids.items()}
     for channel in live.channels.values():
         current = channel.overwrites.get(role_id)
+        channel_key = channel_keys.get(channel.id)
+        allow = staff_allow(channel_key)
         if spec.tier == "staff":
-            restore = channel.id in managed_channels and current != Overwrite(
-                ROLE_OVERWRITE, STAFF_OVERWRITE, 0
-            )
+            restore = channel_key is not None and current != Overwrite(ROLE_OVERWRITE, allow, 0)
             if current is None or restore:
                 planner.add(
                     _staff_overwrite(
-                        STAFF, f"Add {spec.name} to {_display(channel)}", channel.id, key
+                        STAFF,
+                        f"Add {spec.name} to {_display(channel)}",
+                        channel.id,
+                        channel_key,
+                        key,
                     )
                 )
         elif old_tier == "staff" and current is not None and current.allow & STAFF_OVERWRITE:
@@ -1313,6 +1358,7 @@ def _plan_role_reset(planner: _Planner, snapshot: Snapshot, live: Live, role_id:
                     channel.id,
                     role_id,
                     current,
+                    allow,
                 )
             )
 
@@ -1331,9 +1377,13 @@ def _plan_channel_reset(planner: _Planner, snapshot: Snapshot, live: Live, chann
         )
         return
     channels = {c.key: c for c in snapshot.layout.channels}
+    fixed = {c.key: c for c in snapshot.layout.fixed_channels}
     categories = {c.key: c for c in snapshot.layout.categories}
     if key in channels:
         _reset_event_channel(planner, channels[key], channel)
+        return
+    if key in fixed:
+        _reset_fixed_channel(planner, fixed[key], channel)
         return
     if key not in categories:
         plan.blockers.append(NEEDS_FULL_RESET)
@@ -1344,13 +1394,17 @@ def _plan_channel_reset(planner: _Planner, snapshot: Snapshot, live: Live, chann
         channel,
         category.name,
         TOP,
-        _category_overwrites(staff),
+        _category_overwrites(key, staff),
         label=f"Category: {category.name}",
     )
-    for spec in snapshot.layout.channels:
+    for spec in (*snapshot.layout.channels, *snapshot.layout.fixed_channels):
         child = live.channels.get(snapshot.channel_ids.get(spec.key, 0))
-        if child is not None and child.parent_id == channel_id:
+        if child is None or child.parent_id != channel_id:
+            continue
+        if isinstance(spec, ChannelSpec):
             _reset_event_channel(planner, spec, child)
+        else:
+            _reset_fixed_channel(planner, spec, child)
 
 
 def _reset_event_channel(planner: _Planner, spec: ChannelSpec, channel: LiveChannel) -> None:
@@ -1363,6 +1417,20 @@ def _reset_event_channel(planner: _Planner, spec: ChannelSpec, channel: LiveChan
         spec.name,
         spec.category_key,
         _event_channel_overwrites(spec, planner.staff_keys),
+        label=f"#{spec.name}",
+    )
+
+
+def _reset_fixed_channel(planner: _Planner, spec: FixedChannelSpec, channel: LiveChannel) -> None:
+    if planner.channels.get(spec.category_key) is None:
+        planner.plan.blockers.append(NEEDS_FULL_RESET)
+        return
+    planner.reset_object(
+        spec.key,
+        channel,
+        spec.name,
+        spec.category_key,
+        _category_overwrites(spec.category_key, planner.staff_keys),
         label=f"#{spec.name}",
     )
 

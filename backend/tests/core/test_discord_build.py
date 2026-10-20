@@ -31,6 +31,7 @@ from app.models.models import (
 from app.services.discord.permissions import (
     ADMINISTRATOR,
     CHANGE_NICKNAME,
+    POSTING,
     READ_MESSAGE_HISTORY,
     SEND_MESSAGES,
     STAFF_OVERWRITE,
@@ -100,7 +101,16 @@ class TestFirstBuild:
         assert int(guild.role("Verified")["permissions"]) == VIEW_CHANNEL
         assert not int(guild.roles[GUILD_ID]["permissions"]) & (VIEW_CHANNEL | CHANGE_NICKNAME)
 
-        assert guild.category_names() == ["Rowland Hall", "Other Events"]
+        assert guild.category_names() == [
+            "Information",
+            "Volunteers",
+            "Rowland Hall",
+            "Other Events",
+        ]
+        information = guild.channel("Information", GUILD_CATEGORY)
+        assert guild.children(information) == ["announcements", "useful-links"]
+        volunteers = guild.channel("Volunteers", GUILD_CATEGORY)
+        assert guild.children(volunteers) == ["general", "random"]
         rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
         assert guild.children(rowland) == ["circuit-lab-b", "circuit-lab-c"]
         assert guild.children(guild.channel("Other Events", GUILD_CATEGORY)) == ["anatomy-c"]
@@ -151,10 +161,19 @@ class TestFirstBuild:
         assert roles[("role", coordinator.id)].tier == "staff"
         assert link.owner_role_id == int(guild.role("Tournament Owner")["id"])
         assert link.verified_role_id == int(guild.role("Verified")["id"])
-        keys = {c.key for c in db.query(DiscordManagedChannel).filter_by(link_id=link.id)}
-        buildings = {k for k in keys if k.startswith("building:")}
+        kinds = {c.key: c.kind for c in db.query(DiscordManagedChannel).filter_by(link_id=link.id)}
+        buildings = {k for k in kinds if k.startswith("building:")}
         assert len(buildings) == 1
-        assert keys - buildings == {f"event:{e.id}" for e in events.values()} | {"other"}
+        assert {k: v for k, v in kinds.items() if k not in buildings} == {
+            **{f"event:{e.id}": "event" for e in events.values()},
+            "other": "category",
+            "information": "category",
+            "volunteers": "category",
+            "announcements": "channel",
+            "useful-links": "channel",
+            "general": "channel",
+            "random": "channel",
+        }
 
     async def test_marks_the_whole_server_dirty(self, db, link, guild, scope):
         await _build(db, link, scope)
@@ -288,6 +307,78 @@ class TestResume:
         assert (await _preview(link, scope)).empty
 
 
+class TestFixedChannels:
+    async def test_only_staff_post_in_information(self, db, link, guild, scope):
+        await _build(db, link, scope)
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        verified = int(guild.role("Verified")["id"])
+        for name in ("Information", "announcements", "useful-links"):
+            assert _ow(guild, name, GUILD_ID) == (0, POSTING)
+            assert _ow(guild, name, staff) == (STAFF_OVERWRITE | POSTING, 0)
+            assert _ow(guild, name, verified) is None
+
+    async def test_volunteers_is_left_to_the_server_defaults(self, db, link, guild, scope):
+        await _build(db, link, scope)
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        verified = int(guild.role("Verified")["id"])
+        for name in ("Volunteers", "general", "random"):
+            assert _ow(guild, name, GUILD_ID) is None
+            assert _ow(guild, name, verified) is None
+            assert _ow(guild, name, staff) == (STAFF_OVERWRITE, 0)
+
+    async def test_lobots_categories_go_below_the_servers_own(self, db, link, guild, scope):
+        text = guild.add_channel("Text Channels", GUILD_CATEGORY)
+        guild.add_channel("general", parent_id=text)
+        voice = guild.add_channel("Voice Channels", GUILD_CATEGORY)
+        guild.add_channel("General", type=2, parent_id=voice)
+
+        plan = await _preview(link, scope)
+        assert "#general" in dict(plan.groups())["Adopt"]
+        await _build(db, link, scope)
+        assert guild.category_names() == [
+            "Text Channels",
+            "Voice Channels",
+            "Information",
+            "Volunteers",
+            "Rowland Hall",
+            "Other Events",
+        ]
+        assert guild.children(guild.channel("Text Channels", GUILD_CATEGORY)) == []
+        assert guild.children(guild.channel("Volunteers", GUILD_CATEGORY)) == ["general", "random"]
+
+    async def test_reset_puts_information_back(self, db, link, guild, scope, mock_discord_rest):
+        await _build(db, link, scope)
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        announcements = guild.channel("announcements")
+        announcements["name"] = "news"
+        await mock_discord_rest.delete_overwrite(int(announcements["id"]), GUILD_ID)
+        assert (await _preview(link, scope)).empty
+
+        plan = await _preview(link, scope, reset=True)
+        assert dict(plan.groups())["Undo hand edits"] == [
+            "#announcements: overwrites, renamed from #news"
+        ]
+        await _build(db, link, scope, reset=True)
+        assert announcements["name"] == "announcements"
+        assert guild.overwrite(announcements, GUILD_ID) == (0, POSTING)
+        assert guild.overwrite(announcements, staff) == (STAFF_OVERWRITE | POSTING, 0)
+
+    async def test_scoped_resets(self, db, link, guild, scope, mock_discord_rest):
+        await _build(db, link, scope)
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        links = guild.channel("useful-links")
+        links["name"] = "links"
+        target = Target("channel", int(links["id"]))
+        await _build(db, link, scope, target=target)
+        assert links["name"] == "useful-links"
+
+        await mock_discord_rest.put_overwrite(
+            int(links["id"]), staff, allow=STAFF_OVERWRITE, deny=0, type=ROLE_OVERWRITE
+        )
+        await _build(db, link, scope, target=Target("role", staff))
+        assert guild.overwrite(links, staff) == (STAFF_OVERWRITE | POSTING, 0)
+
+
 class TestStaffAccess:
     async def test_added_to_unmanaged_channels_and_denies_left_alone(self, db, link, guild, scope):
         await _build(db, link, scope)
@@ -356,6 +447,7 @@ class TestStaffAccess:
         assert int(guild.role("Volunteer Coordinator")["permissions"]) == 0
         assert guild.overwrite(guild.channels[general], staff) is None
         assert _ow(guild, "anatomy-c", staff) is None
+        assert _ow(guild, "announcements", staff) is None
         row = (
             db.query(DiscordManagedRole)
             .filter_by(link_id=link.id, kind="role", nexus_id=role.id)
