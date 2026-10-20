@@ -95,12 +95,9 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 ];
 
 // Reserved-key presets (availability_{track_id}, event_preference_{track_id},
-// lunch_{track_id}_{category}) — split into their own toolbar popover from
-// FieldKeyPopover's plain free-text key, since a preset now needs its own
-// parameter input(s) (a date, a suffix, a date+category pair) rather than
-// being a single fixed field_key a TD picks off a list. Choosing/changing a
-// preset here keeps the TD's option rows and their branch targets — only each
-// value's *shape* is rewritten to fit the new kind (see reshapeOptions).
+// lunch_{track_id}_{category}), separate from FieldKeyPopover's free-text key
+// because a preset takes its own parameters. Changing the preset keeps the
+// option rows and their branch targets; see carryOptions.
 export function PresetPopover({
   field,
   onFieldChange,
@@ -121,10 +118,8 @@ export function PresetPopover({
       scoped to one. Empty while still loading (or on a chapter-owned form
       with no tournament). */
   tracks: TournamentTrack[];
-  /** Fires when the panel opens — FieldList uses this to refetch the track
-      catalog right then, rather than relying on a snapshot taken whenever
-      the page first loaded (which could be stale by the time this actually
-      gets opened, in a tab left open a while). */
+  /** Fires when the panel opens, so the tracks are refetched rather than read
+      from a snapshot that a long-open tab may have let go stale. */
   onOpen?: () => void;
   errors: string[];
   /** Bumped by FieldList each time a Save attempt fails validation — see
