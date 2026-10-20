@@ -94,6 +94,52 @@ interface ProfileDraft {
   dietary_restriction?: string;
 }
 
+interface OnboardingAnswers {
+  name: { first: string; last: string };
+  phone: string;
+  profile: ProfileDraft;
+  competitionRows: CompetitionExperienceDraft[];
+  volunteerRows: VolunteerExperienceDraft[];
+  hasDietary: boolean | null;
+}
+
+// The first question at or after `from` that still needs an answer, so saved
+// answers show as already passed instead of being asked again.
+function firstUnansweredState(a: OnboardingAnswers, from: number): number {
+  const p = a.profile;
+  const isStudent = p.student_status === "Undergraduate" || p.student_status === "Graduate";
+  const hasCompetition = !!p.has_competition_experience || a.competitionRows.length > 0;
+  const hasVolunteer = !!p.has_volunteer_experience || a.volunteerRows.length > 0;
+  const unanswered: [number, boolean][] = [
+    [STATE.NAME, !a.name.first.trim() || !a.name.last.trim()],
+    [STATE.PHONE, !!validatePhone(a.phone)],
+    [STATE.DATE_OF_BIRTH, !!validateDateOfBirth(p.date_of_birth ?? "")],
+    // Optional, so it only stops a user who hasn't got past it yet.
+    [STATE.PRONOUNS, !p.pronouns?.trim() && !p.student_status],
+    [STATE.STUDENT_STATUS, !p.student_status],
+    [
+      STATE.UNIVERSITY,
+      isStudent && (!p.university_id || !p.major || !p.year_level || !p.graduation_year),
+    ],
+    [STATE.EMPLOYER, p.student_status === "Non-Student" && !p.employer?.trim()],
+    [STATE.COMPETED_BEFORE, p.has_competition_experience == null && !hasCompetition],
+    [
+      STATE.COMPETITION_EXP,
+      hasCompetition &&
+        (a.competitionRows.length === 0 || !a.competitionRows.every(isCompetitionRowValid)),
+    ],
+    [STATE.VOLUNTEERED_BEFORE, p.has_volunteer_experience == null && !hasVolunteer],
+    [
+      STATE.VOLUNTEERING_EXP,
+      hasVolunteer && (a.volunteerRows.length === 0 || !a.volunteerRows.every(isVolunteerRowValid)),
+    ],
+    [STATE.SHIRT_SIZE, !p.shirt_size],
+    [STATE.DIETARY_RESTRICTIONS, a.hasDietary === null],
+    [STATE.DIETARY_TEXT, !!a.hasDietary && !p.dietary_restriction?.trim()],
+  ];
+  return unanswered.find(([state, missing]) => state >= from && missing)?.[0] ?? STATE.COMPLETE;
+}
+
 export default function OnboardingPage() {
   return (
     <Suspense
@@ -163,29 +209,37 @@ function OnboardingContent() {
     usersApi
       .meFull()
       .then((user) => {
+        const answers: OnboardingAnswers = {
+          name: { first: user.first_name ?? "", last: user.last_name ?? "" },
+          phone: user.phone ?? "",
+          profile: {
+            date_of_birth: user.date_of_birth ?? undefined,
+            pronouns: user.pronouns ?? undefined,
+            student_status: user.student_status ?? undefined,
+            university_id: user.university?.id ?? undefined,
+            university_name: user.university?.name ?? undefined,
+            major: user.major ?? undefined,
+            year_level: user.year_level ?? undefined,
+            graduation_year: user.graduation_year ?? undefined,
+            employer: user.employer ?? undefined,
+            has_competition_experience: user.has_competition_experience ?? undefined,
+            has_volunteer_experience: user.has_volunteer_experience ?? undefined,
+            shirt_size: user.shirt_size ?? undefined,
+            dietary_restriction: user.dietary_restriction ?? undefined,
+          },
+          competitionRows: user.competition_experience.map(competitionExperienceToDraft),
+          volunteerRows: user.volunteer_experience.map(volunteerExperienceToDraft),
+          hasDietary:
+            user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
+        };
         setOriginal(user);
-        setName({ first: user.first_name ?? "", last: user.last_name ?? "" });
-        setPhone(user.phone ?? "");
-        setProfileData({
-          date_of_birth: user.date_of_birth ?? undefined,
-          pronouns: user.pronouns ?? undefined,
-          student_status: user.student_status ?? undefined,
-          university_id: user.university?.id ?? undefined,
-          university_name: user.university?.name ?? undefined,
-          major: user.major ?? undefined,
-          year_level: user.year_level ?? undefined,
-          graduation_year: user.graduation_year ?? undefined,
-          employer: user.employer ?? undefined,
-          has_competition_experience: user.has_competition_experience ?? undefined,
-          has_volunteer_experience: user.has_volunteer_experience ?? undefined,
-          shirt_size: user.shirt_size ?? undefined,
-          dietary_restriction: user.dietary_restriction ?? undefined,
-        });
-        setHasDietary(
-          user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
-        );
-        setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
-        setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
+        setName(answers.name);
+        setPhone(answers.phone);
+        setProfileData(answers.profile);
+        setHasDietary(answers.hasDietary);
+        setCompetitionRows(answers.competitionRows);
+        setVolunteerRows(answers.volunteerRows);
+        setState(firstUnansweredState(answers, STATE.NAME));
       })
       .catch(() => setLoadError("Failed to load your account."));
 
@@ -198,6 +252,15 @@ function OnboardingContent() {
       .then(setUniversities)
       .catch(() => {});
   }, [authLoading, currentUser, router, redirect]);
+
+  function advance(target: number) {
+    setState(
+      firstUnansweredState(
+        { name, phone, profile: profileData, competitionRows, volunteerRows, hasDietary },
+        target,
+      ),
+    );
+  }
 
   function validateCompetitionRows(): boolean {
     if (competitionRows.length === 0) {
@@ -364,7 +427,7 @@ function OnboardingContent() {
                   setErrors((er) => ({ ...er, ...ers }));
                   return;
                 }
-                setState(STATE.PHONE);
+                advance(STATE.PHONE);
               }}
               isActive={state === STATE.NAME}
             >
@@ -408,7 +471,7 @@ function OnboardingContent() {
                     setErrors((er) => ({ ...er, phone: err }));
                     return;
                   }
-                  setState(STATE.DATE_OF_BIRTH);
+                  advance(STATE.DATE_OF_BIRTH);
                 }}
                 isActive={state === STATE.PHONE}
               >
@@ -452,7 +515,7 @@ function OnboardingContent() {
                     setErrors((er) => ({ ...er, date_of_birth: err }));
                     return;
                   }
-                  setState(STATE.PRONOUNS);
+                  advance(STATE.PRONOUNS);
                 }}
                 isActive={state === STATE.DATE_OF_BIRTH}
               >
@@ -475,23 +538,13 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What are your pronouns?"
-                onSkip={() => setState(STATE.STUDENT_STATUS)}
-                onNext={() => {
-                  if (!profileData.pronouns?.trim()) {
-                    setErrors((er) => ({ ...er, pronouns: "Cannot be empty." }));
-                    return;
-                  }
-                  setState(STATE.STUDENT_STATUS);
-                }}
+                onSkip={() => advance(STATE.STUDENT_STATUS)}
+                onNext={() => advance(STATE.STUDENT_STATUS)}
                 isActive={state === STATE.PRONOUNS}
               >
                 <PronounsField
                   value={profileData.pronouns ?? ""}
-                  error={errors.pronouns}
-                  onChange={(v) => {
-                    setProfileData((d) => ({ ...d, pronouns: v }));
-                    setErrors((er) => ({ ...er, pronouns: undefined }));
-                  }}
+                  onChange={(v) => setProfileData((d) => ({ ...d, pronouns: v }))}
                 />
               </ProfileQuestion>
             </ProfileCard>
@@ -502,16 +555,6 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="What is your student status?"
                 required
-                onNext={
-                  profileData.student_status
-                    ? () =>
-                        setState(
-                          profileData.student_status === "Non-Student"
-                            ? STATE.EMPLOYER
-                            : STATE.UNIVERSITY,
-                        )
-                    : undefined
-                }
                 isActive={state === STATE.STUDENT_STATUS}
               >
                 <StudentStatusField
@@ -586,7 +629,7 @@ function OnboardingContent() {
 
                         Object.keys(ers).length > 0
                           ? setErrors((er) => ({ ...er, ...ers }))
-                          : setState(STATE.UNIVERSITY + 2);
+                          : advance(STATE.COMPETED_BEFORE);
                       }}
                       isActive={state === STATE.UNIVERSITY}
                     >
@@ -607,7 +650,7 @@ function OnboardingContent() {
                   onNext={() => {
                     !profileData.employer
                       ? setErrors((er) => ({ ...er, employer: "Cannot be empty." }))
-                      : setState(STATE.COMPETED_BEFORE);
+                      : advance(STATE.COMPETED_BEFORE);
                   }}
                   isActive={state === STATE.EMPLOYER}
                 >
@@ -629,13 +672,6 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
                 required
-                onNext={
-                  effectiveHasCompetitionExp
-                    ? () => setState(STATE.COMPETITION_EXP)
-                    : profileData.has_competition_experience === false
-                      ? () => setState(STATE.VOLUNTEERED_BEFORE)
-                      : undefined
-                }
                 isActive={state === STATE.COMPETED_BEFORE}
               >
                 <div>
@@ -648,7 +684,8 @@ function OnboardingContent() {
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_competition_experience: val }));
                       if (state >= STATE.COMPETED_BEFORE + 2) return;
-                      setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
+                      if (val) setState(STATE.COMPETITION_EXP);
+                      else advance(STATE.VOLUNTEERED_BEFORE);
                     }}
                     locked={competitionLocked}
                   />
@@ -667,8 +704,7 @@ function OnboardingContent() {
                 </div>
               </ProfileQuestion>
 
-              {(competitionLocked ||
-                (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
+              {effectiveHasCompetitionExp && (
                 <div ref={competitionSectionRef}>
                   <ProfileQuestion
                     question="Add your competition experience."
@@ -677,12 +713,12 @@ function OnboardingContent() {
                       setCompetitionRows([]);
                       setShowCompetitionRowErrors(false);
                       setErrors((er) => ({ ...er, competition_exp: undefined }));
-                      setState(STATE.VOLUNTEERED_BEFORE);
+                      advance(STATE.VOLUNTEERED_BEFORE);
                     }}
                     onNext={() => {
                       if (!validateCompetitionRows()) return;
                       setShowCompetitionRowErrors(false);
-                      setState(STATE.VOLUNTEERED_BEFORE);
+                      advance(STATE.VOLUNTEERED_BEFORE);
                     }}
                     isActive={state === STATE.COMPETITION_EXP}
                   >
@@ -719,13 +755,6 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
                 required
-                onNext={
-                  effectiveHasVolunteerExp
-                    ? () => setState(STATE.VOLUNTEERING_EXP)
-                    : profileData.has_volunteer_experience === false
-                      ? () => setState(STATE.SHIRT_SIZE)
-                      : undefined
-                }
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
               >
                 <div>
@@ -738,7 +767,8 @@ function OnboardingContent() {
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
                       if (state >= STATE.SHIRT_SIZE) return;
-                      setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
+                      if (val) setState(STATE.VOLUNTEERING_EXP);
+                      else advance(STATE.SHIRT_SIZE);
                     }}
                     locked={volunteerLocked}
                   />
@@ -757,8 +787,7 @@ function OnboardingContent() {
                 </div>
               </ProfileQuestion>
 
-              {(volunteerLocked ||
-                (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
+              {effectiveHasVolunteerExp && (
                 <div ref={volunteerSectionRef}>
                   <ProfileQuestion
                     question="Add your volunteer experience."
@@ -767,12 +796,12 @@ function OnboardingContent() {
                       setVolunteerRows([]);
                       setShowVolunteerRowErrors(false);
                       setErrors((er) => ({ ...er, volunteering_exp: undefined }));
-                      setState(STATE.SHIRT_SIZE);
+                      advance(STATE.SHIRT_SIZE);
                     }}
                     onNext={() => {
                       if (!validateVolunteerRows()) return;
                       setShowVolunteerRowErrors(false);
-                      setState(STATE.SHIRT_SIZE);
+                      advance(STATE.SHIRT_SIZE);
                     }}
                     isActive={state === STATE.VOLUNTEERING_EXP}
                   >
@@ -809,16 +838,13 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="What is your shirt size?"
                 required
-                onNext={
-                  profileData.shirt_size ? () => setState(STATE.DIETARY_RESTRICTIONS) : undefined
-                }
                 isActive={state === STATE.SHIRT_SIZE}
               >
                 <ShirtSizeField
                   value={profileData.shirt_size}
                   onChange={(v) => {
                     setProfileData((d) => ({ ...d, shirt_size: v }));
-                    if (state === STATE.SHIRT_SIZE) setState(STATE.DIETARY_RESTRICTIONS);
+                    if (state === STATE.SHIRT_SIZE) advance(STATE.DIETARY_RESTRICTIONS);
                   }}
                 />
               </ProfileQuestion>
@@ -827,11 +853,6 @@ function OnboardingContent() {
                 <ProfileQuestion
                   question="Do you have any dietary restrictions?"
                   required
-                  onNext={
-                    hasDietary !== null
-                      ? () => setState(hasDietary ? STATE.DIETARY_TEXT : STATE.COMPLETE)
-                      : undefined
-                  }
                   isActive={state === STATE.DIETARY_RESTRICTIONS}
                 >
                   <YesNoField
@@ -853,7 +874,7 @@ function OnboardingContent() {
                   onNext={() => {
                     !profileData.dietary_restriction
                       ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
-                      : setState(STATE.COMPLETE);
+                      : advance(STATE.COMPLETE);
                   }}
                   isActive={state === STATE.DIETARY_TEXT}
                 >
