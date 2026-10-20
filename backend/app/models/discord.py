@@ -107,9 +107,10 @@ class DiscordManagedRole(Base):
 
 
 class DiscordManagedChannel(Base):
-    """A category or event channel the bot manages. `key` is its identity ("event:12,13",
-    "building:5", "zone:3", "other"); names are display only. An archived channel is no longer
-    managed and keeps its row only as history."""
+    """A category, event channel, or fixed channel (`kind` "category", "event", or "channel") the
+    bot manages. `key` is its identity ("event:12,13", "building:5", "information", "general");
+    names are display only. An archived channel is no longer managed and keeps its row only as
+    history."""
 
     __tablename__ = "discord_managed_channels"
 

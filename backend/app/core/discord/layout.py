@@ -4,7 +4,8 @@ the database.
 
 Keys are identities. A role's key names the NEXUS object it mirrors ("role:4", "event:12"); a
 channel's key is the set of events it covers ("event:12,13"); a category's is its place
-("building:5", "zone:3", "other"). Names are display only and can change without the object
+("building:5", "zone:3", "other"). The fixed categories and channels have fixed keys
+("information", "general"). Names are display only and can change without the object
 being replaced.
 """
 
@@ -87,12 +88,40 @@ class ChannelSpec:
 
 
 @dataclass(frozen=True)
+class FixedChannelSpec:
+    key: str
+    name: str
+    category_key: str
+
+
+INFORMATION_KEY = "information"
+VOLUNTEERS_KEY = "volunteers"
+FIXED_CATEGORIES = (
+    CategorySpec(INFORMATION_KEY, "Information"),
+    CategorySpec(VOLUNTEERS_KEY, "Volunteers"),
+)
+FIXED_CHANNELS = (
+    FixedChannelSpec("announcements", "announcements", INFORMATION_KEY),
+    FixedChannelSpec("useful-links", "useful-links", INFORMATION_KEY),
+    FixedChannelSpec("general", "general", VOLUNTEERS_KEY),
+    FixedChannelSpec("random", "random", VOLUNTEERS_KEY),
+)
+FIXED_CHANNEL_KEYS = frozenset(c.key for c in FIXED_CHANNELS)
+# Where only staff and admins post.
+INFORMATION_KEYS = frozenset(
+    {INFORMATION_KEY, *(c.key for c in FIXED_CHANNELS if c.category_key == INFORMATION_KEY)}
+)
+
+
+@dataclass(frozen=True)
 class Layout:
-    """Roles top to bottom, categories in server order, channels in order within each category."""
+    """Roles top to bottom, categories in server order (the fixed ones first), event channels in
+    order within each category, and the fixed channels, which every server has."""
 
     roles: tuple[RoleSpec, ...]
     categories: tuple[CategorySpec, ...]
     channels: tuple[ChannelSpec, ...]
+    fixed_channels: tuple[FixedChannelSpec, ...] = FIXED_CHANNELS
 
 
 def event_name_with_division(event: TournamentEvent) -> str:
@@ -159,7 +188,7 @@ def compute_layout(
     categories = _category_specs(events, settings)
     return Layout(
         roles=_role_specs(roles, events),
-        categories=tuple(categories),
+        categories=(*FIXED_CATEGORIES, *categories),
         channels=_channel_specs(events, settings, [c.key for c in categories]),
     )
 

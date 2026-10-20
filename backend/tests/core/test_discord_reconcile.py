@@ -30,7 +30,7 @@ from app.models.models import (
     User,
     utcnow,
 )
-from app.services.discord.permissions import STAFF_OVERWRITE, VIEW_CHANNEL
+from app.services.discord.permissions import POSTING, STAFF_OVERWRITE, VIEW_CHANNEL
 from app.services.discord.rest import GUILD_CATEGORY, ROLE_OVERWRITE
 from tests.conftest import grant_role
 from tests.core.conftest import GUILD_ID
@@ -416,6 +416,37 @@ class TestStructure:
         await self._full(db, built, scope)
         new = guild.channel("Rowland Hall", GUILD_CATEGORY)
         assert sorted(guild.children(new)) == ["circuit-lab-b", "circuit-lab-c"]
+
+    async def test_a_deleted_fixed_channel_comes_back_read_only(self, db, built, guild, scope):
+        old = guild.channel("announcements")
+        del guild.channels[int(old["id"])]
+        await self._full(db, built, scope)
+        new = guild.channel("announcements")
+        assert new["parent_id"] == guild.channel("Information", GUILD_CATEGORY)["id"]
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        assert guild.overwrite(new, GUILD_ID) == (0, POSTING)
+        assert guild.overwrite(new, staff) == (STAFF_OVERWRITE | POSTING, 0)
+
+    async def test_a_deleted_fixed_category_comes_back_with_its_channels(
+        self, db, built, guild, scope
+    ):
+        category = guild.channel("Volunteers", GUILD_CATEGORY)
+        del guild.channels[int(category["id"])]
+        for channel in guild.channels.values():
+            if channel["parent_id"] == category["id"]:
+                channel["parent_id"] = None
+        await self._full(db, built, scope)
+        new = guild.channel("Volunteers", GUILD_CATEGORY)
+        assert sorted(guild.children(new)) == ["general", "random"]
+
+    async def test_a_staff_overwrite_comes_back_with_posting_in_information(
+        self, db, built, guild, scope, mock_discord_rest
+    ):
+        staff = int(guild.role("Volunteer Coordinator")["id"])
+        links = guild.channel("useful-links")
+        await mock_discord_rest.delete_overwrite(int(links["id"]), staff)
+        await self._full(db, built, scope)
+        assert guild.overwrite(links, staff) == (STAFF_OVERWRITE | POSTING, 0)
 
     async def test_verify_and_its_message_come_back(
         self, db, built, guild, scope, mock_discord_rest
