@@ -34,13 +34,13 @@ The field keeps its id in every case. An invalidated option's past answers still
 | **Edit** | field sent with its `id` | untouched |
 | **Archive** | field left out of the payload | kept as history; key released |
 | **Unarchive** | archived field's `id` sent again | reattach through `field_id` |
-| **Invalidate** | `DELETE /forms/{id}/fields/{field_id}/` | deleted, with write-through cleanup |
+| **Invalidate** | `DELETE /forms/{id}/fields/{field_id}/` | deleted; write-through rows stay |
 
 Unarchiving rechecks that the key hasn't been claimed meanwhile and that branching still resolves.
 
 Invalidate is the only destructive action and can't be undone. It has its own endpoint so a client bug in the bulk save can't reach it, and it returns 409 if removing the field would leave the form invalid, for example while a live option still branches to it.
 
-Archived fields appear in a collapsed **Archived questions** section of the builder. They don't take part in `order` or branching, and unarchiving appends to the end.
+Archived fields appear in a collapsed **Archived questions** section of the builder and take no part in branching. They keep a slot in `order`: each save renumbers them with the live fields, right after the field each one followed, so `GET /forms/{id}/` can return them in place and a past response renders in its original order. Unarchiving in the builder puts the question back in that slot.
 
 ## Responses
 
@@ -74,13 +74,8 @@ All availability questions in a submission are unioned (selections and tracks) b
 
 Track statuses only ever upsert, guarded by the transition rule in `track-status-rules.md`. On `PATCH`, only the patched fields write track statuses; replaying an untouched field would re-assert a status the respondent didn't touch. Provenance (`source_response_id`, `source_field_id`) is recorded for debugging and isn't used for ordering.
 
-### Cleanup on invalidate
+### Invalidate keeps write-through rows
 
-| Table | Rule |
-|---|---|
-| `TournamentMembershipLunch` | Deleted for the field. Keyed by (membership, track, category), so the field is the only writer. |
-| `TournamentMembershipEventPreference` | Deleted for the field. One question per track, so the field is the only writer. |
-| `TournamentMembershipAvailability` | **Kept.** Other questions may cover the same track, and this field's share can't be separated out. |
-| `TournamentMembershipTrackStatus` | **Kept.** A later form may have set the status; removing this field's contribution would need a replay. |
+Deleting a field deletes its answers but leaves every row they wrote through, like deleting a response does. The rows are the membership's current data and may have been edited since; a TD who wants them gone changes them directly.
 
 Editing a field never resets availability wholesale. If that's ever needed, it should be its own explicit TD action.

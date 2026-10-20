@@ -466,7 +466,9 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 # ---------------------------------------------------------------------------
 # GET /forms/{form_id}/ — view/render. Any member of a linked
 # tournament/chapter can view (not just managers) — this is what the form
-# renderer for people filling it out calls.
+# renderer for people filling it out calls. Archived questions come back too,
+# in their slot, so a past response renders in order; anything that renders
+# the fillable form skips them.
 #
 # raw=true skips resolve_field_options' respondent-facing hydration
 # (availability/event_preference option `value` normally becomes
@@ -487,14 +489,14 @@ def get_form_for_rendering(
     access = require_form_manage_access if raw else require_form_view_access
     form = access(form_id, db, current_user)
 
-    active_fields = (
+    fields = (
         db.query(FormField)
-        .filter(FormField.form_id == form.id, FormField.is_archived == False)
-        .order_by(FormField.order)
+        .filter(FormField.form_id == form.id)
+        .order_by(FormField.order, FormField.is_archived)
         .all()
     )
 
-    for field in active_fields:
+    for field in fields:
         if raw:
             continue
         resolved_options = resolve_field_options(db, field)
@@ -503,7 +505,7 @@ def get_form_for_rendering(
             config["options"] = resolved_options
             field.config = config
 
-    form.fields = active_fields
+    form.fields = fields
     return form
 
 
@@ -624,8 +626,9 @@ def delete_form(
 # with `id` updates that field, one without creates it, and a live field
 # missing from the payload is removed: deleted on a never-answered draft,
 # archived once the form is history-preserving. Submitted answers are never
-# touched. The batch is validated as a whole after a flush and rolled back
-# if anything fails.
+# touched. Archived fields are renumbered with the rest and stay right after
+# the field they used to follow. The batch is validated as a whole after a
+# flush and rolled back if anything fails.
 # ---------------------------------------------------------------------------
 @router.put("/forms/{form_id}/fields/", response_model=list[FormFieldRead])
 def bulk_update_fields(
@@ -715,6 +718,11 @@ def bulk_update_fields(
     lunch_backfills: list[FormField] = []
 
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
+    followers = _followers_by_anchor(
+        existing_by_id.values(),
+        submitted_ids,
+        drop=set() if is_history_preserving else {f.id for f in removed_fields},
+    )
     for field in removed_fields:
         if is_history_preserving:
             field.is_archived = True
@@ -738,6 +746,9 @@ def bulk_update_fields(
     db.flush()
 
     order = 1
+    for follower in followers.get(None, []):
+        follower.order = order
+        order += 1
     for entry in payload.fields:
         if entry.id is not None:
             field = existing_by_id[entry.id]
@@ -791,6 +802,9 @@ def bulk_update_fields(
             )
             db.add(new_field)
         order += 1
+        for follower in followers.get(entry.id, []):
+            follower.order = order
+            order += 1
 
     db.flush()
 
@@ -817,6 +831,22 @@ def bulk_update_fields(
         .order_by(FormField.order)
         .all()
     )
+
+
+def _followers_by_anchor(
+    fields, submitted_ids: set[str], drop: set[str]
+) -> dict[str | None, list[FormField]]:
+    """Fields missing from the payload, keyed by the submitted field they
+    currently follow (None for the start of the form), so renumbering can put
+    each back right after it. `drop` names fields about to be deleted."""
+    followers: dict[str | None, list[FormField]] = {}
+    anchor: str | None = None
+    for field in sorted(fields, key=lambda f: (f.order, f.is_archived)):
+        if field.id in submitted_ids:
+            anchor = field.id
+        elif field.id not in drop:
+            followers.setdefault(anchor, []).append(field)
+    return followers
 
 
 def _is_history_preserving(db: Session, form: Form) -> bool:
@@ -1211,23 +1241,10 @@ def _write_through_reserved_fields(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /forms/{form_id}/fields/{field_id}/ — invalidate a question: erase it
-# and everything it collected.
-#
-# Deliberately its own route rather than a flag on the bulk update. This is the
-# only destructive action in the field lifecycle, and burying it in a target
-# field list would mean a client bug could reach it; here it takes a single
-# explicit call naming one field.
-#
-# Use archive (omit the field from the bulk payload) to retire a question and
-# keep its history — that stays undoable. Invalidate is for a question that
-# should never have been asked, whose answers are not worth keeping, and it
-# cannot be undone.
-#
-# Write-through rows are handled per target: lunch and event preference each
-# have a single owning field and can be cleared, while availability and track
-# statuses are shared with other questions and are left alone — see
-# backend/docs/form-edit-lifecycle.md.
+# DELETE /forms/{form_id}/fields/{field_id}/ — invalidate a question: delete it
+# and its answers. Its own route rather than part of the bulk update, so a
+# client bug in the field list can't reach the one irreversible action. Rows
+# its answers wrote through stay; see backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def invalidate_form_field(
@@ -1244,16 +1261,6 @@ def invalidate_form_field(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form"
         )
-
-    if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
-        lunch_track_id, category = parse_lunch_field_key(field.field_key)
-        _clear_lunch_write_through(db, form, field, lunch_track_id, category)
-
-    if (
-        EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key)
-        and form.owner_type == "tournament"
-    ):
-        _clear_event_preference_write_through(db, form, field)
 
     # FormAnswer's FK has no ON DELETE, so its rows go first.
     db.query(FormAnswer).filter(FormAnswer.field_id == field.id).delete(synchronize_session=False)
@@ -1328,58 +1335,6 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
             category,
             lunch_values_from_answer(field, value),
         )
-
-
-def _clear_lunch_write_through(
-    db: Session, form: Form, field: FormField, lunch_track_id, category
-) -> None:
-    """Drops the lunch rows this field produced, for every member who answered
-    it. Keyed by (membership, track, category), so no other question can be
-    contributing the same rows."""
-    user_ids = {
-        user_id
-        for (user_id,) in db.query(FormResponse.user_id)
-        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
-        .filter(FormAnswer.field_id == field.id)
-        .all()
-    }
-    if not user_ids:
-        return
-    membership_ids = {
-        membership_id
-        for (membership_id,) in db.query(TournamentMembership.id).filter(
-            TournamentMembership.tournament_id == form.tournament_id,
-            TournamentMembership.user_id.in_(user_ids),
-        )
-    }
-    for membership_id in membership_ids:
-        sync_lunch(db, membership_id, lunch_track_id, category, [])
-
-
-def _clear_event_preference_write_through(db: Session, form: Form, field: FormField) -> None:
-    """Drops the event preference rows this field produced, for every member
-    who answered it. Keyed by (membership, track), and a track has exactly one
-    preference question, so no other question can be contributing the same
-    rows — same reasoning as lunch's (membership, track, category)."""
-    user_ids = {
-        user_id
-        for (user_id,) in db.query(FormResponse.user_id)
-        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
-        .filter(FormAnswer.field_id == field.id)
-        .all()
-    }
-    if not user_ids:
-        return
-    membership_ids = {
-        membership_id
-        for (membership_id,) in db.query(TournamentMembership.id).filter(
-            TournamentMembership.tournament_id == form.tournament_id,
-            TournamentMembership.user_id.in_(user_ids),
-        )
-    }
-    pref_track_id = parse_event_preference_field_key(field.field_key)
-    for membership_id in membership_ids:
-        sync_event_preferences(db, membership_id, pref_track_id, [])
 
 
 # ---------------------------------------------------------------------------

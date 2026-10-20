@@ -367,7 +367,11 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       branchingEnabled: deriveBranchingEnabled(field),
       customValuesEnabled: deriveCustomValuesEnabled(field),
     };
-    setFields((prev) => [...prev, restored]);
+    // Back into its slot: before the first saved question that came after it.
+    setFields((prev) => {
+      const at = prev.findIndex((f) => f.id !== null && f.order > field.order);
+      return at === -1 ? [...prev, restored] : [...prev.slice(0, at), restored, ...prev.slice(at)];
+    });
     setExpandedKey(restored.clientKey);
     setPendingScrollKey(restored.clientKey);
   }

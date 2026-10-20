@@ -2197,7 +2197,8 @@ export const formsApi = {
       chapter_id: chapterId,
     }),
   // Renders with option values already resolved (availability/event_preference) —
-  // for a respondent-facing view (or the future /preview page), not the builder.
+  // for a respondent-facing view, not the builder. Archived questions are
+  // included in their slot; skip them anywhere the form is filled out.
   get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
   // Unresolved — option `value` comes back exactly as stored (plain
   // shift/event ids, not `get`'s hydrated {id, label, start, end} objects),

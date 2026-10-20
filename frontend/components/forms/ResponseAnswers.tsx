@@ -3,11 +3,12 @@
 import { useMemo } from "react";
 import styles from "@/components/forms/FormFlow.module.css";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import type { FormAnswer, FormField } from "@/lib/api";
 import { isBlankAnswer, removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 
-// A submitted response, read-only — one card per live question. Shared by the
+// A submitted response, read-only — one card per question. Shared by the
 // managers' Responses tab and a member viewing their own, so the two can't
 // drift. QuestionRenderer runs interactive + locked: non-interactive would
 // hide the value entirely.
@@ -15,7 +16,8 @@ export function ResponseAnswers({
   fields,
   answers,
 }: {
-  /** Live questions only, with option values hydrated (formsApi.get). */
+  /** Every question in order, archived ones included, with option values
+      hydrated (formsApi.get). An archived one shows only if it was answered. */
   fields: FormField[];
   answers: FormAnswer[];
 }) {
@@ -27,8 +29,14 @@ export function ResponseAnswers({
     <>
       {fields.map((field) => {
         const stored = byField.get(field.id);
+        if (field.is_archived && isBlankAnswer(stored)) return null;
         return (
           <Card key={field.id} radius="lg" className={styles.card}>
+            {field.is_archived && (
+              <div style={{ marginBottom: "10px" }}>
+                <Badge variant="removed">Archived</Badge>
+              </div>
+            )}
             <QuestionRenderer
               field={field}
               interactive

@@ -615,6 +615,26 @@ class TestGetForm:
         keys = [f["field_key"] for f in res.json()["fields"]]
         assert keys == ["first", "second"]
 
+    def test_includes_archived_fields_in_their_slot(self, client, db, td_user, td_tournament):
+        """Archived questions come back so a past response renders in order. A
+        stale order tied with a live field sorts after it."""
+        form = _make_form(db, td_user, td_tournament)
+        _make_field(db, form, order=1, field_key="first")
+        _make_field(db, form, order=2, field_key="old", is_archived=True)
+        _make_field(db, form, order=3, field_key="second")
+        _make_field(db, form, order=3, field_key="stale", is_archived=True)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        fields = client.get(f"/forms/{form.id}/").json()["fields"]
+
+        assert [(f["field_key"], f["is_archived"]) for f in fields] == [
+            ("first", False),
+            ("old", True),
+            ("second", False),
+            ("stale", True),
+        ]
+
 
 # ---------------------------------------------------------------------------
 # PATCH / delete /forms/{form_id}/
@@ -1619,6 +1639,72 @@ class TestBulkUpdateFieldsPublished:
         answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
         assert answer.value == "blue"
 
+    def _text_entry(self, field):
+        return {
+            "id": field.id,
+            "label": field.label,
+            "question_type": "short_text",
+            "config": {"required": False, "max_length": 50},
+        }
+
+    def _text_fields(self, db, form, *keys):
+        return [
+            _make_field(
+                db,
+                form,
+                order=i,
+                field_key=key,
+                question_type="short_text",
+                config={"required": False, "max_length": 50},
+            )
+            for i, key in enumerate(keys, start=1)
+        ]
+
+    def test_archived_field_keeps_its_slot_through_a_reorder(
+        self, client, db, td_user, td_tournament
+    ):
+        """An archived question stays right after the one it followed, wherever
+        that one moves, so old responses still read in their original order."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        a, b, c = self._text_fields(db, form, "a", "b", "c")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._text_entry(a), self._text_entry(c)]},
+        )
+        assert res.status_code == 200, res.json()
+        db.refresh(b)
+        assert b.is_archived is True
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._text_entry(c), self._text_entry(a)]},
+        )
+        assert res.status_code == 200, res.json()
+
+        for field in (a, b, c):
+            db.refresh(field)
+        assert (c.order, a.order, b.order) == (1, 2, 3)
+
+    def test_archived_first_field_stays_at_the_start(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        a, b, c = self._text_fields(db, form, "a", "b", "c")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [self._text_entry(c), self._text_entry(b)]},
+        )
+        assert res.status_code == 200, res.json()
+
+        for field in (a, b, c):
+            db.refresh(field)
+        assert a.is_archived is True
+        assert (a.order, c.order, b.order) == (1, 2, 3)
+
     def test_unarchiving_rejected_when_key_was_claimed(self, client, db, td_user, td_tournament):
         """An archived field doesn't reserve its key, so the name may be gone
         by the time the TD wants the question back."""
@@ -1902,7 +1988,7 @@ class TestInvalidateField:
         assert field.is_archived is True
         assert db.query(FormAnswer).filter(FormAnswer.field_id == field.id).count() == 1
 
-    def test_lunch_write_through_is_cleared(self, client, db, td_user, td_tournament):
+    def test_lunch_write_through_is_kept(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
             db,
@@ -1926,9 +2012,9 @@ class TestInvalidateField:
 
         res = client.delete(f"/forms/{form.id}/fields/{field.id}/")
         assert res.status_code == 204
-        assert db.query(TournamentMembershipLunch).count() == 0
+        assert db.query(TournamentMembershipLunch).count() == 1
 
-    def test_event_preference_write_through_is_cleared(self, client, db, td_user, td_tournament):
+    def test_event_preference_write_through_is_kept(self, client, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -1989,12 +2075,12 @@ class TestInvalidateField:
         res = client.delete(f"/forms/{form.id}/fields/{target.id}/")
         assert res.status_code == 204, res.json()
 
-        rows = (
+        assert (
             db.query(TournamentMembershipEventPreference)
             .filter(TournamentMembershipEventPreference.membership_id == membership_id)
-            .all()
+            .count()
+            == 2
         )
-        assert [row.track_id for row in rows] == [other_track_id]
 
     def _membership_id(self, db, user, tournament):
         return (

@@ -53,7 +53,7 @@ export function ResponsesView({
   deleteLockedReason,
   onDelete,
 }: {
-  /** Live questions only, with option values hydrated (formsApi.get). */
+  /** Every question, archived ones included, with option values hydrated (formsApi.get). */
   fields: FormField[];
   responses: FormResponseManager[];
   /** Set when deleting isn't allowed — shown as the button's tooltip. */

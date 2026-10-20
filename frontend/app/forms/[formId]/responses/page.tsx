@@ -39,7 +39,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
       ([loaded, list]) => {
         if (loaded.status === "fulfilled" && list.status === "fulfilled") {
           setForm(loaded.value);
-          setFields(loaded.value.fields.filter((f) => !f.is_archived));
+          setFields(loaded.value.fields);
           setResponses(list.value);
           return;
         }

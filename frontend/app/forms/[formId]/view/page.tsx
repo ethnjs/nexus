@@ -229,7 +229,6 @@ export default function FormViewPage() {
   }
 
   if (existing) {
-    const fields = form.fields.filter((f) => !f.is_archived);
     return (
       <div className={styles.page}>
         {savedMessage && <Banner variant="success" message={savedMessage} />}
@@ -320,7 +319,7 @@ export default function FormViewPage() {
           </div>
         </Card>
 
-        <ResponseAnswers fields={fields} answers={existing.answers} />
+        <ResponseAnswers fields={form.fields} answers={existing.answers} />
       </div>
     );
   }
