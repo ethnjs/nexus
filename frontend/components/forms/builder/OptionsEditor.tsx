@@ -427,7 +427,7 @@ function ArchivedOptions({
             variant="ghost"
             size="xs"
             iconOnly
-            title="Remove permanently — anyone who picked it will be asked to answer again"
+            title="Remove permanently — answers that picked it still show it"
             onClick={() => onRemove(option.clientKey)}
             style={{ color: "var(--color-danger)" }}
           >
