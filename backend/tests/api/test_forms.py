@@ -3903,10 +3903,12 @@ class TestWriteThroughOnSubmit:
 
         res = client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": ["not_a_real_shift_id"]}]},
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
         )
         assert res.status_code == 200
-        assert res.json()["answers"][0]["value"] == ["not_a_real_shift_id"]
+        assert res.json()["answers"][0]["value"] == [
+            {"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}
+        ]
         assert db.query(TournamentMembershipAvailability).count() == 0
 
     def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(
