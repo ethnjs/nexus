@@ -361,8 +361,7 @@ class MembershipFullResponse(MembershipBaseResponse):
     # Resolved server-side — see MembershipJoinCodeInfo. None when source
     # isn't "join_code". Supersedes the bare join_code_id FK.
     join_code: MembershipJoinCodeInfo | None = None
-    # null/"consented"/"declined" — lets a TD who opts into seeing declined
-    # members (?include_declined=true) tell them apart from active ones.
+    # null (unanswered) or "consented".
     age_disclosure: str | None = None
     notes: str | None = None
     # What this member is staffing. On the manager view rather than the shared
@@ -407,9 +406,6 @@ class MembershipMeResponse(MembershipBaseResponse):
 
     is_owner: bool = False
     permissions: list[str] = []
-    # True when the tournament collects an age flag and this member hasn't
-    # answered yet (age_disclosure is null) — drives the blocking consent
-    # modal for existing members after a TD turns collection on. False (not
-    # just omitted) once answered either way, and always False with no
-    # membership row — nothing to consent to.
+    # True when the tournament collects an age flag and this non-owner member
+    # hasn't answered yet; drives the blocking consent modal.
     needs_age_consent: bool = False

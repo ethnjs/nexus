@@ -1170,9 +1170,8 @@ export interface MembershipFull extends MembershipBase {
   tournament_id: number;
   source?: MembershipSource;
   join_code?: MembershipJoinCodeInfo | null;
-  // null/"consented"/"declined" — lets a fetch with include_declined=true
-  // tell declined members apart from active ones.
-  age_disclosure?: "consented" | "declined" | null;
+  // null = unanswered. Declining deletes the membership, so there's no declined value.
+  age_disclosure?: "consented" | null;
   notes?: string | null;
   // What this member is staffing. On MembershipFull, not MembershipBase:
   // members don't see their own assignments, and the base is what /members/me
@@ -1225,9 +1224,8 @@ export interface MembershipCoordinatorUpdate {
 export interface MembershipMe extends MembershipBase {
   is_owner: boolean;
   permissions: Permission[];
-  // True only while the tournament collects an age flag and this member
-  // hasn't answered yet — drives the blocking consent modal. False once
-  // answered either way (consented or declined), not just while consented.
+  // True while the tournament collects an age flag and this non-owner member
+  // hasn't answered yet — drives the blocking consent modal.
   needs_age_consent: boolean;
 }
 
@@ -1291,8 +1289,6 @@ export interface FilterOptionGroup {
 }
 
 export const membersApi = {
-  // include_declined defaults to false server-side — a declined membership
-  // is excluded from the roster unless a TD explicitly opts in.
   // An options object rather than positional args: the roster now takes a
   // surface plus eight repeatable filter params, and `list(id, false, undefined,
   // ...)` at the call site says nothing about what's being asked for.
@@ -1304,7 +1300,6 @@ export const membersApi = {
   list: (
     tournamentId: number,
     opts: {
-      includeDeclined?: boolean;
       surface?: string;
       // Which field groups to return. Omit for everything; pass [] for
       // identity only. `surface` fills in when this is omitted, so the members
@@ -1320,7 +1315,7 @@ export const membersApi = {
       maxRank?: number;
     } = {},
   ) => {
-    const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
+    const params = new URLSearchParams();
     if (opts.surface) params.set("surface", opts.surface);
     if (opts.fields) params.set("fields", opts.fields.join(","));
     if (opts.q) params.set("q", opts.q);
@@ -1354,8 +1349,7 @@ export const membersApi = {
     const suffix = fields ? `?fields=${fields.join(",")}` : "";
     return api.get<MembershipMe>(`/tournaments/${tournamentId}/members/me/${suffix}`);
   },
-  // consent=false is a soft decline — the row and all its data survive;
-  // re-calling with consent=true flips straight back to active.
+  // consent=false removes the caller from the tournament; the response has id=null.
   setAgeDisclosure: (tournamentId: number, consent: boolean) =>
     api.post<MembershipMe>(`/tournaments/${tournamentId}/members/me/age-disclosure/`, { consent }),
   leaveMe: (tournamentId: number) => api.delete<void>(`/tournaments/${tournamentId}/members/me/`),

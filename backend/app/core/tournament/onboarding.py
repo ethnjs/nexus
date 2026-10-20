@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.models.models import Form, FormResponse, TournamentForm, TournamentMembership, utcnow
 
 
@@ -66,8 +65,7 @@ def recompute_onboarding(db: Session, tournament_id: int) -> None:
 
     now = utcnow()
     for membership in db.query(TournamentMembership).filter(
-        TournamentMembership.tournament_id == tournament_id,
-        ACTIVE_MEMBERSHIP_CLAUSE,
+        TournamentMembership.tournament_id == tournament_id
     ):
         complete = required <= answered.get(membership.user_id, set())
         if complete and membership.onboarded_at is None:
