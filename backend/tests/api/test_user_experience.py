@@ -351,3 +351,178 @@ class TestDeleteVolunteerExperience:
     def test_nonexistent_entry_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         assert client.delete("/users/me/volunteer-experience/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PUT /users/me/competition-experience/
+# ---------------------------------------------------------------------------
+
+
+class TestReplaceCompetitionExperience:
+    def test_creates_updates_and_deletes_in_order(self, client, db, td_user, event):
+        kept = UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT")
+        dropped = UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="Yale")
+        db.add_all([kept, dropped])
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/competition-experience/",
+            json=[
+                {"event_id": event.id, "school": "Caltech"},
+                {"id": kept.id, "event_id": event.id, "school": "Stanford", "notes": "Captain"},
+            ],
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert [d["school"] for d in data] == ["Caltech", "Stanford"]
+        assert data[1]["id"] == kept.id
+        assert data[1]["notes"] == "Captain"
+        assert db.get(UserCompetitionExperience, dropped.id) is None
+
+    def test_empty_list_deletes_all(self, client, db, td_user, event):
+        db.add(UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT"))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.put("/users/me/competition-experience/", json=[])
+        assert res.status_code == 200
+        assert res.json() == []
+        assert db.query(UserCompetitionExperience).filter_by(user_id=td_user.id).count() == 0
+
+    def test_blank_school_422_saves_nothing(self, client, db, td_user, event):
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/competition-experience/",
+            json=[
+                {"event_id": event.id, "school": "MIT"},
+                {"event_id": event.id, "school": "   "},
+            ],
+        )
+        assert res.status_code == 422
+        assert db.query(UserCompetitionExperience).filter_by(user_id=td_user.id).count() == 0
+
+    def test_unknown_event_404_saves_nothing(self, client, db, td_user, event):
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/competition-experience/",
+            json=[
+                {"event_id": event.id, "school": "MIT"},
+                {"event_id": 9999, "school": "Caltech"},
+            ],
+        )
+        assert res.status_code == 404
+        assert db.query(UserCompetitionExperience).filter_by(user_id=td_user.id).count() == 0
+
+    def test_other_users_entry_404_saves_nothing(self, client, db, td_user, other_user, event):
+        own = UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT")
+        theirs = UserCompetitionExperience(user_id=other_user.id, event_id=event.id, school="Yale")
+        db.add_all([own, theirs])
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/competition-experience/",
+            json=[{"id": theirs.id, "event_id": event.id, "school": "Caltech"}],
+        )
+        assert res.status_code == 404
+        db.refresh(theirs)
+        assert theirs.school == "Yale"
+        assert db.get(UserCompetitionExperience, own.id) is not None
+
+    def test_duplicate_id_422(self, client, db, td_user, event):
+        entry = UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT")
+        db.add(entry)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        row = {"id": entry.id, "event_id": event.id, "school": "MIT"}
+        res = client.put("/users/me/competition-experience/", json=[row, row])
+        assert res.status_code == 422
+
+    def test_unauthenticated_401(self, client):
+        res = client.put("/users/me/competition-experience/", json=[])
+        assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# PUT /users/me/volunteer-experience/
+# ---------------------------------------------------------------------------
+
+
+class TestReplaceVolunteerExperience:
+    def test_creates_updates_and_deletes_in_order(self, client, db, td_user, event):
+        kept = UserVolunteerExperience(
+            user_id=td_user.id, tournament_name="Regionals", year=2024, role="Proctor"
+        )
+        dropped = UserVolunteerExperience(
+            user_id=td_user.id, tournament_name="States", year=2024, role="Proctor"
+        )
+        db.add_all([kept, dropped])
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/volunteer-experience/",
+            json=[
+                {
+                    "tournament_name": "Nationals",
+                    "year": 2025,
+                    "role": "Event Supervisor",
+                    "notes": {"event": "Custom Event"},
+                },
+                {
+                    "id": kept.id,
+                    "tournament_name": "Regionals",
+                    "year": 2025,
+                    "role": "Grader",
+                    "event_id": event.id,
+                },
+            ],
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert [d["tournament_name"] for d in data] == ["Nationals", "Regionals"]
+        assert data[0]["notes"] == {"event": "Custom Event", "other": None}
+        assert data[1]["id"] == kept.id
+        assert data[1]["role"] == "Grader"
+        assert data[1]["event"]["id"] == event.id
+        assert db.get(UserVolunteerExperience, dropped.id) is None
+
+    def test_blank_role_422_saves_nothing(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/volunteer-experience/",
+            json=[
+                {"tournament_name": "Regionals", "year": 2025, "role": "Proctor"},
+                {"tournament_name": "States", "year": 2025, "role": ""},
+            ],
+        )
+        assert res.status_code == 422
+        assert db.query(UserVolunteerExperience).filter_by(user_id=td_user.id).count() == 0
+
+    def test_event_id_and_notes_event_mutually_exclusive(self, client, td_user, event):
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/volunteer-experience/",
+            json=[
+                {
+                    "tournament_name": "Regionals",
+                    "year": 2025,
+                    "role": "Proctor",
+                    "event_id": event.id,
+                    "notes": {"event": "Custom Event"},
+                }
+            ],
+        )
+        assert res.status_code == 422
+
+    def test_other_users_entry_404(self, client, db, td_user, other_user):
+        theirs = UserVolunteerExperience(
+            user_id=other_user.id, tournament_name="Regionals", year=2024, role="Proctor"
+        )
+        db.add(theirs)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.put(
+            "/users/me/volunteer-experience/",
+            json=[{"id": theirs.id, "tournament_name": "States", "year": 2025, "role": "Grader"}],
+        )
+        assert res.status_code == 404
+        db.refresh(theirs)
+        assert theirs.tournament_name == "Regionals"
