@@ -6,10 +6,11 @@ tournament-wide one, while the tournament isn't archived and the track isn't bei
 Site admins get no special treatment."""
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.core.discord.layout import OWNER_KEY, VERIFIED_KEY, event_role_key, role_key
+from app.core.discord.layout import OWNER_KEY, VERIFIED_KEY, event_role_key, nickname, role_key
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.models.discord import DiscordGuildLink
 from app.models.models import (
@@ -25,11 +26,18 @@ def is_eligible(db: Session, link: DiscordGuildLink, user: User) -> bool:
     return bool(_keys_by_user(db, link, {user.id}).get(user.id))
 
 
-def desired_role_keys(
+@dataclass
+class DesiredMember:
+    role_keys: set[str]
+    nick: str | None
+
+
+def desired_members(
     db: Session, link: DiscordGuildLink, discord_user_ids: Iterable[int]
-) -> dict[int, set[str]]:
-    """Discord user id -> the managed role keys they should hold. One query for the accounts and
-    one for their assignments, however many members. Accounts left out should hold none."""
+) -> dict[int, DesiredMember]:
+    """Discord user id -> the managed roles and nickname an eligible member should have. Four
+    queries, however many members. Accounts left out are ineligible: they should hold no managed
+    role, and their nickname is left alone."""
     ids = [str(i) for i in discord_user_ids]
     if not ids:
         return {}
@@ -39,8 +47,12 @@ def desired_role_keys(
             OAuthIdentity.provider_account_id.in_(ids),
         )
     )
-    keys = _keys_by_user(db, link, set(accounts))
-    return {int(accounts[user_id]): k for user_id, k in keys.items() if k}
+    keys = {user_id: k for user_id, k in _keys_by_user(db, link, set(accounts)).items() if k}
+    names = db.query(User.id, User.first_name, User.last_name).filter(User.id.in_(list(keys)))
+    return {
+        int(accounts[user_id]): DesiredMember(keys[user_id], nickname(first, last))
+        for user_id, first, last in names
+    }
 
 
 def _keys_by_user(db: Session, link: DiscordGuildLink, user_ids: set[int]) -> dict[int, set[str]]:

@@ -523,6 +523,18 @@ class TestAccounts:
         assert res.status_code == 200
         assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
 
+    def test_a_name_change_marks_the_account_when_the_nickname_changes(
+        self, db, client, td_tournament, links, volunteer, day1
+    ):
+        grant_role(db, td_tournament, volunteer, "Volunteer", track_id=day1)
+        _clear(db)
+        login(client, "vol@test.com", "pass1234")
+        for unchanged in ({"pronouns": "they/them"}, {"last_name": "Evans"}):
+            assert client.patch("/users/me/", json=unchanged).status_code == 200
+            assert _marks(db, links) == set()
+        assert client.patch("/users/me/", json={"first_name": "Sam"}).status_code == 200
+        assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+
     def test_an_admin_locking_or_deleting_a_user_marks_them(
         self, db, client, admin_user, td_tournament, links, volunteer, day1
     ):

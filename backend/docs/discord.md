@@ -62,7 +62,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 
 - `manage_discord` gates Add to Discord, the Discord settings, building, `/setup`, `/reset`, and `/sync`. The default template gives it to Tournament Director, Volunteer Coordinator, and Test Coordinator. In Discord, the linked NEXUS account must also be active (not deactivated or locked); `has_permission` doesn't check that, so the commands and Verify do.
 - **Admin tier:** NEXUS roles with `manage_tournament` (and the Tournament Owner role) get Administrator in Discord.
-- **Staff tier:** roles with `manage_discord` but not `manage_tournament` get the staff permission set (`STAFF_PERMISSIONS` in `services/discord/permissions.py`) and see every channel. Left out on purpose: Administrator, Manage Server, Manage Roles (staff can't hand-edit managed roles or channel permissions, so they can't fight the sync), Manage Webhooks (webhooks can impersonate anyone), Ban Members, and Manage Expressions.
+- **Staff tier:** roles with `manage_discord` but not `manage_tournament` get the staff permission set (`STAFF_PERMISSIONS` in `services/discord/permissions.py`) and see every channel. Left out on purpose: Administrator, Manage Server, Manage Roles (staff can't hand-edit managed roles or channel permissions, so they can't fight the sync), Manage Nicknames (the sync would revert any rename), Manage Webhooks (webhooks can impersonate anyone), Ban Members, and Manage Expressions.
 - **A role's tier is stored** (`discord_managed_roles.tier`) as set at creation or the last `/reset`, and the sync reads that, not NEXUS's current permissions. Otherwise a role whose NEXUS permissions changed would gain access to new channels but not old ones. Permission and tier changes reach Discord only through `/reset`.
 
 ## Eligibility (the gate)
@@ -83,9 +83,18 @@ A Discord member is eligible in a server linked to track T when their account is
 - Member roles change one role per call (`PUT`/`DELETE …/members/{u}/roles/{r}`), never a full role-list `PATCH`, which would race admins' own role changes and has unclear behavior for Discord-managed roles.
 - **Hierarchy:** Discord allows equal positions and ranks ties by id (lower id higher), so every hierarchy check ranks by (position, id). A managed role at or above lobot's is skipped: builds warn, scoped resets refuse, and the sync records a warning (`last_sync_warning`, shown in yellow, not as a failure) while syncing everything else. A brand-new server can report every role at one position; then no reorder is possible (Discord refuses positions at or above the bot's, and the bot can't move itself), so the build skips it and a `/reset` preview tells the admin to drag any role once.
 
+## Nicknames
+
+- An eligible member's nickname is their NEXUS name as "First L." (`nickname()` in `layout.py`): whitespace collapsed, the last name's initial, cut to Discord's 32 characters. No first name means no managed nickname; the email is never used.
+- The member reconcile sets it alongside roles, so verifying, joining, and linking set it within seconds, and the sweep reverts a hand edit within 15 minutes. A quiet server costs nothing: member objects already carry `nick`, and the eligibility query reads names in one more query.
+- Ineligible and unlinked members are left alone, so someone sent back to the gate keeps the last nickname lobot gave them.
+- Skipped: the server owner, whom no bot can rename, and anyone holding a role at or above lobot's. Neither counts as a warning.
+- A nickname Discord refuses (a 4xx, which the server's AutoMod can cause by blocking a word in member names) is logged and skipped, not a sync failure: names are user input, and one bad one mustn't stall the server. It's tried again at each sync.
+- Nothing listens for nickname changes. With the member cache off, discord.py drops `GUILD_MEMBER_UPDATE` without dispatching anything, and the event fires on every role change, lobot's own included. Since ordinary members can't change their nickname, the only edits left to revert are admins' and holders of unmanaged roles that grant Change Nickname.
+
 ## Channels
 
-- **Gate:** at the first build `@everyone` loses View Channels; Verified grants it. `#verify` sits at the top: `@everyone` can read but not post, Verified is denied View (so verified members don't see it), and staff are allowed. lobot posts one message there with a Verify button and link buttons to `/connect/discord` and the volunteer guide in `docs/`.
+- **Gate:** at the first build `@everyone` loses View Channels and Change Nickname at the server level; Verified grants View Channels back. `#verify` sits at the top: `@everyone` can read but not post, Verified is denied View (so verified members don't see it), and staff are allowed. lobot posts one message there with a Verify button and link buttons to `/connect/discord` and the volunteer guide in `docs/`.
 - **Event channels:** one per event on T, named by slugging its name with division, trimmed to 100 characters. With division merge on, events sharing a catalog event and a building or zone (unplaced counts as one place) share a channel named from the catalog name plus the divisions run together, `#circuit-lab-bc`. Custom events never merge. Overwrites: `@everyone` denied, each covered event's role allowed, staff allowed.
 - **Categories** come from buildings or zones per the link's grouping setting; unplaced events go in "Other Events", or "Events" if nothing on T is placed. Past 50 channels a category overflows into "Name (2)".
 - **Identity is the set of event ids a channel covers** (its key, `event:12,13`); categories use `building:5`, `zone:3`, or `other`. Names are display only.
@@ -107,7 +116,7 @@ A Discord member is eligible in a server linked to track T when their account is
 
 | | Sync (automatic; `/sync` runs it now) | `/reset` (preview and Confirm) |
 |---|---|---|
-| Who holds which managed roles | Yes | Runs a sync afterwards |
+| Who holds which managed roles, and members' nicknames | Yes | Runs a sync afterwards |
 | Missing managed roles, channels, categories, `#verify` and its message | Recreated | Yes |
 | Managed role names | Renamed back | Yes |
 | Roles whose NEXUS role or event is gone | Deleted | Yes |
@@ -124,6 +133,7 @@ What happens to a Discord admin's edits ("kept" means it's left as the admin set
 | Admin edit in Discord | Sync | `/setup` | `/reset` |
 |---|---|---|---|
 | Adds or removes a managed role on a member, Verified included | Reverted | Reverted (its closing sync) | Reverted |
+| Changes an eligible member's nickname | Reverted | Reverted (its closing sync) | Reverted |
 | Renames a managed role | Renamed back | Renamed back (its closing sync) | Renamed back |
 | Deletes a managed role, channel, category, or `#verify` and its message | Recreated | Recreated | Recreated |
 | Changes a managed role's permissions or position | Kept | Kept | Restored |
@@ -131,7 +141,7 @@ What happens to a Discord admin's edits ("kept" means it's left as the admin set
 | Renames or moves a managed channel, or edits its `@everyone` or managed-role overwrites | Kept | Kept | Restored |
 | Denies a staff role View on a channel | Kept | Kept | Restored to allow on managed channels; kept on others |
 | Removes a staff role, or Verified on `#verify`, from a channel's overwrites entirely | Re-added | Re-added | Restored |
-| Gives `@everyone` View Channels at the server level | Kept | Kept | Removed again |
+| Gives `@everyone` View Channels or Change Nickname at the server level | Kept | Kept | Removed again |
 | Edits a managed channel's topic, slowmode, or other settings; adds overwrites for unmanaged roles or members | Kept | Kept | Kept |
 | Creates or edits unmanaged roles or channels, assigns unmanaged roles, or edits an archived channel | Kept (a new channel gets the staff overwrite) | Kept | Kept |
 
@@ -153,14 +163,14 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 | Role deleted; event deleted or removed from a track | structure, plus member for former holders, queried first |
 | Event created or renamed, or its tracks change | structure, every server |
 | Zone or shift deleted; track default-role reassign | member for the rows that cascade or move |
-| Discord link and unlink; account deletion, deactivation, admin status change | member for the account in every server where the user counts (tracks they hold roles on, plus tournaments where they hold a tournament-wide role or are the owner), member lists never scanned |
+| Discord link and unlink; account deletion, deactivation, admin status change; a name change that changes the nickname (profile edit or Sheets import, `mark_if_renamed`) | member for the account in every server where the user counts (tracks they hold roles on, plus tournaments where they hold a tournament-wide role or are the owner), member lists never scanned |
 | Ownership transferred | member, old and new owner, every server |
 | Unarchive; track deletion cancelled; lobot added back | full |
 | Buildings, zones, and permissions | Nothing; they matter only on `/reset` |
 
 - **The drain** (`drain.py`, leader only) wakes on `LISTEN discord_sync`, acting on each notification as it arrives, or every 5 seconds. It claims due marks with `FOR UPDATE SKIP LOCKED` and a 10-minute lease, so a leader that dies mid-reconcile leaves them to be retried. Success deletes only marks created before the claim, so a change made during a reconcile is kept. Failure backs off exponentially up to an hour and records `last_sync_error`. A full mark settles the server's other marks.
 - **Database work in async code always goes through `asyncio.to_thread`,** never on the event loop.
-- **The sweep** writes a full mark for every syncing server every 15 minutes, which reverts hand edits to members' roles and catches anything missed. For a quiet 300-member server that's a handful of Discord calls and no writes.
+- **The sweep** writes a full mark for every syncing server every 15 minutes, which reverts hand edits to members' roles and nicknames, and catches anything missed. For a quiet 300-member server that's a handful of Discord calls and no writes.
 
 ## Gateway events
 
@@ -197,7 +207,7 @@ lobot sees its own changes too; repeated marks merge, so a build's channel creat
 Checked on 2026-10-16 against Discord's developer docs and the discord.py 2.7.1 source. ⚠️ marks what Discord doesn't document.
 
 - **Overwrites:** `@everyone`'s overwrite applies first, then all of a member's role overwrites combined (deny, then allow, so allow beats deny across roles), then the member's own. Administrator and the server owner skip overwrites entirely.
-- **A bot can only allow or deny overwrite bits, and give role permissions, that it holds itself,** and can only assign, edit, or reorder roles below its own highest role.
+- **A bot can only allow or deny overwrite bits, and give role permissions, that it holds itself,** and can only assign, edit, or reorder roles below its own highest role, or rename members whose highest role is below it. Nobody can rename the server owner.
 - **Pin Messages (bit 51) and Bypass Slowmode (bit 52)** were split out of Manage Messages in August 2025, and pinning has required Pin Messages since February 2026, so the staff set lists both.
 - **2FA:** Kick, Ban, Administrator, Manage Channels, Manage Messages, Manage Roles, Manage Webhooks, and Manage Threads require the bot's owner to have 2FA in servers with server-wide 2FA.
 - **Limits:** 50 channels per category; channel names 1 to 100 characters. ⚠️ 250 roles and 500 channels per server come from error codes 30005 and 30013 as listed by discord.js, not from Discord's docs; roles from other integrations count toward the 250.
@@ -217,4 +227,4 @@ Checked on 2026-10-16 against Discord's developer docs and the discord.py 2.7.1 
 
 ## Deferred
 
-Zone roles and zone channels (categorizing by zone is supported), nickname sync, the `guilds.join` scope, and an email when someone is removed from a tournament.
+Zone roles and zone channels (categorizing by zone is supported), the `guilds.join` scope, and an email when someone is removed from a tournament.

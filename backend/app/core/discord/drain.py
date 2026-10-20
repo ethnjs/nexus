@@ -20,12 +20,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.discord import build
-from app.core.discord.eligibility import desired_role_keys
+from app.core.discord.eligibility import DesiredMember, desired_members
 from app.core.discord.links import CHANNEL, link_for_guild
 from app.core.discord.reconcile import (
     above_bot_message,
     all_members,
-    apply_member_roles,
+    apply_member,
     fetch_roles,
     plan_structure,
 )
@@ -190,8 +190,8 @@ class Syncer:
                 member = await rest.member(snapshot.guild_id, mark.discord_user_id)
                 # Not in the server, which is the usual case right after linking.
                 if member is not None:
-                    keys = desired.get(mark.discord_user_id, set())
-                    await apply_member_roles(rest, snapshot, live, member, keys, above_bot)
+                    wanted = desired.get(mark.discord_user_id)
+                    await apply_member(rest, snapshot, live, member, wanted, above_bot)
             except Exception as exc:
                 log.exception("Discord member sync for link %s failed", link_id)
                 failed.append(mark)
@@ -208,12 +208,12 @@ class Syncer:
 
     async def _member_context(
         self, link_id: int, accounts: list[int | None]
-    ) -> tuple[build.Snapshot, build.Live, dict[int, set[str]]]:
-        def load(db: Session) -> tuple[build.Snapshot, dict[int, set[str]]]:
+    ) -> tuple[build.Snapshot, build.Live, dict[int, DesiredMember]]:
+        def load(db: Session) -> tuple[build.Snapshot, dict[int, DesiredMember]]:
             link = db.get(DiscordGuildLink, link_id)
             assert link is not None
             ids = [a for a in accounts if a is not None]
-            return build.load_snapshot(db, link_id), desired_role_keys(db, link, ids)
+            return build.load_snapshot(db, link_id), desired_members(db, link, ids)
 
         snapshot, desired = await self._in_db(load)
         live = await fetch_roles(discord_rest.get_rest(), snapshot)
@@ -248,8 +248,7 @@ class Syncer:
             assert account is not None
             member = await rest.member(snapshot.guild_id, account)
             if member is not None:
-                keys = desired.get(account, set())
-                await apply_member_roles(rest, snapshot, live, member, keys, above_bot)
+                await apply_member(rest, snapshot, live, member, desired.get(account), above_bot)
 
     async def _sync_everyone(self, link_id: int, above_bot: set[str]) -> None:
         snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
@@ -258,15 +257,15 @@ class Syncer:
         members = await all_members(rest, snapshot.guild_id)
         ids = [int(m["user"]["id"]) for m in members if not m["user"].get("bot")]
 
-        def desired_for(db: Session) -> dict[int, set[str]]:
+        def desired_for(db: Session) -> dict[int, DesiredMember]:
             link = db.get(DiscordGuildLink, link_id)
             assert link is not None
-            return desired_role_keys(db, link, ids)
+            return desired_members(db, link, ids)
 
         desired = await self._in_db(desired_for)
         for member in members:
-            keys = desired.get(int(member["user"]["id"]), set())
-            await apply_member_roles(rest, snapshot, live, member, keys, above_bot)
+            wanted = desired.get(int(member["user"]["id"]))
+            await apply_member(rest, snapshot, live, member, wanted, above_bot)
 
 
 def _link_state(db: Session, link_id: int) -> str:

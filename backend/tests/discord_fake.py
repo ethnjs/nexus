@@ -5,7 +5,7 @@ strings included, because the code under test parses it the same way."""
 import itertools
 from typing import Any
 
-from app.services.discord.permissions import ADMINISTRATOR
+from app.services.discord.permissions import ADMINISTRATOR, CHANGE_NICKNAME, VIEW_CHANNEL
 from app.services.discord.rest import GUILD_CATEGORY, GUILD_TEXT
 
 BOT_USER_ID = 900
@@ -20,13 +20,16 @@ class FakeGuild:
             guild_id: {
                 "id": str(guild_id),
                 "name": "@everyone",
-                "permissions": str(1 << 10 | 1 << 11),
+                "permissions": str(VIEW_CHANNEL | 1 << 11 | CHANGE_NICKNAME),
                 "position": 0,
                 "managed": False,
             }
         }
         self.channels: dict[int, dict[str, Any]] = {}
         self.members: dict[int, list[int]] = {}
+        self.nicks: dict[int, str | None] = {}
+        # Nicknames Discord answers with 400, as AutoMod's member-profile rule does.
+        self.refused_nicks: set[str] = set()
         self.bots: set[int] = {BOT_USER_ID}
         # Like a new server that Discord never gave distinct role positions: every role sits at
         # position 1 and creates don't shift anything.
@@ -77,8 +80,11 @@ class FakeGuild:
         }
         return channel_id
 
-    def join(self, user_id: int, *role_ids: int, bot: bool = False) -> None:
+    def join(
+        self, user_id: int, *role_ids: int, bot: bool = False, nick: str | None = None
+    ) -> None:
         self.members[user_id] = list(role_ids)
+        self.nicks[user_id] = nick
         if bot:
             self.bots.add(user_id)
 
@@ -123,7 +129,11 @@ def _member_json(guild: FakeGuild, user_id: int) -> dict[str, Any]:
     user: dict[str, Any] = {"id": str(user_id)}
     if user_id in guild.bots:
         user["bot"] = True
-    return {"user": user, "roles": [str(r) for r in guild.members[user_id]]}
+    return {
+        "user": user,
+        "roles": [str(r) for r in guild.members[user_id]],
+        "nick": guild.nicks.get(user_id),
+    }
 
 
 def _require_below_bot(guild: FakeGuild, role_id: int) -> None:
@@ -202,6 +212,18 @@ class FakeDiscord:
         if role_id in guild.members.get(user_id, []):
             guild.members[user_id].remove(role_id)
         self._write("remove_member_role", (user_id, guild.roles[role_id]["name"]))
+
+    async def edit_member_nick(self, guild_id: int, user_id: int, nick: str) -> bool:
+        guild = self.guilds[guild_id]
+        if user_id == guild.owner_id:
+            raise RuntimeError("Missing Permissions")
+        for role_id in guild.members[user_id]:
+            _require_below_bot(guild, role_id)
+        if nick in guild.refused_nicks:
+            return False
+        guild.nicks[user_id] = nick
+        self._write("edit_member_nick", (user_id, nick))
+        return True
 
     async def leave_guild(self, guild_id: int) -> None:
         self.left.append(guild_id)

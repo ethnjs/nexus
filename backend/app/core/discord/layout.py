@@ -27,6 +27,7 @@ VERIFIED_ROLE_NAME = "Verified"
 OTHER_CATEGORY_NAME = "Other Events"
 UNPLACED_CATEGORY_NAME = "Events"
 MAX_CHANNEL_NAME = 100
+MAX_NICKNAME = 32
 CATEGORY_CAPACITY = 50
 
 
@@ -135,6 +136,16 @@ def slug(name: str) -> str:
     """A channel name: lowercase, each run of other characters a single "-", 1-100 characters."""
     value = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:MAX_CHANNEL_NAME].strip("-")
     return value or "event"
+
+
+def nickname(first_name: str | None, last_name: str | None) -> str | None:
+    """ "Pat S.", cut to fit Discord's 32 characters, or None without a first name."""
+    first = " ".join((first_name or "").split())
+    if not first:
+        return None
+    last = (last_name or "").strip()
+    initial = f" {last[0].upper()}." if last else ""
+    return first[: MAX_NICKNAME - len(initial)].rstrip() + initial
 
 
 def _sort_name(name: str) -> str:

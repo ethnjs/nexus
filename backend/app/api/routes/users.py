@@ -15,7 +15,7 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
-from app.core.discord.marks import mark_account_everywhere, mark_user_everywhere
+from app.core.discord.marks import mark_account_everywhere, mark_if_renamed, mark_user_everywhere
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -286,7 +286,9 @@ def update_user_me(
     Email changes must go through the verify-before-apply flow
     (POST /auth/email/request-change/ + GET /auth/email/confirm-change/).
     """
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    mark_if_renamed(db, user, updates)
+    for field, value in updates.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
