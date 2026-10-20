@@ -2591,6 +2591,42 @@ class TestAnswerSnapshotting:
         # Old answer still reads "Red" even though the option is now "Crimson".
         assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
 
+    def test_availability_answer_stores_snapshot(self, client, db, td_user, td_tournament):
+        track_id = primary_track_id(db, td_tournament.id)
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            track_id=track_id,
+            label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=UTC),
+            end=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=4),
+        )
+        db.add(shift)
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db,
+            form,
+            field_key=f"availability_{track_id}",
+            question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_morning", "value": [shift.id], "label": "Morning"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_morning"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
+        assert answer.value == {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"}
+        # Write-through still reads the picked option, not the copy.
+        assert db.query(TournamentMembershipAvailability).count() == 1
+
 
 # ---------------------------------------------------------------------------
 # Write-through — availability/lunch reserved-key answers syncing into their

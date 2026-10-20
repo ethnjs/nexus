@@ -25,10 +25,7 @@ def slugify(text: str, max_len: int = 64) -> str:
 
 
 # Types whose answer value references option_id(s) and so can be snapshotted
-# at submission time (see snapshot_answer_value). An `availability_*`-keyed
-# field is deliberately excluded even though it's currently
-# multi_select_checkbox — its answer still submits a raw TournamentShift id,
-# not an option_id, until the shift-grouping work lands.
+# at submission time (see snapshot_answer_value).
 OPTION_BEARING_TYPES = {
     "single_select_radio",
     "single_select_dropdown",
@@ -54,11 +51,7 @@ def snapshot_answer_value(field: FormField, value):
     at submission, so later edits to the option don't change how it reads.
     Returns `value` unchanged when it doesn't match the expected shape, since
     it's unvalidated input."""
-    if (
-        AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)
-        or field.question_type not in OPTION_BEARING_TYPES
-        or value is None
-    ):
+    if field.question_type not in OPTION_BEARING_TYPES or value is None:
         return value
 
     options_by_id = {o["option_id"]: o for o in (field.config or {}).get("options", [])}

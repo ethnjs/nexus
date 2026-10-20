@@ -45,7 +45,7 @@ All config and option schemas use `extra="forbid"`: an unknown key is a validati
 
 An answer to an option-bearing question stores a `{option_id, value, label}` snapshot taken at submission, so later edits to an option's text never change how a past answer reads. A checkbox answer stores a list of snapshots and a ranked answer stores `{rank: snapshot}`.
 
-The exception is `availability_*` fields, whose answers store the raw selected `option_id`s.
+Availability answers stored bare `option_id`s until revision 17852c91b77c, which copied in each option as it stood then. An id whose option was already gone from the config stays bare.
 
 ## Question types
 
