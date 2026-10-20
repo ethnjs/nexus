@@ -7,19 +7,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import get_current_user
-from app.core.form.member_options import member_editable_reserved_fields, member_track_options
-from app.core.form.validation import (
-    LUNCH_FREE_TEXT_QUESTION_TYPES,
-    event_preference_field_track_id,
-)
-from app.core.form.write_through import (
-    event_preference_items_from_answer,
-    lunch_values_from_answer,
-    shift_ids_on_tracks,
-    sync_availability,
-    sync_event_preferences,
-    sync_lunch,
-)
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
     apply_display_config,
@@ -59,35 +46,27 @@ from app.core.tournament.memberships import (
     onboarding_reads,
     resolve_person_refs,
 )
+from app.core.tournament.onboarding import needs_tournament_onboarding
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     get_user_permissions,
     require_permission,
 )
 from app.core.tournament.roles import validate_member_target
-from app.core.tournament.tracks import require_track_answered, require_track_unlocked
 from app.db.session import get_db
 from app.models.models import (
     Tournament,
     TournamentMembership,
-    TournamentMembershipTrackStatus,
-    TournamentTrack,
     User,
 )
 from app.schemas.tournament.member_summary import MemberSummaryResponse
 from app.schemas.tournament.membership import (
     AgeDisclosureRequest,
     MembershipAvailabilityRead,
-    MembershipAvailabilityUpdate,
     MembershipCoordinatorUpdate,
-    MembershipEventPreferenceUpdate,
     MembershipFullResponse,
-    MembershipLunchRead,
-    MembershipLunchUpdate,
     MembershipMeResponse,
-    MembershipTrackStatusUpdate,
 )
-from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
 def _no_membership_response(
@@ -120,7 +99,8 @@ def _build_me_response(
     `requested` gating them is not a micro-optimisation: the provider reads
     four identity fields and nothing else, and says so with fields=roles.
     """
-    permissions = sorted(get_user_permissions(current_user, tournament.id, db))
+    held_permissions = get_user_permissions(current_user, tournament.id, db)
+    permissions = sorted(held_permissions)
     is_owner = current_user.id == tournament.owner_id
     needs_age_consent = (
         (tournament.collect_is_over_18 or tournament.collect_is_over_21)
@@ -135,12 +115,12 @@ def _build_me_response(
         is_owner=is_owner,
         permissions=permissions,
         needs_age_consent=needs_age_consent,
+        needs_onboarding=needs_tournament_onboarding(db, membership, held_permissions),
         roles=membership.held_roles if wants(requested, ROLES) else [],
         is_over_18=membership.is_over_18,
         is_over_21=membership.is_over_21,
         # build_track_statuses rather than the raw rows: it pads every live
-        # track the member has no row for as "pending", and those are exactly
-        # the tracks a self-service control needs to offer.
+        # track the member has no row for as "pending".
         track_statuses=build_track_statuses(db, membership) if wants(requested, TRACKS) else [],
         event_preferences=build_event_preferences(db, membership)
         if wants(requested, EVENT_PREFS)
@@ -480,357 +460,6 @@ def update_membership(
     resp.lunch = build_lunch(db, m)
     resp.track_statuses = build_track_statuses(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
-
-
-def _my_membership(db: Session, tournament_id: int, current_user: User) -> TournamentMembership:
-    m = get_membership_by_user(db, tournament_id, current_user.id)
-    if not m:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-    return m
-
-
-def _live_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrack:
-    """A track the member may still answer about. A pending-delete track is
-    on its way out; inviting an answer to it would be inviting them to act on
-    something whose rows are about to be cascaded away."""
-    track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
-    if track.is_archived:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This track is pending deletion",
-        )
-    return track
-
-
-def _set_track_status(
-    db: Session, membership_id: int, track: TournamentTrack, incoming: str
-) -> None:
-    """The self-service status write, shared by the status route and the
-    availability route (whose "Not available" clears shifts and declines in
-    one call). The transition rules live in backend/docs/track-status-rules.md."""
-    if incoming == "confirmed" and not track.allow_confirm:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This track's confirmation is not open yet",
-        )
-    if incoming == "interested" and track.allow_confirm:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Confirm or decline this track — there's no interested step on it",
-        )
-
-    row = (
-        db.query(TournamentMembershipTrackStatus)
-        .filter(
-            TournamentMembershipTrackStatus.membership_id == membership_id,
-            TournamentMembershipTrackStatus.track_id == track.id,
-        )
-        .first()
-    )
-    if row is None:
-        db.add(
-            TournamentMembershipTrackStatus(
-                membership_id=membership_id,
-                track_id=track.id,
-                status=incoming,
-            )
-        )
-    else:
-        row.status = incoming
-
-
-# ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/members/me/options/ — self-service catalog
-#
-# What this member may change about themselves, per track: the live questions
-# their tournament asks, with options resolved to real shifts and events, and
-# their current answers alongside. One request backs the whole edit page.
-#
-# Only *live* questions on *published* forms appear. That is stricter than the
-# read builders, which deliberately consult archived fields so an old answer
-# still renders — reading history and offering a choice are different things.
-# ---------------------------------------------------------------------------
-@router.get("/me/options/")
-def get_my_options(
-    tournament_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    get_tournament(tournament_id, db)
-    m = _my_membership(db, tournament_id, current_user)
-    return {"tracks": member_track_options(db, tournament_id, m)}
-
-
-# ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/members/me/availability/{track_id}/
-#
-# The member's own availability for one track, edited from their member page
-# rather than through a form. Forms remain an input channel that writes the
-# same rows (see core/form/write_through.py); this is a second writer, not a
-# replacement, which is why it reuses that module's diff instead of rewriting
-# the set: an unchanged shift keeps its row.
-#
-# Whole-set within the track: the page shows that track's groups all at once,
-# so anything left out is a withdrawal rather than a question that wasn't
-# asked. Scoped to the track and not the tournament because the page is laid
-# out per track — saving Day 1 must not touch Day 2.
-# ---------------------------------------------------------------------------
-@router.put("/me/availability/{track_id}/", response_model=list[MembershipAvailabilityRead])
-def update_my_availability(
-    tournament_id: int,
-    track_id: int,
-    payload: MembershipAvailabilityUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-    m = _my_membership(db, tournament_id, current_user)
-    track = _live_track(db, tournament_id, track_id)
-    require_track_unlocked(track)
-    require_track_answered(db, m.id, track)
-
-    owned_shift_ids = shift_ids_on_tracks(db, tournament_id, {track_id})
-    unknown = set(payload.shift_ids) - owned_shift_ids
-    if unknown:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Shift {sorted(unknown)[0]} is not on this track",
-        )
-
-    sync_availability(db, m.id, set(payload.shift_ids), owned_shift_ids)
-    if payload.status is not None:
-        _set_track_status(db, m.id, track, payload.status)
-    db.commit()
-    db.refresh(m)
-    return [MembershipAvailabilityRead.from_row(row) for row in m.availability_shifts]
-
-
-# ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/members/me/lunch/{track_id}/{category}/
-#
-# (track, category) is exactly the unit sync_lunch is scoped to, so this can
-# never disturb another category or another track's answer to the same one.
-# ---------------------------------------------------------------------------
-@router.put("/me/lunch/{track_id}/{category}/", response_model=list[MembershipLunchRead])
-def update_my_lunch(
-    tournament_id: int,
-    track_id: int,
-    category: str,
-    payload: MembershipLunchUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-    m = _my_membership(db, tournament_id, current_user)
-    track = _live_track(db, tournament_id, track_id)
-    require_track_unlocked(track)
-    require_track_answered(db, m.id, track)
-
-    field = next(
-        (
-            f
-            for f in member_editable_reserved_fields(db, tournament_id)
-            if f.field_key == f"lunch_{track_id}_{category}"
-        ),
-        None,
-    )
-    if field is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No live question covers this track's lunch category",
-        )
-
-    free_text = field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES
-    if free_text and payload.option_ids:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="This is a free-text question — send `text`, not `option_ids`",
-        )
-    if not free_text and payload.text is not None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="This question has options — send `option_ids`, not `text`",
-        )
-    if field.question_type == "single_select_radio" and len(payload.option_ids) > 1:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Only one option may be selected on this question",
-        )
-
-    live_option_ids = {
-        option["option_id"]
-        for option in (field.config or {}).get("options", [])
-        if not option.get("is_archived")
-    }
-    unknown = set(payload.option_ids) - live_option_ids
-    if unknown:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Unknown option {sorted(unknown)[0]}",
-        )
-
-    answer = payload.text if free_text else payload.option_ids
-    sync_lunch(db, m.id, track_id, category, lunch_values_from_answer(field, answer))
-    db.commit()
-    db.refresh(m)
-    return build_lunch(db, m)
-
-
-# ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/members/me/event-preferences/{track_id}/
-#
-# Whole-set for the track. A track has exactly one preference question, so it
-# owns its rows outright and a replace can't damage anything else.
-# ---------------------------------------------------------------------------
-@router.put("/me/event-preferences/{track_id}/")
-def update_my_event_preferences(
-    tournament_id: int,
-    track_id: int,
-    payload: MembershipEventPreferenceUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-    m = _my_membership(db, tournament_id, current_user)
-    track = _live_track(db, tournament_id, track_id)
-    require_track_unlocked(track)
-    require_track_answered(db, m.id, track)
-
-    field = next(
-        (
-            f
-            for f in member_editable_reserved_fields(db, tournament_id)
-            if event_preference_field_track_id(f.field_key) == track_id
-        ),
-        None,
-    )
-    if field is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No live question covers this track's event preferences",
-        )
-
-    live_option_ids = {
-        option["option_id"]
-        for option in (field.config or {}).get("options", [])
-        if not option.get("is_archived")
-    }
-    option_ids = [sel.option_id for sel in payload.selections]
-    unknown = set(option_ids) - live_option_ids
-    if unknown:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Unknown option {sorted(unknown)[0]}",
-        )
-    if len(set(option_ids)) != len(option_ids):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="An option may only be selected once",
-        )
-
-    if field.question_type == "ranked_choice":
-        ranks = [sel.rank for sel in payload.selections if sel.rank is not None]
-        if len(ranks) < len(payload.selections):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Every selection on a ranked question needs a rank",
-            )
-        # Contiguous from 1: a gap or a repeat has no meaning a reader could
-        # act on, and the stored rows carry no record of which it was.
-        if sorted(ranks) != list(range(1, len(ranks) + 1)):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Ranks must be unique and contiguous, starting at 1",
-            )
-        max_ranks = (field.config or {}).get("ranks")
-        if max_ranks is not None and len(ranks) > max_ranks:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"At most {max_ranks} option(s) may be ranked",
-            )
-        answer = {str(sel.rank): sel.option_id for sel in payload.selections}
-    else:
-        if any(sel.rank is not None for sel in payload.selections):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="This question is not ranked — omit `rank`",
-            )
-        if field.question_type == "single_select_dropdown" and len(option_ids) > 1:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Only one option may be selected on this question",
-            )
-        answer = option_ids
-
-    sync_event_preferences(
-        db,
-        m.id,
-        track_id,
-        event_preference_items_from_answer(field, answer),
-    )
-    db.commit()
-    db.refresh(m)
-    return build_event_preferences(db, m)
-
-
-# ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/members/me/track-statuses/{track_id}/
-# — self-service
-#
-# The three statuses split by who they belong to:
-#
-#   declined    on any unlocked track — opting out is the member's own call.
-#   confirmed   only with the track's allow_confirm. Otherwise
-#               `confirmed` means the TD staffed them, and only the TD knows.
-#   interested  only *without* allow_confirm — it's the way back in for
-#               a member who can't confirm themselves. With self-confirm on,
-#               declined goes straight to confirmed and the middle state
-#               would be a step to nowhere.
-#
-# Coming back from `declined` at all is something write-through refuses (see
-# can_set_track_status). That guard exists to stop a *stale form write* from
-# demoting a track a newer form already advanced — a member acting on their
-# own page is neither stale nor out of order, and without this exception a
-# mistaken opt-out would be a one-way door.
-#
-# All of which is moot on a locked track: `lock_responses` closes this route
-# entirely, declining included. See require_track_unlocked. And none of it
-# applies before the member's first answer, which only a form can give — see
-# require_track_answered.
-# ---------------------------------------------------------------------------
-@router.put("/me/track-statuses/{track_id}/", response_model=MembershipTrackStatusRead)
-def update_my_track_status(
-    tournament_id: int,
-    track_id: int,
-    payload: MembershipTrackStatusUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-
-    m = get_membership_by_user(db, tournament_id, current_user.id)
-    if not m:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-
-    track = _live_track(db, tournament_id, track_id)
-    require_track_unlocked(track)
-    require_track_answered(db, m.id, track)
-    _set_track_status(db, m.id, track, payload.status)
-    db.commit()
-
-    row = (
-        db.query(TournamentMembershipTrackStatus)
-        .filter(
-            TournamentMembershipTrackStatus.membership_id == m.id,
-            TournamentMembershipTrackStatus.track_id == track_id,
-        )
-        .one()
-    )
-    return MembershipTrackStatusRead.from_row(row)
 
 
 # ---------------------------------------------------------------------------

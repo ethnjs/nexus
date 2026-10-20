@@ -1,12 +1,21 @@
-from pydantic import BaseModel, model_validator
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints, model_validator
 
 from app.schemas.event import EventResponse
+
+NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class CompetitionExperienceCreate(BaseModel):
     event_id: int
     school: str
     notes: str | None = None
+
+
+class CompetitionExperienceItem(CompetitionExperienceCreate):
+    id: int | None = None
+    school: NonBlankStr
 
 
 class CompetitionExperienceUpdate(BaseModel):
@@ -41,6 +50,12 @@ class VolunteerExperienceCreate(BaseModel):
         if self.event_id is not None and self.notes and self.notes.event:
             raise ValueError("event_id and notes.event are mutually exclusive")
         return self
+
+
+class VolunteerExperienceItem(VolunteerExperienceCreate):
+    id: int | None = None
+    tournament_name: NonBlankStr
+    role: NonBlankStr
 
 
 class VolunteerExperienceUpdate(BaseModel):

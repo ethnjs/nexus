@@ -20,7 +20,7 @@ This is the shape of form fields, their `config`, and their answers. Config sche
 
 - **`question_type`** is structural: how the question renders and what shape its answer has.
 - **`field_key`** is semantic. Every field has one, slugified from a TD-typed name (lowercase letters, digits and underscores). It must be unique among the **live** fields of all of a tournament's forms; an archived field releases its key. A reserved key (below) layers validation and write-through onto an ordinary `question_type`.
-- **`field_id`**, not `field_key`, is the field's identity. Answers, branching and pending updates all reference the id, so renaming a key is free.
+- **`field_id`**, not `field_key`, is the field's identity. Answers and branching reference the id, so renaming a key is free.
 
 Because archived keys can be reused, two different questions may have carried the same key at different times. Answers stay unambiguous (each records its `field_id` and the key it was given under), but a view that groups by key alone merges them.
 
@@ -45,7 +45,7 @@ All config and option schemas use `extra="forbid"`: an unknown key is a validati
 
 An answer to an option-bearing question stores a `{option_id, value, label}` snapshot taken at submission, so later edits to an option's text never change how a past answer reads. A checkbox answer stores a list of snapshots and a ranked answer stores `{rank: snapshot}`.
 
-The exception is `availability_*` fields, whose answers store the raw selected `option_id`s.
+Availability answers stored bare `option_id`s until revision 17852c91b77c, which copied in each option as it stood then. An id whose option was already gone from the config stays bare.
 
 ## Question types
 
@@ -66,11 +66,11 @@ The exception is `availability_*` fields, whose answers store the raw selected `
 
 Only single-select options (`single_select_radio`, `single_select_dropdown`) may branch:
 
-- `next_field_id` jumps to that field, which must be on the same form.
+- `next_field_id` jumps to that field, which must be on the same form and come after the option's own field in `order`.
 - `action: "submit_form"` ends the form.
 - With neither, the form continues in `order`.
 
-An option can't have both. The frontend's flow and the backend's submission check (`app/core/form/branching.py`) both match answers to options by `option_id`. Loops (A → B → A) aren't detected.
+An option can't have both. The frontend's flow and the backend's submission check (`app/core/form/branching.py`) both match answers to options by `option_id`. Because jumps only go forward, a walk can't loop. Saving or publishing rejects a jump that a reorder left pointing backward, and the builder flags it on the card. Forms saved before this rule may still hold backward jumps; the walk stops at a revisited field so they still terminate.
 
 ## Reserved field keys
 
@@ -86,7 +86,7 @@ The number in a reserved key is a `TournamentTrack` id, not a date. A track carr
 
 A bare `availability` or `event_preference` with no track id is not reserved.
 
-**Availability.** A track may have several availability questions, distinguished by the optional suffix (`availability_7`, `availability_7_judges`), typically on different forms. They all feed one per-member pool of available shifts. Each option groups shifts from the field's own track. On submit, the selected options expand to shift ids and the pool is diffed only within the tracks the submission asked about (see `form-edit-lifecycle.md`). A shift can't be deleted while availability rows or a live option reference it.
+**Availability.** A track may have several availability questions, distinguished by the optional suffix (`availability_7`, `availability_7_judges`), typically on different forms. They all feed one per-member pool of available shifts. Each option groups shifts from the field's own track. On submit, the selected options expand to shift ids and the pool is diffed only within the tracks the submission asked about (see `form-edit-lifecycle.md`). Deleting a shift removes it from members' availability and from every option that lists it, live or archived; an option left with no shifts stays, as a "Can't make it" choice. Stored answers keep their snapshot.
 
 **Event preference.** There is exactly one question per track, so it owns that track's preference rows outright. Options group events linked to the track, and no event may appear in two options. `ranked_choice` writes each option's rank, `single_select_dropdown` writes rank 1, and `multi_select_checkbox` writes no rank. On `ranked_choice`, `allow_duplicates` must be `false`.
 
@@ -96,7 +96,7 @@ A bare `availability` or `event_preference` with no track id is not reserved.
 
 ### Preset config shapes
 
-A preset never adds a `question_type`; it changes what `value` holds on each option. There are five shapes.
+A preset never adds a `question_type`; it changes what `value` holds on each option. There are five shapes. Any option may group nothing (no shifts, events or track statuses), for answers like "Can't make it" or "No preference". Picking an empty availability option clears the member's shifts on that track.
 
 **1. `availability_{track}`.** `value` is the grouped `TournamentShift` ids.
 
@@ -106,11 +106,11 @@ A preset never adds a `question_type`; it changes what `value` holds on each opt
 ] }
 ```
 
-**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required, non-empty `shift_ids` and an optional `track_status` for the field's own track.
+**2. `availability_{track}` with `track_status_enabled: true`.** Set by the builder's "Also update track status" toggle. `value` becomes an object with required `shift_ids` and a `track_statuses` list of assignments (shape 5), which may name any of the tournament's tracks, not only the one in the key. A track appears at most once per option.
 
 ```json
 { "required": true, "track_status_enabled": true, "options": [
-  { "option_id": "a1b2c3d4e5", "label": "All day", "value": { "shift_ids": [3, 2, 5], "track_status": "confirmed" } }
+  { "option_id": "a1b2c3d4e5", "label": "All day", "value": { "shift_ids": [3, 2, 5], "track_statuses": [{ "id": 7, "status": "confirmed" }] } }
 ] }
 ```
 
@@ -141,7 +141,7 @@ A preset never adds a `question_type`; it changes what `value` holds on each opt
 
 An assignment is `{"id": <TournamentTrack id>, "status": "interested" | "confirmed" | "declined"}`, and both keys are required. Track ids must belong to the tournament; archived tracks stay valid so old fields still resolve. On `multi_select_checkbox`, two options may name the same track only with the same status. Nothing currently rejects one option naming a track twice; write-through applies the last entry.
 
-**Reading options.** `value` is a union (`str | list[int] | list[assignment] | {shift_ids, track_status}`) so switching presets rewrites one key instead of migrating between key sets. Its meaning depends on `field_key`, so read through the helpers (`option_shift_ids`, `option_track_assignments`) rather than checking `isinstance(value, list)`, which can't tell entity ids from assignments.
+**Reading options.** `value` is a union (`str | list[int] | list[assignment] | {shift_ids, track_statuses}`) so switching presets rewrites one key instead of migrating between key sets. Its meaning depends on `field_key`, so read through the helpers (`option_shift_ids`, `option_track_assignments`) rather than checking `isinstance(value, list)`, which can't tell entity ids from assignments.
 
 **Rendering.** `GET /forms/{id}/` resolves entity ids in place (`resolve_field_options`): an availability `value` becomes a list of `{id, label, start, end}` shifts ordered by start, and an event preference `value` becomes a list of `{id, name, division}` events.
 
@@ -151,6 +151,6 @@ An assignment is `{"id": <TournamentTrack id>, "status": "interested" | "confirm
 
 - Only a `published` form accepts responses. Submitting to any other returns 409.
 - Publishing validates the whole form (`validate_form_for_publish`): at least one live field, and every config and branching target valid together. Failures return 422.
-- An `archived` form can't be published directly. Move it back to `draft` first (409 otherwise).
+- An `archived` form is read-only: its questions, name, title, description and settings can't change (409). It can only be moved back to `draft`, or deleted if it has no responses. It can't be published directly.
 - A form with responses can be unpublished to `draft`, but its edits stay history-preserving: removing a field or option archives it instead of deleting it. Only a draft that has never been answered is edited destructively.
 - A form with responses can't be deleted (409); archive it instead.

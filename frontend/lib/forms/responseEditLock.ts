@@ -9,10 +9,8 @@ export function responseEditLockedReason(form: {
   status: string;
   allow_response_edits: boolean;
   tournamentArchived: boolean;
-  /** Flagged questions open editing even with edits off — the TD asked again. */
-  hasFlaggedQuestions?: boolean;
 }): string | undefined {
   if (form.status !== "published" || form.tournamentArchived) return RESPONSE_NOT_ACCEPTING;
-  if (!form.allow_response_edits && !form.hasFlaggedQuestions) return RESPONSE_EDITS_LOCKED;
+  if (!form.allow_response_edits) return RESPONSE_EDITS_LOCKED;
   return undefined;
 }

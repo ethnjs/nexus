@@ -1,4 +1,10 @@
-import type { FormQuestionType } from "@/lib/api";
+import type {
+  FormFieldConfig,
+  FormFieldOption,
+  FormQuestionType,
+  TrackStatusAssignment,
+} from "@/lib/api";
+import { slugifyFieldKey } from "@/lib/forms/fieldKeys";
 
 // Reserved field_key patterns — mirrors backend/app/core/form/validation.py
 // exactly (AVAILABILITY_FIELD_KEY_PATTERN / EVENT_PREFERENCE_FIELD_KEY_PATTERN
@@ -118,7 +124,7 @@ export function parseAvailabilityFieldKey(fieldKey: string): {
 
 export function buildAvailabilityFieldKey(trackId: number | null, suffix: string = ""): string {
   if (trackId === null) return "availability_";
-  const slug = slugifyFieldKeyPart(suffix);
+  const slug = slugifyFieldKey(suffix);
   return slug ? `availability_${trackId}_${slug}` : `availability_${trackId}`;
 }
 
@@ -145,7 +151,7 @@ export function parseLunchFieldKey(fieldKey: string): { trackId: number | null; 
 }
 
 export function buildLunchFieldKey(trackId: number | null, category: string): string {
-  const slug = slugifyFieldKeyPart(category);
+  const slug = slugifyFieldKey(category);
   if (trackId === null || !slug) return "lunch_";
   return `lunch_${trackId}_${slug}`;
 }
@@ -156,24 +162,14 @@ export function parseTrackStatusFieldKey(fieldKey: string): { suffix: string } {
 }
 
 export function buildTrackStatusFieldKey(suffix: string): string {
-  const slug = slugifyFieldKeyPart(suffix);
+  const slug = slugifyFieldKey(suffix);
   return slug ? `track_status_${slug}` : "track_status_";
-}
-
-// Whether a useFormValidation issue message is about field_key specifically
-// (vs. label/options/etc.) — matches both "Field key is required." and
-// "This field key is already used by another question...". Shared so
-// FieldCard's error list and FieldKeyPopover's danger styling agree on what
-// counts as a key error (and get excluded from the card either way — see
-// isPresetError below for the sibling "incomplete preset" case).
-export function isFieldKeyError(message: string): boolean {
-  return /field key|key is/i.test(message);
 }
 
 const PRESET_INCOMPLETE_PREFIX = "This question's preset is incomplete";
 
 // What each preset kind still needs before its field_key is more than a
-// sentinel — used both to build the useFormValidation message below and, via
+// sentinel — used both to build the validation message below and, via
 // isPresetError, to route that same message to PresetPopover instead of the
 // field card.
 const PRESET_INCOMPLETE_REQUIREMENT: Record<PresetKind, string> = {
@@ -187,37 +183,47 @@ export function presetIncompleteMessage(kind: PresetKind): string {
   return `${PRESET_INCOMPLETE_PREFIX} — ${PRESET_INCOMPLETE_REQUIREMENT[kind]}.`;
 }
 
-// Whether a useFormValidation issue message is about an incomplete preset
-// (a picked-but-not-yet-parameterized availability/event/lunch key) — shown
-// in PresetPopover instead of the field card, same idea as isFieldKeyError.
+// Whether a validation message is about an incomplete preset (a
+// picked-but-not-yet-parameterized availability/event/lunch key) — shown in
+// PresetPopover instead of the field card, same idea as isFieldKeyError.
 export function isPresetError(message: string): boolean {
   return message.startsWith(PRESET_INCOMPLETE_PREFIX);
 }
 
-// Shared slug rule for every TD-typed field_key component: a reserved
-// preset's suffix/category, or (via slugifyFieldKey below) the whole
-// auto-derived key for a plain custom question.
-function slugifyFieldKeyPart(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+// The {id, status} pairs an option carries: its `value` on a track status
+// question, or `track_statuses` on an availability one that also updates
+// track status. Mirrors the backend's option_track_assignments.
+export function optionTrackAssignments(value: FormFieldOption["value"]): TrackStatusAssignment[] {
+  const list =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? value.track_statuses
+      : value;
+  return Array.isArray(list)
+    ? list.filter(
+        (item): item is TrackStatusAssignment =>
+          typeof item === "object" && item !== null && "id" in item && "status" in item,
+      )
+    : [];
 }
 
-// Auto-fills field_key from the question label until the TD types into the
-// key field themselves — same "slug follows the title until you touch it"
-// pattern as a URL slug. Empty when the label itself slugifies to nothing
-// (e.g. a label that's only punctuation), so the key stays blank rather than
-// silently becoming "_" or similar noise.
-export function slugifyFieldKey(label: string): string {
-  return slugifyFieldKeyPart(label);
-}
-
-// The field_key a field will actually save with — its own typed key if set,
-// else the label's slug. Shared by toFieldInput (what's sent to the
-// backend) and useFormValidation (what's checked for duplicates) so the two
-// can't disagree about what a blank-key field's real key is.
-export function effectiveFieldKey(field: { field_key: string; label: string }): string {
-  return field.field_key.trim() || slugifyFieldKey(field.label);
+// The checks a preset adds on top of the core's structural ones.
+export function presetIssuesFor(field: {
+  field_key: string;
+  config: FormFieldConfig | null;
+}): string[] {
+  const kind = activePresetKind(field.field_key);
+  if (!kind) return [];
+  const issues: string[] = [];
+  // A preset's sentinel-only key (e.g. "availability_", picked but not yet
+  // given a track) looks complete but isn't. The build*FieldKey helpers
+  // collapse back to the bare "{prefix}_" until every parameter is filled in,
+  // so a trailing "_" reliably means "still incomplete".
+  if (field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(kind));
+  if (kind === "track_status" || (kind === "availability" && field.config?.track_status_enabled)) {
+    const unset = (field.config?.options ?? [])
+      .filter((option) => !option.is_archived)
+      .some((option) => optionTrackAssignments(option.value).some((item) => !item.status));
+    if (unset) issues.push("Choose a status for every track.");
+  }
+  return issues;
 }

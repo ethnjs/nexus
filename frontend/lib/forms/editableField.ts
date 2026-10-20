@@ -1,4 +1,4 @@
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import type {
   FormField,
   FormFieldConfig,
@@ -6,7 +6,7 @@ import type {
   FormFieldOption,
   FormQuestionType,
 } from "@/lib/api";
-import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
@@ -19,37 +19,15 @@ import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 // branchingEnabled/customValuesEnabled are the same kind of draft-only UI
 // state, now living on the field (not a component's local useState) so they
 // survive FieldToolbar remounting on every expanded-field switch — see
-// deriveBranchingEnabled/deriveCustomValuesEnabled below for how a loaded
-// field's initial value is worked out from its actual option data.
-// originalFieldKey is the key this field is already known to own on the
-// server ("" for a field with no id, which can't own one yet) — the fixed
-// point a live cross-form duplicate check (FieldCard's duplicateKey) needs
-// to exclude, since usedFieldKeys otherwise always contains an unedited
-// existing field's own key right alongside anyone else's.
+// deriveBranchingEnabled (branching.ts) and deriveCustomValuesEnabled
+// (customValues.ts) for how a loaded field's initial value is worked out.
 export type EditableField = Omit<FormField, "id"> & {
   id: string | null;
   clientKey: string;
   showDescription: boolean;
   branchingEnabled: boolean;
   customValuesEnabled: boolean;
-  originalFieldKey: string;
 };
-
-// A field's options actually use branching/custom values yet — used to seed
-// branchingEnabled/customValuesEnabled when a field is first loaded (or
-// reloaded after Save), so the toggle reflects real data instead of
-// defaulting to off and hiding a branch/value an earlier session set up.
-export function deriveBranchingEnabled(field: FormField): boolean {
-  return (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null);
-}
-
-export function hasCustomValues(options: FormFieldOption[] | null | undefined): boolean {
-  return (options ?? []).some((o) => typeof o.value === "string" && o.value !== o.label);
-}
-
-export function deriveCustomValuesEnabled(field: FormField): boolean {
-  return hasCustomValues(field.config?.options);
-}
 
 type StagedOption = FormFieldOption & { clientKey?: string };
 
@@ -95,7 +73,6 @@ export function newField(order: number): EditableField {
     showDescription: false,
     branchingEnabled: false,
     customValuesEnabled: false,
-    originalFieldKey: "",
     form_id: "",
     field_key: "",
     order,
@@ -120,7 +97,7 @@ export function newField(order: number): EditableField {
 // short_text -> ranked_choice -> short_text leaves it stripped by
 // sanitizeConfigForType on the way in, since ranked_choice's config schema
 // doesn't carry it either.
-export function toFieldInput(field: EditableField, notifyResponders?: boolean): FormFieldInput {
+export function toFieldInput(field: EditableField): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
   // A type that takes no options must not carry the key at all — the text
   // config schemas are extra="forbid", so even `options: []` 422s the whole
@@ -159,9 +136,5 @@ export function toFieldInput(field: EditableField, notifyResponders?: boolean): 
     description: field.showDescription ? field.description : null,
     question_type: field.question_type,
     config,
-    // Omitted unless the confirmation modal actually asked — the server falls
-    // back to each change's own default, which is what an unprompted save
-    // (draft form, or nothing consequential changed) should get.
-    ...(notifyResponders === undefined ? {} : { notify_responders: notifyResponders }),
   };
 }

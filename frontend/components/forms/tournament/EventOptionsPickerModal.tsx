@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import {
   EVENT_FILTER_UNSET,
   eventCategoryKey,

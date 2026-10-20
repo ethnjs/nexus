@@ -1,21 +1,20 @@
 import re
 import secrets
+from collections import Counter
 
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.attributes import flag_modified
 
-from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     TRACK_STATUS_FIELD_KEY_PATTERN,
+    option_shift_ids,
     track_status_assignments,
 )
 from app.models.models import (
     Form,
-    FormAnswer,
     FormField,
-    FormResponse,
-    FormResponsePendingUpdate,
     TournamentEvent,
     TournamentShift,
     TournamentTrack,
@@ -29,10 +28,7 @@ def slugify(text: str, max_len: int = 64) -> str:
 
 
 # Types whose answer value references option_id(s) and so can be snapshotted
-# at submission time (see snapshot_answer_value). An `availability_*`-keyed
-# field is deliberately excluded even though it's currently
-# multi_select_checkbox — its answer still submits a raw TournamentShift id,
-# not an option_id, until the shift-grouping work lands.
+# at submission time (see snapshot_answer_value).
 OPTION_BEARING_TYPES = {
     "single_select_radio",
     "single_select_dropdown",
@@ -54,22 +50,11 @@ def _snapshot_option(options_by_id: dict, option_id) -> dict:
 
 
 def snapshot_answer_value(field: FormField, value):
-    """Freezes a submitted select-type answer's value/label at the moment
-    of submission, alongside its option_id — so a later edit to an
-    option's `value`/`label` (TD-editable text, unlike option_id) doesn't
-    retroactively change what a past answer displays as. See the Edit
-    Lifecycle issue: FormResponsePendingUpdate flags that something
-    changed, but the old answer itself should still read exactly as the
-    respondent originally saw it.
-
-    Falls back to returning `value` unchanged for anything that doesn't
-    match the expected shape for `field.question_type` — answer value is
-    unvalidated user input, not something to raise on here."""
-    if (
-        AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)
-        or field.question_type not in OPTION_BEARING_TYPES
-        or value is None
-    ):
+    """Copies each picked option's value and label into a select-type answer
+    at submission, so later edits to the option don't change how it reads.
+    Returns `value` unchanged when it doesn't match the expected shape, since
+    it's unvalidated input."""
+    if field.question_type not in OPTION_BEARING_TYPES or value is None:
         return value
 
     options_by_id = {o["option_id"]: o for o in (field.config or {}).get("options", [])}
@@ -125,16 +110,19 @@ def assign_option_ids(config: dict | None) -> dict | None:
     return {**config, "options": options}
 
 
-def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: str) -> bool:
+def field_key_taken_in_tournament(
+    db: Session, tournament_id: int, field_key: str, exclude_form_id: str | None = None
+) -> bool:
     """True if `field_key` is in use by a **live** FormField on any Form owned
-    by `tournament_id`. field_key is the TD-visible dashboard lookup key, so
-    it's unique tournament-wide, not just per form.
+    by `tournament_id`, other than `exclude_form_id`. field_key is the
+    TD-visible dashboard lookup key, so it's unique tournament-wide, not just
+    per form.
 
     Archived fields don't reserve their keys: a key is a display name, not an
     identity (that's field_id), so retiring a question releases its name for
     reuse — including by the question a TD adds back after deleting one by
     mistake. An archived field may therefore share a key with a live one."""
-    return (
+    query = (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
         .filter(
@@ -142,9 +130,10 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
             FormField.field_key == field_key,
             FormField.is_archived == False,
         )
-        .first()
-        is not None
     )
+    if exclude_form_id is not None:
+        query = query.filter(Form.id != exclude_form_id)
+    return query.first() is not None
 
 
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:
@@ -180,44 +169,46 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
             return True
         if any(
             assignment.get("id") == track_id
-            for assignment in track_status_assignments(
-                field.config or {},
-                availability_field_track_id(field.field_key),
-            )
+            for assignment in track_status_assignments(field.config or {})
         ):
             return True
     return False
 
 
-def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
-    """True if `shift_id` appears inside any non-archived availability_*
-    field's option `value` (the list of grouped TournamentShift ids) on
-    any form owned by `tournament_id` — used by the shift deletion guard
-    so a shift can't be pulled out from under a live option's grouping,
-    independent of whether anyone's answered yet (that's the separate,
-    pre-existing MembershipAvailability guard). `FormField.config` is a
-    plain JSON column (not JSONB), which has no containment operators, so
-    this is a Python-side scan rather than a DB-side containment query —
-    same reasoning as the pending-updates scan over FormAnswer.value.
-    field_key matching is Python-side too (rather
-    than a DB LIKE) so it goes through the one real pattern, same as every
-    other reserved-key check."""
+def _availability_fields(db: Session, tournament_id: int) -> list[FormField]:
+    # `config` is plain JSON with no containment operators, so the shift lookup is a Python scan.
     fields = (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
-        .filter(
-            Form.tournament_id == tournament_id,
-            FormField.is_archived == False,
-        )
+        .filter(Form.tournament_id == tournament_id)
         .all()
     )
-    for field in fields:
-        if not AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
-            continue
+    return [field for field in fields if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)]
+
+
+def count_options_with_shifts(db: Session, tournament_id: int, shift_ids: set[int]) -> Counter[int]:
+    """How many availability options, live or archived, list each of `shift_ids`."""
+    counts: Counter[int] = Counter()
+    for field in _availability_fields(db, tournament_id):
         for option in (field.config or {}).get("options", []):
-            if not option.get("is_archived") and shift_id in (option.get("value") or []):
-                return True
-    return False
+            counts.update(shift_ids.intersection(option_shift_ids(option)))
+    return counts
+
+
+def remove_shift_from_options(db: Session, tournament_id: int, shift_id: int) -> None:
+    """Drops `shift_id` from every availability option, live or archived, on the
+    tournament's forms. An option left with no shifts stays, as a "Can't make it" choice."""
+    for field in _availability_fields(db, tournament_id):
+        options = (field.config or {}).get("options", [])
+        if not any(shift_id in option_shift_ids(option) for option in options):
+            continue
+        for option in options:
+            value = option.get("value")
+            if isinstance(value, dict):
+                value["shift_ids"] = [i for i in value.get("shift_ids") or [] if i != shift_id]
+            elif isinstance(value, list):
+                option["value"] = [i for i in value if i != shift_id]
+        flag_modified(field, "config")
 
 
 def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[dict, list[str]]:
@@ -226,9 +217,7 @@ def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[d
     in storage with `is_archived: true` added, rather than dropped — a
     response referencing it must keep resolving. Returns the merged config
     and the option_ids newly archived by this call (empty if none, or if
-    `old_config`/`new_config` isn't an options-bearing shape) — the caller
-    uses that list to flag affected responses (see
-    flag_pending_updates_for_archived_options)."""
+    `old_config`/`new_config` isn't an options-bearing shape)."""
     old_options = (old_config or {}).get("options")
     if old_options is None or "options" not in new_config:
         return new_config, []
@@ -245,87 +234,6 @@ def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[d
     merged = dict(new_config)
     merged["options"] = [*new_config["options"], *archived_options]
     return merged, newly_archived_ids
-
-
-def _upsert_pending_update(db: Session, response_id: str, field_id: str, reasons: set[str]) -> None:
-    """One row per (response, field); repeat calls union their reasons rather
-    than overwriting, since several can apply to the same field in one save."""
-    existing = (
-        db.query(FormResponsePendingUpdate)
-        .filter(
-            FormResponsePendingUpdate.response_id == response_id,
-            FormResponsePendingUpdate.field_id == field_id,
-        )
-        .first()
-    )
-    if existing is None:
-        db.add(
-            FormResponsePendingUpdate(
-                response_id=response_id, field_id=field_id, reasons=sorted(reasons)
-            )
-        )
-    else:
-        existing.reasons = sorted(set(existing.reasons or []) | reasons)
-
-
-def _responses_leaving_field_blank(db: Session, field: FormField) -> set[str]:
-    """Responses to this field's form that didn't actually answer it — no
-    answer row at all, or one holding an empty value."""
-    response_ids = {
-        rid
-        for (rid,) in db.query(FormResponse.id).filter(FormResponse.form_id == field.form_id).all()
-    }
-    for answer in db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all():
-        if answer.value not in (None, "", [], {}):
-            response_ids.discard(answer.response_id)
-    return response_ids
-
-
-def flag_pending_updates(
-    db: Session, field: FormField, reasons: set[str], removed_option_ids: list[str] | None = None
-) -> None:
-    """Raise (or extend) flags on `field` for whoever each reason affects.
-
-    Audience is per-reason, not per-field: losing an option only concerns the
-    people who picked it, and a field turning required only concerns the ones
-    who skipped it. Everything else concerns everyone who answered."""
-    if not reasons:
-        return
-
-    by_response: dict[str, set[str]] = {}
-
-    def _add(response_id: str, reason_set: set[str]) -> None:
-        if reason_set:
-            by_response.setdefault(response_id, set()).update(reason_set)
-
-    broad = reasons - {changes.OPTION_INVALIDATED, changes.NOW_REQUIRED}
-    if broad:
-        for (response_id,) in (
-            db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field.id).all()
-        ):
-            _add(response_id, broad)
-
-    if changes.OPTION_INVALIDATED in reasons and removed_option_ids:
-        removed = set(removed_option_ids)
-        for answer in db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all():
-            if removed & selected_option_ids(field, answer.value):
-                _add(answer.response_id, {changes.OPTION_INVALIDATED})
-
-    if changes.NOW_REQUIRED in reasons:
-        for response_id in _responses_leaving_field_blank(db, field):
-            _add(response_id, {changes.NOW_REQUIRED})
-
-    for response_id, reason_set in by_response.items():
-        _upsert_pending_update(db, response_id, field.id, reason_set)
-
-
-def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
-    """Drops every open flag on `field_id` — for when the field stops being
-    answerable at all. A flag pointing at an archived field can never clear,
-    since clearing requires the respondent to answer it."""
-    db.query(FormResponsePendingUpdate).filter(
-        FormResponsePendingUpdate.field_id == field_id
-    ).delete(synchronize_session=False)
 
 
 def _resolve_track_statuses(db: Session, assignments: list[dict]) -> list[dict]:

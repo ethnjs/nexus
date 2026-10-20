@@ -182,9 +182,11 @@ def detach_shifts_from_assignments(
     shift_ids: set[int],
 ) -> int:
     """Null the shift on this event's assignments that pointed at one of
-    `shift_ids`, returning how many were touched.
+    `shift_ids`, returning how many were touched. A row whose member already
+    has an unpinned row for the same role, event and track is deleted instead,
+    since uq_track_assignment_event allows only one.
 
-    Called when shifts leave an event. Without it those assignments keep
+    Called when shifts leave an event or are deleted. Without it those assignments keep
     naming a shift the event no longer runs — the row stays valid (the shift
     itself still exists) and nothing complains, so it reads as real staffing
     at a time that is no longer on the schedule.
@@ -205,5 +207,21 @@ def detach_shifts_from_assignments(
         .all()
     )
     for row in rows:
-        row.tournament_shift_id = None
+        unpinned_twin = (
+            db.query(TournamentTrackAssignment.id)
+            .filter_by(
+                membership_id=row.membership_id,
+                role_id=row.role_id,
+                tournament_event_id=event_id,
+                tournament_track_id=row.tournament_track_id,
+                tournament_shift_id=None,
+            )
+            .first()
+        )
+        if unpinned_twin is None:
+            row.tournament_shift_id = None
+        else:
+            db.delete(row)
+        # The session doesn't autoflush, and the next row's twin lookup must see this one.
+        db.flush()
     return len(rows)

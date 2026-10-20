@@ -62,3 +62,15 @@ class TournamentShiftRead(TournamentShiftBase):
     event_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class TournamentShiftDeleteImpact(BaseModel):
+    """What deleting the shift would change, for the delete-confirm warning."""
+
+    shift_id: int
+    # Members who picked the shift; their pick goes with it.
+    availability_count: int
+    # Availability options, live or archived, that list the shift and lose it.
+    option_count: int
+    # Staffing rows pinned to the shift; they stay on the event, unpinned.
+    assignment_count: int

@@ -12,33 +12,34 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
-import { FieldCard, FieldCardDragPreview, type FocusIntent } from "@/components/forms/FieldCard";
-import { type ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
-import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
-import type { EditableOption } from "@/components/forms/OptionsEditor";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AddFieldGap } from "@/components/forms/builder/AddFieldGap";
+import { ArchivedFieldsSection } from "@/components/forms/builder/ArchivedFieldsSection";
+import {
+  FieldCard,
+  FieldCardDragPreview,
+  type FocusIntent,
+} from "@/components/forms/builder/FieldCard";
+import { type ActivePopover, FieldToolbar } from "@/components/forms/builder/FieldToolbar";
+import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
+import { ApiError, type Form, type FormField, formsApi } from "@/lib/api";
+import { deriveBranchingEnabled } from "@/lib/forms/branching";
 import {
-  ApiError,
-  type FieldChange,
-  type Form,
-  type FormField,
-  formsApi,
-  type Tournament,
-  type TournamentShift,
-  tournamentShiftsApi,
-  tournamentsApi,
-} from "@/lib/api";
+  CORE_ONLY,
+  type FormBuilderAddon,
+  FormBuilderAddonScope,
+  useFormBuilderAddon,
+} from "@/lib/forms/builderAddon";
 import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
+import { deriveCustomValuesEnabled } from "@/lib/forms/customValues";
 import {
-  deriveBranchingEnabled,
-  deriveCustomValuesEnabled,
   type EditableField,
   newField,
   toFieldInput,
@@ -46,11 +47,11 @@ import {
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
-import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
+import { toPlainText } from "@/lib/markdown";
 
 // How long a scroll-into-view keeps following a card that's still growing
-// (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
-// a slow connection, short enough that it can't surprise you later.
+// (see scrollCardIntoView) — long enough to cover an add-on's fetch on a
+// slow connection, short enough that it can't surprise you later.
 const SETTLE_MS = 2000;
 
 // How long a suspendCardScroll() call keeps the viewport still. Has to
@@ -69,9 +70,28 @@ const SCROLL_MUTE_MS = 600;
 // snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
-/** `locked` (archived tournament) keeps every card a read-only preview — none
- *  can expand, so the toolbar and save bar never appear either. */
-export function FieldList({ form, locked = false }: { form: Form; locked?: boolean }) {
+/** `lockedReason` (archived tournament or form) keeps every card a read-only
+ *  preview — none can expand, so the toolbar and save bar never appear either.
+ *  `addon` layers owner-specific question kinds onto the core builder. */
+export function FieldList({
+  form,
+  lockedReason,
+  addon = CORE_ONLY,
+}: {
+  form: Form;
+  lockedReason?: string;
+  addon?: FormBuilderAddon;
+}) {
+  return (
+    <FormBuilderAddonScope addon={addon} form={form}>
+      <FieldListBody form={form} lockedReason={lockedReason} />
+    </FormBuilderAddonScope>
+  );
+}
+
+function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: string }) {
+  const locked = !!lockedReason;
+  const addon = useFormBuilderAddon();
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
       .filter((f) => !f.is_archived)
@@ -82,60 +102,29 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         showDescription: !!f.description,
         branchingEnabled: deriveBranchingEnabled(f),
         customValuesEnabled: deriveCustomValuesEnabled(f),
-        originalFieldKey: f.field_key,
       })),
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
-  const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
-  // The full tournament — this standalone /forms/ route sits outside the
-  // dashboard's TournamentProvider, so there's no shared context to read it
-  // from; fetched here and passed down as one object (id, start/end date,
-  // is_multi_day, ...) rather than threading the individual fields each
-  // consumer happens to need through every layer between here and them.
-  // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament). `tracks` is what PresetPopover binds a preset to.
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  // Which toolbar popover is open, and on which field. A card's entity
-  // picker can set this to "preset" — using one before the question has a
-  // track sends the TD to the Track field, which is where that error is
-  // reported and fixed.
+  // Keys the owner's other forms already use — every card's key check shares one list.
+  const usedFieldKeys = addon.useUsedFieldKeys();
+  // Which toolbar popover is open, and on which field. A card's body can open
+  // the add-on's with `demand` set — e.g. an entity picker used before its
+  // question has a track sends the TD to where that's reported and fixed.
   const [popoverFor, setPopoverFor] = useState<{
     key: string;
     popover: ActivePopover;
-    demandComplete?: boolean;
+    demand?: boolean;
   } | null>(null);
-  const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
-  // Fetched once here (not per-card) so every collapsed availability-preset
-  // card's preview can show its option's time range without each one
-  // re-fetching the same list — EntityOptionsEditor fetches its own copy
-  // too, but only while a field is actually expanded/being edited.
-  const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   // Questions taken out of use. Not part of `fields` — they must not join the
-  // ordered list or read as branch targets — so they're fetched separately and
-  // move between the two lists only when the TD restores one.
-  const [archivedFields, setArchivedFields] = useState<FormField[]>([]);
-  // Set when a save on a form with responses turns out to change something
-  // consequential — the save waits here until the TD decides who gets asked
-  // to re-answer. null means no save is pending confirmation.
-  const [pendingChanges, setPendingChanges] = useState<FieldChange[] | null>(null);
-  const [notifyByKey, setNotifyByKey] = useState<Record<string, boolean>>({});
-  // field_id -> the TD's decision. Only these questions carry one; everything
-  // else in the payload omits notify_responders and takes the server's
-  // defaults.
-  const notifyRef = useRef<Record<string, boolean>>({});
-  useEffect(() => {
-    formsApi
-      .listArchivedFields(form.id)
-      .then(setArchivedFields)
-      .catch(() => {});
-  }, [form.id]);
-  useEffect(() => {
-    if (form.tournament_id == null) return;
-    tournamentShiftsApi
-      .list(form.tournament_id)
-      .then(setShifts)
-      .catch(() => {});
-  }, [form.tournament_id]);
+  // ordered list or read as branch targets — so they're kept separately and
+  // move between the two lists only when the TD restores one. Newest first,
+  // matching listArchivedFields.
+  const [archivedFields, setArchivedFields] = useState<FormField[]>(() =>
+    form.fields
+      .filter((f) => f.is_archived)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+  );
+  const [confirmingSave, setConfirmingSave] = useState(false);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
@@ -216,9 +205,9 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
   // that does it. No-ops when it already fits, so it never yanks the page out
   // from under a scroll the user just made themselves.
   //
-  // Then keeps re-applying while the card is still settling: the entity-backed
-  // presets (availability, event_preference) fetch their shifts/events on
-  // expand, so those cards reach their real height a beat *after* we first
+  // Then keeps re-applying while the card is still settling: an add-on's
+  // options editor can fetch its data on expand, so those cards reach their
+  // real height a beat *after* we first
   // measure — one shot would scroll to a height that's about to change and
   // land short. The watch ends at the first sign of the user scrolling
   // themselves (our own smooth scroll doesn't fire these events, so it can't
@@ -349,38 +338,11 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     return () => list.removeEventListener("focusin", onFocusIn);
   }, []);
 
-  // Fetched once per form-editing session (not per field card) — every
-  // field's FieldKeyPopover shares this list to flag already-used keys.
-  useEffect(() => {
-    if (form.tournament_id == null) return;
-    formsApi
-      .listFieldKeysForTournament(form.tournament_id)
-      .then(setUsedFieldKeys)
-      .catch(() => {});
-  }, [form.tournament_id]);
-
-  // Loaded eagerly on mount (not deferred until something that needs it —
-  // PresetPopover's date pickers, EntityOptionsEditor — first renders) and
-  // re-loaded every time a preset popover opens (see FieldToolbar's
-  // onOpenPresets below), so a tab left open a while doesn't show a
-  // page-load-stale tournament if its dates changed since.
-  function loadTournament() {
-    if (form.tournament_id == null) return;
-    tournamentsApi
-      .get(form.tournament_id)
-      .then(setTournament)
-      .catch(() => {});
-  }
-  useEffect(loadTournament, [form.tournament_id]);
-
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
   }
 
-  function addField(afterClientKey?: string) {
-    const insertIndex = afterClientKey
-      ? fields.findIndex((f) => f.clientKey === afterClientKey) + 1
-      : fields.length;
+  function addField(insertIndex = fields.length) {
     const field = newField(insertIndex + 1);
     setFields((prev) => {
       const next = [...prev];
@@ -391,9 +353,6 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     setPendingScrollKey(field.clientKey);
   }
 
-  // Cleared field_key on the copy — a reserved key (availability, ...) can
-  // only exist once per tournament, and a freeform key the TD chose
-  // deliberately shouldn't silently duplicate either.
   // Unarchiving is staged, not a request: the field joins the target list and
   // the next Save unarchives it. Keeping it in the same batch means it goes
   // through the same key-availability check as everything else — an archived
@@ -406,9 +365,12 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       showDescription: !!field.description,
       branchingEnabled: deriveBranchingEnabled(field),
       customValuesEnabled: deriveCustomValuesEnabled(field),
-      originalFieldKey: field.field_key,
     };
-    setFields((prev) => [...prev, restored]);
+    // Back into its slot: before the first saved question that came after it.
+    setFields((prev) => {
+      const at = prev.findIndex((f) => f.id !== null && f.order > field.order);
+      return at === -1 ? [...prev, restored] : [...prev.slice(0, at), restored, ...prev.slice(at)];
+    });
     setExpandedKey(restored.clientKey);
     setPendingScrollKey(restored.clientKey);
   }
@@ -417,12 +379,15 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     const source = fields.find((f) => f.clientKey === clientKey);
     if (!source) return;
     const insertIndex = fields.findIndex((f) => f.clientKey === clientKey) + 1;
+    // An add-on copy can keep its source's key and values, so it starts out
+    // colliding and the add-on's popover opens to make it distinct. A plain
+    // question's key is just its label's slug, re-derived for the copy.
+    const keepKey = !!addon.extendField(source).keepsKeyOnDuplicate;
     const copy: EditableField = {
       ...source,
       clientKey: crypto.randomUUID(),
       id: null,
-      field_key: "",
-      originalFieldKey: "",
+      field_key: keepKey ? source.field_key : "",
       config: source.config?.options
         ? {
             ...source.config,
@@ -441,6 +406,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     });
     setExpandedKey(copy.clientKey);
     setPendingScrollKey(copy.clientKey);
+    if (keepKey) setPopoverFor({ key: copy.clientKey, popover: "addon" });
   }
 
   // Archiving the expanded card would otherwise drop the open count to zero —
@@ -482,9 +448,8 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
     return [...err.message.matchAll(/'([^']+)'/g)].map((m) => m[1]);
   }
 
-  // A form nobody has answered can't strand anyone, so edits apply silently;
-  // once responses exist, every consequential edit is the TD's call.
-  const hasResponses = form.status === "published" || form.response_count > 0;
+  // Mirrors the server's history-preserving rule: removing a question archives it.
+  const isHistoryPreserving = form.status === "published" || form.response_count > 0;
 
   async function handleSave() {
     const issues = validation.validate(fields);
@@ -499,50 +464,23 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
       return;
     }
 
-    if (hasResponses && pendingChanges === null) {
-      // The server owns the rules — see backend/app/core/form/changes.py. The
-      // round trip is affordable because this only happens on a deliberate
-      // save of a form that already has responses.
-      setSaving(true);
-      validation.setSaveError("");
-      try {
-        const changes = await formsApi.classifyFieldChanges(
-          form.id,
-          fields.map((f) => toFieldInput(f)),
-        );
-        if (changes.length > 0) {
-          setNotifyByKey(Object.fromEntries(changes.map((c) => [c.field_id, c.notify_default])));
-          setPendingChanges(changes);
-          return;
-        }
-      } catch {
-        // Stop rather than save anyway. The PUT would apply each change's
-        // default, which is exactly the decision this step exists to give the
-        // TD — saving past a failed check would quietly take it away. Nothing
-        // has been written, so pressing Save again just retries.
-        validation.setSaveError(
-          "Couldn't check which questions changed, so nothing was saved. Try saving again.",
-        );
-        return;
-      } finally {
-        setSaving(false);
-      }
+    if (form.response_count > 0) {
+      setConfirmingSave(true);
+      return;
     }
     await commitSave();
   }
 
   async function commitSave() {
-    setPendingChanges(null);
     setSaving(true);
     try {
       // A not-yet-saved field's clientKey is a client UUID that the server
       // response replaces with String(new id) — track position instead of
       // identity so the same card stays open across that swap.
       const expandedIndex = fields.findIndex((f) => f.clientKey === expandedKey);
-      const decided = notifyRef.current;
       const updated = await formsApi.putFields(
         form.id,
-        fields.map((f) => toFieldInput(f, f.id ? decided[f.id] : undefined)),
+        fields.map((f) => toFieldInput(f)),
       );
       const next = updated
         .filter((f) => !f.is_archived)
@@ -553,7 +491,6 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
           showDescription: !!f.description,
           branchingEnabled: deriveBranchingEnabled(f),
           customValuesEnabled: deriveCustomValuesEnabled(f),
-          originalFieldKey: f.field_key,
         }));
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
@@ -576,7 +513,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         const lost = fields.filter((f) => f.id && orphanIds.includes(f.id));
         setFields((prev) => prev.filter((f) => !(f.id && orphanIds.includes(f.id))));
         validation.setSaveError(
-          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`,
+          `${lost.map((f) => toPlainText(f.label).trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`,
         );
       } else {
         const issues = validation.handle422(err, fields);
@@ -591,7 +528,6 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         }
       }
     } finally {
-      notifyRef.current = {};
       setSaving(false);
     }
   }
@@ -680,7 +616,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
                   size="sm"
                   onClick={() => addField()}
                   disabled={locked}
-                  title={locked ? ARCHIVED_REASON : undefined}
+                  title={lockedReason}
                 >
                   <IconPlus size={14} /> Add field
                 </Button>
@@ -704,40 +640,56 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
               items={fields.map((f) => f.clientKey)}
               strategy={verticalListSortingStrategy}
             >
-              {fields.map((field) => (
-                <FieldCard
-                  key={field.clientKey}
-                  field={field}
-                  expanded={expandedKey === field.clientKey}
-                  // Expanding grows the card downward from where it sat, so a
-                  // click near the bottom of the viewport leaves most of the
-                  // question you just opened below the fold.
-                  onExpand={(intent) => {
-                    setExpandedKey(field.clientKey);
-                    setPendingScrollKey(field.clientKey);
-                    setFocusRequest({
-                      key: field.clientKey,
-                      intent,
-                      nonce: focusNonceRef.current++,
-                    });
-                  }}
-                  focusIntent={focusRequest?.key === field.clientKey ? focusRequest.intent : null}
-                  focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
-                  onFieldChange={(updates) => updateField(field.clientKey, updates)}
-                  onDuplicate={() => duplicateField(field.clientKey)}
-                  onDelete={() => archiveField(field.clientKey)}
-                  tournament={tournament}
-                  shifts={shifts}
-                  allFields={fields}
-                  usedFieldKeys={usedFieldKeys}
-                  onRequireTrack={() =>
-                    setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })
-                  }
-                  errors={validation.errorsFor(field.clientKey)}
-                  allowArchive={hasResponses}
-                  locked={locked}
+              {/* Its own column with no flex gap: the AddFieldGaps are the
+                  spacing. The top one's negative margin keeps the resting
+                  distance to the title card unchanged. */}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <AddFieldGap
+                  onAdd={() => addField(0)}
+                  disabled={locked || !!draggingKey}
+                  style={{ marginTop: "-12px" }}
                 />
-              ))}
+                {fields.map((field, index) => (
+                  <Fragment key={field.clientKey}>
+                    <FieldCard
+                      field={field}
+                      expanded={!locked && expandedKey === field.clientKey}
+                      // Expanding grows the card downward from where it sat, so a
+                      // click near the bottom of the viewport leaves most of the
+                      // question you just opened below the fold.
+                      onExpand={(intent) => {
+                        setExpandedKey(field.clientKey);
+                        setPendingScrollKey(field.clientKey);
+                        setFocusRequest({
+                          key: field.clientKey,
+                          intent,
+                          nonce: focusNonceRef.current++,
+                        });
+                      }}
+                      focusIntent={
+                        focusRequest?.key === field.clientKey ? focusRequest.intent : null
+                      }
+                      focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
+                      onFieldChange={(updates) => updateField(field.clientKey, updates)}
+                      onDuplicate={() => duplicateField(field.clientKey)}
+                      onDelete={() => archiveField(field.clientKey)}
+                      allFields={fields}
+                      usedFieldKeys={usedFieldKeys}
+                      onOpenAddon={() =>
+                        setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
+                      }
+                      errors={validation.errorsFor(field.clientKey)}
+                      allowArchive={isHistoryPreserving}
+                      locked={locked}
+                    />
+                    <AddFieldGap
+                      onAdd={() => addField(index + 1)}
+                      disabled={locked || !!draggingKey}
+                      alwaysOpen={index === fields.length - 1}
+                    />
+                  </Fragment>
+                ))}
+              </div>
             </SortableContext>
             {/* dropAnimation off: the default animates the overlay into the
               drop slot's rect, which would stretch this compact preview back
@@ -747,23 +699,20 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
             </DragOverlay>
           </DndContext>
         )}
-        {pendingChanges && (
-          <NotifyRespondersModal
-            changes={pendingChanges}
-            notify={notifyByKey}
-            onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
-            onCancel={() => setPendingChanges(null)}
-            onConfirm={() => {
-              notifyRef.current = notifyByKey;
-              commitSave();
-            }}
-            saving={saving}
+        {confirmingSave && (
+          <ConfirmModal
+            title="Save changes?"
+            description={`${form.response_count} ${form.response_count === 1 ? "person has" : "people have"} already responded. Your changes apply to new responses only; submitted answers stay as they were.`}
+            confirmLabel="Save"
+            variant="primary"
+            onConfirm={commitSave}
+            onClose={() => setConfirmingSave(false)}
           />
         )}
         <ArchivedFieldsSection
           formId={form.id}
           fields={archivedFields}
-          locked={locked}
+          lockedReason={lockedReason}
           onUnarchive={unarchiveField}
           onDeleted={(fieldId) => {
             setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
@@ -781,6 +730,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
               ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.`
               : validation.saveError || undefined
           }
+          errorDetails={validation.hasErrors ? undefined : validation.saveErrorDetails}
           onSave={handleSave}
           onCancel={handleDiscard}
           onHeightChange={handleSaveBarHeight}
@@ -789,7 +739,7 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
         {/* Hidden mid-drag: it's absolutely positioned over the expanded card's
           box, which is now a one-line slot — a full-height toolbar of buttons
           floating beside it would just be in the way of the drop. */}
-        {expandedField && !draggingKey && (
+        {expandedField && !draggingKey && !locked && (
           <FieldToolbar
             // Remounts whenever the expanded field changes. The open popover
             // is keyed to its field (see popoverFor), so one left open doesn't
@@ -800,20 +750,17 @@ export function FieldList({ form, locked = false }: { form: Form; locked?: boole
             onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
             usedFieldKeys={usedFieldKeys}
             allFields={fields}
-            tracks={tracks}
-            presetsEnabled={form.tournament_id != null}
-            onOpenPresets={loadTournament}
             activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
-            demandPresetComplete={
-              popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete
-            }
+            demandAddon={popoverFor?.key === expandedField.clientKey && !!popoverFor.demand}
             onActivePopoverChange={(popover) =>
               setPopoverFor({ key: expandedField.clientKey, popover })
             }
             errors={validation.errorsFor(expandedField.clientKey)}
             saveAttempt={saveAttempt}
             showDescription={expandedField.showDescription}
-            onAddFieldBelow={() => addField(expandedField.clientKey)}
+            onAddFieldBelow={() =>
+              addField(fields.findIndex((f) => f.clientKey === expandedField.clientKey) + 1)
+            }
             onToggleDescription={() =>
               updateField(expandedField.clientKey, {
                 showDescription: !expandedField.showDescription,

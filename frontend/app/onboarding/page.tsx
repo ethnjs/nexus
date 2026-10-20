@@ -1,16 +1,18 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import {
   type CompetitionExperienceDraft,
   CompetitionExperienceSpreadsheet,
+  competitionDraftToItem,
   competitionExperienceToDraft,
   isCompetitionRowValid,
   isVolunteerRowValid,
   type VolunteerExperienceDraft,
   VolunteerExperienceSpreadsheet,
+  volunteerDraftToItem,
   volunteerExperienceToDraft,
 } from "@/components/profile/ExperienceTables";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -74,6 +76,8 @@ const STATE = {
   COMPLETE: 15,
 } as const;
 
+const NO_EXPERIENCE_ROWS = "Add at least one entry, or skip this question.";
+
 interface ProfileDraft {
   date_of_birth?: string;
   pronouns?: string;
@@ -88,6 +92,52 @@ interface ProfileDraft {
   has_volunteer_experience?: boolean;
   shirt_size?: SHIRT_SIZE;
   dietary_restriction?: string;
+}
+
+interface OnboardingAnswers {
+  name: { first: string; last: string };
+  phone: string;
+  profile: ProfileDraft;
+  competitionRows: CompetitionExperienceDraft[];
+  volunteerRows: VolunteerExperienceDraft[];
+  hasDietary: boolean | null;
+}
+
+// The first question at or after `from` that still needs an answer, so saved
+// answers show as already passed instead of being asked again.
+function firstUnansweredState(a: OnboardingAnswers, from: number): number {
+  const p = a.profile;
+  const isStudent = p.student_status === "Undergraduate" || p.student_status === "Graduate";
+  const hasCompetition = !!p.has_competition_experience || a.competitionRows.length > 0;
+  const hasVolunteer = !!p.has_volunteer_experience || a.volunteerRows.length > 0;
+  const unanswered: [number, boolean][] = [
+    [STATE.NAME, !a.name.first.trim() || !a.name.last.trim()],
+    [STATE.PHONE, !!validatePhone(a.phone)],
+    [STATE.DATE_OF_BIRTH, !!validateDateOfBirth(p.date_of_birth ?? "")],
+    // Optional, so it only stops a user who hasn't got past it yet.
+    [STATE.PRONOUNS, !p.pronouns?.trim() && !p.student_status],
+    [STATE.STUDENT_STATUS, !p.student_status],
+    [
+      STATE.UNIVERSITY,
+      isStudent && (!p.university_id || !p.major || !p.year_level || !p.graduation_year),
+    ],
+    [STATE.EMPLOYER, p.student_status === "Non-Student" && !p.employer?.trim()],
+    [STATE.COMPETED_BEFORE, p.has_competition_experience == null && !hasCompetition],
+    [
+      STATE.COMPETITION_EXP,
+      hasCompetition &&
+        (a.competitionRows.length === 0 || !a.competitionRows.every(isCompetitionRowValid)),
+    ],
+    [STATE.VOLUNTEERED_BEFORE, p.has_volunteer_experience == null && !hasVolunteer],
+    [
+      STATE.VOLUNTEERING_EXP,
+      hasVolunteer && (a.volunteerRows.length === 0 || !a.volunteerRows.every(isVolunteerRowValid)),
+    ],
+    [STATE.SHIRT_SIZE, !p.shirt_size],
+    [STATE.DIETARY_RESTRICTIONS, a.hasDietary === null],
+    [STATE.DIETARY_TEXT, !!a.hasDietary && !p.dietary_restriction?.trim()],
+  ];
+  return unanswered.find(([state, missing]) => state >= from && missing)?.[0] ?? STATE.COMPLETE;
 }
 
 export default function OnboardingPage() {
@@ -130,6 +180,10 @@ function OnboardingContent() {
   const [hasDietary, setHasDietary] = useState<boolean | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
+  const [showCompetitionRowErrors, setShowCompetitionRowErrors] = useState(false);
+  const [showVolunteerRowErrors, setShowVolunteerRowErrors] = useState(false);
+  const competitionSectionRef = useRef<HTMLDivElement>(null);
+  const volunteerSectionRef = useRef<HTMLDivElement>(null);
 
   // ── Effective flags — derived from actual row presence, not just the stored flag ──
   const effectiveHasCompetitionExp =
@@ -155,29 +209,37 @@ function OnboardingContent() {
     usersApi
       .meFull()
       .then((user) => {
+        const answers: OnboardingAnswers = {
+          name: { first: user.first_name ?? "", last: user.last_name ?? "" },
+          phone: user.phone ?? "",
+          profile: {
+            date_of_birth: user.date_of_birth ?? undefined,
+            pronouns: user.pronouns ?? undefined,
+            student_status: user.student_status ?? undefined,
+            university_id: user.university?.id ?? undefined,
+            university_name: user.university?.name ?? undefined,
+            major: user.major ?? undefined,
+            year_level: user.year_level ?? undefined,
+            graduation_year: user.graduation_year ?? undefined,
+            employer: user.employer ?? undefined,
+            has_competition_experience: user.has_competition_experience ?? undefined,
+            has_volunteer_experience: user.has_volunteer_experience ?? undefined,
+            shirt_size: user.shirt_size ?? undefined,
+            dietary_restriction: user.dietary_restriction ?? undefined,
+          },
+          competitionRows: user.competition_experience.map(competitionExperienceToDraft),
+          volunteerRows: user.volunteer_experience.map(volunteerExperienceToDraft),
+          hasDietary:
+            user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
+        };
         setOriginal(user);
-        setName({ first: user.first_name ?? "", last: user.last_name ?? "" });
-        setPhone(user.phone ?? "");
-        setProfileData({
-          date_of_birth: user.date_of_birth ?? undefined,
-          pronouns: user.pronouns ?? undefined,
-          student_status: user.student_status ?? undefined,
-          university_id: user.university?.id ?? undefined,
-          university_name: user.university?.name ?? undefined,
-          major: user.major ?? undefined,
-          year_level: user.year_level ?? undefined,
-          graduation_year: user.graduation_year ?? undefined,
-          employer: user.employer ?? undefined,
-          has_competition_experience: user.has_competition_experience ?? undefined,
-          has_volunteer_experience: user.has_volunteer_experience ?? undefined,
-          shirt_size: user.shirt_size ?? undefined,
-          dietary_restriction: user.dietary_restriction ?? undefined,
-        });
-        setHasDietary(
-          user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
-        );
-        setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
-        setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
+        setName(answers.name);
+        setPhone(answers.phone);
+        setProfileData(answers.profile);
+        setHasDietary(answers.hasDietary);
+        setCompetitionRows(answers.competitionRows);
+        setVolunteerRows(answers.volunteerRows);
+        setState(firstUnansweredState(answers, STATE.NAME));
       })
       .catch(() => setLoadError("Failed to load your account."));
 
@@ -191,19 +253,37 @@ function OnboardingContent() {
       .catch(() => {});
   }, [authLoading, currentUser, router, redirect]);
 
-  function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
-    const originalIds = new Set(originalRows.filter((r) => r.id !== undefined).map((r) => r.id));
-    const currentIds = new Set(currentRows.filter((r) => r.id !== undefined).map((r) => r.id));
+  function advance(target: number) {
+    setState(
+      firstUnansweredState(
+        { name, phone, profile: profileData, competitionRows, volunteerRows, hasDietary },
+        target,
+      ),
+    );
+  }
 
-    const toAdd = currentRows.filter((r) => r.id === undefined);
-    const toDelete = originalRows.filter((r) => r.id !== undefined && !currentIds.has(r.id));
-    const toUpdate = currentRows.filter((r) => {
-      if (r.id === undefined || !originalIds.has(r.id)) return false;
-      const orig = originalRows.find((o) => o.id === r.id);
-      return JSON.stringify(orig) !== JSON.stringify(r);
-    });
+  function validateCompetitionRows(): boolean {
+    if (competitionRows.length === 0) {
+      setErrors((er) => ({ ...er, competition_exp: NO_EXPERIENCE_ROWS }));
+      return false;
+    }
+    if (!competitionRows.every(isCompetitionRowValid)) {
+      setShowCompetitionRowErrors(true);
+      return false;
+    }
+    return true;
+  }
 
-    return { toAdd, toUpdate, toDelete };
+  function validateVolunteerRows(): boolean {
+    if (volunteerRows.length === 0) {
+      setErrors((er) => ({ ...er, volunteering_exp: NO_EXPERIENCE_ROWS }));
+      return false;
+    }
+    if (!volunteerRows.every(isVolunteerRowValid)) {
+      setShowVolunteerRowErrors(true);
+      return false;
+    }
+    return true;
   }
 
   async function handleSubmit(e: React.SyntheticEvent) {
@@ -230,6 +310,16 @@ function OnboardingContent() {
       else if (ers.phone) setState(STATE.PHONE);
       else if (ers.date_of_birth) setState(STATE.DATE_OF_BIRTH);
       else if (ers.university) setState(STATE.UNIVERSITY);
+      return;
+    }
+
+    const competitionOk = !effectiveHasCompetitionExp || validateCompetitionRows();
+    const volunteerOk = !effectiveHasVolunteerExp || validateVolunteerRows();
+    if (!competitionOk || !volunteerOk) {
+      (competitionOk ? volunteerSectionRef : competitionSectionRef).current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
       return;
     }
 
@@ -276,61 +366,15 @@ function OnboardingContent() {
 
     try {
       await usersApi.updateMe(cleaned);
-
-      if (effectiveHasCompetitionExp) {
-        const compDiff = diffRows(
-          original.competition_experience.map(competitionExperienceToDraft),
-          competitionRows,
-        );
-        await Promise.all([
-          ...compDiff.toAdd.map((row) =>
-            usersApi.addCompetitionExperience({
-              event_id: row.event_id as number,
-              school: row.school,
-              notes: row.notes || null,
-            }),
-          ),
-          ...compDiff.toUpdate.map((row) =>
-            usersApi.updateCompetitionExperience(row.id as number, {
-              event_id: row.event_id as number,
-              school: row.school,
-              notes: row.notes || null,
-            }),
-          ),
-          ...compDiff.toDelete.map((row) => usersApi.deleteCompetitionExperience(row.id as number)),
-        ]);
-      }
-
-      if (effectiveHasVolunteerExp) {
-        function volunteerBody(row: VolunteerExperienceDraft) {
-          const hasCustomEvent = row.event_id === null && row.event_name.trim();
-          const hasNotesOther = row.notes_other.trim();
-          return {
-            tournament_name: row.tournament_name,
-            year: Number(row.year),
-            role: row.role,
-            event_id: row.event_id ?? undefined,
-            notes:
-              hasCustomEvent || hasNotesOther
-                ? {
-                    ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
-                    ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
-                  }
-                : undefined,
-          };
-        }
-        const volDiff = diffRows(
-          original.volunteer_experience.map(volunteerExperienceToDraft),
-          volunteerRows,
-        );
-        await Promise.all([
-          ...volDiff.toAdd.map((row) => usersApi.addVolunteerExperience(volunteerBody(row))),
-          ...volDiff.toUpdate.map((row) =>
-            usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row)),
-          ),
-          ...volDiff.toDelete.map((row) => usersApi.deleteVolunteerExperience(row.id as number)),
-        ]);
-      }
+      // An empty list deletes saved rows, which is right when the answer is No.
+      await Promise.all([
+        usersApi.replaceCompetitionExperience(
+          effectiveHasCompetitionExp ? competitionRows.map(competitionDraftToItem) : [],
+        ),
+        usersApi.replaceVolunteerExperience(
+          effectiveHasVolunteerExp ? volunteerRows.map(volunteerDraftToItem) : [],
+        ),
+      ]);
 
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
@@ -383,7 +427,7 @@ function OnboardingContent() {
                   setErrors((er) => ({ ...er, ...ers }));
                   return;
                 }
-                setState(STATE.PHONE);
+                advance(STATE.PHONE);
               }}
               isActive={state === STATE.NAME}
             >
@@ -427,7 +471,7 @@ function OnboardingContent() {
                     setErrors((er) => ({ ...er, phone: err }));
                     return;
                   }
-                  setState(STATE.DATE_OF_BIRTH);
+                  advance(STATE.DATE_OF_BIRTH);
                 }}
                 isActive={state === STATE.PHONE}
               >
@@ -471,7 +515,7 @@ function OnboardingContent() {
                     setErrors((er) => ({ ...er, date_of_birth: err }));
                     return;
                   }
-                  setState(STATE.PRONOUNS);
+                  advance(STATE.PRONOUNS);
                 }}
                 isActive={state === STATE.DATE_OF_BIRTH}
               >
@@ -494,23 +538,13 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What are your pronouns?"
-                onSkip={() => setState(STATE.STUDENT_STATUS)}
-                onNext={() => {
-                  if (!profileData.pronouns?.trim()) {
-                    setErrors((er) => ({ ...er, pronouns: "Cannot be empty." }));
-                    return;
-                  }
-                  setState(STATE.STUDENT_STATUS);
-                }}
+                onSkip={() => advance(STATE.STUDENT_STATUS)}
+                onNext={() => advance(STATE.STUDENT_STATUS)}
                 isActive={state === STATE.PRONOUNS}
               >
                 <PronounsField
                   value={profileData.pronouns ?? ""}
-                  error={errors.pronouns}
-                  onChange={(v) => {
-                    setProfileData((d) => ({ ...d, pronouns: v }));
-                    setErrors((er) => ({ ...er, pronouns: undefined }));
-                  }}
+                  onChange={(v) => setProfileData((d) => ({ ...d, pronouns: v }))}
                 />
               </ProfileQuestion>
             </ProfileCard>
@@ -595,7 +629,7 @@ function OnboardingContent() {
 
                         Object.keys(ers).length > 0
                           ? setErrors((er) => ({ ...er, ...ers }))
-                          : setState(STATE.UNIVERSITY + 2);
+                          : advance(STATE.COMPETED_BEFORE);
                       }}
                       isActive={state === STATE.UNIVERSITY}
                     >
@@ -616,7 +650,7 @@ function OnboardingContent() {
                   onNext={() => {
                     !profileData.employer
                       ? setErrors((er) => ({ ...er, employer: "Cannot be empty." }))
-                      : setState(STATE.COMPETED_BEFORE);
+                      : advance(STATE.COMPETED_BEFORE);
                   }}
                   isActive={state === STATE.EMPLOYER}
                 >
@@ -638,7 +672,6 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
                 required
-                onNext={competitionLocked ? () => setState(STATE.VOLUNTEERED_BEFORE) : undefined}
                 isActive={state === STATE.COMPETED_BEFORE}
               >
                 <div>
@@ -651,7 +684,8 @@ function OnboardingContent() {
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_competition_experience: val }));
                       if (state >= STATE.COMPETED_BEFORE + 2) return;
-                      setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
+                      if (val) setState(STATE.COMPETITION_EXP);
+                      else advance(STATE.VOLUNTEERED_BEFORE);
                     }}
                     locked={competitionLocked}
                   />
@@ -670,49 +704,48 @@ function OnboardingContent() {
                 </div>
               </ProfileQuestion>
 
-              {(competitionLocked ||
-                (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
-                <ProfileQuestion
-                  question="Add your competition experience."
-                  onSkip={() => {
-                    setProfileData((d) => ({ ...d, has_competition_experience: false }));
-                    setCompetitionRows([]);
-                    setState(STATE.VOLUNTEERED_BEFORE);
-                  }}
-                  onNext={() => {
-                    if (
-                      competitionRows.length === 0 ||
-                      !competitionRows.every(isCompetitionRowValid)
-                    ) {
-                      setErrors((er) => ({
-                        ...er,
-                        competition_exp: "Each entry needs a school and a matched event.",
-                      }));
-                      return;
-                    }
-                    setState(STATE.VOLUNTEERED_BEFORE);
-                  }}
-                  isActive={state === STATE.COMPETITION_EXP}
-                >
-                  <CompetitionExperienceSpreadsheet
-                    mode="edit"
-                    rows={competitionRows}
-                    onChange={setCompetitionRows}
-                    events={events}
-                  />
-                  {errors.competition_exp && (
-                    <p
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        fontSize: "13px",
-                        color: "var(--color-danger)",
-                        marginTop: "6px",
+              {effectiveHasCompetitionExp && (
+                <div ref={competitionSectionRef}>
+                  <ProfileQuestion
+                    question="Add your competition experience."
+                    onSkip={() => {
+                      setProfileData((d) => ({ ...d, has_competition_experience: false }));
+                      setCompetitionRows([]);
+                      setShowCompetitionRowErrors(false);
+                      setErrors((er) => ({ ...er, competition_exp: undefined }));
+                      advance(STATE.VOLUNTEERED_BEFORE);
+                    }}
+                    onNext={() => {
+                      if (!validateCompetitionRows()) return;
+                      setShowCompetitionRowErrors(false);
+                      advance(STATE.VOLUNTEERED_BEFORE);
+                    }}
+                    isActive={state === STATE.COMPETITION_EXP}
+                  >
+                    <CompetitionExperienceSpreadsheet
+                      mode="edit"
+                      rows={competitionRows}
+                      onChange={(rows) => {
+                        setCompetitionRows(rows);
+                        setErrors((er) => ({ ...er, competition_exp: undefined }));
                       }}
-                    >
-                      {errors.competition_exp}
-                    </p>
-                  )}
-                </ProfileQuestion>
+                      showErrors={showCompetitionRowErrors}
+                      events={events}
+                    />
+                    {errors.competition_exp && (
+                      <p
+                        style={{
+                          fontFamily: "var(--font-sans)",
+                          fontSize: "13px",
+                          color: "var(--color-danger)",
+                          marginTop: "6px",
+                        }}
+                      >
+                        {errors.competition_exp}
+                      </p>
+                    )}
+                  </ProfileQuestion>
+                </div>
               )}
             </ProfileCard>
           )}
@@ -722,7 +755,6 @@ function OnboardingContent() {
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
                 required
-                onNext={volunteerLocked ? () => setState(STATE.SHIRT_SIZE) : undefined}
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
               >
                 <div>
@@ -735,7 +767,8 @@ function OnboardingContent() {
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
                       if (state >= STATE.SHIRT_SIZE) return;
-                      setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
+                      if (val) setState(STATE.VOLUNTEERING_EXP);
+                      else advance(STATE.SHIRT_SIZE);
                     }}
                     locked={volunteerLocked}
                   />
@@ -754,47 +787,48 @@ function OnboardingContent() {
                 </div>
               </ProfileQuestion>
 
-              {(volunteerLocked ||
-                (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
-                <ProfileQuestion
-                  question="Add your volunteer experience."
-                  onSkip={() => {
-                    setProfileData((d) => ({ ...d, has_volunteer_experience: false }));
-                    setVolunteerRows([]);
-                    setState(STATE.SHIRT_SIZE);
-                  }}
-                  onNext={() => {
-                    if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
-                      setErrors((er) => ({
-                        ...er,
-                        volunteering_exp:
-                          "Each entry needs a tournament name, a 4-digit year, and a role.",
-                      }));
-                      return;
-                    }
-                    setState(STATE.SHIRT_SIZE);
-                  }}
-                  isActive={state === STATE.VOLUNTEERING_EXP}
-                >
-                  <VolunteerExperienceSpreadsheet
-                    mode="edit"
-                    rows={volunteerRows}
-                    onChange={setVolunteerRows}
-                    events={events}
-                  />
-                  {errors.volunteering_exp && (
-                    <p
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        fontSize: "13px",
-                        color: "var(--color-danger)",
-                        marginTop: "6px",
+              {effectiveHasVolunteerExp && (
+                <div ref={volunteerSectionRef}>
+                  <ProfileQuestion
+                    question="Add your volunteer experience."
+                    onSkip={() => {
+                      setProfileData((d) => ({ ...d, has_volunteer_experience: false }));
+                      setVolunteerRows([]);
+                      setShowVolunteerRowErrors(false);
+                      setErrors((er) => ({ ...er, volunteering_exp: undefined }));
+                      advance(STATE.SHIRT_SIZE);
+                    }}
+                    onNext={() => {
+                      if (!validateVolunteerRows()) return;
+                      setShowVolunteerRowErrors(false);
+                      advance(STATE.SHIRT_SIZE);
+                    }}
+                    isActive={state === STATE.VOLUNTEERING_EXP}
+                  >
+                    <VolunteerExperienceSpreadsheet
+                      mode="edit"
+                      rows={volunteerRows}
+                      onChange={(rows) => {
+                        setVolunteerRows(rows);
+                        setErrors((er) => ({ ...er, volunteering_exp: undefined }));
                       }}
-                    >
-                      {errors.volunteering_exp}
-                    </p>
-                  )}
-                </ProfileQuestion>
+                      showErrors={showVolunteerRowErrors}
+                      events={events}
+                    />
+                    {errors.volunteering_exp && (
+                      <p
+                        style={{
+                          fontFamily: "var(--font-sans)",
+                          fontSize: "13px",
+                          color: "var(--color-danger)",
+                          marginTop: "6px",
+                        }}
+                      >
+                        {errors.volunteering_exp}
+                      </p>
+                    )}
+                  </ProfileQuestion>
+                </div>
               )}
             </ProfileCard>
           )}
@@ -810,7 +844,7 @@ function OnboardingContent() {
                   value={profileData.shirt_size}
                   onChange={(v) => {
                     setProfileData((d) => ({ ...d, shirt_size: v }));
-                    if (state === STATE.SHIRT_SIZE) setState(STATE.DIETARY_RESTRICTIONS);
+                    if (state === STATE.SHIRT_SIZE) advance(STATE.DIETARY_RESTRICTIONS);
                   }}
                 />
               </ProfileQuestion>
@@ -840,7 +874,7 @@ function OnboardingContent() {
                   onNext={() => {
                     !profileData.dietary_restriction
                       ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
-                      : setState(STATE.COMPLETE);
+                      : advance(STATE.COMPLETE);
                   }}
                   isActive={state === STATE.DIETARY_TEXT}
                 >

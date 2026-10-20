@@ -667,7 +667,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                   textUnderlineOffset: "2px",
                 }}
               >
-                Runs at more than one site, or has undated tracks?
+                Runs at more than one site, or has workflows (e.g. Test Writing)?
               </button>
             )}
           </div>

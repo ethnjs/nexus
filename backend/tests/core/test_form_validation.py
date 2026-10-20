@@ -178,6 +178,40 @@ class TestValidateFieldConfig:
             },
         )
 
+    def test_availability_option_without_track_statuses_passes(self):
+        config = validate_field_config(
+            "single_select_radio",
+            {
+                "required": False,
+                "options": [
+                    {"option_id": "opt_1", "value": {"shift_ids": []}, "label": "Maybe"},
+                ],
+            },
+        )
+        assert config["options"][0]["value"]["track_statuses"] == []
+
+    def test_availability_option_naming_a_track_twice_rejected(self):
+        with pytest.raises(FormFieldValidationError, match="duplicate track_id"):
+            validate_field_config(
+                "single_select_radio",
+                {
+                    "required": False,
+                    "options": [
+                        {
+                            "option_id": "opt_1",
+                            "label": "Maybe",
+                            "value": {
+                                "shift_ids": [],
+                                "track_statuses": [
+                                    {"id": 7, "status": "interested"},
+                                    {"id": 7, "status": "declined"},
+                                ],
+                            },
+                        }
+                    ],
+                },
+            )
+
     def test_duplicate_option_id_still_rejected(self):
         """option_id is the durable identity — a collision there really does
         make selection ambiguous."""
@@ -364,10 +398,55 @@ class TestValidateBranchingOptions:
             "required": False,
             "options": [{"value": "yes", "label": "Yes", "next_field_id": field.id}],
         }
-        with pytest.raises(FormFieldValidationError):
-            validate_branching_options(
-                db, form.id, "single_select_radio", config, field_id=field.id
-            )
+        with pytest.raises(FormFieldValidationError, match="after its own"):
+            validate_branching_options(db, form.id, "single_select_radio", config, field=field)
+
+    def test_earlier_target_rejected(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        earlier = _make_field(db, form, order=1, field_key="earlier")
+        field = _make_field(db, form, order=2, field_key="source")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": earlier.id}],
+        }
+        with pytest.raises(FormFieldValidationError, match="after its own"):
+            validate_branching_options(db, form.id, "single_select_radio", config, field=field)
+
+    def test_archived_option_jump_is_ignored(self, db, td_user, td_tournament):
+        """It keeps its next_field_id, but the builder offers no way to change it after a reorder."""
+        form = _make_form(db, td_user, td_tournament)
+        earlier = _make_field(db, form, order=1, field_key="earlier")
+        field = _make_field(db, form, order=2, field_key="source")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [
+                {"value": "yes", "label": "Yes", "next_field_id": earlier.id, "is_archived": True},
+                {
+                    "value": "gone",
+                    "label": "Gone",
+                    "next_field_id": "deleted0000",
+                    "is_archived": True,
+                },
+            ],
+        }
+        validate_branching_options(
+            db, form.id, "single_select_radio", config, field=field
+        )  # no raise
+
+    def test_later_target_passes(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, order=1, field_key="source")
+        later = _make_field(db, form, order=2, field_key="later")
+        db.commit()
+        config = {
+            "required": False,
+            "options": [{"value": "yes", "label": "Yes", "next_field_id": later.id}],
+        }
+        validate_branching_options(
+            db, form.id, "single_select_radio", config, field=field
+        )  # no raise
 
     def test_archived_target_rejected(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -451,10 +530,18 @@ class TestValidateAvailabilityOptions:
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
 
-    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
-        config = {"options": [{"value": [], "label": "Whenever"}]}
-        with pytest.raises(FormFieldValidationError):
-            validate_availability_options(db, td_tournament.id, config)
+    def test_option_without_shifts_passes(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "Can't make it"}]}
+        validate_availability_options(db, td_tournament.id, config)  # no raise
+
+    def test_option_without_shifts_or_status_passes_when_track_status_enabled(
+        self, db, td_user, td_tournament
+    ):
+        config = {
+            "track_status_enabled": True,
+            "options": [{"value": {"shift_ids": [], "track_statuses": []}, "label": "Maybe"}],
+        }
+        validate_availability_options(db, td_tournament.id, config)  # no raise
 
 
 # ---------------------------------------------------------------------------
@@ -498,10 +585,11 @@ class TestValidateEventPreferenceOptions:
         with pytest.raises(FormFieldValidationError):
             validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
 
-    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
-        config = {"options": [{"value": [], "label": "Whenever"}]}
-        with pytest.raises(FormFieldValidationError):
-            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+    def test_option_without_events_passes(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "No preference"}]}
+        validate_event_preference_options(
+            db, td_tournament.id, "multi_select_checkbox", config
+        )  # no raise
 
     def test_event_in_two_options_rejected(self, db, td_user, td_tournament):
         event = _make_event(db, td_tournament)
@@ -556,17 +644,20 @@ class TestOptionValueReaders:
         option = {"value": [{"id": 7, "status": "confirmed"}]}
         assert option_track_assignments(option) == [{"id": 7, "status": "confirmed"}]
 
-    def test_status_on_an_availability_value_takes_the_field_track(self):
-        """An availability option carries a bare status; the track it applies
-        to comes from the field's own key, since the key already names it."""
-        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
-        assert option_track_assignments(option, 7) == [{"id": 7, "status": "declined"}]
-
-    def test_availability_status_without_a_field_track_is_ignored(self):
-        """Nothing to attach the status to — a track_status_* field passes no
-        track id, and its options carry their ids inline instead."""
-        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
-        assert option_track_assignments(option) == []
+    def test_assignments_nested_in_an_availability_value(self):
+        option = {
+            "value": {
+                "shift_ids": [1, 2],
+                "track_statuses": [
+                    {"id": 7, "status": "declined"},
+                    {"id": 8, "status": "interested"},
+                ],
+            }
+        }
+        assert option_track_assignments(option) == [
+            {"id": 7, "status": "declined"},
+            {"id": 8, "status": "interested"},
+        ]
 
     def test_grouped_entity_ids_are_not_assignments(self):
         assert option_track_assignments({"value": [5, 9]}) == []
@@ -621,9 +712,10 @@ class TestValidateTrackStatusOptions:
                 {
                     "option_id": "yes",
                     "label": "Yes",
-                    # One status, no id: an availability field names its track
-                    # in its own key, so the option can't contradict it.
-                    "value": {"shift_ids": [1], "track_status": "interested"},
+                    "value": {
+                        "shift_ids": [1],
+                        "track_statuses": [{"id": track_id, "status": "interested"}],
+                    },
                 }
             ],
         }

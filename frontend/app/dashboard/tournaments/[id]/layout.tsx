@@ -10,6 +10,7 @@ import { AgeDisclosureModal } from "@/components/tournament/members/AgeDisclosur
 import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
+import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, tournamentsApi } from "@/lib/api";
 import { HeaderCollapseProvider } from "@/lib/useHeaderCollapse";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
@@ -77,6 +78,7 @@ function TournamentShell({
   const { selectedTournament, setSelectedTournament } = useTournament();
   const { membership, setMembership } = useMyMembership();
   const pathname = usePathname();
+  const router = useRouter();
   // Sidebar is locked open (not just hover-expanded) on settings routes —
   // reserve its full width there instead of letting it overlay content. The
   // mobile override (the drawer reserves nothing) is in Shell.module.css.
@@ -95,8 +97,30 @@ function TournamentShell({
       });
   }, [tournamentId, setSelectedTournament]);
 
+  // The backend exempts anyone holding a tournament permission, so staff never land here.
+  const needsOnboarding = !!membership?.needs_onboarding;
+  useEffect(() => {
+    if (needsOnboarding) router.replace(`/tournaments/${tournamentId}/onboarding`);
+  }, [needsOnboarding, router, tournamentId]);
+
   if (notFound) {
     return <TournamentNotFound />;
+  }
+
+  if (needsOnboarding) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          padding: "80px 0",
+          minHeight: "100dvh",
+          background: "var(--color-bg)",
+        }}
+      >
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   return (

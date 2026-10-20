@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { StatusControl } from "@/components/forms/StatusControl";
-import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -11,6 +10,7 @@ import { EditableText } from "@/components/ui/EditableText";
 import { IconArrowLeft, IconEye } from "@/components/ui/Icons";
 import { TabStrip } from "@/components/ui/TabStrip";
 import { type Form, type FormStatus, formsApi } from "@/lib/api";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -21,8 +21,7 @@ export const CONTENT_MAX_WIDTH = 800;
 
 export type FormTab = "questions" | "responses";
 
-/** The sticky tab row's fixed height, so content pinned below it can offset by it. */
-export const FORM_TABS_HEIGHT = 64;
+const FORM_TABS_HEIGHT = 64;
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
@@ -37,28 +36,28 @@ export function SubHeader({
   locked = false,
   activeTab,
   maxWidth = CONTENT_MAX_WIDTH,
-  stickyTabs = false,
 }: {
   form: Form;
   onUpdated: (form: Form) => void;
   onDeleted: () => void;
-  /** Archived tournament — name and status are frozen. */
+  /** Archived tournament — name and status are frozen. An archived form
+   *  freezes its name too, but keeps its status control so it can be restored. */
   locked?: boolean;
   activeTab: FormTab;
   /** The responses view is two-pane, so it runs wider than the builder. */
   maxWidth?: number;
-  /** Pins the tab row under the topbar. Off in the builder, whose field
-   *  toolbar already pins itself there. */
-  stickyTabs?: boolean;
 }) {
   const router = useRouter();
   // Leaving the builder mid-edit must still prompt — the tabs are separate routes.
   const { guard } = useUnsavedChanges();
   const backHref =
     form.owner_type === "tournament" ? `/dashboard/tournaments/${form.tournament_id}/forms` : null;
+  const nameLockedReason = locked
+    ? ARCHIVED_REASON
+    : form.status === "archived"
+      ? FORM_ARCHIVED_REASON
+      : undefined;
 
-  // Two siblings, not one wrapper: sticky only holds within its parent, so
-  // the tab row has to sit directly in the page to stay pinned while it scrolls.
   return (
     <>
       <div style={{ maxWidth: `${maxWidth}px`, margin: "0 auto", padding: "16px 24px 0" }}>
@@ -87,8 +86,8 @@ export function SubHeader({
               value={form.name}
               onSave={async (name) => onUpdated(await formsApi.update(form.id, { name }))}
               textStyle={{ fontSize: "15px", fontWeight: 600 }}
-              title={locked ? ARCHIVED_REASON : "Click to edit name"}
-              locked={locked}
+              title={nameLockedReason ?? "Click to edit name"}
+              locked={!!nameLockedReason}
             />
             <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
           </div>
@@ -109,7 +108,7 @@ export function SubHeader({
             />
             <FormActionsMenu
               form={form}
-              items={["allow-edits", "copy-json"]}
+              items={["copy-link", "allow-edits", "copy-json"]}
               onAllowEditsChange={(allow) => onUpdated({ ...form, allow_response_edits: allow })}
               lockedReason={locked ? ARCHIVED_REASON : undefined}
             />
@@ -124,9 +123,6 @@ export function SubHeader({
           boxSizing: "border-box",
           paddingTop: "8px",
           background: "var(--color-bg)",
-          ...(stickyTabs
-            ? { position: "sticky" as const, top: `${TOPBAR_HEIGHT}px`, zIndex: 5 }
-            : null),
         }}
       >
         <div style={{ maxWidth: `${maxWidth}px`, margin: "0 auto", padding: "0 24px" }}>

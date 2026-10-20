@@ -1,14 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
-import { FieldList } from "@/components/forms/FieldList";
+import { FieldList } from "@/components/forms/builder/FieldList";
+import { TitleCard } from "@/components/forms/builder/TitleCard";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
-import { TitleCard } from "@/components/forms/TitleCard";
+import { tournamentAddon } from "@/components/forms/tournament/tournamentAddon";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, type Form, formsApi } from "@/lib/api";
+import { type Form, formsApi } from "@/lib/api";
+import { builderLoadFailure } from "@/lib/forms/builderLoad";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 export default function FormEditPage({ params }: { params: Promise<{ formId: string }> }) {
@@ -18,15 +21,17 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [noAccess, setNoAccess] = useState(false);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     formsApi
       .getForEdit(formId)
       .then(setForm)
       .catch((e) => {
-        // getForEdit is manager-only — a member who lands here gets a 403.
-        if (e instanceof ApiError && e.status === 403) setNoAccess(true);
-        else setLoadError(e instanceof ApiError ? e.message : "Failed to load form.");
+        const failure = builderLoadFailure([e], "Failed to load form.");
+        if (failure === "no-access") setNoAccess(true);
+        else if (failure === "not-found") setMissing(true);
+        else setLoadError(failure.message);
       });
   }, [formId]);
 
@@ -38,6 +43,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
     }
   }
 
+  if (missing) notFound();
   if (noAccess) return <NoFormAccess />;
 
   if (loadError) {
@@ -63,6 +69,11 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   // This page lives outside the tournament layout, so the archive flag rides
   // on the form itself rather than coming from useTournament.
   const locked = !!form.tournament_is_archived;
+  const lockedReason = locked
+    ? ARCHIVED_REASON
+    : form.status === "archived"
+      ? FORM_ARCHIVED_REASON
+      : undefined;
 
   return (
     <div>
@@ -73,14 +84,20 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
         locked={locked}
         activeTab="questions"
       />
-      <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
-        {locked && (
+      <div
+        style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px 120px" }}
+      >
+        {lockedReason && (
           <div style={{ marginBottom: "16px" }}>
-            <Banner variant="warning" message={ARCHIVED_REASON} />
+            <Banner variant="warning" message={lockedReason} />
           </div>
         )}
-        <TitleCard form={form} onUpdated={setForm} locked={locked} />
-        <FieldList form={form} locked={locked} />
+        <TitleCard form={form} onUpdated={setForm} locked={!!lockedReason} />
+        <FieldList
+          form={form}
+          lockedReason={lockedReason}
+          addon={form.tournament_id != null ? tournamentAddon : undefined}
+        />
       </div>
     </div>
   );

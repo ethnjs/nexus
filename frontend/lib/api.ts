@@ -56,6 +56,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       message = detail;
     } else if (Array.isArray(detail)) {
       message = detail[0].ctx?.reason ?? detail[0].msg;
+    } else if (typeof (detail as { message?: unknown })?.message === "string") {
+      // Structured {code, message, ...} details; callers branch on `detail.code`.
+      message = (detail as { message: string }).message;
     }
 
     throw new ApiError(res.status, message, detail);
@@ -165,6 +168,23 @@ export interface VolunteerExperience {
   event: CanonicalEvent | null;
   role: string;
   notes: VolunteerExperienceNotes | null;
+}
+
+// One entry of a full-list replace; `id` marks an entry that's already saved.
+export interface CompetitionExperienceItem {
+  id?: number;
+  event_id: number;
+  school: string;
+  notes?: string | null;
+}
+
+export interface VolunteerExperienceItem {
+  id?: number;
+  tournament_name: string;
+  year: number;
+  role: string;
+  event_id?: number | null;
+  notes?: VolunteerExperienceNotes | null;
 }
 
 // Matches UserSlimResponse — minimal, public-safe identity. No account-internal
@@ -326,6 +346,8 @@ export const usersApi = {
   ) => api.patch<CompetitionExperience>(`/users/me/competition-experience/${id}/`, body),
   deleteCompetitionExperience: (id: number) =>
     api.delete<void>(`/users/me/competition-experience/${id}/`),
+  replaceCompetitionExperience: (items: CompetitionExperienceItem[]) =>
+    api.put<CompetitionExperience[]>("/users/me/competition-experience/", items),
 
   addVolunteerExperience: (body: {
     tournament_name: string;
@@ -346,6 +368,8 @@ export const usersApi = {
   ) => api.patch<VolunteerExperience>(`/users/me/volunteer-experience/${id}/`, body),
   deleteVolunteerExperience: (id: number) =>
     api.delete<void>(`/users/me/volunteer-experience/${id}/`),
+  replaceVolunteerExperience: (items: VolunteerExperienceItem[]) =>
+    api.put<VolunteerExperience[]>("/users/me/volunteer-experience/", items),
 
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),
@@ -463,10 +487,6 @@ export interface TournamentTrack {
   // something still references the track, cleared by POST .../restore/.
   // Never PATCH-able, and only ever visible in the settings listing.
   is_archived: boolean;
-  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
-  allow_confirm: boolean;
-  /** TD-controlled: closes the track to member edits entirely, declining included. */
-  lock_responses: boolean;
   // The role the assignments board grants a member placed on this track with
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
@@ -486,7 +506,6 @@ export interface TournamentTrackCreate {
   university_id?: number | null;
   location?: string | null;
   division?: TournamentDivision[] | null;
-  allow_confirm?: boolean;
   default_role_id?: number | null;
 }
 
@@ -651,8 +670,17 @@ export interface TournamentShiftInput {
   end: string;
 }
 
-// Reading the shift catalog is membership-gated, not manage_events — the
-// member edit page needs it, and TournamentShift carries nothing
+// GET /tournaments/{id}/shifts/delete-impact/ — what deleting a shift would change.
+export interface ShiftDeleteImpact {
+  shift_id: number;
+  availability_count: number;
+  option_count: number;
+  // Staffing rows pinned to the shift; they stay on the event, unpinned.
+  assignment_count: number;
+}
+
+// Reading the shift catalog is membership-gated, not manage_events — a
+// member's signup cards need it, and TournamentShift carries nothing
 // confidential. Writes still require manage_events, so there is no `public`
 // variant of this one.
 export const tournamentShiftsApi = {
@@ -666,7 +694,14 @@ export const tournamentShiftsApi = {
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
     api.patch<TournamentShift>(`/tournaments/${tournamentId}/shifts/${id}/`, body),
-  // Cascades — detaches from any events it was attached to, no confirmation guard.
+  deleteImpact: (tournamentId: number, ids: number[]) => {
+    const params = new URLSearchParams();
+    for (const id of ids) params.append("ids", String(id));
+    return api.get<ShiftDeleteImpact[]>(
+      `/tournaments/${tournamentId}/shifts/delete-impact/?${params.toString()}`,
+    );
+  },
+  // Never refused: see deleteImpact for what it takes with it.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
 };
@@ -918,14 +953,6 @@ export interface MembershipTrackStatus {
   // "pending" is read-only — a track the member has no row for at all. It is
   // never writable, hence TrackStatus (the write-side union) not carrying it.
   status: TrackStatus | "pending";
-  // Whether the member may confirm themselves on this track. Carried here
-  // because GET /tracks/ is manage_tournament-gated, so a member page has no
-  // other way to learn it.
-  allow_confirm: boolean;
-  // The TD has closed this track to member edits. Carried for the same
-  // reason as allow_confirm — the overview card needs it to explain why the
-  // Edit button is disabled.
-  lock_responses: boolean;
   // Null on a pending entry: no row, so nothing has been updated.
   updated_at: string | null;
 }
@@ -1227,6 +1254,8 @@ export interface MembershipMe extends MembershipBase {
   // True while the tournament collects an age flag and this non-owner member
   // hasn't answered yet — drives the blocking consent modal.
   needs_age_consent: boolean;
+  // True while they owe an onboarding step and hold no tournament permission.
+  needs_onboarding: boolean;
 }
 
 // Matches MemberSummaryResponse — GET /members/summary/, manage_members.
@@ -1370,91 +1399,7 @@ export const membersApi = {
     ),
   ) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
-
-  // ---- Self-service: what the member may change about themselves --------
-  // One request backs the whole member edit page.
-  getMyOptions: (tournamentId: number) =>
-    api.get<MyOptionsResponse>(`/tournaments/${tournamentId}/members/me/options/`),
-  // Whole-set within the track — anything left out is a withdrawal. `status`
-  // travels with the shifts because the two move together: "Not available"
-  // is `{ shift_ids: [], status: "declined" }` in one call, so a member can
-  // never be left declined with shifts still selected.
-  updateMyAvailability: (
-    tournamentId: number,
-    trackId: number,
-    body: { shift_ids: number[]; status?: TrackStatus },
-  ) =>
-    api.put<MembershipAvailability[]>(
-      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`,
-      body,
-    ),
-  // Send `option_ids` for a question with options, `text` for a free-text
-  // one — the question's type decides, and the wrong one is a 422.
-  updateMyLunch: (
-    tournamentId: number,
-    trackId: number,
-    category: string,
-    body: { option_ids?: string[]; text?: string | null },
-  ) =>
-    api.put<MembershipLunch[]>(
-      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`,
-      body,
-    ),
-  // Whole-set for the track. Ranks are required and must be contiguous from
-  // 1 on ranked_choice, and omitted on every other question type.
-  updateMyEventPreferences: (
-    tournamentId: number,
-    trackId: number,
-    selections: MyEventPreferenceSelection[],
-  ) =>
-    api.put<MembershipEventPreference[]>(
-      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`,
-      { selections },
-    ),
-  // See backend/docs/track-status-rules.md: `declined` always; `confirmed` only
-  // with the track's allow_confirm; `interested` only without it.
-  updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
-    api.put<MembershipTrackStatus>(
-      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`,
-      { status },
-    ),
 };
-
-// GET /members/me/options/ — everything the member edit page needs, grouped
-// the way the page is laid out: one section per live track. A track with no
-// questions still appears, since its status is always the member's to set.
-export interface MyTrackOptions {
-  track_id: number;
-  track_name: string;
-  is_primary: boolean;
-  allow_confirm: boolean;
-  // The TD has closed this track to member edits — it is dropped from the
-  // edit page entirely rather than rendered inert.
-  lock_responses: boolean;
-  // Null when the member has no row for this track at all.
-  status: TrackStatus | null;
-  // Fields come back in get_form_for_rendering shape with config.options
-  // already resolved, which is what lets the page reuse QuestionRenderer
-  // instead of growing a second set of answer widgets.
-  availability: FormField[];
-  // This member's currently-selected shifts *on this track* — the whole-set
-  // that a PUT to this track replaces.
-  selected_shift_ids: number[];
-  lunch: (FormField & { category: string })[];
-  lunch_selections: { category: string; value: string; label: string }[];
-  // At most one preference question per track, by construction.
-  event_preferences: FormField | null;
-  event_preference_selections: { tournament_event_id: number; rank: number | null }[];
-}
-
-export interface MyOptionsResponse {
-  tracks: MyTrackOptions[];
-}
-
-export interface MyEventPreferenceSelection {
-  option_id: string;
-  rank?: number | null;
-}
 
 // -------------------------------------------------------------------------
 // Tournament Roles — nested under /tournaments/{id}/roles/
@@ -1933,10 +1878,9 @@ export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment {
 export interface AvailabilityTrackStatusValue {
   shift_ids?: number[];
   shifts?: ResolvedShiftOption[];
-  /** The status this option sets on the field's own track — "" until the TD
-   *  picks one. Not a list: availability_{track_id} names exactly one track,
-   *  which is what track_status_* fields can't do. */
-  track_status: TrackStatus | "";
+  /** The statuses this option sets — on any of the tournament's tracks, not
+   *  only the one in the field's key. */
+  track_statuses: TrackStatusAssignment[];
 }
 
 // value shape after GET-time resolution for availability/event_preference —
@@ -1995,12 +1939,6 @@ export interface FormFieldInput {
   description?: string | null;
   question_type: FormQuestionType;
   config?: FormFieldConfig | null;
-  /** The TD's answer, for this question, to "ask previous responders to
-      review this?" — collected by the save-time confirmation modal.
-      Governs only the judgment-call changes (wording, and moving between a
-      preset and a standard key); changes that actually invalidate an answer
-      prompt regardless. Omit to accept each change's own default. */
-  notify_responders?: boolean | null;
 }
 
 export type PrerequisiteMatch = "any" | "all";
@@ -2083,7 +2021,7 @@ export interface Form {
   chapter_id: number | null;
   /** null once the creator's account is deleted. */
   created_by: number | null;
-  /** Members may revise any answer after submitting, not just flagged ones. */
+  /** Members may revise their answers after submitting. */
   allow_response_edits: boolean;
   created_at: string;
   updated_at: string;
@@ -2150,39 +2088,6 @@ export interface FormAnswerInput {
   value: unknown;
 }
 
-/** Why a question was flagged for another look. Several can apply at once —
-    one save can add an option *and* reword the question. */
-export type PendingUpdateReason =
-  | "question_type_changed"
-  | "option_added"
-  | "option_invalidated"
-  | "option_regrouped"
-  | "now_required"
-  | "key_changed"
-  | "text_changed";
-
-/** One question a proposed save would ask previous responders to review —
-    the server's verdict, from classifyFieldChanges. */
-export interface FieldChange {
-  field_id: string;
-  label: string;
-  reasons: PendingUpdateReason[];
-  /** At least one reason is mandatory: the TD sees it but can't switch it
-      off, because the change invalidated the stored answer. */
-  locked: boolean;
-  /** What notify_responders should default to if the TD doesn't touch it. */
-  notify_default: boolean;
-}
-
-/** A question this response is being asked to revisit. `field_id` is the only
-    thing `patchResponse` will accept — everything else on the response is
-    locked. */
-export interface FormPendingUpdate {
-  field_id: string;
-  reasons: PendingUpdateReason[];
-  created_at: string;
-}
-
 export interface FormResponse {
   id: string;
   form_id: string;
@@ -2190,7 +2095,6 @@ export interface FormResponse {
   submitted_at: string;
   updated_at: string;
   answers: FormAnswer[];
-  pending_updates: FormPendingUpdate[];
 }
 
 /** Who submitted a response — matches FormRespondentRead. Managers only. */
@@ -2250,7 +2154,8 @@ export const formsApi = {
       chapter_id: chapterId,
     }),
   // Renders with option values already resolved (availability/event_preference) —
-  // for a respondent-facing view (or the future /preview page), not the builder.
+  // for a respondent-facing view, not the builder. Archived questions are
+  // included in their slot; skip them anywhere the form is filled out.
   get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
   // Unresolved — option `value` comes back exactly as stored (plain
   // shift/event ids, not `get`'s hydrated {id, label, start, end} objects),
@@ -2276,11 +2181,6 @@ export const formsApi = {
   // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
-  // Dry run for the save confirmation: given the same payload putFields
-  // takes, which questions would be sent back to previous responders and
-  // why. Writes nothing, and returns [] on a form nobody has answered.
-  classifyFieldChanges: (formId: string, fields: FormFieldInput[]) =>
-    api.post<FieldChange[]>(`/forms/${formId}/fields/classify/`, { fields }),
   // Questions taken out of use. Config comes back raw, so an entry can go
   // straight back into putFields — which is how a question is unarchived.
   listArchivedFields: (formId: string) => api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
@@ -2293,13 +2193,12 @@ export const formsApi = {
   // through patchResponse.
   submitResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
-  // Edits a submitted response, limited to questions carrying a pending
-  // update — anything else 403s. Send only the questions being changed; the
-  // rest of the response is left alone, not overwritten.
+  // Edits a submitted response; 403s unless the form allows response edits.
+  // Send only the questions being changed; the rest is left alone.
   patchResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.patch<FormResponse>(`/forms/${formId}/responses/me/`, { answers }),
   listResponses: (formId: string) => api.get<FormResponseManager[]>(`/forms/${formId}/responses/`),
-  // Manager-only. Answers and pending flags go with it; roster data the
+  // Manager-only. Answers go with it; roster data the
   // response wrote through (availability, lunch…) stays. 409s on an archived form.
   deleteResponse: (formId: string, responseId: string) =>
     api.delete<void>(`/forms/${formId}/responses/${responseId}/`),

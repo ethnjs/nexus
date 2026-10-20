@@ -79,14 +79,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loading || !user || user.is_onboarding_complete) return;
     if (ONBOARDING_EXEMPT_ROUTES.includes(pathname)) return;
-    router.replace("/onboarding");
+    const destination = `${pathname}${window.location.search}`;
+    router.replace(`/onboarding?redirect=${encodeURIComponent(destination)}`);
   }, [loading, user, pathname, router]);
 
   async function logout() {
     try {
       await authApi.logout();
     } finally {
-      setUser(null);
+      // No setUser(null): the full reload resets it anyway, and clearing it
+      // first flashes whatever the current page shows signed-out visitors.
       window.location.href = "/";
     }
   }

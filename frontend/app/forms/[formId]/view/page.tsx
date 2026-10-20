@@ -1,22 +1,28 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
+import cardStyles from "@/components/layout/CenteredCard.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { IconEdit, IconLock } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, type Form, type FormResponse, formsApi } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
 import { formatDateTime } from "@/lib/timeFormat";
+import { useAuth } from "@/lib/useAuth";
 
-// Respondent-facing form page, one URL for every state of a member's response:
+// Respondent-facing form page, and the link managers share. One URL for every state:
+// - signed out: a sign-in card; not a member, a draft, or an archived form
+//   they never answered: 404
+// - still owes onboarding: sent through the sequence, which returns here
 // - no response yet: fill the form
 // - responded: read-only view of their answers, with an Edit button
 // - ?edit=true: revise them, when the form allows (otherwise the param is dropped)
@@ -29,6 +35,55 @@ import { formatDateTime } from "@/lib/timeFormat";
 // open-redirect vector.
 function internalRedirect(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
+}
+
+type OnboardingRequired = {
+  code: "onboarding_required";
+  tournament_id: number;
+  is_onboarding: boolean;
+};
+
+function onboardingRequired(error: unknown): OnboardingRequired | null {
+  if (!(error instanceof ApiError) || error.status !== 403) return null;
+  const detail = error.detail as { code?: unknown } | null;
+  return detail?.code === "onboarding_required" ? (detail as OnboardingRequired) : null;
+}
+
+// Matches the (auth) pages: a signed-out visitor learns nothing about the form.
+function SignInCard({ formId }: { formId: string }) {
+  const router = useRouter();
+  const redirectParam = `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
+
+  return (
+    <div className={cardStyles.page}>
+      <section className={cardStyles.card}>
+        <h1 className={cardStyles.wordmark}>NEXUS</h1>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            textAlign: "center",
+            marginBottom: "24px",
+          }}
+        >
+          Please sign in or create an account to fill out this form.
+        </p>
+        <div style={{ width: "100%", display: "flex", gap: "10px" }}>
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => router.push(`/sign-up${redirectParam}`)}
+          >
+            Create account
+          </Button>
+          <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
+            Sign in
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export default function FormViewPage() {
@@ -44,24 +99,39 @@ export default function FormViewPage() {
   const [checkedExisting, setCheckedExisting] = useState(false);
   // Shown on the read-only view after a submit or save lands there.
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     formsApi
       .get(formId)
       .then(setForm)
-      .catch((error) =>
-        setLoadError(error instanceof ApiError ? error.message : "Failed to load form."),
-      );
-  }, [formId]);
+      .catch((error) => {
+        const denied = onboardingRequired(error);
+        if (denied) {
+          // A step of the sequence is reached along the way, so only come back for other forms.
+          const back = denied.is_onboarding
+            ? ""
+            : `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
+          router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
+        } else if (error instanceof ApiError && error.status === 404) {
+          setMissing(true);
+        } else {
+          setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
+        }
+      });
+  }, [authLoading, user, formId, router]);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     // 404 is the ordinary "hasn't answered yet" case, not a failure.
     formsApi
       .getMyResponse(formId)
       .then(setExisting)
       .catch(() => setExisting(null))
       .finally(() => setCheckedExisting(true));
-  }, [formId]);
+  }, [authLoading, user, formId]);
 
   // Why Edit is unavailable, or undefined when it's open.
   const editLockedReason = useMemo(() => {
@@ -70,7 +140,6 @@ export default function FormViewPage() {
       status: form.status,
       allow_response_edits: form.allow_response_edits,
       tournamentArchived: !!form.tournament_is_archived,
-      hasFlaggedQuestions: existing.pending_updates.length > 0,
     });
   }, [form, existing]);
 
@@ -84,16 +153,9 @@ export default function FormViewPage() {
   }, [form, checkedExisting, editRequested, editing, formId, router]);
 
   const existingResponse = useMemo<ExistingResponse | null>(() => {
-    if (!form || !existing) return null;
-    const flagged = new Map(existing.pending_updates.map((p) => [p.field_id, p.reasons]));
-    return {
-      stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])),
-      editableIds: form.allow_response_edits
-        ? new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.id))
-        : new Set(flagged.keys()),
-      flagged,
-    };
-  }, [form, existing]);
+    if (!existing) return null;
+    return { stored: Object.fromEntries(existing.answers.map((a) => [a.field_id, a.value])) };
+  }, [existing]);
 
   // Both writes land back on the read-only view (unless a redirect says otherwise).
   async function afterWrite(message: string) {
@@ -122,6 +184,17 @@ export default function FormViewPage() {
     await afterWrite("Your changes were saved.");
   }
 
+  if (authLoading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (!user) return <SignInCard formId={formId} />;
+  if (missing) notFound();
+
   if (loadError) {
     return (
       <div style={{ padding: "80px 24px", textAlign: "center" }}>
@@ -143,25 +216,12 @@ export default function FormViewPage() {
   }
 
   if (existing && existingResponse && editing) {
-    const flaggedCount = existing.pending_updates.length;
     return (
       <FormFillFlow
         // A fresh flow per saved version, so its prefilled state can't go stale.
         key={existing.updated_at}
         form={form}
         existing={existingResponse}
-        banner={
-          flaggedCount > 0 ? (
-            <Banner
-              variant="warning"
-              message={
-                flaggedCount === 1
-                  ? "One question changed since you answered. Please take another look."
-                  : `${flaggedCount} questions changed since you answered. Please take another look.`
-              }
-            />
-          ) : undefined
-        }
         successMessage="Your changes were saved."
         onComplete={patchResponse}
       />
@@ -169,7 +229,6 @@ export default function FormViewPage() {
   }
 
   if (existing) {
-    const fields = form.fields.filter((f) => !f.is_archived);
     return (
       <div className={styles.page}>
         {savedMessage && <Banner variant="success" message={savedMessage} />}
@@ -184,11 +243,11 @@ export default function FormViewPage() {
                   color: "var(--color-text-primary)",
                 }}
               >
-                {form.title}
+                <FormattedText markdown={form.title} variant="inline" />
               </h1>
             )}
             {form.description && (
-              <p
+              <div
                 style={{
                   fontFamily: "var(--font-sans)",
                   fontSize: "14px",
@@ -196,8 +255,8 @@ export default function FormViewPage() {
                   marginTop: "8px",
                 }}
               >
-                {form.description}
-              </p>
+                <FormattedText markdown={form.description} variant="rich" />
+              </div>
             )}
           </Card>
         )}
@@ -260,7 +319,7 @@ export default function FormViewPage() {
           </div>
         </Card>
 
-        <ResponseAnswers fields={fields} answers={existing.answers} />
+        <ResponseAnswers fields={form.fields} answers={existing.answers} />
       </div>
     );
   }

@@ -7,7 +7,6 @@ import { MemberSections } from "@/components/tournament/members/sections/MemberS
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import {
@@ -22,9 +21,7 @@ import {
   tournamentShiftsApi,
   tournamentTracksApi,
 } from "@/lib/api";
-import { ALL_TRACKS_LOCKED_REASON, NO_TRACKS_ANSWERED_REASON } from "@/lib/responseLock";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
-import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
 
@@ -55,7 +52,6 @@ export default function MemberPage() {
   const { selectedTournament } = useTournament();
   const { membership: me } = useMyMembership();
   const { canManageMembers, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
-  const { isArchived } = useArchiveLock();
 
   const [full, setFull] = useState<MembershipView | null>(null);
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
@@ -159,23 +155,6 @@ export default function MemberPage() {
   // a member on their own page still can't hand themselves a role.
   const rolesLocked = !canManageMembers || !canEditMember(full);
 
-  // The edit page would open onto nothing but placeholder cards, so the
-  // button says why here instead. One writable track — answered and unlocked
-  // — is enough to leave it working; the edit page explains the rest in place.
-  const liveTracks = (full.track_statuses ?? []).filter((track) => !track.is_archived);
-  const allTracksLocked =
-    liveTracks.length > 0 && liveTracks.every((track) => track.lock_responses);
-  const noneWritable =
-    liveTracks.length > 0 &&
-    !liveTracks.some((track) => !track.lock_responses && track.status !== "pending");
-  const editLockedReason = isArchived
-    ? ARCHIVED_REASON
-    : allTracksLocked
-      ? ALL_TRACKS_LOCKED_REASON
-      : noneWritable
-        ? NO_TRACKS_ANSWERED_REASON
-        : undefined;
-
   return (
     // Same 900px column /profile/[id] reads in: it's the same kind of page —
     // one person's record, top to bottom — and the section cards are built
@@ -217,14 +196,6 @@ export default function MemberPage() {
           onRolesUpdated={(updated) => setFull((f) => (f ? { ...f, roles: updated.roles } : f))}
         />
       </div>
-
-      {isSelf && (
-        <FloatingEditButton
-          href={`/dashboard/tournaments/${tournamentId}/members/${membershipId}/edit`}
-          title="Edit your answers"
-          lockedReason={editLockedReason}
-        />
-      )}
     </div>
   );
 }
