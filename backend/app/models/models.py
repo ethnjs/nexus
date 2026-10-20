@@ -647,12 +647,8 @@ class TournamentMembership(Base):
     # onboarding-forms POST route, which clears it tournament-wide.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # One status column, not a consented_at/declined_at pair — a pair can
-    # represent "both set" (nonsensical) and something will eventually set
-    # both. null = unanswered, "consented" | "declined" — one answer covers
-    # both is_over_18 and is_over_21, there's no partial consent. String,
-    # not an enum type, validated in the Pydantic schema — same idiom as
-    # TournamentMembershipTrackStatus.status.
+    # null = unanswered, "consented" covers both is_over_18 and is_over_21.
+    # Declining deletes the membership, so there's no declined value.
     age_disclosure: Mapped[str | None] = mapped_column(String(32))
     age_disclosure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -1162,14 +1158,6 @@ class TournamentShift(Base):
         UniqueConstraint("track_id", "label", name="uq_tournament_shift_track_label"),
     )
 
-    # Unlike event_count (advisory only — deletion still cascades through
-    # events), a nonzero availability_count hard-blocks deletion — see
-    # delete_shift. Availability write-through is membership-owned data,
-    # not something a shift edit should silently detach.
-    @property
-    def availability_count(self) -> int:
-        return len(self.membership_availabilities)
-
 
 # ---------------------------------------------------------------------------
 # TournamentTrack — a TD-managed volunteer track such as Test Writing or
@@ -1216,30 +1204,6 @@ class TournamentTrack(Base):
     # hard-deleted automatically once the last such reference is repointed.
     # A TD can restore it from tournament settings until that happens.
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Whether a member may move themselves to "confirmed" on this track from
-    # their own member page. Off by default: on most tracks `confirmed` means
-    # the TD staffed them, and only the TD knows when that's true. Opting
-    # *out* never consults this — declining is not something confirmation
-    # being closed should block. (`lock_responses` below does block it: that
-    # one closes the track to changes of every kind.)
-    allow_confirm: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Freezes this track's member-editable answers — availability, lunch,
-    # event preferences and status. Set once the TD has staffed the day out of
-    # those answers, at which point a member quietly changing one pulls the
-    # ground out from under the assignments board.
-    #
-    # Unlike allow_confirm this covers opting *out* too: on a locked track a
-    # member can't decline either. That deliberately overrides the rule that
-    # declining is always the member's own call (see
-    # TournamentMembershipTrackStatus) — a locked track is one people are
-    # already staffed on, so a late withdrawal is a conversation with the TD
-    # rather than a button.
-    #
-    # Forms are out of scope: they write the same rows and keep doing so.
-    #
-    # A track created through the API starts locked — the default lives on
-    # TournamentTrackCreate, not here.
-    lock_responses: Mapped[bool] = mapped_column(Boolean, default=False)
     # The role the assignments board grants when a member is placed on this
     # track with no role picked yet — Test Writing's default is Test Writer,
     # a competition day's is more often a general volunteer role. SET NULL
@@ -2188,9 +2152,6 @@ class FormResponse(Base):
     answers: Mapped[list["FormAnswer"]] = relationship(
         "FormAnswer", back_populates="response", cascade="all, delete-orphan"
     )
-    pending_updates: Mapped[list["FormResponsePendingUpdate"]] = relationship(
-        "FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan"
-    )
 
     __table_args__ = (UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),)
 
@@ -2223,45 +2184,6 @@ class FormAnswer(Base):
     field: Mapped["FormField"] = relationship("FormField", back_populates="answer")
 
     __table_args__ = (UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),)
-
-
-# ---------------------------------------------------------------------------
-# FormResponsePendingUpdate — flags that a response's answer to a field needs
-# another look, because the TD changed the question in a way that may have
-# invalidated it. One row per (response, field_id).
-#
-# Keyed on field_id, never field_key: a key is a TD-editable display name, so
-# keying history on it strands the flag the moment the question is renamed.
-# The field a flag points at is therefore stable across every edit.
-#
-# `reasons` is a set, not a single value: one save can legitimately trigger
-# several on the same field (an option added *and* the wording changed), so
-# they union rather than override. A row is cleared when the respondent
-# patches that field, and is deleted outright if the field is archived or
-# invalidated — a flag on a question that can no longer be answered is
-# unclearable by construction. See backend/docs/form-edit-lifecycle.md.
-# ---------------------------------------------------------------------------
-class FormResponsePendingUpdate(Base):
-    __tablename__ = "form_response_pending_updates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    response_id: Mapped[str] = mapped_column(
-        String(12), ForeignKey("form_responses.id", ondelete="CASCADE")
-    )
-    field_id: Mapped[str] = mapped_column(
-        String(12), ForeignKey("form_fields.id", ondelete="CASCADE")
-    )
-    # See app/core/form/changes.py for the values and what raises each.
-    reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    response: Mapped["FormResponse"] = relationship(
-        "FormResponse", back_populates="pending_updates"
-    )
-
-    __table_args__ = (
-        UniqueConstraint("response_id", "field_id", name="uq_pending_update_per_response_field"),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -2349,9 +2271,9 @@ class TournamentMembershipLunch(Base):
 # ever upserts here, never deletes (see backend/docs/form-edit-lifecycle.md).
 #
 # Writes are guarded by a transition rule rather than by submission ordering:
-# a track never falls back to `interested` once it's moved past it, so a stale
-# answer replayed out of order can never demote a track someone already
-# confirmed. See can_set_track_status in app/core/form/write_through.py.
+# a confirmed track never falls back to `interested`, so an edit to an older
+# form's answer can't demote a track a newer form confirmed. See
+# can_set_track_status in app/core/form/write_through.py.
 # ---------------------------------------------------------------------------
 class TournamentMembershipTrackStatus(Base):
     __tablename__ = "tournament_membership_track_statuses"

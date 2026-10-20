@@ -229,35 +229,6 @@ export function TrackFields({
         </>
       )}
 
-      {/* Not "members confirm themselves vs the TD confirming for them" — a
-          TD never confirms on a member's behalf. This is the gate on
-          confirmation being open at all, usually flipped when the
-          confirmation form goes out about a week ahead. */}
-      <FieldRow
-        label="Members can confirm"
-        helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
-      >
-        <Switch
-          checked={draft.allow_confirm}
-          onChange={(v) => onChange({ allow_confirm: v })}
-          locked={locked}
-        />
-      </FieldRow>
-
-      {/* Deliberately not scoped to competition days: a member answers for a
-          cosmetic track like Test Writing too, so it can be closed the same
-          way. */}
-      <FieldRow
-        label="Lock member responses"
-        helper="Closes this track to member edits — availability, lunch, event preferences and status, including opting out."
-      >
-        <Switch
-          checked={draft.lock_responses}
-          onChange={(v) => onChange({ lock_responses: v })}
-          locked={locked}
-        />
-      </FieldRow>
-
       <FieldRow
         label="Default role"
         helper="The role the assignments board grants when someone is placed on this track with no role picked yet."

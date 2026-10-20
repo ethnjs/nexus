@@ -95,12 +95,6 @@ def require_primary_fields(track) -> None:
 
 class TournamentTrackCreate(_TrackFields):
     name: str = Field(max_length=255)
-    allow_confirm: bool = False
-    # Locked from the start: a TD opens member editing on purpose rather than
-    # remembering to close it once the day is staffed. Forms are unaffected,
-    # so signing up still works. Set here and not on the column, which stays
-    # unlocked so rows built directly (fixtures, imports) keep the old shape.
-    lock_responses: bool = True
 
     @field_validator("name")
     @classmethod
@@ -126,8 +120,6 @@ class TournamentTrackUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=255)
-    allow_confirm: bool | None = None
-    lock_responses: bool | None = None
     is_primary: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -180,11 +172,6 @@ class TournamentTrackRead(BaseModel):
     # Pending delete — see the model. Only ever true in the tournament
     # settings listing; every other audience filters these out.
     is_archived: bool
-    # Members may self-confirm on this track (see the model). Read by the
-    # member page to decide whether to offer the control at all.
-    allow_confirm: bool
-    # Members may not change anything on this track (see the model).
-    lock_responses: bool
     created_at: datetime
     updated_at: datetime
 
@@ -208,29 +195,19 @@ class MembershipTrackStatusRead(BaseModel):
     # Never accepted on a write; write-through only ever stores the three
     # real statuses (see TRACK_STATUSES).
     status: str
-    # Whether the member may confirm themselves on this track. Rides along
-    # because GET /tracks/ is manage_tournament-gated, so the member page has
-    # no other way to learn it — and without it, it can't tell whether to
-    # offer a Confirm control at all.
-    allow_confirm: bool = False
-    # Same reasoning: without it the page can't tell whether to render this
-    # track's controls read-only.
-    lock_responses: bool = False
     # None on a "pending" entry: there's no row, so nothing has been updated.
     updated_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row) -> MembershipTrackStatusRead:
-        """Flattens the track relationship — `name`/`is_archived`/
-        `allow_confirm`/`lock_responses` live on TournamentTrack, not on the
-        status row itself, so from_attributes alone can't build this."""
+        """Flattens the track relationship — `name`/`is_archived` live on
+        TournamentTrack, not on the status row itself, so from_attributes
+        alone can't build this."""
         return cls(
             track_id=row.track_id,
             name=row.track.name,
             is_archived=row.track.is_archived,
             status=row.status,
-            allow_confirm=row.track.allow_confirm,
-            lock_responses=row.track.lock_responses,
             updated_at=row.updated_at,
         )
 

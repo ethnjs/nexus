@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
+from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import advance_onboarding_progress, recompute_onboarding
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -44,7 +44,7 @@ def advance_member_onboarding(
     require_not_archived(tournament)
 
     membership = get_membership_by_user(db, tournament_id, current_user.id)
-    if membership is None or is_declined(membership):
+    if membership is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found"
         )

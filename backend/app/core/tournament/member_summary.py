@@ -9,11 +9,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.form.member_options import member_editable_reserved_fields
-from app.core.form.validation import availability_field_track_id, option_shift_ids
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
+from app.core.form.validation import (
+    AVAILABILITY_FIELD_KEY_PATTERN,
+    availability_field_track_id,
+    option_shift_ids,
+)
 from app.core.tournament.onboarding import onboarding_progress_bulk
 from app.models.models import (
+    Form,
+    FormField,
     Tournament,
     TournamentMembership,
     TournamentMembershipAvailability,
@@ -30,12 +34,29 @@ AVAILABILITY_STATUSES = ("confirmed", "interested")
 Option = tuple[str, str, frozenset[int]]
 
 
+def _live_availability_fields(db: Session, tournament_id: int) -> list[FormField]:
+    """Live availability questions on the tournament's published forms."""
+    fields = (
+        db.query(FormField)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            Form.status == "published",
+            FormField.is_archived == False,
+        )
+        .order_by(FormField.form_id, FormField.order)
+        .all()
+    )
+    return [field for field in fields if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key)]
+
+
 def _availability_options(db: Session, tournament_id: int) -> dict[int, list[Option]]:
     """(option_id, label, shift ids) per track, off its live availability
     questions. Two forms can ask one track the same thing (an interest form
     and a confirmation form), so options grouping identical shifts collapse."""
     by_track: dict[int, list[Option]] = {}
-    for field in member_editable_reserved_fields(db, tournament_id):
+    for field in _live_availability_fields(db, tournament_id):
         track_id = availability_field_track_id(field.field_key)
         if track_id is None:
             continue
@@ -53,11 +74,10 @@ def _availability_options(db: Session, tournament_id: int) -> dict[int, list[Opt
 def covered_options(options: list[Option], held: set[int]) -> list[str]:
     """The options a member's shifts answer, by option_id.
 
-    Shifts are the source of truth, not the form answer — self-edits write
-    shifts only. An option counts when every shift it groups is held (the
-    member edit page's rule), and one nested inside another covered option is
-    dropped: otherwise an all-day volunteer also counts as morning and
-    afternoon.
+    Shifts are the source of truth, not the form answer. An option counts
+    when every shift it groups is held, and one nested inside another covered
+    option is dropped: otherwise an all-day volunteer also counts as morning
+    and afternoon.
     """
     covered = [(option_id, shifts) for option_id, _, shifts in options if shifts <= held]
     return [
@@ -70,7 +90,7 @@ def covered_options(options: list[Option], held: set[int]) -> list[str]:
 def build_member_summary(db: Session, tournament: Tournament) -> dict:
     members = (
         db.query(TournamentMembership.id, TournamentMembership.user_id)
-        .filter(TournamentMembership.tournament_id == tournament.id, ACTIVE_MEMBERSHIP_CLAUSE)
+        .filter(TournamentMembership.tournament_id == tournament.id)
         .all()
     )
     member_ids = [member.id for member in members]

@@ -715,7 +715,7 @@ class TestAccessDependencies:
         db.commit()
         with pytest.raises(HTTPException) as exc_info:
             require_form_view_access(form.id, db, other_user)
-        assert exc_info.value.status_code == 403
+        assert exc_info.value.status_code == 404
 
     def test_view_access_plain_member_passes_without_manage_permission(
         self, db, td_user, td_tournament, other_user
@@ -740,4 +740,4 @@ class TestAccessDependencies:
         db.commit()
         with pytest.raises(HTTPException) as exc_info:
             require_form_view_access(form.id, db, other_user)
-        assert exc_info.value.status_code == 403
+        assert exc_info.value.status_code == 404

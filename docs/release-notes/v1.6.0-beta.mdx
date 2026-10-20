@@ -1,0 +1,73 @@
+---
+title: v1.6.0-beta
+description: Rich form text and sharable form links
+date: 2026-10-19T12:00:00-07:00
+---
+
+Forms got a round of upgrades: formatted text, links that work for people who haven't joined yet, and a builder that's easier to work in. Forms are now the one place members change their answers.
+
+## What's new
+
+### Formatted text in forms
+
+Form titles, descriptions and questions can now use **bold**, *italic*, underline, links, and bulleted or numbered lists. Click into a field and a formatting toolbar slides open under it, or use the usual keyboard shortcuts. Line breaks you paste in are kept, and email addresses turn into links.
+
+### Share form links with anyone
+
+A form's link now works for anyone you send it to.
+
+- **Copy link** in a published form's menu copies a link to share.
+- Someone who isn't signed in sees a button to sign in.
+- A member who hasn't finished your tournament's onboarding forms goes through them first, then lands back on the form.
+- Members who haven't finished their profile are sent to it before they reach the tournament's dashboard.
+- A link to a form someone can't open, like a draft, shows a "not found" page.
+
+### Forms are where members change their answers
+
+Members now change their track status, availability, lunch and event preferences by editing their form response, the same way they gave those answers in the first place. To let members make changes, turn on response editing for the form. The **Edit your answers** page and editing tracks directly is gone.
+
+## Improvements
+
+**Building forms**
+- Add a question from the bar above, between or below any question cards.
+- Availability options can set a member's status on any track, not just the track the question asks about.
+- An availability option can include no shifts, for answers like "Can't make it". An event preference option can include no events, for "No preference".
+- A question can only skip ahead to a question after it, so a form can't send someone in a loop.
+- Duplicating a question keeps its preset, and points out shifts and events that aren't on the new track.
+- The track picker on presets is hidden in tournaments with one track. When it can't be changed, it says why.
+- Preview has a **Start over** button after you submit.
+
+**Responses**
+- Sort the responses list by name or by when people submitted.
+- The responses list stays in view as you scroll.
+- Answers to questions you've since archived show in their original place in the response.
+- Availability answers stay readable after you rename or change the option someone picked.
+
+**Assignments**
+- Every drag, resize or role change on the assignments board and the member panel now saves all at once or not at all, so a failed save can't leave someone half-moved.
+- Resizing a bar snaps it to the nearest shift edge.
+- Bars in each event are sorted by name and stay put after an edit.
+- Changing a track's default role only moves bars that held just the old default role.
+
+**Profile and onboarding**
+- Experience entries save only when every row is filled in correctly, and the page scrolls to the row that needs fixing.
+- Coming back to onboarding starts you at the first question you haven't answered.
+
+**Other**
+- Pages load faster, since every request skipped an extra redirect.
+
+## Fixes
+
+- Deleting your account no longer fails every time.
+- Changing a track's default role shows on the assignments board right away, and switching back works without reloading.
+- An archived form can't be edited by accident. Restore it to draft to make changes.
+- Pop-ups on the right side of the screen stay on screen near the bottom of the window.
+- Typing the bulk remove confirmation in uppercase, as it's shown, now works.
+- A member's page refreshes after you change their assignments.
+
+## Worth knowing
+
+- **Declining the age question removes you from the tournament.** Members who declined before this update will be asked again. The tournament's owner is no longer asked.
+- **No more "ask to answer again".** Saving a form that already has responses shows a warning that submitted answers stay as they were. If you need people to update an answer, turn on response editing and let them know.
+- **Track settings for confirming and locking are gone.** "Members can confirm", "Lock member responses" and "Lock all tracks" were removed from track settings, since members no longer change answers outside of forms. Whether members can change an answer now depends only on whether the form allows editing responses.
+- **Archived forms are read-only.** Restore an archived form to draft before editing it.

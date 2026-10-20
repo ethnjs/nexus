@@ -1,0 +1,51 @@
+/* Shared by RichTextInput and FormattedText, so formatted text reads the same
+   in the builder as on the form. */
+.prose p {
+  margin: 0;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose a {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.box {
+  border: 1px solid var(--color-border);
+  transition: border-color 150ms ease;
+}
+
+.box:focus-within {
+  border-color: var(--color-border-strong);
+}
+
+.box[data-error],
+.box[data-error]:focus-within {
+  border-color: var(--color-danger);
+}
+
+.editor {
+  outline: none;
+}
+
+.emptyEditor:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-text-tertiary);
+}

@@ -72,8 +72,6 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
         location: null,
         division: null,
         is_archived: false,
-        allow_confirm: false,
-        lock_responses: false,
         default_role_id: null,
         created_at: "",
         updated_at: "",

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { newOption } from "@/components/forms/builder/OptionsEditor";
+import { newEntityOption } from "@/components/forms/tournament/EntityOptionsEditor";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -10,7 +11,10 @@ import { IconPresets, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import type { FormQuestionType, TournamentTrack } from "@/lib/api";
-import { cleanOption, type EditableField, hasCustomValues } from "@/lib/forms/editableField";
+import { hasCustomValues } from "@/lib/forms/customValues";
+import { cleanOption, type EditableField } from "@/lib/forms/editableField";
+import { effectiveFieldKey, isFieldKeyError, slugifyFieldKey } from "@/lib/forms/fieldKeys";
+import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import {
   activePresetKind,
   buildAvailabilityFieldKey,
@@ -18,7 +22,6 @@ import {
   buildLunchFieldKey,
   buildTrackStatusFieldKey,
   isEntityBackedPreset,
-  isFieldKeyError,
   isPresetError,
   PRESETS,
   type PresetKind,
@@ -27,9 +30,9 @@ import {
   parseLunchFieldKey,
   parseTrackStatusFieldKey,
   presetIncompleteMessage,
-  slugifyFieldKey,
-} from "@/lib/forms/fieldKeyPresets";
-import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+} from "@/lib/forms/tournament/presets";
+import { toPlainText } from "@/lib/markdown";
+import { isSimpleMode } from "@/lib/useTournament";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
 
@@ -76,6 +79,14 @@ function carryOptions(
   }));
 }
 
+const SAME_FORM_DUPLICATE_MESSAGE: Record<PresetKind, string> = {
+  availability: "Another question here already uses this track and key. Change one of them.",
+  event_preference:
+    "Another question here already asks for this track's events. Pick another track.",
+  lunch: "Another question here already asks this track and category. Change one of them.",
+  track_status: "Another question here already uses this key. Change it.",
+};
+
 const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
@@ -84,12 +95,9 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 ];
 
 // Reserved-key presets (availability_{track_id}, event_preference_{track_id},
-// lunch_{track_id}_{category}) — split into their own toolbar popover from
-// FieldKeyPopover's plain free-text key, since a preset now needs its own
-// parameter input(s) (a date, a suffix, a date+category pair) rather than
-// being a single fixed field_key a TD picks off a list. Choosing/changing a
-// preset here keeps the TD's option rows and their branch targets — only each
-// value's *shape* is rewritten to fit the new kind (see reshapeOptions).
+// lunch_{track_id}_{category}), separate from FieldKeyPopover's free-text key
+// because a preset takes its own parameters. Changing the preset keeps the
+// option rows and their branch targets; see carryOptions.
 export function PresetPopover({
   field,
   onFieldChange,
@@ -100,17 +108,18 @@ export function PresetPopover({
   demandComplete,
   open,
   onOpenChange,
+  allFields,
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
+  /** The form's staged questions, for the live same-form duplicate check. */
+  allFields: EditableField[];
   /** The tournament's live tracks — every reserved key but track_status is
       scoped to one. Empty while still loading (or on a chapter-owned form
       with no tournament). */
   tracks: TournamentTrack[];
-  /** Fires when the panel opens — FieldList uses this to refetch the track
-      catalog right then, rather than relying on a snapshot taken whenever
-      the page first loaded (which could be stale by the time this actually
-      gets opened, in a tab left open a while). */
+  /** Fires when the panel opens, so the tracks are refetched rather than read
+      from a snapshot that a long-open tab may have let go stale. */
   onOpen?: () => void;
   errors: string[];
   /** Bumped by FieldList each time a Save attempt fails validation — see
@@ -151,7 +160,21 @@ export function PresetPopover({
     setPrevFieldKey(field.field_key);
     setDupDismissed(true);
   }
-  const duplicateError = dupDismissed ? undefined : rawDuplicateError;
+  // Checked live, unlike the cross-form collision above: a duplicated question
+  // starts out sharing its source's preset, and should say so right away.
+  const sameFormDuplicate =
+    !!presetKind &&
+    !field.field_key.endsWith("_") &&
+    allFields.some(
+      (other) =>
+        other.clientKey !== field.clientKey && effectiveFieldKey(other) === field.field_key,
+    );
+  const duplicateError =
+    presetKind && sameFormDuplicate
+      ? SAME_FORM_DUPLICATE_MESSAGE[presetKind]
+      : dupDismissed
+        ? undefined
+        : rawDuplicateError;
   const keyError = incompleteError ?? duplicateError;
 
   const attemptFailed = saveAttempt > 0 && !!(incompleteError || rawDuplicateError);
@@ -175,7 +198,7 @@ export function PresetPopover({
       // other key.
       const options = carryOptions(field, null, field.question_type);
       onFieldChange({
-        field_key: slugifyFieldKey(field.label),
+        field_key: slugifyFieldKey(toPlainText(field.label)),
         // Re-derived, not kept: an entity value (an id list) just became the
         // row's label, so the custom-value list it came from is gone.
         customValuesEnabled: hasCustomValues(options),
@@ -346,7 +369,10 @@ export function PresetPopover({
                             )
                               ? (option.value as number[])
                               : [];
-                            return { ...option, value: { shift_ids: shiftIds, track_status: "" } };
+                            return {
+                              ...option,
+                              value: { shift_ids: shiftIds, track_statuses: [] },
+                            };
                           }
                           if (
                             !checked &&
@@ -455,16 +481,13 @@ function AvailabilityParams({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        emptyPlaceholder="Loading tracks…"
+      <PresetTrackPicker
         value={parsed.trackId}
         tracks={shiftTracks}
+        allTracks={tracks}
         onChange={setTrack}
-        error={showErrors && parsed.trackId === null ? "Track is required." : undefined}
+        showErrors={showErrors}
+        soleReason="Only one competition day track"
       />
       <Input
         label="Key (optional)"
@@ -475,6 +498,43 @@ function AvailabilityParams({
         fullWidth
       />
     </div>
+  );
+}
+
+// The track a preset binds to. A simple tournament's one track has nothing to
+// choose, so once TrackPicker has filled it in the picker hides. Otherwise,
+// when `tracks` narrows to one, it stays visible but locked, with `soleReason`.
+function PresetTrackPicker({
+  value,
+  tracks,
+  allTracks,
+  onChange,
+  showErrors,
+  soleReason,
+}: {
+  value: number | null;
+  /** The tracks this preset may bind to. */
+  tracks: TournamentTrack[];
+  /** Every live track, which decides whether the tournament is simple. */
+  allTracks: TournamentTrack[];
+  onChange: (trackId: number) => void;
+  showErrors: boolean;
+  soleReason: string;
+}) {
+  if (isSimpleMode(allTracks) && value !== null) return null;
+  return (
+    <TrackPicker
+      label="Track"
+      required
+      size="sm"
+      fullWidth
+      emptyPlaceholder="Loading tracks…"
+      value={value}
+      tracks={tracks}
+      onChange={onChange}
+      error={showErrors && value === null ? "Track is required." : undefined}
+      helper={tracks.length === 1 ? soleReason : undefined}
+    />
   );
 }
 
@@ -492,16 +552,13 @@ function EventPreferenceParams({
   const { trackId } = parseEventPreferenceFieldKey(field.field_key);
 
   return (
-    <TrackPicker
-      label="Track"
-      required
-      size="sm"
-      fullWidth
-      emptyPlaceholder="Loading tracks…"
+    <PresetTrackPicker
       value={trackId}
       tracks={tracks}
+      allTracks={tracks}
       onChange={(next) => onFieldChange({ field_key: buildEventPreferenceFieldKey(next) })}
-      error={showErrors && trackId === null ? "Track is required." : undefined}
+      showErrors={showErrors}
+      soleReason="Only one track"
     />
   );
 }
@@ -541,16 +598,13 @@ function LunchParams({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        emptyPlaceholder="Loading tracks…"
+      <PresetTrackPicker
         value={trackId}
         tracks={tracks}
+        allTracks={tracks}
         onChange={setTrack}
-        error={showErrors && trackId === null ? "Track is required." : undefined}
+        showErrors={showErrors}
+        soleReason="Only one track"
       />
       <Input
         label="Category"

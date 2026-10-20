@@ -18,7 +18,6 @@ from app.core.discord.marks import mark_full, mark_member
 from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
 from app.core.oauth import frontend_redirect
 from app.core.tournament import tournament_display_name
-from app.core.tournament.memberships import is_declined
 from app.core.tournament.permissions import MANAGE_DISCORD, has_permission
 from app.models.discord import DiscordGuildLink
 from app.models.models import (
@@ -345,9 +344,7 @@ def _whoami(db: Session, link: DiscordGuildLink, discord_user_id: str) -> dict[s
     )
     rows = [
         row
-        for row in (
-            membership.track_assignments if membership and not is_declined(membership) else []
-        )
+        for row in (membership.track_assignments if membership else [])
         if row.is_tournament_wide or row.tournament_track_id == track.id
     ]
     if not rows:

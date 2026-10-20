@@ -175,24 +175,6 @@ def test_counts_statuses_and_availability_by_largest_covered_option(
     }
 
 
-def test_age_declined_members_are_left_out(client, td_user, td_tournament, db):
-    track_id = primary_track_id(db, td_tournament.id)
-    _member(
-        db,
-        td_tournament,
-        "gone@test.com",
-        track_id=track_id,
-        status="confirmed",
-        age_disclosure="declined",
-    )
-
-    login(client, "td@test.com", "tdpass")
-    body = client.get(_url(td_tournament)).json()
-
-    assert body["member_count"] == 1
-    assert _track(body, track_id)["confirmed"] == 0
-
-
 def test_draft_form_options_are_not_offered(client, td_user, td_tournament, db):
     track_id = primary_track_id(db, td_tournament.id)
     morning = _shift(db, td_tournament, track_id, "Morning", 8)

@@ -3,24 +3,20 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { type BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { newOption } from "@/components/forms/builder/OptionsEditor";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { IconCopy, IconGripVertical, IconTrash } from "@/components/ui/Icons";
+import { RichTextInput } from "@/components/ui/RichTextInput";
 import { Switch } from "@/components/ui/Switch";
-import { Textarea } from "@/components/ui/Textarea";
-import type { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
+import type { FormQuestionType } from "@/lib/api";
+import { backwardBranchTargetIds, branchTargetsFor } from "@/lib/forms/branching";
+import { useFieldExtension, useFormBuilderAddon, useOptionLabel } from "@/lib/forms/builderAddon";
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
-import {
-  activePresetKind,
-  effectiveFieldKey,
-  isEntityBackedPreset,
-  isFieldKeyError,
-  isPresetError,
-  PRESETS,
-} from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
   OPTION_BEARING_TYPES,
   QUESTION_TYPE_OPTIONS,
@@ -29,10 +25,9 @@ import {
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
-// How long to keep waiting for the clicked input to exist. The entity-backed
-// editors (availability/event_preference) render "Loading shifts…" until their
-// fetch lands, so the option row a click was aimed at isn't in the DOM at the
-// moment the card expands.
+// How long to keep waiting for the clicked input to exist. An add-on's options
+// editor can show a loading state until its data lands, so the option row a
+// click was aimed at isn't in the DOM at the moment the card expands.
 const FOCUS_WAIT_MS = 4000;
 
 // Which editor input a click on the collapsed preview was aimed at. Options
@@ -45,19 +40,44 @@ export type FocusIntent = {
   offset: number | null;
 } | null;
 
-// Character offset of a viewport point within its own text node. Chrome/Firefox
-// expose caretPositionFromPoint; WebKit only has the older caretRangeFromPoint.
-function caretOffsetFromPoint(x: number, y: number): number | null {
+// Character offset of a viewport point, counted from the start of `within`'s
+// text when given (formatted text spans several text nodes), else within its
+// own text node. Chrome/Firefox expose caretPositionFromPoint; WebKit only
+// has the older caretRangeFromPoint.
+function caretOffsetFromPoint(x: number, y: number, within?: HTMLElement): number | null {
   const doc = document as Document & {
     caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
   };
   const pos = doc.caretPositionFromPoint?.(x, y);
-  if (pos) return pos.offsetNode.nodeType === Node.TEXT_NODE ? pos.offset : null;
-  const range = document.caretRangeFromPoint?.(x, y);
+  const range = pos ? null : document.caretRangeFromPoint?.(x, y);
+  const node = pos ? pos.offsetNode : range?.startContainer;
+  const offset = pos ? pos.offset : range?.startOffset;
   // Outside a text node the "offset" is a child index, which would be a
   // meaningless caret position — better to fall back to the end of the value.
-  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
-  return range.startOffset;
+  if (!node || offset === undefined || node.nodeType !== Node.TEXT_NODE) return null;
+  if (!within) return offset;
+  if (!within.contains(node)) return null;
+  const before = document.createRange();
+  before.setStart(within, 0);
+  before.setEnd(node, offset);
+  return before.toString().length;
+}
+
+// The rich-text editor counterpart of setSelectionRange: ProseMirror follows
+// the DOM selection, so collapsing it at a text offset moves the editor's caret.
+function placeCaretInEditable(root: HTMLElement, offset: number | null) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset ?? Number.POSITIVE_INFINITY;
+  let last: Text | null = null;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (remaining <= node.length) {
+      window.getSelection()?.collapse(node, remaining);
+      return;
+    }
+    remaining -= node.length;
+    last = node;
+  }
+  if (last) window.getSelection()?.collapse(last, last.length);
 }
 
 // An option row leads with its bullet — a real <input type="checkbox"/"radio">
@@ -93,7 +113,13 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
     const active = document.activeElement;
     // The user got there first while we were waiting on a fetch — stealing
     // focus out from under them mid-keystroke is worse than not landing it.
-    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    ) {
+      return;
+    }
 
     const target = resolveTarget(root, intent.target);
     if (!target) {
@@ -101,6 +127,10 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
       return;
     }
     target.focus();
+    if (target.isContentEditable) {
+      placeCaretInEditable(target, intent.offset);
+      return;
+    }
     // selectionStart is null on input types that don't support selection
     // (checkbox, radio, ...) — reading it is the sanctioned way to ask,
     // and calling setSelectionRange on one throws InvalidStateError.
@@ -122,8 +152,8 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
-// label/type chrome here (field key + reserved presets live in FieldToolbar
-// now, not inline — see FieldKeyPopover/PresetPopover), plus whatever body
+// label/type chrome here (the field key and any add-on popover live in
+// FieldToolbar, not inline), plus whatever body
 // QuestionRenderer's edit mode renders for this question_type (options
 // list, ranks, confirm text, entity picker, ...). Splitting it that way
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
@@ -137,13 +167,11 @@ export function FieldCard({
   onFieldChange,
   onDuplicate,
   onDelete,
-  tournament,
-  shifts,
   allFields,
   usedFieldKeys,
   errors,
   allowArchive = false,
-  onRequireTrack,
+  onOpenAddon,
   locked = false,
 }: {
   field: EditableField;
@@ -158,48 +186,37 @@ export function FieldCard({
   onFieldChange: (updates: Partial<EditableField>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  /** null hides the availability/event_preference entity-backed editor
-      (falls through to the plain preview instead) — a chapter-owned form has
-      no tournament to source shifts/events from. Also carries is_multi_day,
-      which decides how EntityOptionsEditor's shift chips/picker display. */
-  tournament: Tournament | null;
-  /** Collapsed-card preview only — lets an availability option's time range
-      resolve client-side (its `value` is still raw shift ids, not GET's
-      resolved shape) without every card fetching its own copy. null while
-      still loading, same as tournament. */
-  shifts: TournamentShift[] | null;
   allFields: EditableField[];
-  /** Every field_key already saved elsewhere on this tournament — see
-      duplicateKey below. */
+  /** Every field_key already saved on the owner's forms — see duplicateKey below. */
   usedFieldKeys: string[];
   errors: string[];
-  /** Forwarded to the entity pickers — opens the toolbar's preset popover
-      when a picker is used before the question has a track. */
-  onRequireTrack?: () => void;
+  /** Opens this field's add-on popover — see AddonOptionsEditorProps.onOpenAddon. */
+  onOpenAddon?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
-  /** Archived tournament — stays a read-only preview: no expanding, no dragging. */
+  /** Archived tournament or form — stays a read-only preview: no expanding, no dragging. */
   locked?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const presetKind = activePresetKind(field.field_key);
-  // Key/preset errors surface exclusively through FieldToolbar's popovers
-  // now (danger-colored trigger + inline message) — the card itself no
-  // longer shows the key or flags it, so it shouldn't double-report the
-  // same problem in its own border/error list either.
-  const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
-  // Re-run just this field's structural checks against its live, currently-
-  // being-edited data — but only once the last validate() pass actually
-  // found something here (so a never-touched field doesn't start flashing
-  // errors as soon as you glance at it). This is what lets the card's danger
-  // border, and every error message routed off of it below, disappear the
-  // moment the underlying problem is actually fixed, rather than waiting on
-  // the next Save/validate() call.
+  const addon = useFormBuilderAddon();
+  const extension = useFieldExtension(field);
+  const optionLabel = useOptionLabel(field);
+  // Key errors and the add-on's own surface exclusively through FieldToolbar's
+  // popovers (danger-colored trigger + inline message) — the card itself
+  // doesn't show the key, so it shouldn't double-report the same problem in
+  // its own border/error list either.
+  const isToolbarError = (e: string) => isFieldKeyError(e) || addon.ownsIssue(e);
+  const nonKeyErrors = errors.filter((e) => !isToolbarError(e));
+  // Re-run just this field's checks against its live, currently-being-edited
+  // data — but only once the last validate() pass actually found something
+  // here (so a never-touched field doesn't start flashing errors as soon as
+  // you glance at it). This is what lets the card's danger border, and every
+  // error message routed off of it below, disappear the moment the underlying
+  // problem is actually fixed, rather than waiting on the next Save.
+  const liveIssues = issuesFor(field, allFields, addon);
   const liveNonKeyErrors =
-    nonKeyErrors.length > 0
-      ? issuesFor(field).filter((e) => !isFieldKeyError(e) && !isPresetError(e))
-      : [];
-  // Routed straight onto the label Textarea's own error prop below, rather
+    nonKeyErrors.length > 0 ? liveIssues.filter((e) => !isToolbarError(e)) : [];
+  // Routed straight onto the label input's own error prop below, rather
   // than a shared list — the rest of liveNonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
   // QuestionRenderer's edit body.
@@ -207,36 +224,33 @@ export function FieldCard({
     ? "Question text is required."
     : undefined;
   const bodyErrors = liveNonKeyErrors.filter((e) => e !== "Question text is required.");
-  // Key/preset errors themselves still surface only through FieldToolbar's
+  // Toolbar errors themselves still surface only through FieldToolbar's
   // popovers (danger-colored trigger + inline message) — this doesn't
   // duplicate that message here, it just decides whether the card border
   // should flag that *something* in the toolbar needs attention. Same
   // gate-then-recheck pattern as liveNonKeyErrors above: only bothers once
-  // the last validate() pass actually flagged a key/preset problem on this
+  // the last validate() pass actually flagged a toolbar problem on this
   // field, then re-derives it from live data so fixing it via either popover
   // clears the border immediately.
-  const hadKeyOrPresetError = errors.some((e) => isFieldKeyError(e) || isPresetError(e));
-  const presetIncomplete = !!presetKind && field.field_key.endsWith("_");
+  const hadToolbarError = errors.some(isToolbarError);
+  const addonIssueOpen = liveIssues.some(addon.ownsIssue);
   const effKey = effectiveFieldKey(field);
-  // A same-form collision is checked live against the other staged fields; a
-  // preset key can also collide with a *different* form's field, which only
-  // the tournament-wide usedFieldKeys snapshot (not allFields) would catch —
-  // a plain custom key relies on FieldKeyPopover's own blur-time check for
-  // that instead, so this half is preset-only. `effKey !== field.originalFieldKey`
-  // excludes the field's own already-saved key — usedFieldKeys otherwise
-  // always contains it too, which would flag every untouched existing preset
-  // field as a duplicate of itself. Both halves are naturally self-correcting
-  // as the TD edits: once the key changes, it just stops matching either
-  // check, no stale-error bookkeeping required.
+  // A same-form collision is checked live against the other staged fields; an
+  // add-on-owned key can also collide with a *different* form's field, which
+  // only usedFieldKeys (the owner's other forms) would catch — a plain custom
+  // key relies on FieldKeyPopover's own blur-time check for that instead.
+  // Both halves self-correct as the TD edits: once the key changes, it just
+  // stops matching either check.
   const duplicateKey =
     !!effKey &&
     (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
-      (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey)));
-  const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
-  const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
-  const branchTargets: BranchTarget[] = allFields
-    .filter((f) => f.clientKey !== field.clientKey && f.label.trim())
-    .map((f) => ({ id: f.id, label: f.label.trim() }));
+      (!!extension.keyLockedReason && usedFieldKeys.includes(effKey)));
+  const hasToolbarCardError = hadToolbarError && (addonIssueOpen || duplicateKey);
+  // Flagged without waiting for Save, so the card turns red as the reorder
+  // that broke the branch lands.
+  const hasBackwardBranch = backwardBranchTargetIds(field, allFields).size > 0;
+  const hasCardError = liveNonKeyErrors.length > 0 || hasToolbarCardError || hasBackwardBranch;
+  const branchTargets = branchTargetsFor(field, allFields);
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
@@ -284,17 +298,24 @@ export function FieldCard({
   // opens the card with that input focused.
   function handleCollapsedClick(e: ReactMouseEvent) {
     const el = e.target instanceof HTMLElement ? e.target : null;
-    const offset = caretOffsetFromPoint(e.clientX, e.clientY);
+    // A link in the preview should open the card like any other text, not navigate.
+    if (el?.closest("a")) e.preventDefault();
     const optionRow = el?.closest<HTMLElement>("[data-option-value]");
     if (optionRow) {
       const rows = [
         ...(rootRef.current?.querySelectorAll<HTMLElement>("[data-option-value]") ?? []),
       ];
+      const offset = caretOffsetFromPoint(e.clientX, e.clientY);
       onExpand({ target: `option:${rows.indexOf(optionRow)}`, offset });
       return;
     }
-    const focus = el?.closest<HTMLElement>("[data-focus]")?.dataset.focus;
-    onExpand(focus === "label" || focus === "description" ? { target: focus, offset } : null);
+    const focusEl = el?.closest<HTMLElement>("[data-focus]");
+    const focus = focusEl?.dataset.focus;
+    if (focusEl && (focus === "label" || focus === "description")) {
+      onExpand({ target: focus, offset: caretOffsetFromPoint(e.clientX, e.clientY, focusEl) });
+    } else {
+      onExpand(null);
+    }
   }
 
   // Every question_type switch drops whatever config keys belonged to the
@@ -305,8 +326,8 @@ export function FieldCard({
   // non-option type, or a preset whose kind was just picked/changed) also
   // gets one starter row so there's always something ready to edit rather
   // than an empty list the TD has to click "Add option" to even start on —
-  // entity-backed presets get the entity-shaped starter (an empty id array
-  // to fill in via the picker), everything else gets the plain freeform one.
+  // an add-on can seed its own shape (an empty id array to fill in via a
+  // picker), everything else gets the plain freeform one.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
     // Per-option keys too — sanitizeConfigForType only knows config-level
@@ -315,7 +336,7 @@ export function FieldCard({
       config.options = config.options.map((option) => cleanOption(option, questionType));
     const needsStarterOption =
       OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
-    const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
+    const starterOption = (extension.newOption ?? newOption)();
     onFieldChange({
       question_type: questionType,
       config: needsStarterOption ? { ...config, options: [starterOption] } : config,
@@ -360,28 +381,22 @@ export function FieldCard({
                 marginBottom: field.showDescription ? "10px" : "16px",
               }}
             >
-              <Textarea
+              <RichTextInput
                 data-focus="label"
+                variant="inline"
                 value={field.label}
-                onChange={(e) => onFieldChange({ label: e.target.value })}
+                onChange={(label) => onFieldChange({ label })}
                 placeholder="Question"
-                rows={1}
-                autoGrow
                 fullWidth
                 error={labelError}
-                style={{
-                  padding: "7px 16px",
-                  lineHeight: "20px",
-                  borderRadius: "var(--radius-md)",
-                }}
               />
               <Dropdown
                 value={field.question_type}
                 onChange={(v) => handleQuestionTypeChange(v as FormQuestionType)}
                 options={
-                  presetKind
+                  extension.allowedQuestionTypes
                     ? QUESTION_TYPE_OPTIONS.filter((o) =>
-                        PRESETS[presetKind].allowedQuestionTypes.includes(o.value),
+                        extension.allowedQuestionTypes?.includes(o.value),
                       )
                     : QUESTION_TYPE_OPTIONS
                 }
@@ -390,20 +405,14 @@ export function FieldCard({
             </div>
             {field.showDescription && (
               <div style={{ marginBottom: "16px" }}>
-                <Textarea
+                <RichTextInput
                   data-focus="description"
+                  variant="rich"
                   value={field.description ?? ""}
-                  onChange={(e) => onFieldChange({ description: e.target.value })}
+                  onChange={(description) => onFieldChange({ description })}
                   placeholder="Description"
-                  rows={1}
-                  autoGrow
                   size="sm"
                   fullWidth
-                  style={{
-                    padding: "5px 10px",
-                    lineHeight: "16px",
-                    borderRadius: "var(--radius-md)",
-                  }}
                 />
               </div>
             )}
@@ -412,13 +421,12 @@ export function FieldCard({
               mode="edit"
               showHeader={false}
               onFieldChange={onFieldChange}
-              tournament={tournament}
               branchTargets={branchTargets}
               branchingEnabled={field.branchingEnabled}
               customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
               allowArchive={allowArchive}
-              onRequireTrack={onRequireTrack}
+              onOpenAddon={onOpenAddon}
             />
 
             <div
@@ -440,7 +448,7 @@ export function FieldCard({
                   onChange={(checked) =>
                     onFieldChange({ config: { ...field.config, required: checked } })
                   }
-                  locked={presetKind === "track_status"}
+                  locked={!!extension.requiredLocked}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
@@ -503,7 +511,7 @@ export function FieldCard({
                 because the targets are rendered by shared components that
                 the respondent-facing form uses too. */}
             <div className="field-preview">
-              <QuestionRenderer field={field} interactive={false} shifts={shifts} />
+              <QuestionRenderer field={field} interactive={false} optionLabel={optionLabel} />
             </div>
           </Card>
         )}
@@ -556,7 +564,10 @@ export function FieldCardDragPreview({ field }: { field: EditableField }) {
           whiteSpace: "nowrap",
         }}
       >
-        {field.label.trim() || "Untitled question"}
+        <FormattedText
+          markdown={field.label.trim().replace(/\n/g, " ") || "Untitled question"}
+          variant="inline"
+        />
       </span>
     </Card>
   );

@@ -146,7 +146,7 @@ function FormRow({
         ))}
         <FormActionsMenu
           form={form}
-          items={["edit", "preview", "responses", "allow-edits"]}
+          items={["edit", "preview", "responses", "copy-link", "allow-edits"]}
           onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
           lockedReason={lockedReason}
           size="sm"

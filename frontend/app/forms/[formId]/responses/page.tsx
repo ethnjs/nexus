@@ -1,14 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { type CSSProperties, use, useEffect, useState } from "react";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponsesView, respondentName } from "@/components/forms/ResponsesView";
-import { FORM_TABS_HEIGHT, SubHeader } from "@/components/forms/SubHeader";
+import { SubHeader } from "@/components/forms/SubHeader";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, type Form, type FormField, type FormResponseManager, formsApi } from "@/lib/api";
+import { type Form, type FormField, type FormResponseManager, formsApi } from "@/lib/api";
+import { builderLoadFailure } from "@/lib/forms/builderLoad";
 import { useActionToast } from "@/lib/useActionToast";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
@@ -29,20 +30,26 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
   const [responses, setResponses] = useState<FormResponseManager[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [noAccess, setNoAccess] = useState(false);
+  const [missing, setMissing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FormResponseManager | null>(null);
 
   useEffect(() => {
-    Promise.all([formsApi.get(formId), formsApi.listResponses(formId)])
-      .then(([loaded, list]) => {
-        setForm(loaded);
-        setFields(loaded.fields.filter((f) => !f.is_archived));
-        setResponses(list);
-      })
-      .catch((e) => {
-        // listResponses is manager-only — a member who lands here gets a 403.
-        if (e instanceof ApiError && e.status === 403) setNoAccess(true);
-        else setLoadError(e instanceof ApiError ? e.message : "Failed to load responses.");
-      });
+    // allSettled, not all: which of the two fails first decides nothing.
+    Promise.allSettled([formsApi.get(formId), formsApi.listResponses(formId)]).then(
+      ([loaded, list]) => {
+        if (loaded.status === "fulfilled" && list.status === "fulfilled") {
+          setForm(loaded.value);
+          setFields(loaded.value.fields);
+          setResponses(list.value);
+          return;
+        }
+        const reasons = [loaded, list].flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+        const failure = builderLoadFailure(reasons, "Failed to load responses.");
+        if (failure === "no-access") setNoAccess(true);
+        else if (failure === "not-found") setMissing(true);
+        else setLoadError(failure.message);
+      },
+    );
   }, [formId]);
 
   function handleDeleted() {
@@ -60,6 +67,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
     );
   }
 
+  if (missing) notFound();
   if (noAccess) return <NoFormAccess />;
 
   if (loadError) {
@@ -98,7 +106,6 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
         locked={tournamentArchived}
         activeTab="responses"
         maxWidth={RESPONSES_MAX_WIDTH}
-        stickyTabs
       />
       <div
         style={
@@ -106,8 +113,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
             maxWidth: `${RESPONSES_MAX_WIDTH}px`,
             margin: "0 auto",
             padding: "0 24px 22px",
-            // The respondent list pins itself just under the sticky tab row.
-            "--list-top": `${TOPBAR_HEIGHT + FORM_TABS_HEIGHT}px`,
+            "--list-top": `${TOPBAR_HEIGHT + 16}px`,
           } as CSSProperties
         }
       >

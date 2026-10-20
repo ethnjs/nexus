@@ -67,7 +67,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 
 ## Eligibility (the gate)
 
-A Discord member is eligible in a server linked to track T when their account is linked to an **active** NEXUS user (not deactivated or locked) who either owns the tournament, or holds, through a membership whose age disclosure isn't declined, any assignment on T or any tournament-wide one. The tournament mustn't be archived and T mustn't be pending deletion. Bots are never touched, and site admins get no special treatment. `desired_role_keys` in `eligibility.py` computes this for a whole server in one batched query.
+A Discord member is eligible in a server linked to track T when their account is linked to an **active** NEXUS user (not deactivated or locked) who either owns the tournament, or holds any assignment on T or any tournament-wide one. The tournament mustn't be archived and T mustn't be pending deletion. Bots are never touched, and site admins get no special treatment. `desired_members` in `eligibility.py` computes this, with each member's nickname, for a whole server in a few batched queries.
 
 ## Roles
 
@@ -161,8 +161,7 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 | Write | Marks |
 |---|---|
 | Assignment create, update, delete, placements (one mark per member for the whole edit); zone assignments; role grants | member, in the row's track's server; tournament-wide rows in every server |
-| Membership deleted (both routes) | member, every server |
-| Age disclosure declined, or given after declining | member, in the servers of the membership's rows |
+| Membership deleted: removed, left, or age disclosure declined | member, every server |
 | Role created or renamed | structure, every server |
 | Role deleted; event deleted or removed from a track | structure, plus member for former holders, queried first |
 | Event created or renamed, or its tracks change | structure, every server |
@@ -198,7 +197,7 @@ lobot sees its own changes too; repeated marks merge, so a build's channel creat
 | Command | Does |
 |---|---|
 | `/link` | A link button to `/connect/discord` |
-| `/whoami` | Your linked NEXUS name, roles on this track and tournament-wide, and event assignments with shift times, counting only what eligibility counts (an inactive account or a declined age disclosure shows none) |
+| `/whoami` | Your linked NEXUS name, roles on this track and tournament-wide, and event assignments with shift times, counting only what eligibility counts (an inactive account shows none) |
 | `/sync` | Writes a full mark and replies with the last sync's failure or warning |
 | `/setup` | Preview, Confirm, then `build(reset=False)` |
 | `/reset [role] [channel]` | Preview, Confirm, then a full or scoped reset |

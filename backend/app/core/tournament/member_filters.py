@@ -328,8 +328,8 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
 
     Gated exactly as gate_age_flags gates the response: the tournament must
     collect that flag and the member must have consented. Filtering on the raw
-    property instead would leak what consent withheld — a member who declined
-    would still appear in a "21+" list, which tells you their flag as surely as
+    property instead would leak what consent withheld — a member who hasn't
+    consented would still appear in a "21+" list, which tells you their flag as surely as
     printing it. It also read as a plain bug, since the row then rendered
     "21+ Unknown" (the response omits the value) inside a 21+ filter.
 

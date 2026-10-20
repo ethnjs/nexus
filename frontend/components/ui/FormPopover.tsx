@@ -94,16 +94,16 @@ export function FormPopover({
 
     if (side === "right") {
       // Top-aligned with the trigger rather than dropped below it — this is
-      // a "belongs to this icon" flyout, not a dropdown. Unclamped: it
-      // tracks the trigger's real position exactly, including scrolling
-      // past the viewport edge along with it if the trigger (itself
-      // `position: sticky` in FieldToolbar) does — clamping it to stay
-      // on-screen made it look glued to the viewport edge instead of to the
-      // trigger once the trigger scrolled away. Flips to the trigger's left
-      // if there isn't room on the right.
+      // a "belongs to this icon" flyout, not a dropdown. Near the bottom of
+      // the viewport it slides up just enough to fit, but never past lining
+      // its bottom up with the trigger's: clamping to the viewport alone made
+      // it look glued to the screen edge once the trigger (itself
+      // `position: sticky` in FieldToolbar) scrolled away. Flips to the
+      // trigger's left if there isn't room on the right.
       const spaceRight = window.innerWidth - r.right;
       left = spaceRight < width + PANEL_GAP ? r.left - width - PANEL_GAP : r.right + PANEL_GAP;
-      top = r.top;
+      const fitsAbove = window.innerHeight - panelHeight - PANEL_GAP;
+      top = Math.max(r.bottom - panelHeight, Math.min(r.top, fitsAbove));
     } else {
       left = align === "right" ? r.right - width : r.left;
       const spaceBelow = window.innerHeight - r.bottom;

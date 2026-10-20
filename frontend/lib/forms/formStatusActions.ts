@@ -1,5 +1,7 @@
 import type { FormStatus } from "@/lib/api";
 
+export const FORM_ARCHIVED_REASON = "This form is archived — restore it to draft to edit it.";
+
 export type FormStatusAction = "publish" | "unpublish" | "restore" | "archive" | "delete";
 
 export interface FormActionOption {

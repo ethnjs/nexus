@@ -1,7 +1,7 @@
 """Who passes a server's gate, and which managed roles each member should hold.
 
 A Discord member is eligible when their account is linked to an active NEXUS user who owns the
-tournament, or whose active membership holds any assignment on the server's track or any
+tournament, or whose membership holds any assignment on the server's track or any
 tournament-wide one, while the tournament isn't archived and the track isn't being deleted.
 Site admins get no special treatment."""
 
@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.core.discord.layout import OWNER_KEY, VERIFIED_KEY, event_role_key, nickname, role_key
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.models.discord import DiscordGuildLink
 from app.models.models import (
     OAuthIdentity,
@@ -76,7 +75,6 @@ def _keys_by_user(db: Session, link: DiscordGuildLink, user_ids: set[int]) -> di
         .filter(
             TournamentMembership.tournament_id == link.tournament_id,
             TournamentMembership.user_id.in_(active),
-            ACTIVE_MEMBERSHIP_CLAUSE,
             (TournamentTrackAssignment.tournament_track_id == link.track_id)
             | TournamentTrackAssignment.is_tournament_wide.is_(True),
         )

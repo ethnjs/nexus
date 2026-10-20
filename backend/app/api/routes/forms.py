@@ -1,4 +1,7 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -6,10 +9,7 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     assign_option_ids,
-    changes,
-    delete_pending_updates_for_field,
     field_key_taken_in_tournament,
-    flag_pending_updates,
     resolve_field_options,
     selected_option_ids,
     slugify,
@@ -17,6 +17,7 @@ from app.core.form import (
 )
 from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
 from app.core.form.permissions import (
+    require_form_editable,
     require_form_manage_access,
     require_form_not_archived,
     require_form_view_access,
@@ -55,9 +56,13 @@ from app.core.form.write_through import (
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
-from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
-from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
-from app.core.tournament.permissions import MANAGE_FORMS, require_permission
+from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
+from app.core.tournament.onboarding import (
+    exempt_from_onboarding,
+    next_required_onboarding_form_id,
+    recompute_onboarding,
+)
+from app.core.tournament.permissions import MANAGE_FORMS, get_user_permissions, require_permission
 from app.db.session import get_db
 from app.models.models import (
     ChapterMembership,
@@ -65,7 +70,6 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
-    FormResponsePendingUpdate,
     TournamentForm,
     TournamentMembership,
     TournamentRole,
@@ -75,7 +79,6 @@ from app.models.models import (
 )
 from app.schemas.form import (
     BulkFieldsUpdate,
-    FieldChangeRead,
     FormCreate,
     FormFieldRead,
     FormListRead,
@@ -215,7 +218,7 @@ def list_my_tournament_forms(
     current_user: User = Depends(get_current_user),
 ):
     membership = get_membership_by_user(db, tournament_id, current_user.id)
-    if membership is None or is_declined(membership):
+    if membership is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found"
         )
@@ -235,6 +238,9 @@ def list_my_tournament_forms(
         .all()
     }
     next_onboarding_form_id = next_required_onboarding_form_id(db, membership)
+    held_to_onboarding = next_onboarding_form_id is not None and not exempt_from_onboarding(
+        membership, get_user_permissions(current_user, tournament_id, db)
+    )
 
     result = []
     for tournament_form in rows:
@@ -243,8 +249,10 @@ def list_my_tournament_forms(
         if tournament_form.is_onboarding:
             eligible = form.status == "published" and form.id == next_onboarding_form_id
         else:
-            eligible = form.status == "published" and member_meets_form_prerequisites(
-                db, membership, tournament_form
+            eligible = (
+                form.status == "published"
+                and not held_to_onboarding
+                and member_meets_form_prerequisites(db, membership, tournament_form)
             )
         if completed or eligible:
             result.append(
@@ -458,34 +466,37 @@ def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: d
 # ---------------------------------------------------------------------------
 # GET /forms/{form_id}/ — view/render. Any member of a linked
 # tournament/chapter can view (not just managers) — this is what the form
-# renderer for people filling it out calls.
+# renderer for people filling it out calls. Archived questions come back too,
+# in their slot, so a past response renders in order; anything that renders
+# the fillable form skips them.
 #
 # raw=true skips resolve_field_options' respondent-facing hydration
 # (availability/event_preference option `value` normally becomes
 # [{id, label, start, end}, ...] instead of the plain ids it's actually
 # stored/submitted as) — the builder needs exactly the round-trippable
 # config it's about to PUT back, not a rendering of it. raw also keeps
-# archived options. It's the builder's shape, so it takes manage access on
-# top of view access — a member gets 403 rather than the builder's data.
+# archived options. It's the builder's shape, so it takes manage access
+# instead of view access: a member gets 403 even on a draft, which view access
+# would 404 for them.
 # ---------------------------------------------------------------------------
 @router.get("/forms/{form_id}/", response_model=FormRead)
 def get_form_for_rendering(
+    form_id: str,
     raw: bool = False,
     db: Session = Depends(get_db),
-    form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
-    if raw:
-        require_form_manage_access(form.id, db, current_user)
+    access = require_form_manage_access if raw else require_form_view_access
+    form = access(form_id, db, current_user)
 
-    active_fields = (
+    fields = (
         db.query(FormField)
-        .filter(FormField.form_id == form.id, FormField.is_archived == False)
-        .order_by(FormField.order)
+        .filter(FormField.form_id == form.id)
+        .order_by(FormField.order, FormField.is_archived)
         .all()
     )
 
-    for field in active_fields:
+    for field in fields:
         if raw:
             continue
         resolved_options = resolve_field_options(db, field)
@@ -494,74 +505,8 @@ def get_form_for_rendering(
             config["options"] = resolved_options
             field.config = config
 
-    form.fields = active_fields
+    form.fields = fields
     return form
-
-
-# ---------------------------------------------------------------------------
-# POST /forms/{form_id}/fields/classify/ — dry run for the builder's save
-# confirmation: given a proposed field list, which questions would ask
-# previous responders to look again, and why.
-#
-# Nothing is written. This exists so the confirmation shows the server's own
-# verdict rather than a second implementation of the rules living in the
-# client — the modal's whole promise is "this is what saving will do", and a
-# mirrored rule set can quietly under-report the moment the two drift.
-#
-# Empty on a form nobody has answered: there's no one to notify, so a save
-# there never raises anything.
-# ---------------------------------------------------------------------------
-@router.post("/forms/{form_id}/fields/classify/", response_model=list[FieldChangeRead])
-def classify_field_changes(
-    payload: BulkFieldsUpdate,
-    db: Session = Depends(get_db),
-    form: Form = Depends(require_form_manage_access),
-):
-    if not _is_history_preserving(db, form):
-        return []
-
-    existing_by_id = {
-        f.id: f for f in db.query(FormField).filter(FormField.form_id == form.id).all()
-    }
-
-    result = []
-    for entry in payload.fields:
-        field = existing_by_id.get(entry.id) if entry.id else None
-        # A new question has nobody to notify, and an unarchived one comes
-        # back exactly as it was left.
-        if field is None or field.is_archived:
-            continue
-
-        reasons = changes.classify_field_change(
-            field,
-            new_question_type=entry.question_type,
-            # Same fallback as the save path: an omitted key means "leave it".
-            new_field_key=slugify(entry.field_key) if entry.field_key else field.field_key,
-            # Options the TD just added have no option_id yet; assigning here
-            # keeps the diff from tripping over a missing key. The ids differ
-            # from the ones the real save will mint, which doesn't matter —
-            # either way they're absent from the old config, so they read as
-            # added.
-            new_config=assign_option_ids(entry.config),
-            new_label=entry.label,
-            new_description=entry.description,
-        )
-        if not reasons:
-            continue
-
-        optional = reasons - changes.MANDATORY_REASONS
-        locked = bool(reasons & changes.MANDATORY_REASONS)
-        result.append(
-            FieldChangeRead(
-                field_id=field.id,
-                label=entry.label,
-                reasons=sorted(reasons),
-                locked=locked,
-                notify_default=locked
-                or any(changes.OPTIONAL_REASON_DEFAULTS.get(reason, False) for reason in optional),
-            )
-        )
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +542,8 @@ def update_form(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    if payload.model_fields_set - {"status"}:
+        require_form_editable(form)
     if payload.status == "published" and form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -675,25 +622,13 @@ def delete_form(
 
 
 # ---------------------------------------------------------------------------
-# PUT /forms/{form_id}/fields/ — replaces the field list wholesale. Supersedes
-# the old per-field POST/PATCH/DELETE routes: the client owns in-progress
-# edits locally (no server-side draft/staging), and this request is the
-# "go live" action. An entry with `id` updates that field; an entry with no
-# `id` creates one; a currently-live field whose `id` is absent from the
-# payload is removed.
-#
-# A never-answered draft applies directly (hard delete/update/insert).
-# Published forms — and drafts restored/unpublished after receiving a response
-# — archive instead of hard-deleting/losing data: a removed or
-# question_type-changed field is archived (and, for a type change, replaced
-# by a new field at the same list position inheriting the old field_key); an
-# option dropped from an otherwise-unchanged field's config is archived in
-# place rather than removed from storage. Either way
-# the whole batch is applied inside one transaction, flushed (so newly
-# created fields get real ids), validated as a whole via
-# collect_active_field_errors, and only committed if that validation
-# passes — an invalid next_field_id (including one that would've pointed
-# at a field this same request removes) rolls the whole request back.
+# PUT /forms/{form_id}/fields/ — replaces the field list wholesale. An entry
+# with `id` updates that field, one without creates it, and a live field
+# missing from the payload is removed: deleted on a never-answered draft,
+# archived once the form is history-preserving. Submitted answers are never
+# touched. Archived fields are renumbered with the rest and stay right after
+# the field they used to follow. The batch is validated as a whole after a
+# flush and rolled back if anything fails.
 # ---------------------------------------------------------------------------
 @router.put("/forms/{form_id}/fields/", response_model=list[FormFieldRead])
 def bulk_update_fields(
@@ -702,6 +637,7 @@ def bulk_update_fields(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    require_form_editable(form)
     is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
@@ -721,34 +657,34 @@ def bulk_update_fields(
             detail=f"field id(s) not found on this form: {sorted(unknown_ids)}",
         )
 
-    new_entries = [e for e in payload.fields if e.id is None]
-    new_keys = [slugify(e.field_key or "") for e in new_entries]
-    if len(new_keys) != len(set(new_keys)):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="duplicate field_key among the fields being created in this request",
+    def _key_taken(field_key: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
         )
 
+    # Keys are checked against the state this save produces, not the rows as
+    # they stand: a key one question gives up in this save is free for another
+    # to take in the same save. A blank key on an existing field means "unchanged".
+    final_keys = [
+        slugify(entry.field_key)
+        if entry.field_key
+        else (existing_by_id[entry.id].field_key if entry.id is not None else "")
+        for entry in payload.fields
+    ]
+    seen_keys: set[str] = set()
+    for key in final_keys:
+        if key and key in seen_keys:
+            raise _key_taken(key)
+        seen_keys.add(key)
+
     def _check_field_key_available(field_key: str) -> None:
-        if form.owner_type == "tournament":
-            assert form.tournament_id is not None
-            taken = field_key_taken_in_tournament(db, form.tournament_id, field_key)
-        else:
-            taken = (
-                db.query(FormField)
-                .filter(
-                    FormField.form_id == form.id,
-                    FormField.field_key == field_key,
-                    FormField.is_archived == False,
-                )
-                .first()
-                is not None
-            )
-        if taken:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
-            )
+        # This form's own keys were just checked against each other; only
+        # another form of the tournament can still hold one.
+        if form.tournament_id is not None and field_key_taken_in_tournament(
+            db, form.tournament_id, field_key, exclude_form_id=form.id
+        ):
+            raise _key_taken(field_key)
 
     def _validate_config(question_type: str, config: dict | None, field_key: str) -> dict:
         # Only structural/self-contained checks run here, before the batch
@@ -778,19 +714,44 @@ def bulk_update_fields(
             ) from e
         return normalized
 
-    # (field, reasons, removed_option_ids) — resolved into rows after the
-    # flush, so a rolled-back batch leaves no flags behind.
-    pending_flags: list[tuple[FormField, set[str], list[str]]] = []
     # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
     lunch_backfills: list[FormField] = []
 
+    removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
+    followers = _followers_by_anchor(
+        existing_by_id.values(),
+        submitted_ids,
+        drop=set() if is_history_preserving else {f.id for f in removed_fields},
+    )
+    for field in removed_fields:
+        if is_history_preserving:
+            field.is_archived = True
+        else:
+            db.delete(field)
+
+    # Free every key this save gives up before any field takes one. The
+    # live-key unique index can't be deferred, and the flush writes rows in its
+    # own order, not the payload's, so a key moving between questions (or two
+    # swapping) would otherwise collide mid-flush. The placeholder skips the
+    # ORM so each field object keeps its old key for the comparisons below.
+    for entry, final_key in zip(payload.fields, final_keys, strict=True):
+        field = existing_by_id[entry.id] if entry.id is not None else None
+        if field is not None and not field.is_archived and final_key != field.field_key:
+            db.execute(
+                update(FormField)
+                .where(FormField.id == field.id)
+                .values(field_key=f"pending_{secrets.token_hex(6)}")
+                .execution_options(synchronize_session=False)
+            )
+    db.flush()
+
     order = 1
+    for follower in followers.get(None, []):
+        follower.order = order
+        order += 1
     for entry in payload.fields:
         if entry.id is not None:
             field = existing_by_id[entry.id]
-            # A previously archived field named in the payload is coming back.
-            # Nothing is flagged: the question and its answers are exactly as
-            # they were left, so there's nothing for a responder to review.
             unarchiving = field.is_archived
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
@@ -804,32 +765,6 @@ def bulk_update_fields(
                 _check_field_key_available(new_field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
 
-            # Every edit applies to the field itself — a question_type change
-            # included. The field keeps its id, so answers and pending updates
-            # stay attached without any lineage bookkeeping; FormAnswer records
-            # the question_type/field_key each answer was given under, so past
-            # answers remain readable under the old semantics rather than being
-            # reinterpreted through the new type. See backend/docs/form-edit-lifecycle.md.
-            if is_history_preserving and not unarchiving:
-                reasons = changes.classify_field_change(
-                    field,
-                    new_question_type=entry.question_type,
-                    new_field_key=new_field_key,
-                    new_config=normalized_config,
-                    new_label=entry.label,
-                    new_description=entry.description,
-                )
-                reasons = changes.resolve_reasons(reasons, entry.notify_responders)
-                # The submitted option list is authoritative, including its
-                # is_archived flags — closing an option means sending it back
-                # marked archived, so an option the payload omits was
-                # deliberately invalidated and really does leave storage.
-                # Whoever picked it is flagged before it goes.
-                removed_option_ids = sorted(
-                    changes.removed_option_ids(field.config, normalized_config)
-                )
-                if reasons:
-                    pending_flags.append((field, reasons, removed_option_ids))
             # A field that only now became a lunch question: its existing
             # answers never reached TournamentMembershipLunch, and never will
             # on their own — write-through only runs on submit. Backfilled
@@ -867,16 +802,9 @@ def bulk_update_fields(
             )
             db.add(new_field)
         order += 1
-
-    removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
-    for field in removed_fields:
-        if is_history_preserving:
-            # Retiring a question raises nothing: a flag on a field that can
-            # no longer be answered could never clear. Any open ones go too.
-            field.is_archived = True
-            delete_pending_updates_for_field(db, field.id)
-        else:
-            db.delete(field)
+        for follower in followers.get(entry.id, []):
+            follower.order = order
+            order += 1
 
     db.flush()
 
@@ -886,9 +814,6 @@ def bulk_update_fields(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors)
         )
-
-    for field, reasons, removed_option_ids in pending_flags:
-        flag_pending_updates(db, field, reasons, removed_option_ids)
 
     for field in lunch_backfills:
         _backfill_lunch_write_through(db, form, field)
@@ -906,6 +831,22 @@ def bulk_update_fields(
         .order_by(FormField.order)
         .all()
     )
+
+
+def _followers_by_anchor(
+    fields, submitted_ids: set[str], drop: set[str]
+) -> dict[str | None, list[FormField]]:
+    """Fields missing from the payload, keyed by the submitted field they
+    currently follow (None for the start of the form), so renumbering can put
+    each back right after it. `drop` names fields about to be deleted."""
+    followers: dict[str | None, list[FormField]] = {}
+    anchor: str | None = None
+    for field in sorted(fields, key=lambda f: (f.order, f.is_archived)):
+        if field.id in submitted_ids:
+            anchor = field.id
+        elif field.id not in drop:
+            followers.setdefault(anchor, []).append(field)
+    return followers
 
 
 def _is_history_preserving(db: Session, form: Form) -> bool:
@@ -1010,13 +951,8 @@ def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answ
 
 
 # ---------------------------------------------------------------------------
-# POST /forms/{form_id}/responses/ — first submission only. One row per
-# (form, user); a second POST is a 409, not a resubmit. Editing an existing
-# response goes through PATCH below, which only accepts the questions a TD
-# flagged — an unrestricted rewrite of an old response re-fires write-through
-# for fields the respondent never touched, overwriting state a newer form may
-# have set (see backend/docs/form-edit-lifecycle.md). View access, not manage — this is
-# what the person filling the form out calls.
+# POST /forms/{form_id}/responses/ — first submission only; a second POST is a
+# 409. Editing goes through PATCH below.
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
 def submit_form_response(
@@ -1036,7 +972,7 @@ def submit_form_response(
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You have already responded to this form — use PATCH to update flagged questions",
+            detail="You have already responded to this form",
         )
 
     active_fields = _active_fields(db, form)
@@ -1081,18 +1017,12 @@ def submit_form_response(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/responses/me/ — edit a submitted response. By default
-# limited to the questions carrying a pending update: replaying answers that
-# didn't change can overwrite state a newer form already set (see the track
-# status ordering note in backend/docs/form-edit-lifecycle.md). A form with
-# allow_response_edits opens every live question instead — the TD has opted
-# into members revising freely, so the client must send only what changed.
-# The gate is enforced here, not in the UI.
-#
-# Only the patched fields are replaced, written through, and cleared; the
-# rest of the response is untouched. With edits open, required/branching
-# validation runs over the merged response, since changing a branching answer
-# can make a required question reachable that was never answered.
+# PATCH /forms/{form_id}/responses/me/ — edit a submitted response, only on a
+# form with allow_response_edits. The client sends only what changed: a
+# replayed answer would re-fire its write-through and can overwrite state a
+# newer form already set (see backend/docs/form-edit-lifecycle.md). Required
+# and branching validation runs over the merged response, since a changed
+# branching answer can make an unanswered required question reachable.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/responses/me/", response_model=FormResponseRead)
 def patch_form_response(
@@ -1103,6 +1033,11 @@ def patch_form_response(
 ):
     require_form_not_archived(form)
     _require_published(form)
+    if not form.allow_response_edits:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This form doesn't allow editing responses",
+        )
 
     response = (
         db.query(FormResponse)
@@ -1119,24 +1054,8 @@ def patch_form_response(
     if not patched_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No answers to update")
 
-    flagged_ids = {
-        field_id
-        for (field_id,) in db.query(FormResponsePendingUpdate.field_id).filter(
-            FormResponsePendingUpdate.response_id == response.id
-        )
-    }
     active_fields = _active_fields(db, form)
-    editable_ids = {f.id for f in active_fields} if form.allow_response_edits else flagged_ids
-    ungated = patched_ids - editable_ids
-    if ungated:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"These questions aren't open for editing: {sorted(ungated)}",
-        )
-
     fields_by_id = {f.id: f for f in active_fields if f.id in patched_ids}
-    # A flag should only ever point at a live field; anything missing here
-    # means one was archived without its flags being cleaned up.
     missing = patched_ids - set(fields_by_id)
     if missing:
         raise HTTPException(
@@ -1145,16 +1064,8 @@ def patch_form_response(
         )
 
     answers_by_field = {answer_in.field_id: answer_in.value for answer_in in payload.answers}
-    if form.allow_response_edits:
-        merged = {**_stored_answers_as_submitted(db, response), **answers_by_field}
-        missing_required = missing_required_field_keys(active_fields, merged)
-    else:
-        # Only over what's being patched — the rest of the response already
-        # satisfied required validation when it was submitted, and flagged
-        # edits can't move a branching answer the TD didn't flag.
-        missing_required = missing_required_field_keys(
-            list(fields_by_id.values()), answers_by_field
-        )
+    merged = {**_stored_answers_as_submitted(db, response), **answers_by_field}
+    missing_required = missing_required_field_keys(active_fields, merged)
     if missing_required:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1174,11 +1085,6 @@ def patch_form_response(
         FormAnswer.response_id == response.id, FormAnswer.field_id.in_(patched_ids)
     ).delete(synchronize_session=False)
     _store_answers(db, response, fields_by_id, payload.answers)
-
-    db.query(FormResponsePendingUpdate).filter(
-        FormResponsePendingUpdate.response_id == response.id,
-        FormResponsePendingUpdate.field_id.in_(patched_ids),
-    ).delete(synchronize_session=False)
 
     response.updated_at = utcnow()
 
@@ -1277,15 +1183,8 @@ def _write_through_reserved_fields(
         # into track statuses, so it feeds both this and the shift pool.
         in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
         if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
-            # An availability field's option carries a bare status; the track
-            # comes from its own key. A track_status_* field names no track,
-            # so its options carry the ids themselves and this is None.
-            own_track_id = availability_field_track_id(field.field_key)
             for option_id in selected:
-                for assignment in option_track_assignments(
-                    options_by_id.get(option_id) or {},
-                    own_track_id,
-                ):
+                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
                     intended_track_statuses[assignment["id"]] = {
                         "status": assignment["status"],
                         "field_id": field.id,
@@ -1342,23 +1241,10 @@ def _write_through_reserved_fields(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /forms/{form_id}/fields/{field_id}/ — invalidate a question: erase it
-# and everything it collected.
-#
-# Deliberately its own route rather than a flag on the bulk update. This is the
-# only destructive action in the field lifecycle, and burying it in a target
-# field list would mean a client bug could reach it; here it takes a single
-# explicit call naming one field.
-#
-# Use archive (omit the field from the bulk payload) to retire a question and
-# keep its history — that stays undoable. Invalidate is for a question that
-# should never have been asked, whose answers are not worth keeping, and it
-# cannot be undone.
-#
-# Write-through rows are handled per target: lunch and event preference each
-# have a single owning field and can be cleared, while availability and track
-# statuses are shared with other questions and are left alone — see
-# backend/docs/form-edit-lifecycle.md.
+# DELETE /forms/{form_id}/fields/{field_id}/ — invalidate a question: delete it
+# and its answers. Its own route rather than part of the bulk update, so a
+# client bug in the field list can't reach the one irreversible action. Rows
+# its answers wrote through stay; see backend/docs/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def invalidate_form_field(
@@ -1367,6 +1253,7 @@ def invalidate_form_field(
     form: Form = Depends(require_form_manage_access),
 ):
     require_form_not_archived(form)
+    require_form_editable(form)
     field = (
         db.query(FormField).filter(FormField.form_id == form.id, FormField.id == field_id).first()
     )
@@ -1375,18 +1262,7 @@ def invalidate_form_field(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form"
         )
 
-    if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
-        lunch_track_id, category = parse_lunch_field_key(field.field_key)
-        _clear_lunch_write_through(db, form, field, lunch_track_id, category)
-
-    if (
-        EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key)
-        and form.owner_type == "tournament"
-    ):
-        _clear_event_preference_write_through(db, form, field)
-
-    # FormAnswer's FK has no ON DELETE, so its rows go first; pending updates
-    # cascade with the field.
+    # FormAnswer's FK has no ON DELETE, so its rows go first.
     db.query(FormAnswer).filter(FormAnswer.field_id == field.id).delete(synchronize_session=False)
     db.delete(field)
     db.flush()
@@ -1461,58 +1337,6 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
         )
 
 
-def _clear_lunch_write_through(
-    db: Session, form: Form, field: FormField, lunch_track_id, category
-) -> None:
-    """Drops the lunch rows this field produced, for every member who answered
-    it. Keyed by (membership, track, category), so no other question can be
-    contributing the same rows."""
-    user_ids = {
-        user_id
-        for (user_id,) in db.query(FormResponse.user_id)
-        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
-        .filter(FormAnswer.field_id == field.id)
-        .all()
-    }
-    if not user_ids:
-        return
-    membership_ids = {
-        membership_id
-        for (membership_id,) in db.query(TournamentMembership.id).filter(
-            TournamentMembership.tournament_id == form.tournament_id,
-            TournamentMembership.user_id.in_(user_ids),
-        )
-    }
-    for membership_id in membership_ids:
-        sync_lunch(db, membership_id, lunch_track_id, category, [])
-
-
-def _clear_event_preference_write_through(db: Session, form: Form, field: FormField) -> None:
-    """Drops the event preference rows this field produced, for every member
-    who answered it. Keyed by (membership, track), and a track has exactly one
-    preference question, so no other question can be contributing the same
-    rows — same reasoning as lunch's (membership, track, category)."""
-    user_ids = {
-        user_id
-        for (user_id,) in db.query(FormResponse.user_id)
-        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
-        .filter(FormAnswer.field_id == field.id)
-        .all()
-    }
-    if not user_ids:
-        return
-    membership_ids = {
-        membership_id
-        for (membership_id,) in db.query(TournamentMembership.id).filter(
-            TournamentMembership.tournament_id == form.tournament_id,
-            TournamentMembership.user_id.in_(user_ids),
-        )
-    }
-    pref_track_id = parse_event_preference_field_key(field.field_key)
-    for membership_id in membership_ids:
-        sync_event_preferences(db, membership_id, pref_track_id, [])
-
-
 # ---------------------------------------------------------------------------
 # GET /forms/{form_id}/responses/ — all responses to a form, with who gave
 # each. Manage access only — this is roster data, not something every member
@@ -1528,7 +1352,6 @@ def list_form_responses(
         .options(
             selectinload(FormResponse.user),
             selectinload(FormResponse.answers),
-            selectinload(FormResponse.pending_updates),
         )
         .filter(FormResponse.form_id == form.id)
         .order_by(FormResponse.submitted_at)
@@ -1561,7 +1384,7 @@ def list_form_responses(
 
 # ---------------------------------------------------------------------------
 # DELETE /forms/{form_id}/responses/{response_id}/ — a manager removes one
-# member's response, answers and pending-update flags with it.
+# member's response and its answers.
 #
 # Write-through data (availability, lunch, event preferences, track statuses)
 # is deliberately kept: it's the membership's current truth and may have been

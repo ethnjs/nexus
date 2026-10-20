@@ -50,7 +50,7 @@ export function removedPickedOptions(field: FormField, value: unknown): FormFiel
         value: snap.value ?? optionId,
       });
     }
-    // A bare id with no snapshot (availability answers) has no label to show.
+    // A bare id with no snapshot (an old availability answer) has no label to show.
   }
   return [...removed.values()];
 }

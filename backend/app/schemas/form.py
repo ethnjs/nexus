@@ -63,25 +63,20 @@ def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[Tra
 
 
 class AvailabilityTrackStatusValue(BaseModel):
-    """Raw builder value for an availability option that updates a track.
-
-    One status, not a list. An availability_{track_id} field names exactly one
-    track, so the only track this option could ever move is that one — a list
-    would let an option contradict its own field key, and every entry but one
-    would be dead weight. (A track_status_{suffix} field, which names no track
-    at all, keeps the list shape; that's what it exists for.)"""
+    """Raw builder value for an availability option that also updates track
+    statuses: the shifts it groups, plus a status for any of the tournament's
+    tracks — not only the one in the field's key (e.g. "Can't make Day 1"
+    declining Day 1 while marking interest in the Test Writing track)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    shift_ids: list[int] = Field(min_length=1)
-    track_status: str | None = None
+    shift_ids: list[int]
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
 
-    @field_validator("track_status")
+    @field_validator("track_statuses")
     @classmethod
-    def _valid_status(cls, status: str | None) -> str | None:
-        if status is not None and status not in VALID_TRACK_STATUSES:
-            raise ValueError(f"track_status must be one of: {sorted(VALID_TRACK_STATUSES)}")
-        return status
+    def _unique(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
 
 
 class PlainOption(BaseModel):
@@ -235,29 +230,6 @@ class BulkFieldEntry(BaseModel):
     description: str | None = None
     question_type: str
     config: dict[str, Any] | None = None
-    # The TD's answer, for this field, to "ask previous responders to review
-    # this?" — it only governs the judgment-call changes (wording, and moving
-    # between a preset and a standard key). Changes that actually invalidate
-    # an answer prompt regardless. None means the caller didn't decide, so
-    # each such change falls back to its own default; see
-    # app/core/form/changes.py.
-    notify_responders: bool | None = None
-
-
-class FieldChangeRead(BaseModel):
-    """One question a proposed save would ask previous responders to review.
-    Returned by the classify dry-run so the builder's confirmation can show
-    the server's own verdict instead of re-deriving the rules client-side."""
-
-    field_id: str
-    label: str
-    reasons: list[str]
-    # True when at least one reason is mandatory — the TD can see it but not
-    # switch it off, because the change invalidated the stored answer.
-    locked: bool
-    # What notify_responders should default to for this field if the TD
-    # doesn't touch it.
-    notify_default: bool
 
 
 class BulkFieldsUpdate(BaseModel):
@@ -438,18 +410,6 @@ class FormResponseCreate(BaseModel):
     answers: list[FormAnswerCreate]
 
 
-class FormPendingUpdateRead(BaseModel):
-    """A question this response is being asked to look at again. `field_id` is
-    the only field PATCH .../responses/me/ will accept — see
-    backend/docs/form-edit-lifecycle.md."""
-
-    field_id: str
-    reasons: list[str] = []
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class FormResponseRead(BaseModel):
     id: str
     form_id: str
@@ -457,7 +417,6 @@ class FormResponseRead(BaseModel):
     submitted_at: datetime
     updated_at: datetime
     answers: list[FormAnswerRead] = []
-    pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
 

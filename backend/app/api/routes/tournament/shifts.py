@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.discord.marks import mark_memberships, row_scope
-from app.core.form import shift_referenced_by_live_field
+from app.core.form import count_options_with_shifts, remove_shift_from_options
 from app.core.tournament import (
     get_scoped_or_404,
     get_tournament,
     require_not_archived,
     tournament_local_date,
 )
+from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.permissions import (
     MANAGE_EVENTS,
     require_membership,
@@ -20,6 +22,7 @@ from app.core.tournament.permissions import (
 from app.core.tournament.tracks import purge_pending_tracks
 from app.db.session import get_db
 from app.models.models import (
+    TournamentMembershipAvailability,
     TournamentShift,
     TournamentTrack,
     TournamentTrackAssignment,
@@ -27,6 +30,7 @@ from app.models.models import (
 )
 from app.schemas.tournament.shift import (
     TournamentShiftCreate,
+    TournamentShiftDeleteImpact,
     TournamentShiftRead,
     TournamentShiftUpdate,
 )
@@ -38,8 +42,8 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/shifts", tags=["tourname
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/shifts/ — any member.
 #
-# Not manage_events-gated: the member edit page needs the catalog to render
-# its own availability, and a shift is only a label and a time range. Any
+# Not manage_events-gated: a member's signup cards need the catalog to draw
+# their availability, and a shift is only a label and a time range. Any
 # member who has answered an availability question has already seen these
 # resolved into its options. Writes below still require manage_events.
 #
@@ -62,6 +66,53 @@ def list_shifts(
     if track_id is not None:
         query = query.filter(TournamentShift.track_id == track_id)
     return query.order_by(TournamentShift.start).all()
+
+
+# Declared before /{shift_id}/, which would otherwise take "delete-impact" as an id.
+@router.get("/delete-impact/", response_model=list[TournamentShiftDeleteImpact])
+def get_shift_delete_impact(
+    tournament_id: int,
+    ids: list[int] = Query(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """What deleting each of these shifts would change: member availability picks removed,
+    availability options that lose the shift, and staffing rows unpinned from it."""
+    get_tournament(tournament_id, db)
+    shift_ids = {
+        shift_id
+        for (shift_id,) in db.query(TournamentShift.id).filter(
+            TournamentShift.tournament_id == tournament_id, TournamentShift.id.in_(ids)
+        )
+    }
+    availability = dict(
+        db.query(
+            TournamentMembershipAvailability.tournament_shift_id,
+            func.count(TournamentMembershipAvailability.id),
+        )
+        .filter(TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids))
+        .group_by(TournamentMembershipAvailability.tournament_shift_id)
+        .all()
+    )
+    assignments = dict(
+        db.query(
+            TournamentTrackAssignment.tournament_shift_id,
+            func.count(TournamentTrackAssignment.id),
+        )
+        .filter(TournamentTrackAssignment.tournament_shift_id.in_(shift_ids))
+        .group_by(TournamentTrackAssignment.tournament_shift_id)
+        .all()
+    )
+    options = count_options_with_shifts(db, tournament_id, shift_ids)
+    return [
+        TournamentShiftDeleteImpact(
+            shift_id=shift_id,
+            availability_count=availability.get(shift_id, 0),
+            option_count=options[shift_id],
+            assignment_count=assignments.get(shift_id, 0),
+        )
+        for shift_id in sorted(shift_ids)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -231,19 +282,7 @@ def update_shift(
 
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/shifts/{shift_id}/ — manage_events
-# Event references are not a guard — deletion cascades through
-# tournament_event_shifts (ondelete="CASCADE"), silently detaching from any
-# events it was attached to. Intentionally different from how TimeBlock
-# deletion worked in the old scrapped design.
-#
-# Membership availability *is* a hard guard, unlike events — it's
-# member-submitted data (write-through from a form response, see
-# app/core/form/write_through.py), not planning structure a TD can just
-# re-derive, so silently cascading it away on a shift edit isn't acceptable.
-#
-# A live (non-archived) availability field's option grouping is the same
-# kind of guard, even before anyone's answered: a shift that's part of a
-# published question's choices can't be silently pulled out from under it.
+# Nothing blocks it; the delete-impact route above is what the TD is warned with.
 # ---------------------------------------------------------------------------
 @router.delete("/{shift_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shift(
@@ -257,19 +296,13 @@ def delete_shift(
 
     shift = get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
 
-    if shift.availability_count:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Shift has {shift.availability_count} membership availability selection(s) — cannot delete",
-        )
+    # Members' availability picks and event attachments go with the shift by cascade.
+    # Staffing rows would cascade too, taking the member off the event, so they're unpinned first.
+    for event in shift.tournament_events:
+        detach_shifts_from_assignments(db, event.id, {shift.id})
+    remove_shift_from_options(db, tournament_id, shift.id)
 
-    if shift_referenced_by_live_field(db, tournament_id, shift_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Shift is referenced by a live form field's availability option — cannot delete",
-        )
-
-    # Assignments pinned to the shift cascade, and a cascade writes no marks of its own.
+    # Rows still pinned to the shift cascade, and a cascade writes no marks of its own.
     pinned = db.query(TournamentTrackAssignment).filter(
         TournamentTrackAssignment.tournament_shift_id == shift.id
     )

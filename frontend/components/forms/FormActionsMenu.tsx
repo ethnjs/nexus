@@ -2,18 +2,33 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { IconCopy, IconDotsVertical, IconEdit, IconEye, IconMembers } from "@/components/ui/Icons";
+import {
+  IconCopy,
+  IconDotsVertical,
+  IconEdit,
+  IconEye,
+  IconLink,
+  IconMembers,
+} from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import { Switch } from "@/components/ui/Switch";
-import { ApiError, formsApi } from "@/lib/api";
+import { ApiError, type FormStatus, formsApi } from "@/lib/api";
+import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { useToast } from "@/lib/useToast";
 
-export type FormMenuKey = "edit" | "preview" | "responses" | "allow-edits" | "copy-json";
+export type FormMenuKey =
+  | "edit"
+  | "preview"
+  | "responses"
+  | "copy-link"
+  | "allow-edits"
+  | "copy-json";
 
 const LABELS: Record<FormMenuKey, string> = {
   edit: "Edit",
   preview: "Preview",
   responses: "View responses",
+  "copy-link": "Copy link",
   "allow-edits": "Allow response edits",
   "copy-json": "Copy JSON",
 };
@@ -33,7 +48,7 @@ export function FormActionsMenu({
   lockedReason,
   size = "md",
 }: {
-  form: { id: string; allow_response_edits: boolean };
+  form: { id: string; status: FormStatus; allow_response_edits: boolean };
   items: FormMenuKey[];
   /** Called with the saved value once the toggle's PATCH succeeds. */
   onAllowEditsChange: (allow: boolean) => void;
@@ -44,11 +59,18 @@ export function FormActionsMenu({
 }) {
   const { show } = useToast();
   const [busy, setBusy] = useState(false);
+  const editsLockedReason =
+    lockedReason ?? (form.status === "archived" ? FORM_ARCHIVED_REASON : undefined);
 
   async function copyJson() {
     const full = await formsApi.get(form.id);
     await navigator.clipboard.writeText(JSON.stringify(full, null, 2));
     show("Copied form JSON to clipboard");
+  }
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(`${window.location.origin}/forms/${form.id}`);
+    show("Copied form link");
   }
 
   async function toggleEdits() {
@@ -69,7 +91,9 @@ export function FormActionsMenu({
     if (key === "responses") return openInNewTab(`/forms/${form.id}/responses`);
     setBusy(true);
     try {
-      await (key === "copy-json" ? copyJson() : toggleEdits());
+      if (key === "copy-link") await copyLink();
+      else if (key === "copy-json") await copyJson();
+      else await toggleEdits();
     } catch (err) {
       show(err instanceof ApiError ? err.message : `Failed: ${LABELS[key]}.`, "error");
     } finally {
@@ -100,6 +124,7 @@ export function FormActionsMenu({
             {key === "edit" && <IconEdit size={13} />}
             {key === "preview" && <IconEye size={13} />}
             {key === "responses" && <IconMembers size={13} />}
+            {key === "copy-link" && <IconLink size={13} />}
             {key === "copy-json" && <IconCopy size={13} />}
             <span style={{ flex: 1 }}>{LABELS[key]}</span>
             {key === "allow-edits" && (
@@ -110,8 +135,14 @@ export function FormActionsMenu({
             )}
           </span>
         )}
-        isDisabled={(key) => key === "allow-edits" && !!lockedReason}
-        disabledReason={() => lockedReason}
+        isDisabled={(key) =>
+          key === "copy-link"
+            ? form.status !== "published"
+            : key === "allow-edits" && !!editsLockedReason
+        }
+        disabledReason={(key) =>
+          key === "copy-link" ? "Publish the form to share its link." : editsLockedReason
+        }
         onSelect={handleSelect}
         // The toggle row needs room for its label and switch side by side.
         width={items.includes("allow-edits") ? 230 : 170}

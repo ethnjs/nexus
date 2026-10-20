@@ -9,7 +9,6 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentEvent, TournamentMembership
 
@@ -93,11 +92,9 @@ def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, T
     for tournament_id, count in event_rows:
         counts[tournament_id]["event_count"] = count
 
-    # Declined memberships are excluded, matching is_declined() — the row
-    # still exists, it just isn't a volunteer.
     member_rows = (
         db.query(TournamentMembership.tournament_id, func.count(TournamentMembership.id))
-        .filter(TournamentMembership.tournament_id.in_(ids), ACTIVE_MEMBERSHIP_CLAUSE)
+        .filter(TournamentMembership.tournament_id.in_(ids))
         .group_by(TournamentMembership.tournament_id)
         .all()
     )

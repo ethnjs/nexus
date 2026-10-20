@@ -14,7 +14,6 @@ from app.models.models import (
     TournamentEvent,
     TournamentEventShift,
     TournamentEventTrack,
-    TournamentMembership,
     TournamentRole,
     TournamentShift,
     TournamentTrack,
@@ -206,23 +205,6 @@ class TestWhoami:
         db.commit()
         content = _content(_post(client, _command("whoami", user_id="5003")))
         assert content == "Your NEXUS account (Pat Example) isn't active."
-
-    def test_declined_age_disclosure_shows_no_roles(
-        self, client, db, discord_on, link, td_tournament
-    ):
-        volunteer = _make_user(db, "vol@test.com")
-        _link_discord(db, volunteer, "5003")
-        grant_role(db, td_tournament, volunteer, "Volunteer")
-        membership = (
-            db.query(TournamentMembership)
-            .filter_by(user_id=volunteer.id, tournament_id=td_tournament.id)
-            .one()
-        )
-        membership.age_disclosure = "declined"
-        db.commit()
-        content = _content(_post(client, _command("whoami", user_id="5003")))
-        assert "**Roles**" not in content
-        assert "don't have a role or assignment" in content
 
     def test_roles_on_this_track_and_tournament_wide_only(
         self, client, db, discord_on, link, td_tournament, track_id
