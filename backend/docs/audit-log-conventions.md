@@ -34,3 +34,6 @@ Shapes differ between actions, and sometimes between variants of one action. Che
 | `track_delete_cancelled` | `{"name": str}` |
 | `track_purged` | `{"name": str, "member_rows_deleted": int}`. Logged when the last blocker on a pending track is removed, as a side effect of that edit. |
 | `form_response_deleted` | `{"form_id": str, "form_name": str, "respondent_name": str}`, with `target_type="membership"`. Chapter forms aren't logged because chapters have no audit log. |
+| `discord_server_linked` | `{"track_name": str, "guild_id": str, "guild_name": str \| null}`, with `target_type="track"`. Adds `"readded": true` when the bot was added back to a server whose link survived its removal. `guild_id` is a string because Discord ids exceed JavaScript's integer precision. |
+| `discord_server_unlinked` | `{"track_name": str, "guild_id": str, "guild_name": str \| null}`, with `target_type="track"` |
+| `discord_settings_updated` | `{"track_name": str, "changes": [{"field": str, "old": any, "new": any}]}`, with `target_type="track"`. Fields are `merge_divisions` and `category_grouping`; logged only when one changed. |

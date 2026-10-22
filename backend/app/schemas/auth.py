@@ -203,6 +203,15 @@ class AccountDeactivateRequest(BaseModel):
     password: str
 
 
+class OAuthIdentityResponse(BaseModel):
+    provider: str
+    email_at_provider: str | None = None
+    username_at_provider: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class AccountDeleteRequest(BaseModel):
     """
     DELETE /users/me — authenticated.

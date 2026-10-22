@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.discord.marks import mark_memberships, mark_servers, row_scope
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import reassign_track_role
 from app.core.tournament.audit import (
@@ -79,7 +80,8 @@ def _reassign_default_role(
     if old_role_id is None or old_role_id == new_role_id:
         return
     new_role = get_scoped_or_404(db, TournamentRole, new_role_id, tournament.id, "Role")
-    reassign_track_role(db, tournament, track.id, old_role_id, new_role, actor)
+    moved = reassign_track_role(db, tournament, track.id, old_role_id, new_role, actor)
+    mark_memberships(db, tournament.id, [row_scope(row) for row in moved])
 
 
 def _validate_state(track: TournamentTrack) -> None:
@@ -334,6 +336,8 @@ def restore_track(
         target_id=track.id,
         extra_data={"name": track.name},
     )
+    # Its server stopped syncing while the track was pending deletion.
+    mark_servers(db, tournament_id, "full", track_id=track.id)
     db.commit()
     db.refresh(track)
     return track

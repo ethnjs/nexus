@@ -31,6 +31,9 @@ TRACK_DELETE_PENDING = "track_delete_pending"
 TRACK_DELETE_CANCELLED = "track_delete_cancelled"
 TRACK_PURGED = "track_purged"
 FORM_RESPONSE_DELETED = "form_response_deleted"
+DISCORD_SERVER_LINKED = "discord_server_linked"
+DISCORD_SERVER_UNLINKED = "discord_server_unlinked"
+DISCORD_SETTINGS_UPDATED = "discord_settings_updated"
 
 ALL_ACTIONS: list[str] = [
     ROLE_CREATED,
@@ -48,6 +51,9 @@ ALL_ACTIONS: list[str] = [
     TRACK_DELETE_CANCELLED,
     TRACK_PURGED,
     FORM_RESPONSE_DELETED,
+    DISCORD_SERVER_LINKED,
+    DISCORD_SERVER_UNLINKED,
+    DISCORD_SETTINGS_UPDATED,
 ]
 
 

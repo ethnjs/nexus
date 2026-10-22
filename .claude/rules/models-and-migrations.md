@@ -9,7 +9,7 @@ paths:
 
 ## Models
 
-All models are in `app/models/models.py`, in SQLAlchemy 2 typed style:
+NEXUS models are in `app/models/models.py` and the Discord tables in `app/models/discord.py` (imported by `app/models/__init__.py`, so a new model file must be added there too), in SQLAlchemy 2 typed style:
 
 ```python
 name: Mapped[str] = mapped_column(String(255))
