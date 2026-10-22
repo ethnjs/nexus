@@ -1,5 +1,7 @@
 """build() against the in-memory Discord server, with real NEXUS data in the test database."""
 
+import asyncio
+import threading
 from datetime import timedelta
 
 import pytest
@@ -266,16 +268,23 @@ class TestChecks:
         release_sync(db, link.id)
         assert claim_build(db, link.id)
 
-    async def test_long_builds_keep_their_claim(self, db, link, guild, scope, monkeypatch):
+    async def test_a_build_waiting_on_discord_keeps_its_claim(
+        self, db, link, guild, scope, mock_discord_rest, monkeypatch
+    ):
         from app.core.discord import build as build_module
 
         monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
-        assert claim_build(db, link.id)
-        link.last_build_at = utcnow() - timedelta(minutes=30)
-        db.commit()
-        await run_build(link.id, reset=False, target=None, session_scope=scope)
-        db.refresh(link)
-        assert utcnow() - link.last_build_at < timedelta(minutes=1)
+        # The test's one session can't take a heartbeat's write from another thread mid-action.
+        beat = threading.Event()
+        monkeypatch.setattr(build_module.Store, "heartbeat", lambda self, link_id: beat.set())
+        real = mock_discord_rest.create_role
+
+        async def rate_limited(guild_id, **fields):
+            await asyncio.wait_for(asyncio.to_thread(beat.wait), 5)
+            return await real(guild_id, **fields)
+
+        mock_discord_rest.create_role = rate_limited
+        assert await _build(db, link, scope) is None
 
 
 class TestResume:
