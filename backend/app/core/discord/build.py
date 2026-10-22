@@ -12,7 +12,6 @@ run (a channel's category, an event role in its overwrites) resolves the key whe
 import asyncio
 import contextlib
 import logging
-import time
 from collections.abc import Awaitable, Callable, Generator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -807,6 +806,38 @@ def _verify_overwrites(staff: list[str]) -> OverwriteSpec:
     }
 
 
+def _desired_ids(
+    spec: OverwriteSpec, roles: dict[str, int | None], everyone: int
+) -> dict[int, Overwrite] | None:
+    """The overwrites `spec` resolves to now, or None if a role it names isn't created yet."""
+    result = {}
+    for target, (allow, deny) in spec.items():
+        target_id = everyone if target == EVERYONE else roles.get(target)
+        if target_id is None:
+            if target in roles:
+                return None
+            continue
+        result[target_id] = Overwrite(ROLE_OVERWRITE, allow, deny)
+    return result
+
+
+def overwrites_differ(
+    channel: LiveChannel, spec: OverwriteSpec, roles: dict[str, int | None], everyone: int
+) -> bool:
+    """Whether the channel's overwrites for @everyone and the roles in `roles` (key to id, or
+    None while being created) differ from `spec`."""
+    desired = _desired_ids(spec, roles, everyone)
+    if desired is None:
+        return True
+    managed = {i for i in roles.values() if i is not None} | {everyone}
+    current = {
+        target: o
+        for target, o in channel.overwrites.items()
+        if o.type == ROLE_OVERWRITE and target in managed
+    }
+    return current != desired
+
+
 class _Planner:
     def __init__(self, snapshot: Snapshot, live: Live, plan: Plan, *, reset: bool) -> None:
         self.s = snapshot
@@ -917,30 +948,6 @@ class _Planner:
                 )
             )
 
-    def _desired_ids(self, spec: OverwriteSpec) -> dict[int, Overwrite] | None:
-        """The overwrites `spec` resolves to now, or None if a role it names isn't created yet."""
-        result = {}
-        for target, (allow, deny) in spec.items():
-            target_id = self.live.guild_id if target == EVERYONE else self.roles.get(target)
-            if target_id is None:
-                if target in self.roles:
-                    return None
-                continue
-            result[target_id] = Overwrite(ROLE_OVERWRITE, allow, deny)
-        return result
-
-    def _overwrites_differ(self, channel: LiveChannel, spec: OverwriteSpec) -> bool:
-        desired = self._desired_ids(spec)
-        if desired is None:
-            return True
-        managed = {i for i in self.roles.values() if i is not None} | {self.live.guild_id}
-        current = {
-            target: o
-            for target, o in channel.overwrites.items()
-            if o.type == ROLE_OVERWRITE and target in managed
-        }
-        return current != desired
-
     def plan_object(
         self,
         key: str,
@@ -1005,7 +1012,7 @@ class _Planner:
             action.parent = parent
             current = self.live.channels.get(live.parent_id) if live.parent_id else None
             changes.append(f"moved from {current.name}" if current else "category")
-        if self._overwrites_differ(live, overwrites):
+        if overwrites_differ(live, overwrites, self.roles, self.live.guild_id):
             action.overwrites = overwrites
             self.overwritten.add(live.id)
             changes.insert(0, "overwrites")
@@ -1458,7 +1465,7 @@ async def execute(
     heartbeat: Callable[[int], None] | None = None,
 ) -> None:
     """Runs the plan's actions in order, calling `heartbeat` every 30 seconds to keep the
-    caller's claim alive."""
+    caller's claim alive, including while an action waits out a rate limit."""
     ctx = Context(
         rest=rest,
         store=store,
@@ -1467,15 +1474,24 @@ async def execute(
         role_ids=dict(snapshot.role_ids),
         channel_ids=dict(snapshot.channel_ids),
     )
-    total = len(plan.actions)
-    beat = time.monotonic()
-    for done, action in enumerate(plan.actions, start=1):
-        await action.run(ctx)
-        if heartbeat is not None and time.monotonic() - beat >= HEARTBEAT_SECONDS:
-            beat = time.monotonic()
-            await ctx.save(heartbeat)
-        if progress is not None:
-            await progress(done, total)
+    beating = asyncio.create_task(_beat(ctx, heartbeat)) if heartbeat is not None else None
+    try:
+        total = len(plan.actions)
+        for done, action in enumerate(plan.actions, start=1):
+            await action.run(ctx)
+            if progress is not None:
+                await progress(done, total)
+    finally:
+        if beating is not None:
+            beating.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await beating
+
+
+async def _beat(ctx: Context, heartbeat: Callable[[int], None]) -> None:
+    while True:
+        await asyncio.sleep(HEARTBEAT_SECONDS)
+        await ctx.save(heartbeat)
 
 
 def build_running(link: DiscordGuildLink) -> bool:

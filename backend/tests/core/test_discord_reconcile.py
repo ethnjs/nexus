@@ -492,6 +492,80 @@ class TestStructure:
         assert channel["name"] == "circuits"
         assert guild.overwrite(channel, GUILD_ID) == (0, 0)
 
+    async def test_a_role_set_up_as_the_sync_would_create_it_is_adopted(
+        self, db, built, guild, scope, mock_discord_rest, td_tournament
+    ):
+        volunteer = _user(db, "vol@test.com", 6011)
+        guild.join(6011)
+        grant_role(db, td_tournament, volunteer, "Runner", track_id=built.track_id)
+        old = guild.role("Runner")
+        await mock_discord_rest.delete_role(GUILD_ID, int(old["id"]))
+        # As a create that timed out after Discord made the role leaves it.
+        orphan = guild.add_role("Runner", int(old["permissions"]))
+        mock_discord_rest.writes.clear()
+        await self._full(db, built, scope)
+        assert int(guild.role("Runner")["id"]) == orphan
+        assert "Runner" in guild.member_role_names(6011)
+        assert "create_role" not in [kind for kind, _ in mock_discord_rest.writes]
+        assert db.query(DiscordManagedRole).filter_by(discord_role_id=orphan).count() == 1
+
+    async def test_a_role_with_other_permissions_isnt_adopted(
+        self, db, built, guild, scope, mock_discord_rest
+    ):
+        old = guild.role("Runner")
+        await mock_discord_rest.delete_role(GUILD_ID, int(old["id"]))
+        admins = guild.add_role("Runner", int(old["permissions"]) | VIEW_CHANNEL)
+        await self._full(db, built, scope)
+        runners = [r for r in guild.roles.values() if r["name"] == "Runner"]
+        assert len(runners) == 2
+        assert guild.roles[admins]["permissions"] == str(int(old["permissions"]) | VIEW_CHANNEL)
+        assert db.query(DiscordManagedRole).filter_by(discord_role_id=admins).count() == 0
+
+    async def test_a_channel_set_up_as_the_sync_would_create_it_is_adopted(
+        self, db, built, guild, scope, mock_discord_rest
+    ):
+        old = guild.channel("circuit-lab-b")
+        del guild.channels[int(old["id"])]
+        orphan = guild.add_channel(
+            "circuit-lab-b",
+            parent_id=int(old["parent_id"]),
+            overwrites=[dict(o) for o in old["permission_overwrites"]],
+        )
+        mock_discord_rest.writes.clear()
+        await self._full(db, built, scope)
+        assert int(guild.channel("circuit-lab-b")["id"]) == orphan
+        assert "create_channel" not in [kind for kind, _ in mock_discord_rest.writes]
+        assert db.query(DiscordManagedChannel).filter_by(discord_channel_id=orphan).count() == 1
+
+    async def test_a_channel_set_up_differently_isnt_adopted(self, db, built, guild, scope):
+        old = guild.channel("circuit-lab-b")
+        del guild.channels[int(old["id"])]
+        admins = guild.add_channel("circuit-lab-b")
+        await self._full(db, built, scope)
+        names = [c["name"] for c in guild.channels.values()]
+        assert names.count("circuit-lab-b") == 2
+        assert guild.channels[admins]["parent_id"] is None
+        assert db.query(DiscordManagedChannel).filter_by(discord_channel_id=admins).count() == 0
+
+    async def test_an_adopted_category_takes_back_its_channels(
+        self, db, built, guild, scope, mock_discord_rest
+    ):
+        old = guild.channel("Rowland Hall", GUILD_CATEGORY)
+        del guild.channels[int(old["id"])]
+        for channel in guild.channels.values():
+            if channel["parent_id"] == old["id"]:
+                channel["parent_id"] = None
+        orphan = guild.add_channel(
+            "Rowland Hall",
+            GUILD_CATEGORY,
+            overwrites=[dict(o) for o in old["permission_overwrites"]],
+        )
+        mock_discord_rest.writes.clear()
+        await self._full(db, built, scope)
+        assert int(guild.channel("Rowland Hall", GUILD_CATEGORY)["id"]) == orphan
+        assert sorted(guild.children(guild.channels[orphan])) == ["circuit-lab-b", "circuit-lab-c"]
+        assert "create_channel" not in [kind for kind, _ in mock_discord_rest.writes]
+
 
 class TestMergedChannels:
     @pytest.fixture

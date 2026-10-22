@@ -1,6 +1,8 @@
 """Keeping a built server in step with NEXUS between builds: who holds which managed roles,
-members' nicknames, and that managed roles and channels exist, the fixed channels included. Never how they're configured
-(permissions, tiers, overwrites, names of channels, the layout, order); that's /reset.
+members' nicknames, and that managed roles and channels exist, the fixed channels included. Never
+how they're configured (permissions, tiers, overwrites, names of channels, the layout, order);
+that's /reset. So unlike the build, the sync adopts only objects already configured as it would
+create them.
 
 A structure reconcile plans with the build's actions (build.py) but matches channels by the
 events they cover rather than by the layout's keys, so a layout change waits for /reset: an
@@ -25,6 +27,9 @@ from app.core.discord.build import (
     CreateRole,
     ForgetChannel,
     Live,
+    LiveChannel,
+    LiveRole,
+    OverwriteSpec,
     Plan,
     PostVerifyMessage,
     SetUpChannel,
@@ -34,6 +39,7 @@ from app.core.discord.build import (
     _event_channel_overwrites,
     _staff_overwrite,
     _verify_overwrites,
+    overwrites_differ,
     parse_roles,
 )
 from app.core.discord.eligibility import DesiredMember
@@ -41,6 +47,7 @@ from app.core.discord.layout import (
     FIXED_CHANNEL_KEYS,
     VERIFIED_KEY,
     ChannelSpec,
+    RoleSpec,
     channel_key,
     event_role_key,
 )
@@ -104,6 +111,9 @@ class _SyncPlanner:
         self.ready_categories: set[str] = set()
         self.recreated_categories: set[str] = set()
         self.archive_ready = False
+        self.claimed: set[int] = set()
+        # Channel keys this plan adopts, with the adopted ids.
+        self.adopted: dict[str, int] = {}
 
     def add(self, action: Action) -> None:
         self.plan.actions.append(action)
@@ -123,9 +133,16 @@ class _SyncPlanner:
             role_id = self.s.role_ids.get(spec.key)
             role = self.live.roles.get(role_id) if role_id else None
             if role is None:
-                self.roles[spec.key] = None
                 self.tiers[spec.key] = spec.tier
-                self.add(CreateRole(None, f"Role: {spec.name}", spec))
+                adoptable = self._adoptable_role(spec)
+                if adoptable is None:
+                    self.roles[spec.key] = None
+                    self.add(CreateRole(None, f"Role: {spec.name}", spec))
+                else:
+                    self.roles[spec.key] = adoptable.id
+                    self.add(
+                        SetUpRole(None, f"Role: {spec.name}", spec.key, adoptable.id, {}, spec.tier)
+                    )
                 continue
             self.roles[spec.key] = role.id
             if role.name != spec.name:
@@ -153,6 +170,65 @@ class _SyncPlanner:
             else:
                 self.above_bot.add(role.name)
 
+    def _adoptable_role(self, spec: RoleSpec) -> LiveRole | None:
+        """The one unmanaged role named like `spec`, if it already has the permissions a create
+        would give it. Adopting changes nothing, so the sync still never changes configuration."""
+        managed = set(self.s.role_ids.values()) | self.claimed | {self.live.guild_id}
+        matches = [
+            r
+            for r in self.live.roles.values()
+            if r.name == spec.name and r.id not in managed and not r.managed
+        ]
+        if len(matches) != 1:
+            return None
+        [role] = matches
+        if role.permissions != spec.permissions or not self.live.below_bot(role.id):
+            return None
+        self.claimed.add(role.id)
+        return role
+
+    def create_channel(
+        self,
+        label: str,
+        key: str,
+        name: str,
+        type: int,
+        parent: str,
+        overwrites: OverwriteSpec,
+        position: int | None = None,
+    ) -> None:
+        """Creates a missing managed channel or category, or adopts the one unmanaged channel with
+        its name if that's already set up as the create would set it up, as one is when a create
+        timed out after Discord made it."""
+        channel = self._adoptable_channel(name, type, parent, overwrites)
+        if channel is None:
+            self.add(CreateChannel(None, label, key, name, type, parent, overwrites, position))
+            return
+        self.claimed.add(channel.id)
+        self.adopted[key] = channel.id
+        self.add(SetUpChannel(None, label, key, channel.id))
+
+    def _adoptable_channel(
+        self, name: str, type: int, parent: str, overwrites: OverwriteSpec
+    ) -> LiveChannel | None:
+        managed = set(self.s.channel_ids.values()) | self.claimed
+        matches = [
+            c
+            for c in self.live.channels.values()
+            if c.name == name and c.type == type and c.id not in managed
+        ]
+        if len(matches) != 1:
+            return None
+        [channel] = matches
+        parent_id = None if parent == TOP else self.adopted.get(parent, self.live_channel(parent))
+        if parent != TOP and parent_id is None:
+            return None
+        if channel.parent_id != parent_id:
+            return None
+        if overwrites_differ(channel, overwrites, self.roles, self.live.guild_id):
+            return None
+        return channel
+
     def ensure_category(self, key: str) -> None:
         if key in self.ready_categories:
             return
@@ -162,16 +238,13 @@ class _SyncPlanner:
         spec = next(c for c in self.s.layout.categories if c.key == key)
         if key in self.s.channel_ids:
             self.recreated_categories.add(key)
-        self.add(
-            CreateChannel(
-                None,
-                f"Category: {spec.name}",
-                key,
-                spec.name,
-                GUILD_CATEGORY,
-                TOP,
-                _category_overwrites(key, self.staff_keys),
-            )
+        self.create_channel(
+            f"Category: {spec.name}",
+            key,
+            spec.name,
+            GUILD_CATEGORY,
+            TOP,
+            _category_overwrites(key, self.staff_keys),
         )
 
     def ensure_archive(self) -> None:
@@ -179,16 +252,13 @@ class _SyncPlanner:
             return
         self.archive_ready = True
         if self.live_channel(ARCHIVED_KEY) is None:
-            self.add(
-                CreateChannel(
-                    None,
-                    f"Category: {ARCHIVED_CATEGORY_NAME}",
-                    ARCHIVED_KEY,
-                    ARCHIVED_CATEGORY_NAME,
-                    GUILD_CATEGORY,
-                    TOP,
-                    _category_overwrites(ARCHIVED_KEY, self.staff_keys),
-                )
+            self.create_channel(
+                f"Category: {ARCHIVED_CATEGORY_NAME}",
+                ARCHIVED_KEY,
+                ARCHIVED_CATEGORY_NAME,
+                GUILD_CATEGORY,
+                TOP,
+                _category_overwrites(ARCHIVED_KEY, self.staff_keys),
             )
 
     def channels_step(self) -> None:
@@ -275,16 +345,13 @@ class _SyncPlanner:
             channel_id = self.live_channel(spec.key)
             if channel_id is None:
                 self.ensure_category(spec.category_key)
-                self.add(
-                    CreateChannel(
-                        None,
-                        f"#{spec.name}",
-                        spec.key,
-                        spec.name,
-                        GUILD_TEXT,
-                        spec.category_key,
-                        _category_overwrites(spec.category_key, self.staff_keys),
-                    )
+                self.create_channel(
+                    f"#{spec.name}",
+                    spec.key,
+                    spec.name,
+                    GUILD_TEXT,
+                    spec.category_key,
+                    _category_overwrites(spec.category_key, self.staff_keys),
                 )
                 continue
             channel = self.live.channels[channel_id]
@@ -296,32 +363,26 @@ class _SyncPlanner:
                 )
 
     def _create_event_channel(self, spec: ChannelSpec) -> None:
-        self.add(
-            CreateChannel(
-                None,
-                f"#{spec.name}",
-                spec.key,
-                spec.name,
-                GUILD_TEXT,
-                spec.category_key,
-                _event_channel_overwrites(spec, self.staff_keys),
-            )
+        self.create_channel(
+            f"#{spec.name}",
+            spec.key,
+            spec.name,
+            GUILD_TEXT,
+            spec.category_key,
+            _event_channel_overwrites(spec, self.staff_keys),
         )
 
     def verify_step(self) -> None:
         channel_id = self.live_channel(VERIFY_KEY)
         if channel_id is None:
-            self.add(
-                CreateChannel(
-                    None,
-                    f"#{VERIFY_CHANNEL_NAME}",
-                    VERIFY_KEY,
-                    VERIFY_CHANNEL_NAME,
-                    GUILD_TEXT,
-                    TOP,
-                    _verify_overwrites(self.staff_keys),
-                    position=0,
-                )
+            self.create_channel(
+                f"#{VERIFY_CHANNEL_NAME}",
+                VERIFY_KEY,
+                VERIFY_CHANNEL_NAME,
+                GUILD_TEXT,
+                TOP,
+                _verify_overwrites(self.staff_keys),
+                position=0,
             )
             self.add(PostVerifyMessage(None, "#verify message"))
             return

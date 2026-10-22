@@ -3,6 +3,7 @@ and retries. Every call NEXUS makes goes through one DiscordRest, from get_rest(
 replace that one function with an in-memory server."""
 
 import asyncio
+from collections.abc import Awaitable
 from typing import Any
 
 import discord
@@ -15,9 +16,29 @@ GUILD_TEXT = 0
 GUILD_CATEGORY = 4
 ROLE_OVERWRITE = 0
 MEMBER_OVERWRITE = 1
-# Longer rate-limit waits raise discord.RateLimited instead. A build or sync that waited one out
-# would go over two minutes without a heartbeat, and its claim would be taken for dead.
-MAX_RATE_LIMIT_WAIT = 60.0
+# Covers waiting out one full role-create window (Discord reports 691 seconds) with room to spare.
+REQUEST_DEADLINE = 15 * 60.0
+
+
+class DiscordWaitTooLong(Exception):
+    def __init__(self) -> None:
+        minutes = round(REQUEST_DEADLINE / 60)
+        super().__init__(
+            f"Discord kept lobot waiting over {minutes} minutes, most likely a rate limit. "
+            "Try again later."
+        )
+
+
+async def _within_deadline[T](request: Awaitable[T]) -> T:
+    deadline = asyncio.timeout(REQUEST_DEADLINE)
+    try:
+        async with deadline:
+            return await request
+    except TimeoutError:
+        # aiohttp's own socket timeouts are TimeoutErrors too, and aren't waits.
+        if deadline.expired():
+            raise DiscordWaitTooLong() from None
+        raise
 
 
 class DiscordRest:
@@ -38,7 +59,7 @@ class DiscordRest:
                     self.bot_user_id = int(user["id"])
                     self._http = http
         assert self._http is not None
-        return await self._http.request(route, **kwargs)
+        return await _within_deadline(self._http.request(route, **kwargs))
 
     async def close(self) -> None:
         if self._http is not None:
@@ -224,7 +245,9 @@ class InteractionReplyError(Exception):
 
 
 def _http_client() -> HTTPClient:
-    return HTTPClient(asyncio.get_running_loop(), max_ratelimit_timeout=MAX_RATE_LIMIT_WAIT)
+    # No max_ratelimit_timeout: discord.py checks it against a bucket's reset time even with
+    # requests left, so Discord's 691-second role-create window would refuse every second role.
+    return HTTPClient(asyncio.get_running_loop())
 
 
 _rest: DiscordRest | None = None
