@@ -7,6 +7,7 @@ import {
   IconDotsVertical,
   IconEdit,
   IconEye,
+  IconFilter,
   IconLink,
   IconMembers,
 } from "@/components/ui/Icons";
@@ -23,6 +24,7 @@ export type FormMenuKey =
   | "copy-link"
   | "allow-edits"
   | "onboarding"
+  | "prerequisites"
   | "copy-json";
 
 const LABELS: Record<FormMenuKey, string> = {
@@ -32,6 +34,7 @@ const LABELS: Record<FormMenuKey, string> = {
   "copy-link": "Copy link",
   "allow-edits": "Allow response edits",
   onboarding: "Onboarding step",
+  prerequisites: "Edit prerequisites",
   "copy-json": "Copy JSON",
 };
 
@@ -48,6 +51,7 @@ export function FormActionsMenu({
   items,
   onAllowEditsChange,
   onOnboardingChange,
+  onEditPrerequisites,
   lockedReason,
   size = "md",
 }: {
@@ -65,6 +69,8 @@ export function FormActionsMenu({
   /** Called with the form's new step number (null once it left) after the
    *  change saves. Leaving renumbers the steps after it. */
   onOnboardingChange?: (order: number | null) => void;
+  /** Opens the form's prerequisites editor — the caller owns the modal. */
+  onEditPrerequisites?: () => void;
   /** Archived tournament — the toggle is a write, so it locks. */
   lockedReason?: string;
   /** "sm" on a table row, to match the row's other buttons. */
@@ -122,6 +128,7 @@ export function FormActionsMenu({
     if (key === "edit") return openInNewTab(`/forms/${form.id}/edit`);
     if (key === "preview") return openInNewTab(`/forms/${form.id}/preview`);
     if (key === "responses") return openInNewTab(`/forms/${form.id}/responses`);
+    if (key === "prerequisites") return onEditPrerequisites?.();
     setBusy(true);
     try {
       if (key === "copy-link") await copyLink();
@@ -160,6 +167,7 @@ export function FormActionsMenu({
             {key === "responses" && <IconMembers size={13} />}
             {key === "copy-link" && <IconLink size={13} />}
             {key === "copy-json" && <IconCopy size={13} />}
+            {key === "prerequisites" && <IconFilter size={13} />}
             <span style={{ flex: 1 }}>{LABELS[key]}</span>
             {(key === "allow-edits" || key === "onboarding") && (
               // Display only — selecting the row is what toggles it.

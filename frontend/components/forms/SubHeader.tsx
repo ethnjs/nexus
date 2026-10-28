@@ -1,8 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { StatusControl } from "@/components/forms/StatusControl";
+import { PrerequisitesModal } from "@/components/tournament/forms/PrerequisitesModal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -48,6 +50,7 @@ export function SubHeader({
   maxWidth?: number;
 }) {
   const router = useRouter();
+  const [editingPrerequisites, setEditingPrerequisites] = useState(false);
   // Leaving the builder mid-edit must still prompt — the tabs are separate routes.
   const { guard } = useUnsavedChanges();
   const backHref =
@@ -110,11 +113,12 @@ export function SubHeader({
               form={form}
               items={
                 form.owner_type === "tournament"
-                  ? ["copy-link", "allow-edits", "onboarding", "copy-json"]
+                  ? ["copy-link", "prerequisites", "allow-edits", "onboarding", "copy-json"]
                   : ["copy-link", "allow-edits", "copy-json"]
               }
               onAllowEditsChange={(allow) => onUpdated({ ...form, allow_response_edits: allow })}
               onOnboardingChange={(order) => onUpdated({ ...form, onboarding_order: order })}
+              onEditPrerequisites={() => setEditingPrerequisites(true)}
               lockedReason={locked ? ARCHIVED_REASON : undefined}
             />
           </div>
@@ -146,6 +150,15 @@ export function SubHeader({
           />
         </div>
       </div>
+      {editingPrerequisites && form.tournament_id != null && (
+        <PrerequisitesModal
+          tournamentId={form.tournament_id}
+          form={form}
+          lockedReason={locked ? ARCHIVED_REASON : undefined}
+          onClose={() => setEditingPrerequisites(false)}
+          onSaved={(prerequisites) => onUpdated({ ...form, prerequisites })}
+        />
+      )}
     </>
   );
 }
