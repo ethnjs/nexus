@@ -27,6 +27,7 @@ export function CreatorHoverCard({
 }: CreatorHoverCardProps) {
   return (
     <HoverCard
+      placement="bottom"
       style={style}
       content={
         <>

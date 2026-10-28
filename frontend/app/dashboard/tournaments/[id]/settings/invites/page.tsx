@@ -11,10 +11,19 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconArchive, IconInvite, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
+import {
+  IconArchive,
+  IconInvite,
+  IconLock,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+} from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { ApiError, type Invite, invitesApi } from "@/lib/api";
+import { personName } from "@/lib/personDisplay";
 import { formatCountdown } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -192,6 +201,7 @@ export default function InvitesSettingsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!canManageInvites) return;
@@ -245,6 +255,13 @@ export default function InvitesSettingsPage() {
   const liveInvites = invites.filter(
     (i) => i.expires_at === null || new Date(i.expires_at).getTime() > now,
   );
+  const query = search.trim().toLowerCase();
+  const filteredInvites = liveInvites.filter(
+    (i) =>
+      (i.label ?? "").toLowerCase().includes(query) ||
+      i.code.toLowerCase().includes(query) ||
+      personName(i.creator).toLowerCase().includes(query),
+  );
 
   function handleUpdated(updated: Invite) {
     setInvites((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null);
@@ -256,21 +273,7 @@ export default function InvitesSettingsPage() {
 
   return (
     <div>
-      <SettingsPageHeader
-        page="invites"
-        heading="Invites"
-        action={
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            disabled={isArchived}
-            onClick={() => setCreating(true)}
-          >
-            <IconPlus size={14} /> Add invite
-          </Button>
-        }
-      />
+      <SettingsPageHeader page="invites" heading="Invites" />
 
       {loadError && (
         <p
@@ -307,13 +310,33 @@ export default function InvitesSettingsPage() {
           />
         </Card>
       ) : (
-        <InviteTable
-          invites={liveInvites}
-          tournamentId={tournamentId}
-          now={now}
-          onUpdated={handleUpdated}
-          onDeactivated={handleDeactivated}
-        />
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
+            <div style={{ flex: 1 }}>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
+                placeholder="Search invites"
+                icon={<IconSearch size={14} />}
+                font="sans"
+                variant="secondary"
+                size="md"
+                fullWidth
+              />
+            </div>
+            <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+              <IconPlus size={14} /> Add invite
+            </Button>
+          </div>
+          <InviteTable
+            invites={filteredInvites}
+            tournamentId={tournamentId}
+            now={now}
+            onUpdated={handleUpdated}
+            onDeactivated={handleDeactivated}
+          />
+        </>
       )}
 
       {creating && (

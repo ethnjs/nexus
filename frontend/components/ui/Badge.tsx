@@ -83,7 +83,7 @@ export function Badge({
         <span
           style={{
             position: "absolute",
-            bottom: "calc(100% + 4px)",
+            top: "calc(100% + 4px)",
             left: "50%",
             transform: "translateX(-50%)",
             padding: "3px 8px",
