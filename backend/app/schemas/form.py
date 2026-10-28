@@ -319,6 +319,8 @@ class FormListRead(BaseModel):
     updated_at: datetime
     response_count: int = 0
     prerequisites: TournamentFormPrerequisites | None = None
+    # Null when the form isn't an onboarding step.
+    onboarding_order: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

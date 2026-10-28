@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import { Switch } from "@/components/ui/Switch";
-import { ApiError, type FormStatus, formsApi } from "@/lib/api";
+import { ApiError, type FormStatus, formsApi, tournamentOnboardingApi } from "@/lib/api";
 import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
 import { useToast } from "@/lib/useToast";
 
@@ -22,6 +22,7 @@ export type FormMenuKey =
   | "responses"
   | "copy-link"
   | "allow-edits"
+  | "onboarding"
   | "copy-json";
 
 const LABELS: Record<FormMenuKey, string> = {
@@ -30,6 +31,7 @@ const LABELS: Record<FormMenuKey, string> = {
   responses: "View responses",
   "copy-link": "Copy link",
   "allow-edits": "Allow response edits",
+  onboarding: "Onboarding step",
   "copy-json": "Copy JSON",
 };
 
@@ -45,13 +47,23 @@ export function FormActionsMenu({
   form,
   items,
   onAllowEditsChange,
+  onOnboardingChange,
   lockedReason,
   size = "md",
 }: {
-  form: { id: string; status: FormStatus; allow_response_edits: boolean };
+  form: {
+    id: string;
+    status: FormStatus;
+    allow_response_edits: boolean;
+    tournament_id?: number | null;
+    /** Required with the "onboarding" item. */
+    onboarding_order?: number | null;
+  };
   items: FormMenuKey[];
   /** Called with the saved value once the toggle's PATCH succeeds. */
   onAllowEditsChange: (allow: boolean) => void;
+  /** Called once the form joined or left onboarding, which renumbers the other steps. */
+  onOnboardingChange?: () => void;
   /** Archived tournament — the toggle is a write, so it locks. */
   lockedReason?: string;
   /** "sm" on a table row, to match the row's other buttons. */
@@ -61,6 +73,13 @@ export function FormActionsMenu({
   const [busy, setBusy] = useState(false);
   const editsLockedReason =
     lockedReason ?? (form.status === "archived" ? FORM_ARCHIVED_REASON : undefined);
+  const isOnboarding = form.onboarding_order != null;
+  // An archived step can still be taken out; only joining needs a live form.
+  const onboardingLockedReason =
+    lockedReason ??
+    (form.status === "archived" && !isOnboarding
+      ? "Archived forms can't be added to onboarding."
+      : undefined);
 
   async function copyJson() {
     const full = await formsApi.get(form.id);
@@ -85,6 +104,18 @@ export function FormActionsMenu({
     );
   }
 
+  async function toggleOnboarding() {
+    if (form.tournament_id == null) return;
+    if (isOnboarding) {
+      await tournamentOnboardingApi.removeForm(form.tournament_id, form.id);
+      show("Removed from onboarding");
+    } else {
+      const added = await tournamentOnboardingApi.addForm(form.tournament_id, form.id);
+      show(`Added to onboarding as step ${added.order}`);
+    }
+    onOnboardingChange?.();
+  }
+
   async function handleSelect(key: FormMenuKey) {
     if (key === "edit") return openInNewTab(`/forms/${form.id}/edit`);
     if (key === "preview") return openInNewTab(`/forms/${form.id}/preview`);
@@ -93,6 +124,7 @@ export function FormActionsMenu({
     try {
       if (key === "copy-link") await copyLink();
       else if (key === "copy-json") await copyJson();
+      else if (key === "onboarding") await toggleOnboarding();
       else await toggleEdits();
     } catch (err) {
       show(err instanceof ApiError ? err.message : `Failed: ${LABELS[key]}.`, "error");
@@ -127,10 +159,13 @@ export function FormActionsMenu({
             {key === "copy-link" && <IconLink size={13} />}
             {key === "copy-json" && <IconCopy size={13} />}
             <span style={{ flex: 1 }}>{LABELS[key]}</span>
-            {key === "allow-edits" && (
+            {(key === "allow-edits" || key === "onboarding") && (
               // Display only — selecting the row is what toggles it.
               <span style={{ pointerEvents: "none", display: "flex" }}>
-                <Switch checked={form.allow_response_edits} onChange={() => {}} />
+                <Switch
+                  checked={key === "onboarding" ? isOnboarding : form.allow_response_edits}
+                  onChange={() => {}}
+                />
               </span>
             )}
           </span>
@@ -138,14 +173,20 @@ export function FormActionsMenu({
         isDisabled={(key) =>
           key === "copy-link"
             ? form.status !== "published"
-            : key === "allow-edits" && !!editsLockedReason
+            : key === "onboarding"
+              ? !!onboardingLockedReason
+              : key === "allow-edits" && !!editsLockedReason
         }
         disabledReason={(key) =>
-          key === "copy-link" ? "Publish the form to share its link." : editsLockedReason
+          key === "copy-link"
+            ? "Publish the form to share its link."
+            : key === "onboarding"
+              ? onboardingLockedReason
+              : editsLockedReason
         }
         onSelect={handleSelect}
-        // The toggle row needs room for its label and switch side by side.
-        width={items.includes("allow-edits") ? 230 : 170}
+        // A toggle row needs room for its label and switch side by side.
+        width={items.includes("allow-edits") || items.includes("onboarding") ? 230 : 170}
       />
     </div>
   );

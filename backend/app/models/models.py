@@ -1978,6 +1978,12 @@ class Form(Base):
         """TournamentForm configuration exposed on generic form responses."""
         return self.tournament_form.prerequisites if self.tournament_form else None
 
+    @property
+    def onboarding_order(self) -> int | None:
+        """This form's step number in the onboarding sequence; None if it isn't one."""
+        tf = self.tournament_form
+        return tf.order if tf is not None and tf.is_onboarding else None
+
 
 # ---------------------------------------------------------------------------
 # TournamentForm — 1:1 companion row every tournament-scoped Form gets at

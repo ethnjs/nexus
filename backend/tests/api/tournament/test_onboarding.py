@@ -153,6 +153,19 @@ def test_list_onboarding_forms_is_ordered_and_manage_forms_gated(
     assert client.get(f"/tournaments/{td_tournament.id}/onboarding-forms/").status_code == 403
 
 
+def test_forms_list_reports_each_forms_onboarding_step(client, db, td_user, td_tournament):
+    step = _make_form(db, td_user, td_tournament, name="Step")
+    standalone = _make_form(db, td_user, td_tournament, name="Standalone")
+    _as_steps(step)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/forms/").json()
+
+    orders = {row["id"]: row["onboarding_order"] for row in rows}
+    assert orders == {step.id: 1, standalone.id: None}
+
+
 def test_reorder_requires_each_form_once_and_a_contiguous_sequence(
     client, db, td_user, td_tournament
 ):

@@ -2066,6 +2066,8 @@ export interface FormListItem {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
 }
 
 export interface FormCreateInput {

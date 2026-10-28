@@ -198,6 +198,7 @@ def list_tournament_forms(
 ):
     forms = (
         db.query(Form)
+        .options(selectinload(Form.tournament_form))
         .filter(Form.tournament_id == tournament_id, Form.owner_type == "tournament")
         .order_by(Form.updated_at.desc())
         .all()
@@ -392,6 +393,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
         updated_at=form.updated_at,
         response_count=form.response_count,
         prerequisites=form.prerequisites,
+        onboarding_order=form.onboarding_order,
     )
 
 

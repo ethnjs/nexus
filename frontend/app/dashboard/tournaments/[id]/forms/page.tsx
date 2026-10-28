@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
@@ -40,11 +40,13 @@ function FormRow({
   form,
   onAction,
   onAllowEditsChange,
+  onOnboardingChange,
   lockedReason,
 }: {
   form: FormListItem;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
+  onOnboardingChange: () => void;
   lockedReason?: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -76,6 +78,11 @@ function FormRow({
         >
           {form.name}
         </span>
+        {form.onboarding_order != null && (
+          <Badge variant="default" style={{ flexShrink: 0 }}>
+            Onboarding #{form.onboarding_order}
+          </Badge>
+        )}
         {!form.allow_response_edits && (
           <span style={{ flexShrink: 0, display: "flex" }}>
             <Tooltip
@@ -146,8 +153,9 @@ function FormRow({
         ))}
         <FormActionsMenu
           form={form}
-          items={["edit", "preview", "responses", "copy-link", "allow-edits"]}
+          items={["edit", "preview", "responses", "copy-link", "allow-edits", "onboarding"]}
           onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
+          onOnboardingChange={onOnboardingChange}
           lockedReason={lockedReason}
           size="sm"
         />
@@ -160,11 +168,13 @@ function FormTable({
   forms,
   onAction,
   onAllowEditsChange,
+  onOnboardingChange,
   lockedReason,
 }: {
   forms: FormListItem[];
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
+  onOnboardingChange: () => void;
   lockedReason?: string;
 }) {
   return (
@@ -189,6 +199,7 @@ function FormTable({
             form={form}
             onAction={onAction}
             onAllowEditsChange={onAllowEditsChange}
+            onOnboardingChange={onOnboardingChange}
             lockedReason={lockedReason}
           />
         ))}
@@ -213,13 +224,17 @@ export default function FormsPage() {
   const [deleteTarget, setDeleteTarget] = useState<FormListItem | null>(null);
   const { show } = useToast();
 
+  const loadForms = useCallback(
+    () =>
+      formsApi
+        .listForTournament(tournamentId)
+        .then(setForms)
+        .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load forms.")),
+    [tournamentId],
+  );
   useEffect(() => {
-    if (!canManageForms) return;
-    formsApi
-      .listForTournament(tournamentId)
-      .then(setForms)
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load forms."));
-  }, [tournamentId, canManageForms]);
+    if (canManageForms) loadForms();
+  }, [canManageForms, loadForms]);
 
   if (membershipLoading) {
     return (
@@ -250,8 +265,7 @@ export default function FormsPage() {
   }
 
   // Delete confirms first; every other move is one PATCH. The server's
-  // message is the one worth showing on failure — publishing validates the
-  // form, and an onboarding form refuses to archive.
+  // message is the one worth showing on failure — publishing validates the form.
   async function handleAction(form: FormListItem, option: FormActionOption) {
     if (option.action === "delete") {
       setDeleteTarget(form);
@@ -289,10 +303,7 @@ export default function FormsPage() {
     setCreating(false);
     // The builder opened in the other tab, so this list would otherwise sit
     // here without the row that was just created.
-    formsApi
-      .listForTournament(tournamentId)
-      .then(setForms)
-      .catch(() => {});
+    loadForms();
   }
 
   return (
@@ -348,6 +359,7 @@ export default function FormsPage() {
           forms={forms}
           onAction={handleAction}
           onAllowEditsChange={handleAllowEditsChange}
+          onOnboardingChange={loadForms}
           lockedReason={archivedReason}
         />
       )}
