@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -52,3 +53,17 @@ def archive_ended_tournaments(db: Session) -> int:
 
     db.commit()
     return len(tournaments)
+
+
+def start_scheduler() -> BackgroundScheduler:
+    """Starts the daily jobs. Only the leader process runs this (core/discord/leader.py)."""
+    from app.db.session import SessionLocal
+
+    def run_archive_job() -> None:
+        with SessionLocal() as db:
+            archive_ended_tournaments(db)
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments")
+    scheduler.start()
+    return scheduler

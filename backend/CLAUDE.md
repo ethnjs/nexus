@@ -14,11 +14,11 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 
 ## Layout
 
-- `app/api/routes/`: routers, with `tournament/` and `chapter/` subpackages, one file per resource. Routers aren't auto-discovered: register a new one in `app/main.py` with `dependencies=[api_key_dependency]`.
+- `app/api/routes/`: routers, with `tournament/`, `chapter/`, and `discord/` subpackages, one file per resource. Routers aren't auto-discovered: register a new one in `app/main.py` with `dependencies=[api_key_dependency]`. The one exception is Discord's interactions endpoint, which Discord calls directly and which checks Discord's signature instead.
 - `app/core/`: business logic, roughly mirroring the routes (`core/tournament/`, `core/form/`).
 - `app/schemas/`: Pydantic request and response models, mirroring the routes.
-- `app/models/models.py`: every model, in one file.
-- `app/services/`: Google Sheets and Forms clients, sheet sync, and email (Resend). Every email goes through `email_service._send()`, which the tests' autouse `mock_send_email` patches; keep new senders going through it.
+- `app/models/models.py`: every NEXUS model, in one file. The Discord tables are in `app/models/discord.py`, which `app/models/__init__.py` imports so they're always registered.
+- `app/services/`: Google Sheets and Forms clients, sheet sync, email (Resend), and the Discord protocol code (`services/discord/`; see `docs/discord.md`). Every email goes through `email_service._send()`, which the tests' autouse `mock_send_email` patches; keep new senders going through it.
 - `app/db/`: session, startup seeding, and dev scripts (`seed_members.py`, `anonymize_users.py`, documented in `docs/`).
 
 ## Routes
@@ -61,4 +61,4 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 ## Config and startup
 
 - Read settings with `get_settings()`, which is cached; never instantiate `Settings()`. `app_env` is `development`, `preview`, `production` or `test`.
-- Startup (skipped under pytest) always seeds canonical events, categories and universities. In `development` and `preview` it also runs `alembic upgrade head` and seeds the dev accounts. It schedules `archive_ended_tournaments` daily at 00:05 UTC. Production migrates in the `Procfile` before starting.
+- Startup (skipped under pytest) always seeds canonical events, categories, and universities. In `development` and `preview` it also runs `alembic upgrade head` and seeds the dev accounts. Then every process competes for a Postgres advisory lock (`core/discord/leader.py`), and only the holder runs APScheduler (`archive_ended_tournaments` daily at 00:05 UTC) and the Discord gateway. Production migrates in the `Procfile` before starting.

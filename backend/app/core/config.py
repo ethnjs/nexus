@@ -1,6 +1,10 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Production startup refuses this value. See main.py.
+DEV_OAUTH_STATE_SECRET = "dev-oauth-state-secret-change-in-production"
 
 
 class Settings(BaseSettings):
@@ -24,8 +28,28 @@ class Settings(BaseSettings):
     resend_api_key: str = ""  # set in .env file for dev or env vars in prod, never commit here
     frontend_url: str = "http://localhost:3000/"  # remember to set to actual url in prod
 
+    # Web OAuth client for Google sign-in — not the service account above.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""
+    # Signs the oauth_state cookie. Production refuses the default.
+    oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
+
+    discord_application_id: str = ""
+    discord_public_key: str = ""
+    discord_bot_token: str = ""
+    discord_client_secret: str = ""
+    # Dev only: registers slash commands on this one server instead of globally. Production
+    # startup refuses it (main.py); never set it in preview either.
+    discord_dev_guild_id: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Cached settings instance — import and call this everywhere."""
     return Settings()
+
+
+def discord_enabled() -> bool:
+    """The Discord feature switch. Off under pytest, so tests opt in explicitly."""
+    return bool(get_settings().discord_bot_token) and "PYTEST_CURRENT_TEST" not in os.environ

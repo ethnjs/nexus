@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.discord.marks import mark_memberships, row_scope
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import (
     authorize_role_grant,
@@ -183,6 +184,7 @@ def create_assignment(
     )
     db.add(assignment)
     _flush_or_conflict(db)
+    mark_memberships(db, tournament_id, [row_scope(assignment)])
     db.commit()
 
     return AssignmentRead.from_row(
@@ -275,6 +277,7 @@ def set_placements(
                 )
             )
 
+    mark_memberships(db, tournament_id, [row_scope(row) for row in to_delete + to_add])
     for row in to_delete:
         db.delete(row)
     db.add_all(to_add)
@@ -311,6 +314,7 @@ def update_assignment(
     require_not_archived(tournament)
 
     assignment = _scoped_assignment(db, assignment_id, tournament_id)
+    scope_before = row_scope(assignment)
 
     if payload.role_id is not None:
         role = get_scoped_or_404(db, TournamentRole, payload.role_id, tournament_id, "Role")
@@ -350,6 +354,7 @@ def update_assignment(
         )
 
     _flush_or_conflict(db)
+    mark_memberships(db, tournament_id, [scope_before, row_scope(assignment)])
     db.commit()
 
     return AssignmentRead.from_row(
@@ -376,6 +381,7 @@ def delete_assignment(
     require_not_archived(tournament)
 
     assignment = _scoped_assignment(db, assignment_id, tournament_id)
+    mark_memberships(db, tournament_id, [row_scope(assignment)])
     db.delete(assignment)
     db.commit()
 
