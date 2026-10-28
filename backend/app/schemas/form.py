@@ -339,6 +339,24 @@ class FieldKeyUsageRead(BaseModel):
     forms: list[FieldKeyFormRef]
 
 
+class FlowStepRead(BaseModel):
+    form_id: str
+    name: str
+    status: Literal["draft", "published", "archived"]
+    completed: bool
+    # Onboarding: on the member's path. Other forms: their roles pass the prerequisites.
+    applies: bool
+
+
+class MemberFormFlowRead(BaseModel):
+    """One member's forms as a manager previews them."""
+
+    exempt_from_onboarding: bool
+    held_to_onboarding: bool
+    onboarding: list[FlowStepRead]
+    forms: list[FlowStepRead]
+
+
 class MemberFormRead(BaseModel):
     """A member's completed or currently available tournament form."""
 

@@ -3,15 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { FormView } from "@/components/tournament/forms/flow/FormView";
 import { OnboardingView } from "@/components/tournament/forms/flow/OnboardingView";
+import { MemberFlowView, PreviewMemberList } from "@/components/tournament/forms/flow/PreviewView";
 import type { RoleOption } from "@/components/tournament/forms/PrerequisiteEditor";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { IconX } from "@/components/ui/Icons";
+import { IconEye, IconX } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
 import { NavHeading, NavItem } from "@/components/ui/ModalNav";
-import { type FormListItem, rolesApi } from "@/lib/api";
+import { type FormListItem, type PersonRef, rolesApi } from "@/lib/api";
 
-export type FormFlowView = { kind: "onboarding" } | { kind: "form"; formId: string };
+export type FormFlowView =
+  | { kind: "onboarding" }
+  | { kind: "form"; formId: string }
+  | { kind: "preview" };
 
 /** Who sees which form, and in what order: the onboarding sequence and each
  *  form's prerequisites and settings, one view at a time. */
@@ -37,6 +41,9 @@ export function FormFlowModal({
   // What to do once the TD agrees to drop unsaved changes.
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  // Where Back from the preview returns to, and who's being previewed.
+  const [beforePreview, setBeforePreview] = useState<FormFlowView>(initialView);
+  const [previewMember, setPreviewMember] = useState<PersonRef | null>(null);
 
   useEffect(() => {
     rolesApi
@@ -60,6 +67,15 @@ export function FormFlowModal({
     });
   }
 
+  function startPreview() {
+    guard(() => {
+      setDirty(false);
+      setBeforePreview(view);
+      setView({ kind: "preview" });
+    });
+  }
+
+  const previewing = view.kind === "preview";
   const current = view.kind === "form" ? forms.find((f) => f.id === view.formId) : undefined;
 
   return (
@@ -109,35 +125,94 @@ export function FormFlowModal({
       </header>
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+        {/* Two panes in a clipped window, like Export: Preview slides the
+          track one pane-width left to swap the forms list for the members. */}
         <aside
           style={{
             width: "240px",
             flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: "2px",
-            padding: "8px",
-            overflowY: "auto",
+            overflow: "hidden",
             borderRight: "1px solid var(--color-border)",
-            background: "var(--color-bg)",
+            background: "var(--color-surface)",
           }}
         >
-          <NavItem active={view.kind === "onboarding"} onClick={() => open({ kind: "onboarding" })}>
-            Onboarding
-          </NavItem>
-          <NavHeading>Forms</NavHeading>
-          {forms.map((form) => (
-            <NavItem
-              key={form.id}
-              active={view.kind === "form" && view.formId === form.id}
-              onClick={() => open({ kind: "form", formId: form.id })}
+          <div
+            className="slide-panel-track"
+            style={{
+              display: "flex",
+              width: "200%",
+              height: "100%",
+              // Margin, not transform: a transform would trap popovers'
+              // position: fixed menus inside this clipped strip.
+              marginLeft: previewing ? "-100%" : 0,
+            }}
+          >
+            {/* inert: the off-screen pane must not take Tab focus. */}
+            <nav
+              inert={previewing}
+              style={{ width: "50%", display: "flex", flexDirection: "column" }}
             >
-              {form.name}
-            </NavItem>
-          ))}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                  padding: "8px",
+                }}
+              >
+                <NavItem
+                  active={view.kind === "onboarding"}
+                  onClick={() => open({ kind: "onboarding" })}
+                >
+                  Onboarding
+                </NavItem>
+                <NavHeading>Forms</NavHeading>
+                {forms.map((form) => (
+                  <NavItem
+                    key={form.id}
+                    active={view.kind === "form" && view.formId === form.id}
+                    onClick={() => open({ kind: "form", formId: form.id })}
+                  >
+                    {form.name}
+                  </NavItem>
+                ))}
+              </div>
+              <div style={{ padding: "8px", borderTop: "1px solid var(--color-border)" }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  onClick={startPreview}
+                >
+                  <IconEye size={13} /> Preview
+                </Button>
+              </div>
+            </nav>
+            <section
+              inert={!previewing}
+              style={{ width: "50%", display: "flex", flexDirection: "column" }}
+            >
+              <PreviewMemberList
+                tournamentId={tournamentId}
+                selectedId={previewMember?.membership_id ?? null}
+                onSelect={setPreviewMember}
+                onBack={() => setView(beforePreview)}
+              />
+            </section>
+          </div>
         </aside>
 
-        {view.kind === "onboarding" ? (
+        {view.kind === "preview" ? (
+          <MemberFlowView
+            key={previewMember?.membership_id ?? "none"}
+            tournamentId={tournamentId}
+            member={previewMember}
+          />
+        ) : view.kind === "onboarding" ? (
           <OnboardingView
             tournamentId={tournamentId}
             forms={forms}

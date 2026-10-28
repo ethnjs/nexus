@@ -562,7 +562,7 @@ export function ExportModal({
             }}
           >
             <div
-              className="export-panel-track"
+              className="slide-panel-track"
               style={{
                 display: "flex",
                 width: "200%",

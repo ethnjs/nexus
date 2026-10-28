@@ -264,8 +264,7 @@ class MembershipBaseResponse(BaseModel):
 class MembershipOnboardingStepRead(BaseModel):
     form_id: str
     name: str
-    # "draft" only in a manager's preview; members never have one on their path.
-    status: Literal["published", "archived", "draft"]
+    status: Literal["published", "archived"]
     completed: bool
 
 

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
+import { ChipInput } from "@/components/ui/ChipInput";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconChevronDown, IconChevronRight, IconPlus, IconX } from "@/components/ui/Icons";
+import { Popover } from "@/components/ui/Popover";
 import {
   formsApi,
   type PersonRef,
@@ -95,37 +96,47 @@ export function PrerequisiteEditor({
             width={90}
             locked={locked}
           />
-          <div style={{ flex: 1, minWidth: "140px" }}>
-            <ChecklistPopover
-              trigger={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  fullWidth
-                  disabled={locked}
-                  style={{
-                    justifyContent: "flex-start",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {condition.ids.length > 0 ? (
-                    condition.ids.map(labelOf).join(", ")
-                  ) : (
-                    <span style={{ color: "var(--color-text-tertiary)" }}>Pick roles…</span>
-                  )}
-                </Button>
+          <div style={{ flex: 1, minWidth: "160px" }}>
+            <ChipInput
+              value={condition.ids.map(labelOf)}
+              onChange={(labels) =>
+                update(index, { ids: condition.ids.filter((id) => labels.includes(labelOf(id))) })
               }
-              items={roles}
-              getKey={(role) => role.id}
-              renderLabel={(role) => role.label}
-              isSelected={(role) => condition.ids.includes(role.id)}
-              onToggle={(role) => toggleRole(index, role.id)}
-              emptyMessage="This tournament has no roles yet."
-              searchable
-              width={240}
+              disableInput
+              locked={locked}
+              placeholder="No roles yet"
+              variant="transparent"
+              size="sm"
+              fullWidth
+              addButton={
+                locked ? undefined : (
+                  <Popover
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        iconOnly
+                        title="Add a role"
+                        style={{ padding: 0, flexShrink: 0 }}
+                      >
+                        <IconPlus size={13} />
+                      </Button>
+                    }
+                    items={roles.filter((role) => !condition.ids.includes(role.id))}
+                    getKey={(role) => role.id}
+                    renderLabel={(role) => role.label}
+                    getSearchText={(role) => role.label}
+                    searchable
+                    onSelect={(role) => toggleRole(index, role.id)}
+                    emptyMessage={
+                      roles.length > 0 ? "All added" : "This tournament has no roles yet."
+                    }
+                    width={240}
+                    align="left"
+                  />
+                )
+              }
             />
           </div>
           {!locked && (

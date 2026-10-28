@@ -6,17 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import (
     advance_onboarding_progress,
-    onboarding_paths,
     recompute_onboarding,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentForm, TournamentMembership, User
-from app.schemas.tournament.membership import MembershipOnboardingStepRead
+from app.models.models import TournamentForm, User
 from app.schemas.tournament.onboarding import (
     OnboardingFormAdd,
     OnboardingFormRead,
@@ -82,24 +80,6 @@ def list_onboarding_forms(
     )
     creators = resolve_person_refs(db, tournament_id, {r.form.created_by for r in rows})
     return [_read(r, creators[r.form.created_by]) for r in rows]
-
-
-# ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/onboarding-forms/path/?membership_id= — one
-# member's onboarding path, drafts included, for the TD's flow preview.
-# ---------------------------------------------------------------------------
-@router.get("/path/", response_model=list[MembershipOnboardingStepRead])
-def preview_onboarding_path(
-    tournament_id: int,
-    membership_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_FORMS)),
-):
-    membership = get_scoped_or_404(
-        db, TournamentMembership, membership_id, tournament_id, "Membership"
-    )
-    path = onboarding_paths(db, tournament_id, [membership.user_id], include_drafts=True)
-    return [MembershipOnboardingStepRead(**vars(step)) for step in path[membership.user_id]]
 
 
 # ---------------------------------------------------------------------------

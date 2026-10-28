@@ -51,8 +51,9 @@ from app.core.form.write_through import (
     sync_lunch,
     sync_track_statuses,
 )
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
+from app.core.tournament.form_flow import member_form_flow
 from app.core.tournament.form_prerequisites import (
     meets_prerequisites,
     member_meets_form_prerequisites,
@@ -82,6 +83,7 @@ from app.schemas.form import (
     BulkFieldsUpdate,
     FieldKeyFormRef,
     FieldKeyUsageRead,
+    FlowStepRead,
     FormCreate,
     FormFieldRead,
     FormListRead,
@@ -91,6 +93,7 @@ from app.schemas.form import (
     FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
+    MemberFormFlowRead,
     MemberFormRead,
     TournamentFormPrerequisites,
 )
@@ -273,6 +276,33 @@ def list_my_tournament_forms(
                 )
             )
     return result
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/flow/?membership_id= — one member's
+# onboarding steps and other forms as a manager previews them, drafts included.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/tournaments/{tournament_id}/forms/flow/",
+    response_model=MemberFormFlowRead,
+    tags=["tournaments"],
+)
+def get_member_form_flow(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    membership = get_scoped_or_404(
+        db, TournamentMembership, membership_id, tournament_id, "Membership"
+    )
+    flow = member_form_flow(db, membership)
+    return MemberFormFlowRead(
+        exempt_from_onboarding=flow.exempt_from_onboarding,
+        held_to_onboarding=flow.held_to_onboarding,
+        onboarding=[FlowStepRead(**vars(step)) for step in flow.onboarding],
+        forms=[FlowStepRead(**vars(step)) for step in flow.forms],
+    )
 
 
 # ---------------------------------------------------------------------------

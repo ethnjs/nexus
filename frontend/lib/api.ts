@@ -1149,8 +1149,7 @@ export type MembershipField =
 export interface MembershipOnboardingStep {
   form_id: string;
   name: string;
-  /** "draft" only in the TD's flow preview, never on a roster row. */
-  status: "published" | "archived" | "draft";
+  status: "published" | "archived";
   completed: boolean;
 }
 
@@ -2005,6 +2004,24 @@ export interface TournamentTrackRef {
   is_primary: boolean;
 }
 
+export interface FlowStep {
+  form_id: string;
+  name: string;
+  status: FormStatus;
+  completed: boolean;
+  /** Onboarding: on the member's path. Other forms: their roles pass the prerequisites. */
+  applies: boolean;
+}
+
+/** One member's forms as a manager previews them, drafts included. */
+export interface MemberFormFlow {
+  exempt_from_onboarding: boolean;
+  /** Still owes a published onboarding step, so other forms wait. */
+  held_to_onboarding: boolean;
+  onboarding: FlowStep[];
+  forms: FlowStep[];
+}
+
 export interface MemberForm {
   id: string;
   name: string;
@@ -2146,6 +2163,10 @@ export const formsApi = {
     prerequisites: TournamentFormPrerequisites,
   ) =>
     api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
+  memberFlow: (tournamentId: number, membershipId: number) =>
+    api.get<MemberFormFlow>(
+      `/tournaments/${tournamentId}/forms/flow/?membership_id=${membershipId}`,
+    ),
   previewPrerequisites: (tournamentId: number, prerequisites: TournamentFormPrerequisites) =>
     api.post<PersonRef[]>(
       `/tournaments/${tournamentId}/forms/prerequisites/preview/`,
@@ -2232,11 +2253,6 @@ export const tournamentOnboardingApi = {
     }),
   removeForm: (tournamentId: number, formId: string) =>
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
-  // One member's path, drafts included — the flow preview.
-  path: (tournamentId: number, membershipId: number) =>
-    api.get<MembershipOnboardingStep[]>(
-      `/tournaments/${tournamentId}/onboarding-forms/path/?membership_id=${membershipId}`,
-    ),
   progress: (tournamentId: number) =>
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 };

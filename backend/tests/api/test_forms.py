@@ -485,6 +485,76 @@ class TestTournamentFormPrerequisites:
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/flow/?membership_id=
+# ---------------------------------------------------------------------------
+
+
+class TestMemberFormFlow:
+    def _form(
+        self, db, user, tournament, name, *, status="published", order=None, prerequisites=None
+    ):
+        form = _make_form(db, user, tournament, name=name, status=status)
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=tournament.id,
+                is_onboarding=order is not None,
+                order=order,
+                prerequisites=prerequisites or {},
+            )
+        )
+        db.commit()
+        return form
+
+    def test_lists_onboarding_steps_and_other_forms_for_the_member(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        supervisors = _requires_role(_role(db, td_tournament, "Lead Event Supervisor"))
+        answered = self._form(db, td_user, td_tournament, "Welcome", order=1)
+        draft_step = self._form(db, td_user, td_tournament, "Waiver", status="draft", order=2)
+        excluded_step = self._form(
+            db, td_user, td_tournament, "Briefing", order=3, prerequisites=supervisors
+        )
+        open_form = self._form(db, td_user, td_tournament, "A Lunch")
+        blocked_form = self._form(db, td_user, td_tournament, "B Judges", prerequisites=supervisors)
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        db.add(FormResponse(form_id=answered.id, user_id=other_user.id))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.get(
+            f"/tournaments/{td_tournament.id}/forms/flow/?membership_id={membership.id}"
+        )
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["exempt_from_onboarding"] is False
+        # The draft step isn't owed yet and the excluded one isn't theirs.
+        assert body["held_to_onboarding"] is False
+        assert [(s["form_id"], s["completed"], s["applies"]) for s in body["onboarding"]] == [
+            (answered.id, True, True),
+            (draft_step.id, False, True),
+            (excluded_step.id, False, False),
+        ]
+        assert [(f["form_id"], f["applies"]) for f in body["forms"]] == [
+            (open_form.id, True),
+            (blocked_form.id, False),
+        ]
+
+    def test_is_scoped_and_manage_forms_gated(
+        self, client, db, td_user, td_tournament, other_user, other_tournament
+    ):
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        db.commit()
+        query = f"/forms/flow/?membership_id={membership.id}"
+
+        login(client, "td@test.com", "tdpass")
+        assert client.get(f"/tournaments/{other_tournament.id}{query}").status_code in (403, 404)
+        login(client, "other@test.com", "otherpass")
+        assert client.get(f"/tournaments/{td_tournament.id}{query}").status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/forms/me/
 # ---------------------------------------------------------------------------
 
