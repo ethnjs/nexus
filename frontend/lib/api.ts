@@ -1039,13 +1039,11 @@ export interface MembershipEventPreference {
 export interface MembershipCustomAnswer {
   form_title: string;
   field_label: string;
-  // Slug key, not the question's full sentence — what the panel labels by.
+  /** The answer's identity: forms may share a key, and this is the member's
+   *  latest answer to it. Also what the panel labels by. */
   field_key: string;
   question_type: string;
   value: unknown;
-  // Stable id behind the display-config "form_field:{id}" key — the label and
-  // key are both TD-editable, this isn't.
-  field_id: string;
 }
 
 // Matches RoleRead
@@ -2420,7 +2418,7 @@ export const zoneAssignmentsApi = {
 };
 
 // Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
-// "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+// "field_key:{key}" — see backend/app/core/tournament/display_config.py.
 // One panel section, in the order the TD arranged them. Built-in sections
 // carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
 // also carries a title and the custom fields assigned to it.

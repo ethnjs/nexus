@@ -165,15 +165,11 @@ class MembershipCustomAnswerRead(BaseModel):
 
     form_title: str
     field_label: str
-    # The panel labels answers by key, not by the question's full sentence —
-    # see the members-panel display config, which does the same.
+    # The answer's identity, and what the panel labels it by: forms may share
+    # a key, and this is the member's latest answer to it.
     field_key: str
     question_type: str
     value: Any
-    # Not part of the original 1.2 shape — added for 3.3's display_config
-    # "form_field:{field_id}" hidden-item matching, which needs a stable id
-    # to key on (field_label is TD-editable display text, not stable).
-    field_id: str
 
 
 def _flatten_track_statuses(v):

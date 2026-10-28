@@ -67,6 +67,7 @@ That includes lunch. A plain question renamed to a lunch key fills `TournamentMe
 A key is unique among one form's live fields, but different forms may reuse it, with any question type. Where forms share a key, a member's latest answer is the one the tournament shows:
 
 - Custom responses keep one answer per key per member, picked by `FormAnswer.answered_at`. Every stored answer stays; each form's responses page still shows what was given there.
+- Settings that pick a custom answer name its key, not a field id: panel hiding and custom sections (`field_key:{key}`), roster and export columns (`field_key:{key}`), and the assignment card (`card_custom:{key}`). A field id would match only members whose latest answer came from that field.
 - Reserved keys get the same result from write-through order: each submission replaces the rows its key owns (event preferences and lunch per track and category, availability per track), so the latest submission wins. Track statuses keep their own transition rule.
 
 ### Availability is scoped by track

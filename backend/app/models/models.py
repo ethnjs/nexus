@@ -619,7 +619,7 @@ class TournamentMembership(Base):
     # viewer, not per tournament: two coordinators looking at the same roster
     # each keep their own columns, filters and sort order instead of
     # overwriting each other. Hidden-item strings are namespaced (track:,
-    # lunch_category:, event_pref:, form_field:) so one list covers all four
+    # lunch_category:, event_pref:, field_key:) so one list covers all four
     # kinds. No search/filtering on this, so a JSON column beats a table.
     # Unknown surface keys and unknown namespaces are ignored on read, never
     # an error — a deleted track leaves a dangling "track:3" behind and that

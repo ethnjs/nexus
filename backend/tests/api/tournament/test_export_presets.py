@@ -59,7 +59,7 @@ def test_create_preset_accepts_entity_columns_and_modes(client, td_user, td_tour
             {"key": "track_shifts:3", "mode": "times"},
             {"key": "availability_track:3", "mode": "names"},
             {"key": "lunch:3:entree"},
-            {"key": "form_field:abc123"},
+            {"key": "field_key:abc123"},
         ],
         sorts=[],
     )

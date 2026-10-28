@@ -1,4 +1,5 @@
 import type { DisplayConfigSection, MembershipCustomAnswer } from "@/lib/api";
+import { FIELD_KEY_PREFIX } from "@/lib/memberColumnKeys";
 
 // Mirrors the backend's DEFAULT_SECTION_ORDER (PANEL_SECTIONS) — kept in sync
 // by hand, same as displayConfigSurfaces.ts, since there's no shared codegen.
@@ -99,7 +100,7 @@ export function splitCustomAnswers(
   const assigned = new Map<string, MembershipCustomAnswer[]>();
   const unassigned: MembershipCustomAnswer[] = [];
   for (const answer of answers) {
-    const sectionId = sectionByFieldKey.get(`form_field:${answer.field_id}`) ?? catchAll;
+    const sectionId = sectionByFieldKey.get(`${FIELD_KEY_PREFIX}${answer.field_key}`) ?? catchAll;
     if (sectionId === undefined) {
       unassigned.push(answer);
       continue;

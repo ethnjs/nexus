@@ -454,7 +454,6 @@ def get_custom_form_answers_bulk(
             field_key=field.field_key,
             question_type=field.question_type,
             value=answer.value,
-            field_id=field.id,
         )
     return {user_id: list(latest.values()) for user_id, latest in by_user.items()}
 

@@ -1679,7 +1679,6 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
             "field_key": "favorite_color",
             "question_type": "single_select_dropdown",
             "value": "opt_1",
-            "field_id": field.id,
         }
     ]
 
@@ -1865,7 +1864,7 @@ def test_get_membership_surface_hides_custom_response(client, td_user, td_tourna
     form = _make_form(db, td_user, td_tournament.id, title="Volunteer interest")
     field = _make_field(db, form, field_key="favorite_color", label="Favorite color")
     _make_answer(db, u["id"], form, field, "opt_1")
-    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"form_field:{field.id}"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["field_key:favorite_color"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(

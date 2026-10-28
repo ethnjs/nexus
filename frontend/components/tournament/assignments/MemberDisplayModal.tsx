@@ -67,7 +67,7 @@ export interface MemberDisplayState {
   hiddenFields: MemberFieldId[];
   /** "{fieldId}:{trackId}". */
   hiddenTracks: string[];
-  /** Form field ids of custom questions hidden from the custom_fields field. */
+  /** Field keys of custom questions hidden from the custom_fields field. */
   hiddenCustom: string[];
 }
 
@@ -186,8 +186,8 @@ export function trackShown(
   return !display.hiddenTracks.includes(`${id}:${trackId}`);
 }
 
-export function customShown(display: MemberDisplayState, fieldId: string): boolean {
-  return !display.hiddenCustom.includes(fieldId);
+export function customShown(display: MemberDisplayState, fieldKey: string): boolean {
+  return !display.hiddenCustom.includes(fieldKey);
 }
 
 function withToggled<T extends string>(list: T[], key: T): T[] {
@@ -273,7 +273,7 @@ export function MemberDisplayModal({
    *  track status and preferences. */
   defaults?: MemberDisplayState;
   tracks: { id: number; label: string }[];
-  /** The tournament's custom questions, for the Custom fields chips. */
+  /** The tournament's custom questions, for the Custom fields chips; `id` is the field key. */
   customFields: { id: string; label: string }[];
   onApply: (next: MemberDisplayState) => void;
   onClose: () => void;
@@ -424,9 +424,9 @@ export function MemberDisplayModal({
           "custom_fields",
           "Custom fields",
           customFields,
-          (fieldId) => customShown(draft, fieldId),
-          (fieldId) =>
-            setDraft((d) => ({ ...d, hiddenCustom: withToggled(d.hiddenCustom, fieldId) })),
+          (fieldKey) => customShown(draft, fieldKey),
+          (fieldKey) =>
+            setDraft((d) => ({ ...d, hiddenCustom: withToggled(d.hiddenCustom, fieldKey) })),
           () => setDraft((d) => ({ ...d, hiddenCustom: customFields.map((f) => f.id) })),
           "Edit visible questions",
         )}

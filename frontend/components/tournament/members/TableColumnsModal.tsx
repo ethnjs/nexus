@@ -4,7 +4,7 @@ import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
 import {
   AVAILABILITY_TRACK_PREFIX,
   EVENT_PREF_PREFIX,
-  FORM_FIELD_PREFIX,
+  FIELD_KEY_PREFIX,
   LUNCH_PREFIX,
   TRACK_PREFIX,
 } from "@/components/tournament/members/memberColumns";
@@ -67,7 +67,7 @@ export function TableColumnsModal({ tournamentId, onClose, onSaved }: TableColum
         },
         {
           title: "Custom fields",
-          items: columns.filter((c) => c.key.startsWith(FORM_FIELD_PREFIX)),
+          items: columns.filter((c) => c.key.startsWith(FIELD_KEY_PREFIX)),
         },
       ]}
       onClose={onClose}

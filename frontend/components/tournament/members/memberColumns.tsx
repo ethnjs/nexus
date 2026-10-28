@@ -13,7 +13,7 @@ import { eventNameWithDivision } from "@/lib/eventDisplay";
 import {
   AVAILABILITY_TRACK_PREFIX,
   EVENT_PREF_PREFIX,
-  FORM_FIELD_PREFIX,
+  FIELD_KEY_PREFIX,
   LUNCH_PREFIX,
   TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
@@ -25,7 +25,7 @@ import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 export {
   AVAILABILITY_TRACK_PREFIX,
   EVENT_PREF_PREFIX,
-  FORM_FIELD_PREFIX,
+  FIELD_KEY_PREFIX,
   LUNCH_PREFIX,
   TRACK_PREFIX,
 };
@@ -386,14 +386,14 @@ function entityColumn(key: string, label: string): MemberColumn | null {
       },
     };
   }
-  if (key.startsWith(FORM_FIELD_PREFIX)) {
+  if (key.startsWith(FIELD_KEY_PREFIX)) {
     return {
       key,
       label,
       width: WIDTHS.customField,
       render: (m) => {
         const answer = (m.custom_responses ?? []).find(
-          (a) => `${FORM_FIELD_PREFIX}${a.field_id}` === key,
+          (a) => `${FIELD_KEY_PREFIX}${a.field_key}` === key,
         );
         const text = answer ? formatAnswer(answer.value) : "—";
         return (
