@@ -1684,6 +1684,38 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
     ]
 
 
+def test_custom_responses_keep_the_latest_answer_per_key(client, td_user, td_tournament, db):
+    """Forms may share a key with any question type; the latest answer wins
+    whichever form it came from, on the roster and the detail route alike."""
+    from datetime import UTC, datetime
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    newer_form = _make_form(db, td_user, td_tournament.id, title="Newer")
+    older_form = _make_form(db, td_user, td_tournament.id, title="Older")
+    newer = _make_answer(
+        db,
+        u["id"],
+        newer_form,
+        _make_field(db, newer_form, field_key="shirt_size", question_type="short_text"),
+        "M",
+    )
+    older = _make_answer(
+        db, u["id"], older_form, _make_field(db, older_form, field_key="shirt_size"), "opt_s"
+    )
+    newer.answered_at = datetime(2026, 2, 1, tzinfo=UTC)
+    older.answered_at = datetime(2026, 1, 1, tzinfo=UTC)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    detail = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/").json()
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=custom").json()
+    row = next(r for r in rows if r["user"]["id"] == u["id"])
+
+    for custom in (detail["custom_responses"], row["custom_responses"]):
+        assert [(a["form_title"], a["value"]) for a in custom] == [("Newer", "M")]
+
+
 def test_get_membership_custom_responses_excludes_reserved_field_keys(
     client, td_user, td_tournament, db
 ):

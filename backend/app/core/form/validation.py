@@ -32,19 +32,17 @@ BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 # write_through.sync_availability and forms.py's
 # _write_through_reserved_fields), so the suffix doesn't scope storage; the
 # track does, pinning which shifts a given field's write-through may touch
-# (see validate_availability_options). The suffix is optional and purely for
-# field_key uniqueness — it's what lets two different forms each ask about
-# the same track (e.g. a general form and a judges-only form both covering
-# Day 1) without colliding on field_key, which must be unique per tournament
-# across every form.
+# (see validate_availability_options). The optional suffix lets one form ask
+# two availability questions about the same track, since a key is unique
+# within a form.
 AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d+)(?:_([a-z0-9_]+))?$")
 AVAILABILITY_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
-# event_preference_{track_id}, e.g. "event_preference_7" — no suffix, so
-# exactly one preference question per track. The track is the whole storage
-# scope (see TournamentMembershipEventPreference, which has no `key`): two
-# questions on one track would write into one pool and their ranks would
-# collide with no way to say whose rank-1 is whose.
+# event_preference_{track_id}, e.g. "event_preference_7" — no suffix, so a
+# form asks about a track's preferences once. The track is the whole storage
+# scope (see TournamentMembershipEventPreference, which has no `key`), so two
+# questions in one submission would collide on rank. Forms sharing the key
+# each replace the track's rows, so the latest submission wins.
 EVENT_PREFERENCE_FIELD_KEY_PATTERN = re.compile(r"^event_preference_(\d+)$")
 EVENT_PREFERENCE_QUESTION_TYPES = {
     "ranked_choice",
@@ -53,8 +51,8 @@ EVENT_PREFERENCE_QUESTION_TYPES = {
 }
 
 # lunch_{track_id}_{category}, e.g. "lunch_7_protein" — the track is baked
-# into the key, so per-tournament field_key uniqueness already covers
-# per-(track, category) uniqueness with no separate check needed.
+# into the key, so one form can't ask about a (track, category) twice. Forms
+# sharing the key each replace those rows, so the latest submission wins.
 LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d+)_([a-z0-9_]+)$")
 # Free-text is allowed here but on no other reserved key: a lunch question
 # like "any special requests?" belongs in the panel's Lunch section, and

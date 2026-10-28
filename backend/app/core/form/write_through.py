@@ -156,10 +156,10 @@ def sync_event_preferences(
     """Diffs `items` (each `{"tournament_event_id": ..., "rank": ...}`)
     against this membership's existing TournamentMembershipEventPreference
     rows for this track only — rows for any other track on the same
-    membership are never touched. A track has exactly one preference
-    question, so it owns its rows outright (unlike availability's shared
-    per-track pool, which several questions can feed) and this can delete
-    without needing an owned-scope parameter.
+    membership are never touched. A submission asks about a track's
+    preferences at most once, so it replaces the track's rows outright (unlike
+    availability's shared per-track pool, which several questions can feed);
+    forms sharing the key leave the latest submission's ranking.
 
     Unlike sync_lunch, an existing row whose event stays selected but whose
     rank changed (a ranked-choice re-ranking) is updated in place rather than

@@ -2038,10 +2038,9 @@ class FormField(Base):
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
 
-    # Dashboard lookup key — slugified from the TD-typed label at create
-    # time (see app/core/form.slugify) and stable afterward, even if the
-    # label is later edited. Unique per tournament, not just per form (see
-    # app/core/form.check_field_key_available_in_tournament).
+    # Dashboard lookup key, slugified from the label at create time and stable
+    # afterward. Unique among a form's live fields; other forms may reuse it,
+    # and a member's latest answer to a key is the one shown.
     field_key: Mapped[str] = mapped_column(String(64))
 
     config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -2062,10 +2061,8 @@ class FormField(Base):
     answer: Mapped[list["FormAnswer"]] = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
-        # Live fields only. An archived field doesn't reserve its key — see
-        # field_key_taken_in_tournament — so an archived question and the one
-        # replacing it can share a name. A plain UniqueConstraint here would
-        # block that at the DB even though the application allows it.
+        # Live fields only, so an archived question and the one replacing it
+        # can share a key.
         Index(
             "uq_form_field_key",
             "form_id",
@@ -2132,6 +2129,9 @@ class FormAnswer(Base):
     # predating this column; always written on new answers.
     question_type: Mapped[str | None] = mapped_column(String(32))
     field_key: Mapped[str | None] = mapped_column(String(64))
+    # Decides which answer wins when forms share a key. The response's
+    # updated_at can't: editing one answer bumps it for all of them.
+    answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     response: Mapped["FormResponse"] = relationship("FormResponse", back_populates="answers")
     field: Mapped["FormField"] = relationship("FormField", back_populates="answer")

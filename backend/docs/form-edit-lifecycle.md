@@ -60,7 +60,14 @@ On `PATCH`, only the patched answers are replaced, and write-through runs again,
 
 Answers to reserved-key questions on tournament forms are copied into structural tables (`_write_through_reserved_fields`). **Write-through runs forward only**, at submission, and is never replayed from stored answers. A replay would apply answers out of order, so an old form's "interested" could overwrite a newer form's "confirmed". For the same reason, moving a field between a preset and a plain key doesn't rewrite old answers; only new submissions write through under the new key.
 
-The one exception is a field that becomes a lunch question: its existing answers are replayed into `TournamentMembershipLunch` once (`_backfill_lunch_write_through`), since lunch rows have a single owning field. The same replay would be unsafe for the shared tables.
+That includes lunch. A plain question renamed to a lunch key fills `TournamentMembershipLunch` only as members submit, and its earlier answers drop out of custom responses, which exclude reserved keys. They stay stored and show on the form's own responses.
+
+## Shared field keys
+
+A key is unique among one form's live fields, but different forms may reuse it, with any question type. Where forms share a key, a member's latest answer is the one the tournament shows:
+
+- Custom responses keep one answer per key per member, picked by `FormAnswer.answered_at`. Every stored answer stays; each form's responses page still shows what was given there.
+- Reserved keys get the same result from write-through order: each submission replaces the rows its key owns (event preferences and lunch per track and category, availability per track), so the latest submission wins. Track statuses keep their own transition rule.
 
 ### Availability is scoped by track
 

@@ -9,7 +9,6 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     assign_option_ids,
-    field_key_taken_in_tournament,
     resolve_field_options,
     selected_option_ids,
     slugify,
@@ -26,7 +25,6 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
-    LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
     availability_field_track_id,
     collect_active_field_errors,
@@ -276,13 +274,7 @@ def list_my_tournament_forms(
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key in use
-# by a live field across this tournament's forms. Lets the builder's field_key
-# Combobox show these before Save, rather than only discovering a collision
-# via the 409 that PUT .../fields/ would otherwise return.
-#
-# Archived fields are excluded deliberately: they don't reserve their keys
-# (see field_key_taken_in_tournament), so listing them here would make the
-# builder block a key the API would happily accept.
+# by a live field across this tournament's forms, for the builder's key picker.
 # ---------------------------------------------------------------------------
 @router.get(
     "/tournaments/{tournament_id}/forms/field-keys/",
@@ -695,7 +687,7 @@ def bulk_update_fields(
     def _key_taken(field_key: str) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
+            detail=f"field_key '{field_key}' is used twice on this form",
         )
 
     # Keys are checked against the state this save produces, not the rows as
@@ -712,14 +704,6 @@ def bulk_update_fields(
         if key and key in seen_keys:
             raise _key_taken(key)
         seen_keys.add(key)
-
-    def _check_field_key_available(field_key: str) -> None:
-        # This form's own keys were just checked against each other; only
-        # another form of the tournament can still hold one.
-        if form.tournament_id is not None and field_key_taken_in_tournament(
-            db, form.tournament_id, field_key, exclude_form_id=form.id
-        ):
-            raise _key_taken(field_key)
 
     def _validate_config(question_type: str, config: dict | None, field_key: str) -> dict:
         # Only structural/self-contained checks run here, before the batch
@@ -748,9 +732,6 @@ def bulk_update_fields(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
             ) from e
         return normalized
-
-    # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
-    lunch_backfills: list[FormField] = []
 
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
     followers = _followers_by_anchor(
@@ -787,29 +768,12 @@ def bulk_update_fields(
     for entry in payload.fields:
         if entry.id is not None:
             field = existing_by_id[entry.id]
-            unarchiving = field.is_archived
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it
             # to slugify('')", which the model's snake_case validator rejects.
             new_field_key = slugify(entry.field_key) if entry.field_key else field.field_key
-            # An archived field doesn't reserve its key, so another question
-            # may have taken it meanwhile — coming back needs the same
-            # availability check as a rename.
-            if new_field_key != field.field_key or unarchiving:
-                _check_field_key_available(new_field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
-
-            # A field that only now became a lunch question: its existing
-            # answers never reached TournamentMembershipLunch, and never will
-            # on their own — write-through only runs on submit. Backfilled
-            # after the loop, once the new key and config are saved.
-            became_lunch = (
-                is_history_preserving
-                and form.owner_type == "tournament"
-                and bool(LUNCH_FIELD_KEY_PATTERN.match(new_field_key))
-                and not LUNCH_FIELD_KEY_PATTERN.match(field.field_key)
-            )
 
             field.is_archived = False
             field.order = order
@@ -819,11 +783,8 @@ def bulk_update_fields(
             field.field_key = new_field_key
             field.config = normalized_config
             flag_modified(field, "config")
-            if became_lunch:
-                lunch_backfills.append(field)
         else:
             field_key = slugify(entry.field_key or "")
-            _check_field_key_available(field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, field_key)
             new_field = FormField(
                 form_id=form.id,
@@ -849,9 +810,6 @@ def bulk_update_fields(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors)
         )
-
-    for field in lunch_backfills:
-        _backfill_lunch_write_through(db, form, field)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
@@ -1315,61 +1273,6 @@ def invalidate_form_field(
 
     form.updated_at = utcnow()
     db.commit()
-
-
-def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> None:
-    """Replays every existing answer to `field` through sync_lunch, for a
-    question that only just became a lunch question.
-
-    Write-through runs at submit time, so answers given while the key was
-    still a plain one produced no TournamentMembershipLunch rows — and after
-    the change they're excluded from custom responses too (which filter out
-    reserved keys), leaving them in neither panel section until each member
-    resubmits.
-
-    **Lunch only, deliberately.** The same replay is unsafe for the other
-    presets:
-      - availability shares one storage pool across every question covering a
-        day (two fields can, via availability_{date}_{suffix}), and
-        sync_availability deletes anything on that track it wasn't handed — so
-        a per-field replay would erase the shifts a sibling question
-        contributed.
-      - track_status upserts without deleting, but replaying a stale answer can
-        still overwrite a status a newer form set (every transition except a
-        demotion to "interested" is permitted).
-      - event_preference is scope-safe, but switching to it blanks each
-        option's entity ids, so there'd be nothing to replay.
-    Lunch is the one case where a field exclusively owns its rows *and* its
-    options survive the key change (they're freeform text, not entity ids).
-    """
-    lunch_track_id, category = parse_lunch_field_key(field.field_key)
-
-    rows = (
-        db.query(FormAnswer.value, TournamentMembership.id)
-        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
-        .join(TournamentMembership, TournamentMembership.user_id == FormResponse.user_id)
-        .filter(
-            FormAnswer.field_id == field.id,
-            TournamentMembership.tournament_id == form.tournament_id,
-        )
-        .all()
-    )
-
-    for value, membership_id in rows:
-        # Stored select answers hold {option_id, value, label} snapshots rather
-        # than bare ids — unwrap to ids first, the same way
-        # _stored_answer_option_ids does when replaying from storage, since
-        # lunch_values_from_answer expects the id form a live submission sends.
-        if field.question_type not in LUNCH_FREE_TEXT_QUESTION_TYPES:
-            items = value if isinstance(value, list) else ([value] if value else [])
-            value = [i.get("option_id") if isinstance(i, dict) else i for i in items]
-        sync_lunch(
-            db,
-            membership_id,
-            lunch_track_id,
-            category,
-            lunch_values_from_answer(field, value),
-        )
 
 
 # ---------------------------------------------------------------------------

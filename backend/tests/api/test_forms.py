@@ -1269,9 +1269,9 @@ class TestBulkUpdateFieldsPublished:
             json={"fields": [self._keyed_entry(first.id, "a"), self._keyed_entry(second.id, "a")]},
         )
         assert res.status_code == 409
-        assert "field_key 'a' is already in use" in res.json()["detail"]
+        assert "field_key 'a' is used twice on this form" in res.json()["detail"]
 
-    def test_key_used_on_another_form_rejected(self, client, db, td_user, td_tournament):
+    def test_key_used_on_another_form_allowed(self, client, db, td_user, td_tournament):
         other = _make_form(db, td_user, td_tournament, name="Other")
         _make_field(db, other, field_key="taken")
         form = _make_form(db, td_user, td_tournament)
@@ -1289,7 +1289,53 @@ class TestBulkUpdateFieldsPublished:
             f"/forms/{form.id}/fields/",
             json={"fields": [self._keyed_entry(field.id, "taken")]},
         )
-        assert res.status_code == 409
+        assert res.status_code == 200, res.json()
+        assert res.json()[0]["field_key"] == "taken"
+
+    def test_shared_key_shows_the_latest_answer(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """Editing the older form's answer makes it the latest again."""
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        first = _make_form(db, td_user, td_tournament, name="First", status="published")
+        second = _make_form(db, td_user, td_tournament, name="Second", status="published")
+        text = {"required": False, "max_length": 50}
+        first_field = _make_field(
+            db, first, field_key="shirt_size", question_type="short_text", config=text
+        )
+        second_field = _make_field(
+            db, second, field_key="shirt_size", question_type="short_text", config=text
+        )
+        for form in (first, second):
+            db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id))
+        first.allow_response_edits = True
+        db.commit()
+
+        def shown():
+            login(client, "td@test.com", "tdpass")
+            custom = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()[
+                "custom_responses"
+            ]
+            return [(a["field_key"], a["value"]) for a in custom]
+
+        login(client, "other@test.com", "otherpass")
+        client.post(
+            f"/forms/{first.id}/responses/",
+            json={"answers": [{"field_id": first_field.id, "value": "S"}]},
+        )
+        client.post(
+            f"/forms/{second.id}/responses/",
+            json={"answers": [{"field_id": second_field.id, "value": "M"}]},
+        )
+        assert shown() == [("shirt_size", "M")]
+
+        login(client, "other@test.com", "otherpass")
+        res = client.patch(
+            f"/forms/{first.id}/responses/me/",
+            json={"answers": [{"field_id": first_field.id, "value": "L"}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert shown() == [("shirt_size", "L")]
 
     def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -1748,8 +1794,8 @@ class TestBulkUpdateFieldsPublished:
         assert (a.order, c.order, b.order) == (1, 2, 3)
 
     def test_unarchiving_rejected_when_key_was_claimed(self, client, db, td_user, td_tournament):
-        """An archived field doesn't reserve its key, so the name may be gone
-        by the time the TD wants the question back."""
+        """An archived field doesn't reserve its key, so another question on
+        the same form may hold it by the time the TD wants it back."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
             db,
@@ -3523,13 +3569,10 @@ class TestWriteThroughOnSubmit:
         assert rows[0].category == "protein"
         assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
-    def test_key_change_to_lunch_backfills_existing_answers(
+    def test_key_change_to_lunch_does_not_replay_existing_answers(
         self, client, db, td_user, td_tournament
     ):
-        """Answers given while the key was a plain one never reached
-        TournamentMembershipLunch, and the key change also drops them from
-        custom responses — so the switch replays them rather than stranding
-        them until every member resubmits."""
+        """Write-through only runs forward, lunch included."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
             db,
@@ -3540,16 +3583,10 @@ class TestWriteThroughOnSubmit:
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
-            ).status_code
-            == 200
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
         )
-        # Plain key: nothing written through yet.
-        assert db.query(TournamentMembershipLunch).count() == 0
 
         res = client.put(
             f"/forms/{form.id}/fields/",
@@ -3565,107 +3602,9 @@ class TestWriteThroughOnSubmit:
                 ]
             },
         )
+
         assert res.status_code == 200, res.json()
-
-        row = db.query(TournamentMembershipLunch).one()
-        assert row.value == "Vegan cheese only"
-        assert row.category == "special_requests"
-        assert row.track_id == primary_track_id(db, td_tournament.id)
-
-    def test_key_change_to_lunch_backfills_option_answers(self, client, db, td_user, td_tournament):
-        """A select question's stored answer is an {option_id, value, label}
-        snapshot — the backfill unwraps it and resolves against the new
-        config, whose freeform option values survive the key change."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        options = [
-            {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
-            {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
-        ]
-        field = _make_field(
-            db,
-            form,
-            field_key="protein_choice",
-            question_type="single_select_radio",
-            config={"required": False, "options": options},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
-            ).status_code
-            == 200
-        )
         assert db.query(TournamentMembershipLunch).count() == 0
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                        "label": "Protein",
-                        "question_type": "single_select_radio",
-                        "config": {"required": False, "options": options},
-                    }
-                ]
-            },
-        )
-        assert res.status_code == 200, res.json()
-
-        row = db.query(TournamentMembershipLunch).one()
-        assert row.value == "tofu"
-        assert row.label == "Tofu"
-        assert row.category == "protein"
-
-    def test_key_change_between_lunch_keys_does_not_backfill(
-        self, client, db, td_user, td_tournament
-    ):
-        """Only a non-preset -> lunch transition backfills. Editing a key that
-        was already lunch leaves the old rows to _clear/-resubmit handling
-        rather than silently writing the new (date, category)."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-            question_type="short_text",
-            config={"required": False},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
-            ).status_code
-            == 200
-        )
-        assert db.query(TournamentMembershipLunch).count() == 1
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                        "label": "Protein",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 200},
-                    }
-                ]
-            },
-        )
-        assert res.status_code == 200, res.json()
-
-        rows = db.query(TournamentMembershipLunch).all()
-        assert len(rows) == 1
-        assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
     def test_lunch_free_text_write_through_on_tournament_form(
         self, client, db, td_user, td_tournament

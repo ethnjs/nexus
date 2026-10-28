@@ -162,45 +162,7 @@ def delete_tournament_form_responses(db: Session, tournament_id: int, user_id: i
 def get_custom_form_answers(
     db: Session, tournament_id: int, user_id: int
 ) -> list[MembershipCustomAnswerRead]:
-    """This user's answers to non-reserved fields on published,
-    tournament-owned forms in `tournament_id`. 'Custom' = field_key matches
-    none of the availability_/event_preference_/lunch_/track_status_
-    presets — those already have dedicated structural fields elsewhere on
-    MembershipFullResponse. FormResponse is keyed by user_id, not
-    membership_id (see TASK.md's known pre-existing issue note), so this
-    joins on the user directly rather than through the membership."""
-    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
-    from app.models.models import Form, FormAnswer, FormField, FormResponse
-    from app.schemas.tournament.membership import MembershipCustomAnswerRead
-
-    rows = (
-        db.query(FormAnswer, FormField, Form)
-        .join(FormField, FormAnswer.field_id == FormField.id)
-        .join(Form, FormField.form_id == Form.id)
-        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
-        .filter(
-            FormResponse.user_id == user_id,
-            Form.owner_type == "tournament",
-            Form.tournament_id == tournament_id,
-            Form.status == "published",
-        )
-        .all()
-    )
-
-    return [
-        MembershipCustomAnswerRead(
-            form_title=form.title or form.name,
-            field_label=field.label,
-            field_key=field.field_key,
-            question_type=field.question_type,
-            value=answer.value,
-            field_id=field.id,
-        )
-        for answer, field, form in rows
-        if not any(
-            pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
-        )
-    ]
+    return get_custom_form_answers_bulk(db, tournament_id, [user_id]).get(user_id, [])
 
 
 def build_event_preferences(
@@ -353,10 +315,10 @@ def lunch_question_types(db: Session, tournament_id: int, field_keys: set[str]) 
             FormField.field_key.in_(field_keys),
         )
         # Live fields first, then setdefault, so a live question wins over an
-        # archived one sharing its key — an archived field doesn't reserve its
-        # key, so both can exist at once, and question_type decides whether a
-        # row renders as free text or a badge. Same idiom as
-        # build_event_preferences.
+        # archived one sharing its key; question_type decides whether a row
+        # renders as free text or a badge. Live fields on different forms can
+        # share a key with different types, and the row doesn't record which
+        # one wrote it, so the first live field wins.
         .order_by(FormField.is_archived, FormField.id)
     ):
         type_by_key.setdefault(field_key, question_type)
@@ -455,11 +417,10 @@ def get_custom_form_answers_bulk(
     tournament_id: int,
     user_ids: list[int],
 ) -> dict[int, list[MembershipCustomAnswerRead]]:
-    """get_custom_form_answers for many users in one query.
-
-    The per-user version issued a query per row when the roster asked for
-    custom answers, which is the one thing a roster route must never do.
-    Same filtering, keyed by user_id; users with no answers are absent.
+    """Each user's answers to non-reserved fields on the tournament's published
+    forms, one per field_key: forms may share a key, and the latest answer wins.
+    Reserved keys (availability_, lunch_, ...) are left out; they have their
+    own structural fields. Users with no answers are absent.
     """
     from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.models.models import Form, FormAnswer, FormField, FormResponse
@@ -479,24 +440,23 @@ def get_custom_form_answers_bulk(
             Form.tournament_id == tournament_id,
             Form.status == "published",
         )
+        .order_by(FormAnswer.answered_at)
         .all()
     )
 
-    by_user: dict[int, list] = {}
+    by_user: dict[int, dict[str, MembershipCustomAnswerRead]] = {}
     for answer, field, form, user_id in rows:
         if any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
             continue
-        by_user.setdefault(user_id, []).append(
-            MembershipCustomAnswerRead(
-                form_title=form.title or form.name,
-                field_label=field.label,
-                field_key=field.field_key,
-                question_type=field.question_type,
-                value=answer.value,
-                field_id=field.id,
-            )
+        by_user.setdefault(user_id, {})[field.field_key] = MembershipCustomAnswerRead(
+            form_title=form.title or form.name,
+            field_label=field.label,
+            field_key=field.field_key,
+            question_type=field.question_type,
+            value=answer.value,
+            field_id=field.id,
         )
-    return by_user
+    return {user_id: list(latest.values()) for user_id, latest in by_user.items()}
 
 
 def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list:
