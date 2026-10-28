@@ -2,6 +2,7 @@
 
 import { type MouseEvent as ReactMouseEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconInfo, IconKey } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
@@ -78,20 +79,13 @@ export function FieldKeyPopover({
     !!key &&
     (allFields.some((f) => f.clientKey !== field.clientKey && f.field_key.trim() === key) ||
       errors.includes(KEY_IN_USE_MESSAGE));
-  const sharedWith = sharedFieldKeys.find((usage) => usage.field_key === key)?.forms ?? [];
-  const [focused, setFocused] = useState(false);
-  const suggestions = focused
-    ? sharedFieldKeys
-        .filter((usage) => usage.field_key !== key && usage.field_key.includes(key))
-        .slice(0, 5)
-    : [];
+  const shared = !!key && sharedFieldKeys.some((usage) => usage.field_key === key);
   // localError decides *when* to flag (blur or a failed Save, not mid-typing);
   // the live check decides whether the clash still exists — another question
   // giving the key up clears it here without this field's key changing.
   const shownError = keyTaken ? localError : undefined;
 
   function handleBlur() {
-    setFocused(false);
     setLocalError(keyTaken ? KEY_IN_USE_MESSAGE : undefined);
   }
 
@@ -145,76 +139,33 @@ export function FieldKeyPopover({
               </span>
             </div>
           ) : (
-            <Input
+            <Combobox
+              options={sharedFieldKeys}
+              getId={(usage) => usage.field_key}
+              getLabel={(usage) => usage.field_key}
               value={field.field_key}
-              onChange={(e) => onFieldChange({ field_key: e.target.value })}
-              onFocus={() => setFocused(true)}
+              onChange={(text) => onFieldChange({ field_key: text })}
               onBlur={handleBlur}
               placeholder={toPlainText(field.label).trim()}
               size="sm"
-              fullWidth
               error={shownError}
             />
           )}
-          {suggestions.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {suggestions.map((usage) => (
-                <button
-                  key={usage.field_key}
-                  type="button"
-                  // mousedown, not click: the input's blur would otherwise
-                  // hide the list before the click lands.
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    onFieldChange({ field_key: usage.field_key });
-                  }}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    gap: "1px",
-                    padding: "5px 6px",
-                    border: "none",
-                    borderRadius: "var(--radius-sm)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "12px",
-                      color: "var(--color-text-primary)",
-                    }}
-                  >
-                    {usage.field_key}
-                  </span>
-                  <span style={NOTE}>Also on {formNames(usage.forms)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {sharedWith.length > 0 && (
-            <span style={NOTE}>
-              Also on {formNames(sharedWith)}. A member&rsquo;s latest answer to this key is the one
-              shown.
+          {shared && (
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              Other forms use this key too. A member&rsquo;s latest answer to it is the one shown.
             </span>
           )}
         </div>
       )}
     </FormPopover>
   );
-}
-
-const NOTE = {
-  fontFamily: "var(--font-sans)",
-  fontSize: "12px",
-  color: "var(--color-text-tertiary)",
-} as const;
-
-function formNames(forms: FieldKeyUsage["forms"]): string {
-  return forms.map((f) => f.name).join(", ");
 }
 
 // A plain Tooltip here gets clipped — its bubble is position: absolute

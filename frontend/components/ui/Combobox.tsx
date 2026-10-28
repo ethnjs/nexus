@@ -34,6 +34,7 @@ interface ComboboxProps<T> {
   /** An inert row shown when the list is open with nothing in it — so a
    *  focused field with an empty catalog says so instead of showing nothing. */
   emptyMessage?: string;
+  onBlur?: () => void;
 }
 
 const CUSTOM_THRESHOLD = 3;
@@ -58,6 +59,7 @@ export function Combobox<T>({
   getDisabled,
   getDisabledReason,
   emptyMessage,
+  onBlur,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false);
   // Whether the text has been edited since the field took focus. Until it
@@ -178,7 +180,10 @@ export function Combobox<T>({
           }
         }}
         onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          setTimeout(() => setOpen(false), 150);
+          onBlur?.();
+        }}
         error={displayedError}
         size={size}
         variant={variant}
