@@ -601,13 +601,9 @@ class TournamentMembership(Base):
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL")
     )
 
-    # Set once this member has answered every currently-onboarding-flagged,
-    # published TournamentForm for this tournament. Permanent once set —
-    # later removing/archiving an onboarding form never unsets it (a
-    # shrinking requirement can only help stragglers finish, never un-onboard
-    # someone already done). Adding a *new* onboarding form is the one
-    # requirement change allowed to null this back out — see the
-    # onboarding-forms POST route, which clears it tournament-wide.
+    # When the member finished their onboarding path (core/tournament/onboarding.py).
+    # A snapshot nothing gates on: sequence changes recompute it, role changes
+    # only catch up at the next progress call.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # null = unanswered, "consented" covers both is_over_18 and is_over_21.
@@ -1993,10 +1989,8 @@ class Form(Base):
 # tournament (order is only meaningful — and set — for is_onboarding=True
 # rows). Standard, non-onboarding tournament forms leave order null.
 #
-# A form linked here with is_onboarding=True cannot be archived or deleted —
-# see the guard in api/routes/forms.py's update_form/archive_form/
-# delete_form — it must be removed from onboarding (is_onboarding flipped
-# back to False) first.
+# A form with is_onboarding=True can't be deleted until it's removed from
+# onboarding (see _reject_if_onboarding in api/routes/forms.py).
 #
 # form_id is this row's own primary key, not a separate surrogate id — the
 # relationship is strictly 1:1, so there's no "which TournamentForm" beyond

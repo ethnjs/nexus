@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -265,11 +265,20 @@ class MembershipBaseResponse(BaseModel):
         return v
 
 
+class MembershipOnboardingStepRead(BaseModel):
+    form_id: str
+    name: str
+    # "draft" only in a manager's preview; members never have one on their path.
+    status: Literal["published", "archived", "draft"]
+    completed: bool
+
+
 class MembershipOnboardingRead(BaseModel):
-    """Live onboarding steps answered, out of the live total."""
+    """The steps on this member's onboarding path, in order."""
 
     completed: int
     total: int
+    steps: list[MembershipOnboardingStepRead]
 
 
 class MembershipFullResponse(MembershipBaseResponse):
@@ -295,8 +304,7 @@ class MembershipFullResponse(MembershipBaseResponse):
     # base on purpose: members do not see their own assignments yet, and the
     # base is what /members/me returns.
     assignments: list[AssignmentRead] = []
-    # Null when the tournament has no live onboarding steps — there's no
-    # progress to report, which "0/0" would misstate as complete or not.
+    # Null when no step is on this member's path — "0/0" would misstate it.
     onboarding: MembershipOnboardingRead | None = None
 
     # Sections the surface's display config emptied out — set by

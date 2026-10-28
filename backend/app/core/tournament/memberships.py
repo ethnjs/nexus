@@ -502,14 +502,21 @@ def get_custom_form_answers_bulk(
 def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list:
     """One MembershipOnboardingRead (or None) per membership, in order —
     shared by the roster and the detail route so both count the same way."""
-    from app.core.tournament.onboarding import onboarding_progress_bulk
-    from app.schemas.tournament.membership import MembershipOnboardingRead
+    from app.core.tournament.onboarding import onboarding_paths
+    from app.schemas.tournament.membership import (
+        MembershipOnboardingRead,
+        MembershipOnboardingStepRead,
+    )
 
-    total, completed = onboarding_progress_bulk(db, tournament_id, [m.user_id for m in memberships])
-    if not total:
-        return [None] * len(memberships)
+    paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
     return [
-        MembershipOnboardingRead(completed=completed.get(m.user_id, 0), total=total)
+        MembershipOnboardingRead(
+            completed=sum(step.completed for step in path),
+            total=len(path),
+            steps=[MembershipOnboardingStepRead(**vars(step)) for step in path],
+        )
+        if (path := paths[m.user_id])
+        else None
         for m in memberships
     ]
 

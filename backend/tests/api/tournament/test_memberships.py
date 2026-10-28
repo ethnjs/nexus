@@ -201,14 +201,15 @@ def test_fields_narrows_to_the_named_groups(client, td_user, td_tournament, db):
         assert key not in row["user"]
 
 
-def test_onboarding_group_counts_live_steps_answered(client, td_user, td_tournament, db):
-    """A skipped (archived) step counts toward neither side of the fraction."""
+def test_onboarding_group_lists_the_members_path(client, td_user, td_tournament, db):
+    """An archived step stays on the path only if answered; drafts never show."""
     from app.models.models import Form, FormResponse, TournamentForm
 
     u = _make_user(db, "alice@example.com")
     _make_membership(db, td_tournament.id, u["id"])
     steps = []
-    for order, status in enumerate(("published", "published", "archived"), start=1):
+    statuses = ("published", "published", "archived", "archived", "draft")
+    for order, status in enumerate(statuses, start=1):
         form = Form(
             owner_type="tournament",
             tournament_id=td_tournament.id,
@@ -234,13 +235,25 @@ def test_onboarding_group_counts_live_steps_answered(client, td_user, td_tournam
     db.commit()
     login(client, "td@test.com", "tdpass")
 
+    def step(form, status, completed):
+        return {"form_id": form.id, "name": form.name, "status": status, "completed": completed}
+
+    expected = {
+        "completed": 2,
+        "total": 3,
+        "steps": [
+            step(steps[0], "published", True),
+            step(steps[1], "published", False),
+            step(steps[2], "archived", True),
+        ],
+    }
     rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
     row = next(r for r in rows if r["user"]["id"] == u["id"])
-    assert row["onboarding"] == {"completed": 1, "total": 2}
+    assert row["onboarding"] == expected
     detail = client.get(
         f"/tournaments/{td_tournament.id}/members/{row['id']}/?fields=onboarding"
     ).json()
-    assert detail["onboarding"] == {"completed": 1, "total": 2}
+    assert detail["onboarding"] == expected
 
 
 def test_onboarding_group_is_null_without_live_steps(client, td_user, td_tournament, db):

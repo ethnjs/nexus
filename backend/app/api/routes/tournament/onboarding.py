@@ -6,12 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
-from app.core.tournament.onboarding import advance_onboarding_progress, recompute_onboarding
+from app.core.tournament.onboarding import (
+    advance_onboarding_progress,
+    onboarding_paths,
+    recompute_onboarding,
+)
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentForm, User
+from app.models.models import TournamentForm, TournamentMembership, User
+from app.schemas.tournament.membership import MembershipOnboardingStepRead
 from app.schemas.tournament.onboarding import (
     OnboardingFormAdd,
     OnboardingFormRead,
@@ -80,15 +85,33 @@ def list_onboarding_forms(
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/onboarding-forms/path/?membership_id= — one
+# member's onboarding path, drafts included, for the TD's flow preview.
+# ---------------------------------------------------------------------------
+@router.get("/path/", response_model=list[MembershipOnboardingStepRead])
+def preview_onboarding_path(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    membership = get_scoped_or_404(
+        db, TournamentMembership, membership_id, tournament_id, "Membership"
+    )
+    path = onboarding_paths(db, tournament_id, [membership.user_id], include_drafts=True)
+    return [MembershipOnboardingStepRead(**vars(step)) for step in path[membership.user_id]]
+
+
+# ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/onboarding-forms/ — flips an existing
 # TournamentForm row's is_onboarding to True and appends it to the order.
 # Every tournament-scoped Form already has a TournamentForm row (created
 # alongside the Form itself, see create_tournament_form in forms.py) — this
 # never inserts a new row, only flips one.
 #
-# Recomputes onboarded_at tournament-wide: adding a step expands what
-# "onboarded" requires, so anyone who hasn't answered it goes back to pending —
-# but someone who already did (it was a standalone form first) stays onboarded.
+# Recomputes onboarded_at tournament-wide: adding a published step expands
+# what "onboarded" requires, so anyone it applies to who hasn't answered it goes
+# back to pending. A draft is skipped until it's published.
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=OnboardingFormRead, status_code=status.HTTP_201_CREATED)
 def add_onboarding_form(
@@ -113,13 +136,10 @@ def add_onboarding_form(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding"
         )
-    # An onboarding step must be immediately answerable. In particular,
-    # accepting a draft here would invalidate existing completions before the
-    # new requirement could actually be satisfied.
-    if tf.form.status != "published":
+    if tf.form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Only published forms can be added to onboarding",
+            detail="Archived forms can't be added to onboarding",
         )
 
     max_order = (

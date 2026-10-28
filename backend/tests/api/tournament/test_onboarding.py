@@ -1,6 +1,13 @@
 """API coverage for tournament onboarding configuration and member progress."""
 
-from app.models.models import Form, FormField, FormResponse, TournamentForm, TournamentMembership
+from app.models.models import (
+    Form,
+    FormField,
+    FormResponse,
+    TournamentForm,
+    TournamentMembership,
+    TournamentRole,
+)
 from tests.conftest import grant_role, login
 
 
@@ -97,8 +104,11 @@ def test_add_keeps_members_who_already_answered_onboarded(
     assert _membership(db, td_tournament.id, other_user.id).onboarded_at == td_tournament.created_at
 
 
-def test_add_draft_form_to_onboarding_is_rejected(client, db, td_user, td_tournament):
+def test_add_draft_form_keeps_members_onboarded_until_published(
+    client, db, td_user, td_tournament, other_user
+):
     draft = _make_form(db, td_user, td_tournament, status="draft")
+    grant_role(db, td_tournament, other_user, "Runner").onboarded_at = td_tournament.created_at
     db.commit()
     login(client, "td@test.com", "tdpass")
 
@@ -106,8 +116,20 @@ def test_add_draft_form_to_onboarding_is_rejected(client, db, td_user, td_tourna
         f"/tournaments/{td_tournament.id}/onboarding-forms/", json={"form_id": draft.id}
     )
 
+    assert response.status_code == 201
+    assert _membership(db, td_tournament.id, other_user.id).onboarded_at is not None
+
+
+def test_add_archived_form_to_onboarding_is_rejected(client, db, td_user, td_tournament):
+    archived = _make_form(db, td_user, td_tournament, status="archived")
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/onboarding-forms/", json={"form_id": archived.id}
+    )
+
     assert response.status_code == 409
-    assert response.json()["detail"] == "Only published forms can be added to onboarding"
 
 
 def test_list_onboarding_forms_is_ordered_and_manage_forms_gated(
@@ -303,3 +325,92 @@ def test_progress_requires_membership(client, td_user, other_tournament):
     response = client.post(f"/tournaments/{other_tournament.id}/onboarding/progress/")
 
     assert response.status_code == 404
+
+
+def _requires(db, form, tournament, label, *, inverse=False):
+    role = (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == tournament.id, TournamentRole.label == label)
+        .one()
+    )
+    form.tournament_form.prerequisites = {
+        "roles": [{"ids": [role.id], "match": "any", "inverse": inverse}]
+    }
+
+
+def test_progress_skips_steps_whose_prerequisites_the_member_fails(
+    client, db, td_user, td_tournament, other_user
+):
+    general = _make_form(db, td_user, td_tournament, name="General")
+    supervisors = _make_form(db, td_user, td_tournament, name="Supervisors only")
+    _as_steps(supervisors, general)
+    _requires(db, supervisors, td_tournament, "Lead Event Supervisor")
+    grant_role(db, td_tournament, other_user, "Runner")
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+
+    first = client.post(f"/tournaments/{td_tournament.id}/onboarding/progress/")
+    _answer(db, other_user, general)
+    db.commit()
+    done = client.post(f"/tournaments/{td_tournament.id}/onboarding/progress/")
+
+    assert first.json()["next_form_id"] == general.id
+    assert client.get(f"/forms/{supervisors.id}/").status_code == 403
+    assert done.json()["next_form_id"] is None
+    assert done.json()["onboarded_at"] is not None
+
+
+def test_progress_unonboards_a_member_whose_new_role_adds_a_step(
+    client, db, td_user, td_tournament, other_user
+):
+    """Role changes don't recompute onboarded_at; the next progress call does."""
+    supervisors = _make_form(db, td_user, td_tournament, name="Supervisors only")
+    _as_steps(supervisors)
+    _requires(db, supervisors, td_tournament, "Lead Event Supervisor")
+    grant_role(db, td_tournament, other_user, "Runner").onboarded_at = td_tournament.created_at
+    db.commit()
+    grant_role(db, td_tournament, other_user, "Lead Event Supervisor")
+    login(client, "other@test.com", "otherpass")
+
+    response = client.post(f"/tournaments/{td_tournament.id}/onboarding/progress/")
+
+    assert response.json() == {"next_form_id": supervisors.id, "onboarded_at": None}
+    assert _membership(db, td_tournament.id, other_user.id).onboarded_at is None
+
+
+def test_path_preview_includes_drafts_and_applies_prerequisites(
+    client, db, td_user, td_tournament, other_user
+):
+    answered = _make_form(db, td_user, td_tournament, name="Answered")
+    archived = _make_form(db, td_user, td_tournament, name="Archived", status="archived")
+    draft = _make_form(db, td_user, td_tournament, name="Draft", status="draft")
+    excluded = _make_form(db, td_user, td_tournament, name="Not for runners")
+    _as_steps(answered, archived, draft, excluded)
+    _requires(db, excluded, td_tournament, "Runner", inverse=True)
+    member = grant_role(db, td_tournament, other_user, "Runner")
+    _answer(db, other_user, answered)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/onboarding-forms/path/?membership_id={member.id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"form_id": answered.id, "name": "Answered", "status": "published", "completed": True},
+        {"form_id": draft.id, "name": "Draft", "status": "draft", "completed": False},
+    ]
+
+
+def test_path_preview_is_scoped_and_manage_forms_gated(
+    client, db, td_user, td_tournament, other_user, other_tournament
+):
+    member = grant_role(db, td_tournament, other_user, "Runner")
+    db.commit()
+    url = f"/onboarding-forms/path/?membership_id={member.id}"
+
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}{url}").status_code in (403, 404)
+    login(client, "other@test.com", "otherpass")
+    assert client.get(f"/tournaments/{td_tournament.id}{url}").status_code == 403

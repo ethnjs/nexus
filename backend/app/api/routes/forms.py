@@ -618,8 +618,8 @@ def update_form(
 # One deliberate exception to Onboarding never being referenced by Forms
 # (Onboarding depends on Forms, never the reverse — see the TournamentForm
 # model docstring): a form still flagged is_onboarding can't be deleted out
-# from under the sequence it's part of. Archiving is fine — onboarding skips
-# any step that isn't published.
+# from under the sequence it's part of. Archiving is fine: members who answered
+# the step keep it on their path, and nobody else is asked for it.
 # ---------------------------------------------------------------------------
 def _reject_if_onboarding(db: Session, form: Form) -> None:
     tf = db.query(TournamentForm).filter(TournamentForm.form_id == form.id).first()
