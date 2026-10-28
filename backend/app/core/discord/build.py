@@ -11,16 +11,21 @@ run (a channel's category, an event role in its overwrites) resolves the key whe
 
 import asyncio
 import contextlib
+import dataclasses
+import functools
 import logging
+from collections import Counter
 from collections.abc import Awaitable, Callable, Generator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from itertools import count
 from typing import Any
 
 from sqlalchemy import ColumnElement, or_
 from sqlalchemy.orm import Session
 
 from app.core.discord.layout import (
+    CATEGORY_CAPACITY,
     FIXED_CHANNEL_KEYS,
     INFORMATION_KEYS,
     OWNER_KEY,
@@ -31,8 +36,12 @@ from app.core.discord.layout import (
     LayoutEvent,
     LayoutRole,
     LayoutSettings,
+    Occupancy,
     Place,
     RoleSpec,
+    chunk_key,
+    chunk_name,
+    chunk_of,
     compute_layout,
     event_name_with_division,
     event_role_key,
@@ -117,9 +126,12 @@ class Snapshot:
     layout: Layout
     role_ids: dict[str, int]
     tiers: dict[str, str | None]
-    # Live (unarchived) managed categories, event and fixed channels, VERIFY_KEY and ARCHIVED_KEY.
+    # Live (unarchived) managed categories, event and fixed channels, VERIFY_KEY, and the
+    # Archived categories (ARCHIVED_KEY, then "archived:2" and on).
     channel_ids: dict[str, int]
     verify_message_id: int | None
+    # The layout again, with channels placed where the server has room (fit_to_server).
+    relayout: Callable[[Occupancy], Layout]
 
     def role_key_for(self, role_id: int) -> str | None:
         return next((k for k, v in self.role_ids.items() if v == role_id), None)
@@ -164,9 +176,10 @@ def load_snapshot(db: Session, link_id: int) -> Snapshot:
                 zone=zones.get(zone_id) if zone_id else None,
             )
         )
-    layout = compute_layout(
-        roles, events, LayoutSettings(link.merge_divisions, link.category_grouping)
+    relayout = functools.partial(
+        compute_layout, roles, events, LayoutSettings(link.merge_divisions, link.category_grouping)
     )
+    layout = relayout(Occupancy())
 
     role_ids: dict[str, int] = {}
     tiers: dict[str, str | None] = {OWNER_KEY: "admin", VERIFIED_KEY: None}
@@ -197,6 +210,7 @@ def load_snapshot(db: Session, link_id: int) -> Snapshot:
         tiers=tiers,
         channel_ids=channel_ids,
         verify_message_id=link.verify_message_id,
+        relayout=relayout,
     )
 
 
@@ -298,6 +312,44 @@ async def fetch_live(rest: DiscordRest, snapshot: Snapshot) -> Live:
         bot_permissions=permissions,
         verify_message_exists=message_exists,
     )
+
+
+def fit_to_server(snapshot: Snapshot, live: Live, *, moving: bool) -> Snapshot:
+    """The snapshot with its event channels placed in categories that have room. Discord refuses
+    a category's 51st channel, and an adopted category, or one channels were added to since
+    the last build, may already hold some. `moving` is for a reset, which moves channels."""
+    managed_ids = set(snapshot.channel_ids.values())
+    category_of = {
+        channel_id: key
+        for key, channel_id in snapshot.channel_ids.items()
+        if channel_id in live.channels and live.channels[channel_id].type == GUILD_CATEGORY
+    }
+    # A category the build would adopt by name counts as already managed.
+    unmanaged: dict[str, list[int]] = {}
+    for c in live.channels.values():
+        if c.type == GUILD_CATEGORY and c.id not in managed_ids:
+            unmanaged.setdefault(c.name, []).append(c.id)
+    for spec in snapshot.layout.categories:
+        if spec.key not in category_of.values() and len(unmanaged.get(spec.name, [])) == 1:
+            category_of[unmanaged[spec.name][0]] = spec.key
+
+    layout_keys = {
+        snapshot.channel_ids[c.key]: c.key
+        for c in snapshot.layout.channels
+        if c.key in snapshot.channel_ids
+    }
+    current: dict[str, str | None] = {}
+    taken: Counter[str] = Counter()
+    for c in live.channels.values():
+        if c.type == GUILD_CATEGORY or c.parent_id is None:
+            continue
+        category = category_of.get(c.parent_id)
+        if (key := layout_keys.get(c.id)) is not None:
+            current[key] = category
+        elif category is not None:
+            taken[category] += 1
+    layout = snapshot.relayout(Occupancy(current, taken, moving))
+    return dataclasses.replace(snapshot, layout=layout)
 
 
 # -- Actions -----------------------------------------------------------------------------
@@ -557,9 +609,10 @@ class SetUpChannel(Action):
 class ArchiveChannel(Action):
     key: str
     channel_id: int
+    category_key: str
 
     async def run(self, ctx: Context) -> None:
-        archived = ctx.channel_ids.get(ARCHIVED_KEY)
+        archived = ctx.channel_ids.get(self.category_key)
         assert archived is not None
         await ctx.rest.edit_channel(self.channel_id, parent_id=str(archived))
         await ctx.save(ctx.store.forget_channel, self.key)
@@ -691,7 +744,12 @@ class OrderChannels(Action):
 
         categories = [c for c in channels.values() if c.type == GUILD_CATEGORY]
         managed_categories = ids(self.category_keys)
-        archived = ids([ARCHIVED_KEY])
+        archived = ids(
+            sorted(
+                filter(is_archive_key, ctx.channel_ids),
+                key=lambda k: chunk_of(k, ARCHIVED_KEY) or 0,
+            )
+        )
         order = [
             *(i for i in current(categories) if i not in managed_categories and i not in archived),
             *managed_categories,
@@ -836,6 +894,49 @@ def overwrites_differ(
         if o.type == ROLE_OVERWRITE and target in managed
     }
     return current != desired
+
+
+def is_archive_key(key: str) -> bool:
+    return chunk_of(key, ARCHIVED_KEY) is not None
+
+
+def archive_actions(
+    snapshot: Snapshot,
+    live: Live,
+    archive: list[tuple[str, LiveChannel]],
+    staff: list[str],
+    *,
+    create_group: str | None,
+    archive_group: str | None,
+) -> list[Action]:
+    """Moves each channel into the first Archived category with room, making "Archived (2)" and
+    on as they fill and remaking any that were deleted."""
+    ready = {k for k, i in snapshot.channel_ids.items() if is_archive_key(k) and i in live.channels}
+    key_of = {snapshot.channel_ids[k]: k for k in ready}
+    load = Counter(key_of[c.parent_id] for c in live.channels.values() if c.parent_id in key_of)
+    actions: list[Action] = []
+    for key, channel in archive:
+        for n in count(1):
+            target = chunk_key(ARCHIVED_KEY, n)
+            if target not in ready:
+                ready.add(target)
+                name = chunk_name(ARCHIVED_CATEGORY_NAME, n)
+                actions.append(
+                    CreateChannel(
+                        create_group,
+                        f"Category: {name}",
+                        target,
+                        name,
+                        GUILD_CATEGORY,
+                        TOP,
+                        _category_overwrites(ARCHIVED_KEY, staff),
+                    )
+                )
+            if load[target] < CATEGORY_CAPACITY:
+                break
+        load[target] += 1
+        actions.append(ArchiveChannel(archive_group, f"#{channel.name}", key, channel.id, target))
+    return actions
 
 
 class _Planner:
@@ -1081,30 +1182,18 @@ class _Planner:
         }
         archive = []
         for key, channel_id in self.s.channel_ids.items():
-            if key in (VERIFY_KEY, ARCHIVED_KEY) or key in layout_keys:
+            if key == VERIFY_KEY or is_archive_key(key) or key in layout_keys:
                 continue
             live = self.live.channels.get(channel_id)
             if key.startswith("event:") and live is not None:
                 archive.append((key, live))
             else:
                 self.add(ForgetChannel(None, key, key))
-        if not archive:
-            return
-        if self.live.channels.get(self.s.channel_ids.get(ARCHIVED_KEY, 0)) is None:
-            self.creates += 1
-            self.add(
-                CreateChannel(
-                    CREATE,
-                    f"Category: {ARCHIVED_CATEGORY_NAME}",
-                    ARCHIVED_KEY,
-                    ARCHIVED_CATEGORY_NAME,
-                    GUILD_CATEGORY,
-                    TOP,
-                    _category_overwrites(ARCHIVED_KEY, self.staff_keys),
-                )
-            )
-        for key, live in archive:
-            self.add(ArchiveChannel(ARCHIVE, f"#{live.name}", key, live.id))
+        for action in archive_actions(
+            self.s, self.live, archive, self.staff_keys, create_group=CREATE, archive_group=ARCHIVE
+        ):
+            self.creates += isinstance(action, CreateChannel)
+            self.add(action)
 
     def plan_missing_overwrites(self) -> None:
         """A managed role with no overwrite at all on a managed channel that should have one gets
@@ -1260,6 +1349,7 @@ def plan_build(snapshot: Snapshot, live: Live, *, reset: bool) -> Plan:
     plan = Plan()
     if not _require_administrator(live, plan):
         return plan
+    snapshot = fit_to_server(snapshot, live, moving=reset)
     planner = _Planner(snapshot, live, plan, reset=reset)
     planner.plan_roles()
     planner.plan_gate()
@@ -1294,6 +1384,7 @@ def plan_scoped_reset(snapshot: Snapshot, live: Live, target: Target) -> Plan:
     plan = Plan()
     if not _require_administrator(live, plan):
         return plan
+    snapshot = fit_to_server(snapshot, live, moving=True)
     planner = _Planner(snapshot, live, plan, reset=True)
     for key, role_id in snapshot.role_ids.items():
         if role_id in live.roles:
@@ -1374,7 +1465,7 @@ def _plan_channel_reset(planner: _Planner, snapshot: Snapshot, live: Live, chann
     plan = planner.plan
     key = snapshot.channel_key_for(channel_id)
     channel = live.channels.get(channel_id)
-    if key is None or key == ARCHIVED_KEY or channel is None:
+    if key is None or is_archive_key(key) or channel is None:
         plan.blockers.append(NOT_MANAGED)
         return
     staff = planner.staff_keys

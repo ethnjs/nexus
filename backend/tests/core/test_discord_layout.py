@@ -9,6 +9,7 @@ from app.core.discord.layout import (
     LayoutEvent,
     LayoutRole,
     LayoutSettings,
+    Occupancy,
     Place,
     channel_key,
     compute_layout,
@@ -243,6 +244,42 @@ class TestCategories:
         second = [c for c in layout.channels if c.category_key == "building:1:2"]
         assert len(first) == CATEGORY_CAPACITY
         assert [c.name for c in second] == ["event-050-c", "event-051-c", "event-052-c"]
+
+    def test_overflow_counts_channels_already_in_the_category(self):
+        events = [_event(i, f"Event {i}", building=ROWLAND) for i in range(3)]
+        layout = compute_layout([], events, BY_BUILDING, Occupancy(taken={"building:1": 48}))
+        assert _channels(layout) == [
+            ("building:1", "event-0-c", "event:0"),
+            ("building:1", "event-1-c", "event:1"),
+            ("building:1:2", "event-2-c", "event:2"),
+        ]
+
+    def test_channels_stay_in_their_places_categories(self):
+        events = [_event(i, f"Event {i}", building=ROWLAND) for i in range(3)]
+        occupancy = Occupancy(current={"event:0": "building:1:2", "event:2": "building:1"})
+        layout = compute_layout([], events, BY_BUILDING, occupancy)
+        assert _channels(layout) == [
+            ("building:1", "event-1-c", "event:1"),
+            ("building:1", "event-2-c", "event:2"),
+            ("building:1:2", "event-0-c", "event:0"),
+        ]
+
+    def test_a_moving_channel_holds_its_old_slot(self):
+        events = [_event(1, "Anatomy", building=ROWLAND), _event(2, "Botany", building=STEINHAUS)]
+        occupancy = Occupancy(current={"event:1": "building:2"}, taken={"building:2": 49})
+        layout = compute_layout([], events, BY_BUILDING, occupancy)
+        assert _channels(layout) == [
+            ("building:1", "anatomy-c", "event:1"),
+            ("building:2:2", "botany-c", "event:2"),
+        ]
+
+    def test_without_moving_channels_elsewhere_stay_and_take_no_room(self):
+        events = [_event(1, "Anatomy", building=ROWLAND), _event(2, "Botany", building=ROWLAND)]
+        occupancy = Occupancy(
+            current={"event:1": None}, taken={"building:1": CATEGORY_CAPACITY - 1}, moving=False
+        )
+        layout = compute_layout([], events, BY_BUILDING, occupancy)
+        assert [c.key for c in _event_categories(layout)] == ["building:1"]
 
     def test_empty_track_has_only_the_fixed_categories(self):
         layout = compute_layout([], [], BY_BUILDING)

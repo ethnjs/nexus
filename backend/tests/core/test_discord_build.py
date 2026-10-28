@@ -27,6 +27,7 @@ from app.models.models import (
     Event,
     EventCategory,
     TournamentEvent,
+    TournamentEventTrack,
     TournamentRole,
     utcnow,
 )
@@ -699,3 +700,72 @@ async def test_admin_roles_are_created_hoisted(db, link, guild, scope):
     guild.role("Tournament Director")["hoist"] = False
     await _build(db, link, scope, reset=True)
     assert guild.role("Tournament Director")["hoist"] is False
+
+
+def _add_events(db, link, names: list[str], building_id: int | None = None) -> None:
+    for name in names:
+        event = TournamentEvent(tournament_id=link.tournament_id, name=name, division="C")
+        db.add(event)
+        db.flush()
+        db.add(
+            TournamentEventTrack(
+                tournament_event_id=event.id, track_id=link.track_id, building_id=building_id
+            )
+        )
+    db.commit()
+
+
+class TestCategoryCapacity:
+    """Discord refuses a category's 51st channel; the fake does too."""
+
+    @pytest.mark.parametrize("reset", [False, True])
+    async def test_events_added_after_a_build_fill_the_room_left(
+        self, db, link, guild, scope, reset
+    ):
+        await _build(db, link, scope)
+        # Sorted ahead of anatomy-c, which already has a place in Other Events.
+        _add_events(db, link, [f"Aaa {i:02d}" for i in range(50)])
+        assert await _build(db, link, scope, reset=reset) is None
+        other = guild.children(guild.channel("Other Events", GUILD_CATEGORY))
+        assert len(other) == 50
+        assert "anatomy-c" in other
+        assert guild.children(guild.channel("Other Events (2)", GUILD_CATEGORY)) == ["aaa-49-c"]
+        # Nothing left to move; /setup leaves ordering to /reset.
+        later = (await _preview(link, scope, reset=True)).groups()
+        assert {label for _, labels in later for label in labels} <= {"Role order", "Channel order"}
+
+    async def test_an_adopted_categorys_channels_count(self, db, link, guild, scope):
+        other = guild.add_channel("Other Events", GUILD_CATEGORY)
+        for i in range(50):
+            guild.add_channel(f"chat-{i}", parent_id=other)
+        assert await _build(db, link, scope) is None
+        assert link.last_build_status == "succeeded"
+        assert guild.children(guild.channel("Other Events (2)", GUILD_CATEGORY)) == ["anatomy-c"]
+
+    async def test_reset_moves_a_channel_past_a_full_category(self, db, link, guild, scope, events):
+        await _build(db, link, scope)
+        rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
+        for i in range(48):
+            guild.add_channel(f"chat-{i}", parent_id=int(rowland["id"]))
+        building = events["Circuit Lab B"].track_details[0].building_id
+        events["Anatomy C"].track_details[0].building_id = building
+        db.commit()
+
+        assert await _build(db, link, scope, reset=True) is None
+        assert len(guild.children(rowland)) == 50
+        assert guild.children(guild.channel("Rowland Hall (2)", GUILD_CATEGORY)) == ["anatomy-c"]
+
+    async def test_a_full_archive_overflows(self, db, link, guild, scope, events):
+        await _build(db, link, scope)
+        archived = guild.add_channel("Archived", GUILD_CATEGORY)
+        for i in range(50):
+            guild.add_channel(f"old-{i}", parent_id=archived)
+        link.archived_category_id = archived
+        db.delete(events["Anatomy C"])
+        db.commit()
+
+        assert await _build(db, link, scope, reset=True) is None
+        assert guild.category_names()[-2:] == ["Archived", "Archived (2)"]
+        assert guild.children(guild.channel("Archived (2)", GUILD_CATEGORY)) == ["anatomy-c"]
+        assert db.query(DiscordManagedChannel).filter_by(key="archived:2", archived=False).count()
+        assert (await _preview(link, scope, reset=True)).empty

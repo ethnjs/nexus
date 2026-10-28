@@ -80,7 +80,7 @@ New roles get no color. You can set colors, icons, and hoist yourself; lobot nev
 - **Information and Volunteers:** two categories every server gets, above the event categories. **Information** holds `#announcements` and `#useful-links`, where only staff roles and members with Administrator can post; everyone else can read and react. **Volunteers** holds `#general` and `#random`, open to every verified member. If the server already has one `#general`, like the one Discord creates in a new server, lobot moves it into Volunteers instead of making a second.
 - **Event channels:** one text channel per event on the track, named after the event and its division, like `#circuit-lab-c`. Each one's permission overwrites deny `@everyone` and allow that event's role and every staff role, so it's visible to the event's volunteers, staff, and anyone with Administrator.
 - **Division merge:** with this on, events that are the same catalog event and are in the same building or zone share one channel, named with every division that runs there, like `#circuit-lab-bc`. Events with no building or zone count as one place. Custom events never merge.
-- **Categories by building or zone:** channels are grouped into categories named after each event's building or zone. Events without one go in **Other Events**, or in **Events** if no event on the track has one. A category holds up to 50 channels; past that, lobot adds a second category, like **Science Building (2)**.
+- **Categories by building or zone:** channels are grouped into categories named after each event's building or zone. Events without one go in **Other Events**, or in **Events** if no event on the track has one. Discord allows 50 channels in a category, counting any you've added yourself. When one is full, lobot puts new channels in a second category, like **Science Building (2)**. Channels already in one of a building's categories stay where they are, so the second category isn't always the end of the alphabet.
 
 lobot's categories go below the server's own, so Discord's default **Text Channels** and **Voice Channels** stay at the top, where you can delete them if you don't need them.
 
@@ -115,7 +115,7 @@ The rule of thumb: **changes about people sync on their own; changes about how t
 | Transfer the tournament's ownership | **Tournament Owner** moves to the new owner. |
 | Add a role, or add an event to the track | lobot creates the role, and the event's channel. |
 | Rename a role or an event | lobot renames the role. An event's channel keeps its old name until a reset. |
-| Delete a role, or delete an event or remove it from the track | lobot deletes the role. A channel whose events are all gone moves to an **Archived** category, keeping its messages, and lobot stops managing it. |
+| Delete a role, or delete an event or remove it from the track | lobot deletes the role. A channel whose events are all gone moves to an **Archived** category (or **Archived (2)** and on, once one holds 50), keeping its messages, and lobot stops managing it. |
 | Change a role's permissions | Nothing until a reset. The role keeps the permissions and channel access it was built with. |
 | Turn on division merge, change categories, or move events between buildings or zones | Nothing until a reset. |
 

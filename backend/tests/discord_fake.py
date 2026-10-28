@@ -136,6 +136,18 @@ def _member_json(guild: FakeGuild, user_id: int) -> dict[str, Any]:
     }
 
 
+def _require_room(guild: FakeGuild, parent_id: Any, channel_id: int | None = None) -> None:
+    """Discord: "400 Bad Request (error code: 50035): Invalid Form Body. In parent-id: Maximum
+    number of channels in category reached (50)"."""
+    if parent_id is None:
+        return
+    children = [
+        c for i, c in guild.channels.items() if c["parent_id"] == str(parent_id) and i != channel_id
+    ]
+    if len(children) >= 50:
+        raise RuntimeError("Maximum number of channels in category reached (50)")
+
+
 def _require_below_bot(guild: FakeGuild, role_id: int) -> None:
     """Discord: "403 Forbidden (error code: 50013): Missing Permissions"."""
     bot = guild.roles[guild.bot_role]
@@ -281,6 +293,7 @@ class FakeDiscord:
 
     async def create_channel(self, guild_id: int, **fields: Any) -> dict[str, Any]:
         guild = self.guilds[guild_id]
+        _require_room(guild, fields.get("parent_id"))
         channel_id = guild.add_channel(
             fields["name"],
             fields["type"],
@@ -293,7 +306,10 @@ class FakeDiscord:
         return dict(guild.channels[channel_id])
 
     async def edit_channel(self, channel_id: int, **fields: Any) -> dict[str, Any]:
-        channel = self._guild_of(channel_id).channels[channel_id]
+        guild = self._guild_of(channel_id)
+        channel = guild.channels[channel_id]
+        if fields.get("parent_id") not in (None, channel["parent_id"]):
+            _require_room(guild, fields["parent_id"], channel_id)
         if "permission_overwrites" in fields:
             fields["permission_overwrites"] = [dict(o) for o in fields["permission_overwrites"]]
         channel.update(fields)
