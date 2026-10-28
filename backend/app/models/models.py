@@ -1991,9 +1991,7 @@ class Form(Base):
 #
 # is_onboarding + order together define the onboarding step sequence for the
 # tournament (order is only meaningful — and set — for is_onboarding=True
-# rows). Standard, non-onboarding tournament forms leave order null; the
-# eventual prerequisite/visibility mechanism for those is a later phase, not
-# built yet.
+# rows). Standard, non-onboarding tournament forms leave order null.
 #
 # A form linked here with is_onboarding=True cannot be archived or deleted —
 # see the guard in api/routes/forms.py's update_form/archive_form/
@@ -2017,10 +2015,8 @@ class TournamentForm(Base):
     )
     is_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int | None] = mapped_column(Integer)
-    # Optional member-visibility requirements for standard tournament forms.
-    # Shape and referenced-id validation live with the manager API; evaluation
-    # lives in core/tournament/form_prerequisites.py so every future caller
-    # (member form list, rendering, and submission) shares one rule.
+    # Role conditions a member must pass to see the form; shape and evaluation
+    # are in core/tournament/form_prerequisites.py.
     prerequisites: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

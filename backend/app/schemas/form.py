@@ -241,13 +241,14 @@ class BulkFieldsUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class PrerequisiteIdMatch(BaseModel):
-    """A required set of IDs and whether the member needs any or all of it."""
+class RolePrerequisite(BaseModel):
+    """Passes when the member holds any (or all) of `ids`; `inverse` flips the result."""
 
     model_config = ConfigDict(extra="forbid")
 
-    ids: list[int]
+    ids: list[int] = Field(min_length=1)
     match: Literal["any", "all"] = "any"
+    inverse: bool = False
 
     @field_validator("ids")
     @classmethod
@@ -259,30 +260,12 @@ class PrerequisiteIdMatch(BaseModel):
         return values
 
 
-class AvailabilityPrerequisite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    shift_ids: list[int]
-    match: Literal["any", "all"] = "any"
-
-    @field_validator("shift_ids")
-    @classmethod
-    def _positive_unique_shift_ids(cls, values: list[int]) -> list[int]:
-        if any(value <= 0 for value in values):
-            raise ValueError("shift_ids must contain positive integers")
-        if len(values) != len(set(values)):
-            raise ValueError("shift_ids must not contain duplicates")
-        return values
-
-
 class TournamentFormPrerequisites(BaseModel):
-    """Optional conditions a member must all satisfy to access a standard form."""
+    """Role conditions a member must all pass to see and answer a tournament form."""
 
     model_config = ConfigDict(extra="forbid")
 
-    onboarding_complete: bool = False
-    roles: PrerequisiteIdMatch | None = None
-    availability: AvailabilityPrerequisite | None = None
+    roles: list[RolePrerequisite] = []
 
 
 # ---------------------------------------------------------------------------
@@ -382,10 +365,6 @@ class FormUpdate(BaseModel):
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
     allow_response_edits: bool | None = None
-
-
-class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
-    """Replacement payload for a standard tournament form's prerequisites."""
 
 
 # ---------------------------------------------------------------------------

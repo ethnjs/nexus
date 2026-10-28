@@ -55,7 +55,10 @@ from app.core.form.write_through import (
 )
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
-from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
+from app.core.tournament.form_prerequisites import (
+    meets_prerequisites,
+    member_meets_form_prerequisites,
+)
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import (
     exempt_from_onboarding,
@@ -73,7 +76,7 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentRole,
-    TournamentShift,
+    TournamentTrackAssignment,
     User,
     utcnow,
 )
@@ -89,7 +92,7 @@ from app.schemas.form import (
     FormResponseRead,
     FormUpdate,
     MemberFormRead,
-    TournamentFormPrerequisitesUpdate,
+    TournamentFormPrerequisites,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead
 
@@ -391,9 +394,52 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
 
 
 # ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/forms/prerequisites/preview/ — the members
+# a draft set of prerequisites would let through, before the TD saves it.
+# ---------------------------------------------------------------------------
+@router.post(
+    "/tournaments/{tournament_id}/forms/prerequisites/preview/",
+    response_model=list[PersonRefResponse],
+    tags=["tournaments"],
+)
+def preview_tournament_form_prerequisites(
+    tournament_id: int,
+    payload: TournamentFormPrerequisites,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    prerequisites = payload.model_dump()
+    _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
+
+    role_ids_by_user: dict[int, set[int]] = {
+        user_id: set()
+        for (user_id,) in db.query(TournamentMembership.user_id).filter(
+            TournamentMembership.tournament_id == tournament_id
+        )
+    }
+    for user_id, role_id in (
+        db.query(TournamentMembership.user_id, TournamentTrackAssignment.role_id)
+        .join(TournamentTrackAssignment)
+        .filter(TournamentMembership.tournament_id == tournament_id)
+    ):
+        role_ids_by_user[user_id].add(role_id)
+
+    matching = {
+        user_id
+        for user_id, role_ids in role_ids_by_user.items()
+        if meets_prerequisites(prerequisites, role_ids)
+    }
+    refs = resolve_person_refs(db, tournament_id, set(matching))
+    return sorted(
+        (refs[user_id] for user_id in matching),
+        key=lambda ref: ((ref.first_name or "").lower(), (ref.last_name or "").lower()),
+    )
+
+
+# ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/ — replaces
-# prerequisite configuration for one standard tournament form. This stays
-# nested under the tournament so role/shift IDs are unambiguously scoped.
+# one tournament form's prerequisites, onboarding steps included. Nested under
+# the tournament so role IDs are unambiguously scoped.
 # ---------------------------------------------------------------------------
 @router.patch(
     "/tournaments/{tournament_id}/forms/{form_id}/prerequisites/",
@@ -403,7 +449,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
 def update_tournament_form_prerequisites(
     tournament_id: int,
     form_id: str,
-    payload: TournamentFormPrerequisitesUpdate,
+    payload: TournamentFormPrerequisites,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
@@ -425,42 +471,31 @@ def update_tournament_form_prerequisites(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Tournament form not found"
         )
-    if tournament_form.is_onboarding:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Onboarding forms cannot have standard-form prerequisites",
-        )
 
-    prerequisites = payload.model_dump(exclude_none=True)
-    _validate_prerequisite_ids(db, tournament_id, prerequisites)
+    prerequisites = payload.model_dump()
+    _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
     tournament_form.prerequisites = prerequisites
     db.commit()
     db.refresh(form)
     return form
 
 
-def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: dict) -> None:
-    roles = (prerequisites.get("roles") or {}).get("ids", [])
-    shifts = (prerequisites.get("availability") or {}).get("shift_ids", [])
-
-    def _require_tournament_ids(ids: list[int], model, label: str) -> None:
-        if not ids:
-            return
-        found = {
-            row_id
-            for (row_id,) in db.query(model.id)
-            .filter(model.tournament_id == tournament_id, model.id.in_(ids))
-            .all()
-        }
-        missing = sorted(set(ids) - found)
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"{label} do not belong to this tournament: {missing}",
-            )
-
-    _require_tournament_ids(roles, TournamentRole, "role IDs")
-    _require_tournament_ids(shifts, TournamentShift, "shift IDs")
+def _validate_prerequisite_role_ids(db: Session, tournament_id: int, prerequisites: dict) -> None:
+    ids = {role_id for condition in prerequisites["roles"] for role_id in condition["ids"]}
+    if not ids:
+        return
+    found = {
+        role_id
+        for (role_id,) in db.query(TournamentRole.id).filter(
+            TournamentRole.tournament_id == tournament_id, TournamentRole.id.in_(ids)
+        )
+    }
+    missing = sorted(ids - found)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"role IDs do not belong to this tournament: {missing}",
+        )
 
 
 # ---------------------------------------------------------------------------

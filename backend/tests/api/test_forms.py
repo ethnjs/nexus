@@ -330,7 +330,12 @@ class TestListTournamentFieldKeys:
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/
+# POST /tournaments/{tournament_id}/forms/prerequisites/preview/
 # ---------------------------------------------------------------------------
+
+
+def _requires_role(role, *, inverse=False):
+    return {"roles": [{"ids": [role.id], "match": "any", "inverse": inverse}]}
 
 
 class TestTournamentFormPrerequisites:
@@ -344,28 +349,16 @@ class TestTournamentFormPrerequisites:
         self, client, db, td_user, td_tournament
     ):
         form = _make_form(db, td_user, td_tournament)
-        role = (
-            db.query(TournamentRole)
-            .filter(TournamentRole.tournament_id == td_tournament.id)
-            .first()
-        )
-        now = datetime.now(UTC)
-        shift = TournamentShift(
-            tournament_id=td_tournament.id,
-            track_id=primary_track_id(db, td_tournament.id),
-            label="Morning",
-            start=now,
-            end=now + timedelta(hours=2),
-        )
-        db.add(shift)
-        db.commit()
+        runner = _role(db, td_tournament, "Runner")
+        volunteer = _role(db, td_tournament, "Volunteer")
         self._link(db, form, td_tournament)
         login(client, "td@test.com", "tdpass")
 
         payload = {
-            "onboarding_complete": True,
-            "roles": {"ids": [role.id], "match": "all"},
-            "availability": {"shift_ids": [shift.id], "match": "any"},
+            "roles": [
+                {"ids": [runner.id, volunteer.id], "match": "all", "inverse": False},
+                {"ids": [volunteer.id], "match": "any", "inverse": True},
+            ]
         }
         res = client.patch(
             f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=payload
@@ -377,7 +370,19 @@ class TestTournamentFormPrerequisites:
         assert listed.status_code == 200
         assert listed.json()[0]["prerequisites"] == payload
 
-    def test_rejects_role_or_shift_from_another_tournament(
+    def test_onboarding_form_accepts_prerequisites(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament, is_onboarding=True, order=1)
+        login(client, "td@test.com", "tdpass")
+
+        res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json=_requires_role(_role(db, td_tournament, "Runner")),
+        )
+
+        assert res.status_code == 200
+
+    def test_rejects_role_from_another_tournament(
         self, client, db, td_user, td_tournament, other_tournament
     ):
         form = _make_form(db, td_user, td_tournament)
@@ -387,57 +392,92 @@ class TestTournamentFormPrerequisites:
             .filter(TournamentRole.tournament_id == other_tournament.id)
             .first()
         )
-        now = datetime.now(UTC)
-        other_shift = TournamentShift(
-            tournament_id=other_tournament.id,
-            track_id=primary_track_id(db, other_tournament.id),
-            label="Other",
-            start=now,
-            end=now + timedelta(hours=2),
-        )
-        db.add(other_shift)
-        db.commit()
         login(client, "td@test.com", "tdpass")
 
-        role_res = client.patch(
+        res = client.patch(
             f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"roles": {"ids": [other_role.id], "match": "any"}},
-        )
-        shift_res = client.patch(
-            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"availability": {"shift_ids": [other_shift.id], "match": "all"}},
+            json=_requires_role(other_role),
         )
 
-        assert role_res.status_code == 422
-        assert shift_res.status_code == 422
+        assert res.status_code == 422
 
-    def test_rejects_onboarding_form_and_member_without_manage_forms(
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"roles": [{"ids": [], "match": "any"}]},
+            {"roles": [{"ids": [1], "match": "none"}]},
+            {"roles": {"ids": [1], "match": "any"}},
+            {"availability": {"shift_ids": [1], "match": "any"}},
+            {"onboarding_complete": True},
+        ],
+    )
+    def test_rejects_malformed_or_removed_shapes(self, client, db, td_user, td_tournament, body):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=body
+        )
+
+        assert res.status_code == 422
+
+    def test_member_without_manage_forms_is_forbidden(
         self, client, db, td_user, td_tournament, other_user
     ):
         form = _make_form(db, td_user, td_tournament)
-        self._link(db, form, td_tournament, is_onboarding=True, order=1)
-        login(client, "td@test.com", "tdpass")
-        assert (
-            client.patch(
-                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-                json={"onboarding_complete": True},
-            ).status_code
-            == 409
-        )
-
-        db.query(TournamentForm).filter(TournamentForm.form_id == form.id).update(
-            {TournamentForm.is_onboarding: False, TournamentForm.order: None}
-        )
-        db.commit()
+        self._link(db, form, td_tournament)
         grant_role(db, td_tournament, other_user, "Runner")
         login(client, "other@test.com", "otherpass")
+        body = _requires_role(_role(db, td_tournament, "Runner"))
+
         assert (
             client.patch(
-                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-                json={"onboarding_complete": True},
+                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=body
             ).status_code
             == 403
         )
+        assert (
+            client.post(
+                f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/", json=body
+            ).status_code
+            == 403
+        )
+
+    def test_preview_lists_matching_members_with_roles(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        runner = _role(db, td_tournament, "Runner")
+        login(client, "td@test.com", "tdpass")
+        url = f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/"
+
+        holders = client.post(url, json=_requires_role(runner))
+        others = client.post(url, json=_requires_role(runner, inverse=True))
+        everyone = client.post(url, json={"roles": []})
+
+        assert holders.status_code == 200
+        assert [m["user_id"] for m in holders.json()] == [other_user.id]
+        assert holders.json()[0]["roles"] == [{"id": runner.id, "label": "Runner"}]
+        assert [m["user_id"] for m in others.json()] == [td_user.id]
+        assert {m["user_id"] for m in everyone.json()} == {td_user.id, other_user.id}
+
+    def test_preview_rejects_role_from_another_tournament(
+        self, client, db, td_tournament, other_tournament
+    ):
+        other_role = (
+            db.query(TournamentRole)
+            .filter(TournamentRole.tournament_id == other_tournament.id)
+            .first()
+        )
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/",
+            json=_requires_role(other_role),
+        )
+
+        assert res.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +517,10 @@ class TestMyTournamentForms:
         completed_archived = self._form(db, td_user, td_tournament, status="archived")
         waiting_standard = self._form(db, td_user, td_tournament)
         blocked_standard = self._form(
-            db, td_user, td_tournament, prerequisites={"onboarding_complete": True}
+            db,
+            td_user,
+            td_tournament,
+            prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
         )
         completed_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=1)
         next_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=2)
@@ -730,7 +773,7 @@ class TestRespondentNotFound:
             TournamentForm(
                 form_id=form.id,
                 tournament_id=td_tournament.id,
-                prerequisites={"onboarding_complete": True},
+                prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
             )
         )
         db.add(FormResponse(form_id=form.id, user_id=other_user.id))
@@ -788,13 +831,13 @@ class TestUpdateArchiveDeleteForm:
     def test_member_cannot_view_standard_form_without_prerequisites(
         self, client, db, td_user, td_tournament, other_user
     ):
-        membership = grant_role(db, td_tournament, other_user, "Runner")
+        grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament, status="published")
         db.add(
             TournamentForm(
                 form_id=form.id,
                 tournament_id=td_tournament.id,
-                prerequisites={"onboarding_complete": True},
+                prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
             )
         )
         db.commit()
@@ -802,8 +845,7 @@ class TestUpdateArchiveDeleteForm:
 
         assert client.get(f"/forms/{form.id}/").status_code == 403
         assert client.post(f"/forms/{form.id}/responses/", json={"answers": []}).status_code == 403
-        membership.onboarded_at = utcnow()
-        db.commit()
+        grant_role(db, td_tournament, other_user, "Volunteer")
         assert client.get(f"/forms/{form.id}/").status_code == 200
 
     def test_patch_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):

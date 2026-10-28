@@ -1941,22 +1941,16 @@ export interface FormFieldInput {
   config?: FormFieldConfig | null;
 }
 
-export type PrerequisiteMatch = "any" | "all";
-
-export interface IdPrerequisite {
+/** Holds any (or all) of `ids`; `inverse` flips the result. */
+export interface RolePrerequisite {
   ids: number[];
-  match: PrerequisiteMatch;
+  match: "any" | "all";
+  inverse: boolean;
 }
 
-export interface AvailabilityPrerequisite {
-  shift_ids: number[];
-  match: PrerequisiteMatch;
-}
-
+/** Every condition must pass. */
 export interface TournamentFormPrerequisites {
-  onboarding_complete: boolean;
-  roles?: IdPrerequisite | null;
-  availability?: AvailabilityPrerequisite | null;
+  roles: RolePrerequisite[];
 }
 
 /** The member-facing event shape (?public=true), and what any response embeds
@@ -2135,6 +2129,11 @@ export const formsApi = {
     prerequisites: TournamentFormPrerequisites,
   ) =>
     api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
+  previewPrerequisites: (tournamentId: number, prerequisites: TournamentFormPrerequisites) =>
+    api.post<PersonRef[]>(
+      `/tournaments/${tournamentId}/forms/prerequisites/preview/`,
+      prerequisites,
+    ),
   createForTournament: (
     tournamentId: number,
     body: { name: string; title?: string | null; description?: string | null },
