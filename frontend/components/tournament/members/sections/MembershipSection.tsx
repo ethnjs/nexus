@@ -55,7 +55,7 @@ export function MembershipSection({
   const showTracks = (membership.track_statuses ?? []).length > 0;
   const showRoles = shows("roles");
   const showAge = shows("age") && (collectIsOver18 || collectIsOver21);
-  // null means the tournament has no live onboarding steps — nothing to show,
+  // null means no onboarding step is on this member's path — nothing to show,
   // same as age when the tournament doesn't collect it.
   const showOnboarding = shows("onboarding") && !!membership.onboarding;
 
@@ -149,7 +149,7 @@ export function MembershipSection({
               )}
               {showOnboarding && (
                 <PanelField label="Onboarding">
-                  <OnboardingProgress progress={membership.onboarding} />
+                  <OnboardingProgress progress={membership.onboarding} steps="inline" />
                 </PanelField>
               )}
             </FieldGrid>

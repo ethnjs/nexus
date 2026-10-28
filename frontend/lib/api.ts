@@ -1148,9 +1148,19 @@ export type MembershipField =
 
 // Live onboarding steps answered out of the live total — skipped (draft or
 // archived) steps count toward neither.
+export interface MembershipOnboardingStep {
+  form_id: string;
+  name: string;
+  /** "draft" only in the TD's flow preview, never on a roster row. */
+  status: "published" | "archived" | "draft";
+  completed: boolean;
+}
+
+/** The steps on this member's onboarding path, in order. */
 export interface MembershipOnboarding {
   completed: number;
   total: number;
+  steps: MembershipOnboardingStep[];
 }
 
 // Matches MembershipBaseResponse — the membership data the member themselves
