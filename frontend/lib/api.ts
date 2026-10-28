@@ -2232,6 +2232,11 @@ export const tournamentOnboardingApi = {
     }),
   removeForm: (tournamentId: number, formId: string) =>
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
+  // One member's path, drafts included — the flow preview.
+  path: (tournamentId: number, membershipId: number) =>
+    api.get<MembershipOnboardingStep[]>(
+      `/tournaments/${tournamentId}/onboarding-forms/path/?membership_id=${membershipId}`,
+    ),
   progress: (tournamentId: number) =>
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 };

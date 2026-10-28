@@ -1,11 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
+import { OnboardingFlowModal } from "@/components/tournament/forms/OnboardingFlowModal";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
@@ -221,6 +222,10 @@ export default function FormsPage() {
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The overview's setup checklist links here with ?onboarding=open.
+  const [showOnboarding, setShowOnboarding] = useState(
+    useSearchParams().get("onboarding") === "open",
+  );
   const [deleteTarget, setDeleteTarget] = useState<FormListItem | null>(null);
   const { show } = useToast();
 
@@ -308,7 +313,12 @@ export default function FormsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+      <div
+        style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginBottom: "16px" }}
+      >
+        <Button type="button" variant="secondary" size="md" onClick={() => setShowOnboarding(true)}>
+          Onboarding
+        </Button>
         <Button
           type="button"
           variant="primary"
@@ -377,6 +387,16 @@ export default function FormsPage() {
           onDelete={(form) => formsApi.delete(form.id)}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(ids) => setForms((prev) => prev?.filter((f) => !ids.includes(f.id)) ?? null)}
+        />
+      )}
+
+      {showOnboarding && (
+        <OnboardingFlowModal
+          tournamentId={tournamentId}
+          forms={forms}
+          lockedReason={archivedReason}
+          onClose={() => setShowOnboarding(false)}
+          onSaved={loadForms}
         />
       )}
 
