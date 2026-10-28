@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
+import { FormFlowModal } from "@/components/tournament/forms/flow/FormFlowModal";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
-import { OnboardingFlowModal } from "@/components/tournament/forms/OnboardingFlowModal";
 import { PrerequisitesModal } from "@/components/tournament/forms/PrerequisitesModal";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
@@ -265,10 +265,8 @@ export default function FormsPage() {
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  // The overview's setup checklist links here with ?onboarding=open.
-  const [showOnboarding, setShowOnboarding] = useState(
-    useSearchParams().get("onboarding") === "open",
-  );
+  // The overview's setup checklist links here with ?flow=onboarding.
+  const [showFlow, setShowFlow] = useState(useSearchParams().get("flow") === "onboarding");
   const [deleteTarget, setDeleteTarget] = useState<FormListItem | null>(null);
   const [prerequisiteTarget, setPrerequisiteTarget] = useState<FormListItem | null>(null);
   const [roleLabels, setRoleLabels] = useState<Map<number, string>>(new Map());
@@ -366,8 +364,8 @@ export default function FormsPage() {
       <div
         style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginBottom: "16px" }}
       >
-        <Button type="button" variant="secondary" size="md" onClick={() => setShowOnboarding(true)}>
-          Onboarding
+        <Button type="button" variant="secondary" size="md" onClick={() => setShowFlow(true)}>
+          Form flow
         </Button>
         <Button
           type="button"
@@ -458,13 +456,13 @@ export default function FormsPage() {
         />
       )}
 
-      {showOnboarding && (
-        <OnboardingFlowModal
+      {showFlow && (
+        <FormFlowModal
           tournamentId={tournamentId}
           forms={forms}
           lockedReason={archivedReason}
-          onClose={() => setShowOnboarding(false)}
-          onSaved={loadForms}
+          onClose={() => setShowFlow(false)}
+          onChanged={loadForms}
         />
       )}
 

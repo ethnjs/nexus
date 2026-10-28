@@ -17,41 +17,30 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
+import { FlowPane, FlowTitle } from "@/components/tournament/forms/flow/FlowPane";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconCheck, IconForms, IconGripVertical, IconPlus, IconX } from "@/components/ui/Icons";
-import { Modal } from "@/components/ui/Modal";
+import { IconForms, IconGripVertical, IconPlus, IconX } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import { Tooltip } from "@/components/ui/Tooltip";
-import {
-  ApiError,
-  type FormListItem,
-  formsApi,
-  type MembershipOnboardingStep,
-  type PersonRef,
-  rolesApi,
-  tournamentOnboardingApi,
-} from "@/lib/api";
+import { ApiError, type FormListItem, tournamentOnboardingApi } from "@/lib/api";
 import { prerequisiteSummary } from "@/lib/forms/prerequisites";
-import { personName } from "@/lib/personDisplay";
 
-/** The onboarding sequence: add, remove and reorder steps, saved together, and
- *  preview which steps a given member walks. */
-export function OnboardingFlowModal({
+/** The onboarding sequence: add, remove and reorder steps, saved together. */
+export function OnboardingView({
   tournamentId,
   forms,
+  roleLabel,
   lockedReason,
-  onClose,
+  onDirtyChange,
   onSaved,
 }: {
   tournamentId: number;
-  /** The forms list, which carries each form's onboarding_order. */
   forms: FormListItem[];
-  /** Archived tournament — the sequence is frozen; previewing still works. */
+  roleLabel: (id: number) => string;
   lockedReason?: string;
-  onClose: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   onSaved: () => void;
 }) {
   const baseline = useMemo(
@@ -61,58 +50,27 @@ export function OnboardingFlowModal({
         .sort((a, b) => (a.onboarding_order ?? 0) - (b.onboarding_order ?? 0)),
     [forms],
   );
-  const [draft, setDraft] = useState<FormListItem[]>(baseline);
+  // null until edited, so a reloaded list shows through instead of a stale copy.
+  const [edited, setEdited] = useState<FormListItem[] | null>(null);
+  const steps = edited ?? baseline;
+  const stepIds = steps.map((f) => f.id);
+  const dirty = edited !== null && stepIds.join(",") !== baseline.map((f) => f.id).join(",");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
-  const [roleLabels, setRoleLabels] = useState<Map<number, string>>(new Map());
-  const [members, setMembers] = useState<PersonRef[]>([]);
-  const [memberText, setMemberText] = useState("");
-  const [previewing, setPreviewing] = useState<PersonRef | null>(null);
-  const [path, setPath] = useState<Map<string, MembershipOnboardingStep> | null>(null);
-
-  useEffect(() => {
-    rolesApi
-      .list(tournamentId)
-      .then((roles) => setRoleLabels(new Map(roles.map((r) => [r.id, r.label]))))
-      .catch(() => {});
-    // No conditions matches everyone, with their roles — and needs only manage_forms.
-    formsApi
-      .previewPrerequisites(tournamentId, { roles: [] })
-      .then((refs) => setMembers(refs.filter((r) => r.membership_id != null)))
-      .catch(() => {});
-  }, [tournamentId]);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const draftIds = draft.map((f) => f.id);
-  const dirty = draftIds.join(",") !== baseline.map((f) => f.id).join(",");
-  const addable = forms.filter((f) => f.status !== "archived" && !draftIds.includes(f.id));
-  const frozen = !!lockedReason || previewing !== null;
-
-  function roleLabel(id: number) {
-    return roleLabels.get(id) ?? "a deleted role";
-  }
-
-  async function preview(member: PersonRef | null) {
-    setPreviewing(member);
-    setPath(null);
-    if (member?.membership_id == null) return;
-    try {
-      const steps = await tournamentOnboardingApi.path(tournamentId, member.membership_id);
-      setPath(new Map(steps.map((s) => [s.form_id, s])));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Couldn't load that member's path.");
-    }
-  }
+  const addable = forms.filter((f) => f.status !== "archived" && !stepIds.includes(f.id));
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const from = draftIds.indexOf(String(active.id));
-    const to = draftIds.indexOf(String(over.id));
-    if (from !== -1 && to !== -1) setDraft(arrayMove(draft, from, to));
+    const from = stepIds.indexOf(String(active.id));
+    const to = stepIds.indexOf(String(over.id));
+    if (from !== -1 && to !== -1) setEdited(arrayMove(steps, from, to));
   }
 
   // Removals first, then additions (which append), then one reorder over the
@@ -123,89 +81,35 @@ export function OnboardingFlowModal({
     try {
       const saved = new Set(baseline.map((f) => f.id));
       for (const form of baseline) {
-        if (!draftIds.includes(form.id)) {
+        if (!stepIds.includes(form.id)) {
           await tournamentOnboardingApi.removeForm(tournamentId, form.id);
         }
       }
-      for (const id of draftIds) {
+      for (const id of stepIds) {
         if (!saved.has(id)) await tournamentOnboardingApi.addForm(tournamentId, id);
       }
-      if (draftIds.length > 0) await tournamentOnboardingApi.reorderForms(tournamentId, draftIds);
-      onSaved();
-      onClose();
+      if (stepIds.length > 0) await tournamentOnboardingApi.reorderForms(tournamentId, stepIds);
+      setEdited(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn't save the onboarding sequence.");
-      // Part of it may have saved; the list underneath should show what did.
-      onSaved();
     } finally {
       setSaving(false);
+      // Part of a failed save may have gone through; the list should show what did.
+      onSaved();
     }
   }
 
   return (
-    <Modal
-      title="Onboarding"
-      onClose={onClose}
-      closeOnOverlayClick={!dirty}
-      width={600}
-      footer={
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {error && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-                color: "var(--color-danger)",
-              }}
-            >
-              {error}
-            </p>
-          )}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <Button type="button" variant="secondary" size="md" fullWidth onClick={onClose}>
-              {dirty ? "Cancel" : "Close"}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              fullWidth
-              disabled={!dirty || !!lockedReason}
-              loading={saving}
-              onClick={handleSave}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", marginBottom: "12px" }}>
-        <div style={{ flex: 1 }}>
-          <Combobox
-            label="Preview as"
-            options={members}
-            getId={(m) => m.membership_id ?? 0}
-            getLabel={personName}
-            value={memberText}
-            onChange={(text, matched) => {
-              setMemberText(text);
-              if (matched) preview(matched);
-              else if (!text.trim()) preview(null);
-            }}
-            allowFreeText={false}
-            placeholder="Everyone"
-            size="sm"
-            locked={dirty}
-          />
-        </div>
+    <FlowPane
+      title={<FlowTitle>Onboarding</FlowTitle>}
+      actions={
         <Popover
           trigger={
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              disabled={frozen}
+              disabled={!!lockedReason}
               title={lockedReason}
             >
               <IconPlus size={13} /> Add form
@@ -214,20 +118,39 @@ export function OnboardingFlowModal({
           items={addable}
           getKey={(f) => f.id}
           renderLabel={(f) => f.name}
-          onSelect={(f) => setDraft([...draft, f])}
+          onSelect={(f) => setEdited([...steps, f])}
           emptyMessage="Every form is already a step."
           searchable
           width={280}
           align="right"
         />
-      </div>
-      {dirty && <p style={HINT}>Save or cancel your changes to preview a member&rsquo;s path.</p>}
-
-      {draft.length === 0 ? (
+      }
+      dirty={dirty}
+      saving={saving}
+      error={error}
+      lockedReason={lockedReason}
+      onSave={handleSave}
+      onCancel={() => {
+        setEdited(null);
+        setError(undefined);
+      }}
+    >
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          marginBottom: "12px",
+        }}
+      >
+        New members fill these out in order before reaching the rest of the tournament. A step whose
+        prerequisites a member doesn&rsquo;t meet is skipped for them.
+      </p>
+      {steps.length === 0 ? (
         <EmptyState
           icon={<IconForms size={28} />}
           title="No onboarding steps"
-          description="Add a form here, or turn on Onboarding step in a form's ⋮ menu."
+          description="Add a form to start the sequence."
         />
       ) : (
         <DndContext
@@ -237,16 +160,15 @@ export function OnboardingFlowModal({
           onDragEnd={handleDragEnd}
           onDragCancel={() => setActiveId(null)}
         >
-          <SortableContext items={draftIds} strategy={verticalListSortingStrategy}>
-            {draft.map((form, i) => (
+          <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
+            {steps.map((form, i) => (
               <StepRow
                 key={form.id}
                 form={form}
                 step={i + 1}
-                frozen={frozen}
+                locked={!!lockedReason}
                 summary={prerequisiteSummary(form.prerequisites, roleLabel)}
-                previewStep={previewing ? (path?.get(form.id) ?? null) : undefined}
-                onRemove={() => setDraft(draft.filter((f) => f.id !== form.id))}
+                onRemove={() => setEdited(steps.filter((f) => f.id !== form.id))}
               />
             ))}
           </SortableContext>
@@ -261,13 +183,13 @@ export function OnboardingFlowModal({
                   boxShadow: "var(--shadow-md)",
                 }}
               >
-                {draft.find((f) => f.id === activeId)?.name}
+                {steps.find((f) => f.id === activeId)?.name}
               </div>
             )}
           </DragOverlay>
         </DndContext>
       )}
-    </Modal>
+    </FlowPane>
   );
 }
 
@@ -276,31 +198,26 @@ const HINT = {
   fontFamily: "var(--font-sans)",
   fontSize: "12px",
   color: "var(--color-text-tertiary)",
-  marginBottom: "8px",
 } as const;
 
 function StepRow({
   form,
   step,
-  frozen,
+  locked,
   summary,
-  previewStep,
   onRemove,
 }: {
   form: FormListItem;
   step: number;
-  /** Archived tournament or a member preview — no dragging or removing. */
-  frozen: boolean;
+  /** Archived tournament — no dragging or removing. */
+  locked: boolean;
   summary: string | null;
-  /** undefined: not previewing. null: previewing, and the step isn't on their path. */
-  previewStep: MembershipOnboardingStep | null | undefined;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: form.id,
-    disabled: frozen,
+    disabled: locked,
   });
-  const offPath = previewStep === null;
 
   return (
     <div
@@ -308,7 +225,7 @@ function StepRow({
       style={{
         transform: isDragging ? undefined : CSS.Translate.toString(transform),
         transition,
-        opacity: isDragging ? 0 : offPath ? 0.5 : 1,
+        opacity: isDragging ? 0 : 1,
         display: "flex",
         alignItems: "center",
         gap: "10px",
@@ -327,9 +244,9 @@ function StepRow({
           border: "none",
           background: "transparent",
           color: "var(--color-text-tertiary)",
-          cursor: frozen ? "default" : "grab",
+          cursor: locked ? "default" : "grab",
           touchAction: "none",
-          visibility: frozen ? "hidden" : "visible",
+          visibility: locked ? "hidden" : "visible",
         }}
       >
         <IconGripVertical size={16} />
@@ -347,9 +264,6 @@ function StepRow({
       </span>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          {previewStep?.completed && (
-            <IconCheck size={12} style={{ color: "var(--color-success)" }} />
-          )}
           <span style={NAME}>{form.name}</span>
           {form.status === "draft" && (
             <Tooltip
@@ -369,13 +283,10 @@ function StepRow({
               <Badge variant="removed">Archived</Badge>
             </Tooltip>
           )}
-          {offPath && (
-            <span style={{ ...HINT, marginBottom: 0, fontStyle: "italic" }}>Not on their path</span>
-          )}
         </div>
-        {summary && <span style={{ ...HINT, marginBottom: 0 }}>{summary}</span>}
+        {summary && <span style={HINT}>{summary}</span>}
       </div>
-      {!frozen && (
+      {!locked && (
         <Button
           type="button"
           variant="ghost"

@@ -29,7 +29,7 @@ const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
   first_form: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms`) },
   onboarding: {
     buildable: true,
-    onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms?onboarding=open`),
+    onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms?flow=onboarding`),
   },
 };
 
