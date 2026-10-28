@@ -7,6 +7,7 @@ import {
 } from "@/components/forms/tournament/EntityOptionsEditor";
 import { PresetPopover } from "@/components/forms/tournament/PresetPopover";
 import {
+  type FieldKeyUsage,
   type Form,
   type FormFieldOption,
   formsApi,
@@ -49,8 +50,8 @@ interface TournamentBuilderData {
   tracks: TournamentTrack[];
   /** Every shift, for previewing an availability option's times. null until loaded. */
   shifts: TournamentShift[] | null;
-  /** Every live field_key on the tournament's forms, which must all be distinct. */
-  usedFieldKeys: string[];
+  /** Keys live on the tournament's other forms, with the forms using each. */
+  sharedFieldKeys: FieldKeyUsage[];
   /** Refetches the tournament, so a tab left open a while doesn't bind presets to stale tracks. */
   reloadTournament: () => void;
 }
@@ -59,14 +60,14 @@ const TournamentBuilderContext = createContext<TournamentBuilderData>({
   tournament: null,
   tracks: [],
   shifts: null,
-  usedFieldKeys: [],
+  sharedFieldKeys: [],
   reloadTournament: () => {},
 });
 
 function TournamentBuilderProvider({ form, children }: { form: Form; children: ReactNode }) {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
-  const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
+  const [sharedFieldKeys, setSharedFieldKeys] = useState<FieldKeyUsage[]>([]);
   const tournamentId = form.tournament_id;
 
   const reloadTournament = useCallback(() => {
@@ -87,23 +88,25 @@ function TournamentBuilderProvider({ form, children }: { form: Form; children: R
   }, [tournamentId]);
 
   // Only the tournament's other forms: this form's own keys change as the TD
-  // edits, and the builder checks those live against its questions. Keys
-  // are unique tournament-wide, so dropping this form's saved ones leaves
-  // exactly the others'.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: this form's keys as loaded, not as edited
+  // edits, and the builder checks those live against its questions.
   useEffect(() => {
     if (tournamentId == null) return;
-    const ownKeys = new Set(form.fields.filter((f) => !f.is_archived).map((f) => f.field_key));
     formsApi
       .listFieldKeysForTournament(tournamentId)
-      .then((keys) => setUsedFieldKeys(keys.filter((key) => !ownKeys.has(key))))
+      .then((usages) =>
+        setSharedFieldKeys(
+          usages
+            .map((usage) => ({ ...usage, forms: usage.forms.filter((f) => f.id !== form.id) }))
+            .filter((usage) => usage.forms.length > 0),
+        ),
+      )
       .catch(() => {});
-  }, [tournamentId]);
+  }, [tournamentId, form.id]);
 
   const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   return (
     <TournamentBuilderContext.Provider
-      value={{ tournament, tracks, shifts, usedFieldKeys, reloadTournament }}
+      value={{ tournament, tracks, shifts, sharedFieldKeys, reloadTournament }}
     >
       {children}
     </TournamentBuilderContext.Provider>
@@ -231,15 +234,15 @@ function shiftIdsOf(value: FormFieldOption["value"]): number[] {
   return Array.isArray(list) ? list.filter((id): id is number => typeof id === "number") : [];
 }
 
-function useUsedFieldKeys(): string[] {
-  return useTournamentBuilder().usedFieldKeys;
+function useSharedFieldKeys(): FieldKeyUsage[] {
+  return useTournamentBuilder().sharedFieldKeys;
 }
 
 export const tournamentAddon: FormBuilderAddon = {
   Provider: TournamentBuilderProvider,
   extendField,
   useOptionLabel,
-  useUsedFieldKeys,
+  useSharedFieldKeys,
   Toolbar: PresetToolbar,
   issuesFor: presetIssuesFor,
   // An unfinished preset is fixed in the presets popover, so it's flagged there.

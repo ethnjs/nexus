@@ -168,7 +168,6 @@ export function FieldCard({
   onDuplicate,
   onDelete,
   allFields,
-  usedFieldKeys,
   errors,
   allowArchive = false,
   onOpenAddon,
@@ -187,8 +186,6 @@ export function FieldCard({
   onDuplicate: () => void;
   onDelete: () => void;
   allFields: EditableField[];
-  /** Every field_key already saved on the owner's forms — see duplicateKey below. */
-  usedFieldKeys: string[];
   errors: string[];
   /** Opens this field's add-on popover — see AddonOptionsEditorProps.onOpenAddon. */
   onOpenAddon?: () => void;
@@ -235,16 +232,10 @@ export function FieldCard({
   const hadToolbarError = errors.some(isToolbarError);
   const addonIssueOpen = liveIssues.some(addon.ownsIssue);
   const effKey = effectiveFieldKey(field);
-  // A same-form collision is checked live against the other staged fields; an
-  // add-on-owned key can also collide with a *different* form's field, which
-  // only usedFieldKeys (the owner's other forms) would catch — a plain custom
-  // key relies on FieldKeyPopover's own blur-time check for that instead.
-  // Both halves self-correct as the TD edits: once the key changes, it just
-  // stops matching either check.
+  // Only a collision within this form; other forms may share the key.
   const duplicateKey =
     !!effKey &&
-    (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
-      (!!extension.keyLockedReason && usedFieldKeys.includes(effKey)));
+    allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey);
   const hasToolbarCardError = hadToolbarError && (addonIssueOpen || duplicateKey);
   // Flagged without waiting for Save, so the card turns red as the reorder
   // that broke the branch lands.

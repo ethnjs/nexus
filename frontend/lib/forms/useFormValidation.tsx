@@ -85,11 +85,11 @@ export function issuesFor(
 // field, since same-form collisions are already caught client-side by
 // validateFields above. Returns the colliding key, or null if the message
 // isn't this specific error.
-const DUPLICATE_FIELD_KEY_PATTERN = /^field_key '([^']+)' is already in use/;
+const DUPLICATE_FIELD_KEY_PATTERN = /^field_key '([^']+)' is used twice on this form/;
 
-/** A key the server (or the owner's other forms) already holds — distinct
+/** A key the server says another question on this form holds — distinct
  *  from validateFields' same-form message, which the builder re-checks live. */
-export const KEY_IN_USE_MESSAGE = "This field key is already used by another question.";
+export const KEY_IN_USE_MESSAGE = "Another question on this form already uses this key.";
 
 function validateFields(
   fields: ValidatableField[],

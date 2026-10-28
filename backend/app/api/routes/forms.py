@@ -80,6 +80,8 @@ from app.models.models import (
 )
 from app.schemas.form import (
     BulkFieldsUpdate,
+    FieldKeyFormRef,
+    FieldKeyUsageRead,
     FormCreate,
     FormFieldRead,
     FormListRead,
@@ -273,12 +275,13 @@ def list_my_tournament_forms(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key in use
-# by a live field across this tournament's forms, for the builder's key picker.
+# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key on a
+# live field of this tournament's forms, with the forms using it, so the
+# builder can suggest reusing one.
 # ---------------------------------------------------------------------------
 @router.get(
     "/tournaments/{tournament_id}/forms/field-keys/",
-    response_model=list[str],
+    response_model=list[FieldKeyUsageRead],
     tags=["tournaments"],
 )
 def list_tournament_field_keys(
@@ -286,14 +289,21 @@ def list_tournament_field_keys(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
-    rows = (
-        db.query(FormField.field_key)
+    forms_by_key: dict[str, dict[str, str]] = {}
+    for field_key, form_id, form_name in (
+        db.query(FormField.field_key, Form.id, Form.name)
         .join(Form, Form.id == FormField.form_id)
         .filter(Form.tournament_id == tournament_id, FormField.is_archived == False)
-        .distinct()
-        .all()
-    )
-    return [r[0] for r in rows]
+        .order_by(FormField.field_key, Form.name)
+    ):
+        forms_by_key.setdefault(field_key, {})[form_id] = form_name
+    return [
+        FieldKeyUsageRead(
+            field_key=key,
+            forms=[FieldKeyFormRef(id=form_id, name=name) for form_id, name in forms.items()],
+        )
+        for key, forms in forms_by_key.items()
+    ]
 
 
 # ---------------------------------------------------------------------------

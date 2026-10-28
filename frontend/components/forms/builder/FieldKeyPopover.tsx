@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconInfo, IconKey } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import type { FieldKeyUsage } from "@/lib/api";
 import { useFieldExtension } from "@/lib/forms/builderAddon";
 import type { EditableField } from "@/lib/forms/editableField";
 import { isFieldKeyError } from "@/lib/forms/fieldKeys";
@@ -14,14 +15,14 @@ import { toPlainText } from "@/lib/markdown";
 // The dashboard-facing identifier for a question — split out of the main
 // card into its own toolbar popover (rather than an always-visible Combobox
 // in the card body) so the far more common "just let it follow the label"
-// path stays out of the way, while an actual collision still can't hide:
+// path stays out of the way, while a same-form collision still can't hide:
 // Save force-opens this with the offending field red-outlined (see
 // saveAttempt below) instead of a proactive disabled-row list, which meant
 // rendering every other question's key just to type a new one.
 export function FieldKeyPopover({
   field,
   onFieldChange,
-  usedFieldKeys,
+  sharedFieldKeys,
   allFields,
   errors,
   saveAttempt,
@@ -30,7 +31,8 @@ export function FieldKeyPopover({
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
-  usedFieldKeys: string[];
+  /** Keys on the owner's other forms — suggested for reuse, never blocked. */
+  sharedFieldKeys: FieldKeyUsage[];
   allFields: EditableField[];
   errors: string[];
   /** Bumped by FieldList each time a Save attempt fails validation — the
@@ -68,21 +70,28 @@ export function FieldKeyPopover({
     if (attemptError) onOpenChange(true);
   }, [saveAttempt]);
 
-  // usedFieldKeys holds the owner's other forms; allFields includes this
-  // field itself, so it's excluded there. A server rejection from the last
-  // Save counts too, until that save's errors are cleared.
+  // Only this form's other questions can clash; allFields includes this field
+  // itself, so it's excluded. A server rejection from the last Save counts
+  // too, until that save's errors are cleared.
   const key = field.field_key.trim();
   const keyTaken =
     !!key &&
-    (usedFieldKeys.includes(key) ||
-      allFields.some((f) => f.clientKey !== field.clientKey && f.field_key.trim() === key) ||
+    (allFields.some((f) => f.clientKey !== field.clientKey && f.field_key.trim() === key) ||
       errors.includes(KEY_IN_USE_MESSAGE));
+  const sharedWith = sharedFieldKeys.find((usage) => usage.field_key === key)?.forms ?? [];
+  const [focused, setFocused] = useState(false);
+  const suggestions = focused
+    ? sharedFieldKeys
+        .filter((usage) => usage.field_key !== key && usage.field_key.includes(key))
+        .slice(0, 5)
+    : [];
   // localError decides *when* to flag (blur or a failed Save, not mid-typing);
   // the live check decides whether the clash still exists — another question
   // giving the key up clears it here without this field's key changing.
   const shownError = keyTaken ? localError : undefined;
 
   function handleBlur() {
+    setFocused(false);
     setLocalError(keyTaken ? KEY_IN_USE_MESSAGE : undefined);
   }
 
@@ -139,6 +148,7 @@ export function FieldKeyPopover({
             <Input
               value={field.field_key}
               onChange={(e) => onFieldChange({ field_key: e.target.value })}
+              onFocus={() => setFocused(true)}
               onBlur={handleBlur}
               placeholder={toPlainText(field.label).trim()}
               size="sm"
@@ -146,10 +156,65 @@ export function FieldKeyPopover({
               error={shownError}
             />
           )}
+          {suggestions.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {suggestions.map((usage) => (
+                <button
+                  key={usage.field_key}
+                  type="button"
+                  // mousedown, not click: the input's blur would otherwise
+                  // hide the list before the click lands.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onFieldChange({ field_key: usage.field_key });
+                  }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: "1px",
+                    padding: "5px 6px",
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "12px",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
+                    {usage.field_key}
+                  </span>
+                  <span style={NOTE}>Also on {formNames(usage.forms)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {sharedWith.length > 0 && (
+            <span style={NOTE}>
+              Also on {formNames(sharedWith)}. A member&rsquo;s latest answer to this key is the one
+              shown.
+            </span>
+          )}
         </div>
       )}
     </FormPopover>
   );
+}
+
+const NOTE = {
+  fontFamily: "var(--font-sans)",
+  fontSize: "12px",
+  color: "var(--color-text-tertiary)",
+} as const;
+
+function formNames(forms: FieldKeyUsage["forms"]): string {
+  return forms.map((f) => f.name).join(", ");
 }
 
 // A plain Tooltip here gets clipped — its bubble is position: absolute
@@ -195,7 +260,8 @@ function KeyInfoHint() {
           }}
         >
           How this question shows up when scanning or filtering responses on the dashboard — not
-          shown to respondents. Must be unique across every form this tournament owns.
+          shown to respondents. Unique within this form; other forms can reuse it, and a
+          member&rsquo;s latest answer to the key is the one shown.
         </span>
       )}
     </span>

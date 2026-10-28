@@ -105,8 +105,8 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
       })),
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
-  // Keys the owner's other forms already use — every card's key check shares one list.
-  const usedFieldKeys = addon.useUsedFieldKeys();
+  // Keys the owner's other forms use, for the key picker to suggest.
+  const sharedFieldKeys = addon.useSharedFieldKeys();
   // Which toolbar popover is open, and on which field. A card's body can open
   // the add-on's with `demand` set — e.g. an entity picker used before its
   // question has a track sends the TD to where that's reported and fixed.
@@ -674,7 +674,6 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
                       onDuplicate={() => duplicateField(field.clientKey)}
                       onDelete={() => archiveField(field.clientKey)}
                       allFields={fields}
-                      usedFieldKeys={usedFieldKeys}
                       onOpenAddon={() =>
                         setPopoverFor({ key: field.clientKey, popover: "addon", demand: true })
                       }
@@ -748,7 +747,7 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
             boxRef={toolbarRef}
             field={expandedField}
             onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
-            usedFieldKeys={usedFieldKeys}
+            sharedFieldKeys={sharedFieldKeys}
             allFields={fields}
             activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
             demandAddon={popoverFor?.key === expandedField.clientKey && !!popoverFor.demand}

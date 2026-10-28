@@ -295,9 +295,7 @@ class TestListForms:
 
 
 class TestListTournamentFieldKeys:
-    def test_lists_distinct_live_keys_across_forms(self, client, db, td_user, td_tournament):
-        """Archived keys are excluded — they're reusable, so listing them
-        would make the builder block a key the API accepts."""
+    def test_lists_live_keys_with_the_forms_using_them(self, client, db, td_user, td_tournament):
         form_a = _make_form(db, td_user, td_tournament, name="A")
         form_b = _make_form(db, td_user, td_tournament, name="B")
         _make_field(db, form_a, field_key="favorite_color")
@@ -308,7 +306,13 @@ class TestListTournamentFieldKeys:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 200
-        assert set(res.json()) == {"favorite_color", "shirt_size"}
+        assert res.json() == [
+            {
+                "field_key": "favorite_color",
+                "forms": [{"id": form_a.id, "name": "A"}, {"id": form_b.id, "name": "B"}],
+            },
+            {"field_key": "shirt_size", "forms": [{"id": form_a.id, "name": "A"}]},
+        ]
 
     def test_excludes_chapter_forms(self, client, db, td_user, td_tournament, chapter):
         form_a = _make_form(db, td_user, td_tournament, name="A")
@@ -319,7 +323,7 @@ class TestListTournamentFieldKeys:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 200
-        assert set(res.json()) == {"favorite_color"}
+        assert [usage["field_key"] for usage in res.json()] == ["favorite_color"]
 
     def test_member_without_manage_forms_forbidden(self, client, db, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")

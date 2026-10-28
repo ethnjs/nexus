@@ -323,6 +323,18 @@ class FormListRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FieldKeyFormRef(BaseModel):
+    id: str
+    name: str
+
+
+class FieldKeyUsageRead(BaseModel):
+    """A key live on one or more of a tournament's forms."""
+
+    field_key: str
+    forms: list[FieldKeyFormRef]
+
+
 class MemberFormRead(BaseModel):
     """A member's completed or currently available tournament form."""
 

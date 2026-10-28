@@ -1949,6 +1949,12 @@ export interface FormFieldInput {
   config?: FormFieldConfig | null;
 }
 
+/** A key live on one or more forms. Forms may share a key; a member's latest answer to it wins. */
+export interface FieldKeyUsage {
+  field_key: string;
+  forms: { id: string; name: string }[];
+}
+
 /** Holds any (or all) of `ids`; `inverse` flips the result. */
 export interface RolePrerequisite {
   ids: number[];
@@ -2126,11 +2132,10 @@ export const formsApi = {
   listMineForTournament: (tournamentId: number) =>
     api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
   listForChapter: (chapterId: number) => api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
-  // Every field_key already in use across this tournament's forms (archived
-  // included — an archived key isn't released for reuse) — the builder's
-  // field_key Combobox shows these as disabled options.
+  // Every live field_key on this tournament's forms, with the forms using it —
+  // the builder's key picker suggests reusing them.
   listFieldKeysForTournament: (tournamentId: number) =>
-    api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+    api.get<FieldKeyUsage[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
   updatePrerequisites: (
     tournamentId: number,
     formId: string,
