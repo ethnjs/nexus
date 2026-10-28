@@ -164,6 +164,7 @@ def test_forms_list_reports_each_forms_onboarding_step(client, db, td_user, td_t
 
     orders = {row["id"]: row["onboarding_order"] for row in rows}
     assert orders == {step.id: 1, standalone.id: None}
+    assert client.get(f"/forms/{step.id}/").json()["onboarding_order"] == 1
 
 
 def test_reorder_requires_each_form_once_and_a_contiguous_sequence(

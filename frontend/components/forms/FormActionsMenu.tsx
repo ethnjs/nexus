@@ -62,8 +62,9 @@ export function FormActionsMenu({
   items: FormMenuKey[];
   /** Called with the saved value once the toggle's PATCH succeeds. */
   onAllowEditsChange: (allow: boolean) => void;
-  /** Called once the form joined or left onboarding, which renumbers the other steps. */
-  onOnboardingChange?: () => void;
+  /** Called with the form's new step number (null once it left) after the
+   *  change saves. Leaving renumbers the steps after it. */
+  onOnboardingChange?: (order: number | null) => void;
   /** Archived tournament — the toggle is a write, so it locks. */
   lockedReason?: string;
   /** "sm" on a table row, to match the row's other buttons. */
@@ -109,11 +110,12 @@ export function FormActionsMenu({
     if (isOnboarding) {
       await tournamentOnboardingApi.removeForm(form.tournament_id, form.id);
       show("Removed from onboarding");
+      onOnboardingChange?.(null);
     } else {
       const added = await tournamentOnboardingApi.addForm(form.tournament_id, form.id);
       show(`Added to onboarding as step ${added.order}`);
+      onOnboardingChange?.(added.order ?? null);
     }
-    onOnboardingChange?.();
   }
 
   async function handleSelect(key: FormMenuKey) {

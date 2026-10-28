@@ -108,8 +108,13 @@ export function SubHeader({
             />
             <FormActionsMenu
               form={form}
-              items={["copy-link", "allow-edits", "copy-json"]}
+              items={
+                form.owner_type === "tournament"
+                  ? ["copy-link", "allow-edits", "onboarding", "copy-json"]
+                  : ["copy-link", "allow-edits", "copy-json"]
+              }
               onAllowEditsChange={(allow) => onUpdated({ ...form, allow_response_edits: allow })}
+              onOnboardingChange={(order) => onUpdated({ ...form, onboarding_order: order })}
               lockedReason={locked ? ARCHIVED_REASON : undefined}
             />
           </div>

@@ -2035,6 +2035,8 @@ export interface Form {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
   fields: FormField[];
   /** null for a chapter form — there's no tournament to be archived. */
   tournament_is_archived: boolean | null;

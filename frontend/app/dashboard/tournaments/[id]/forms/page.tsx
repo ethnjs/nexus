@@ -155,7 +155,7 @@ function FormRow({
           form={form}
           items={["edit", "preview", "responses", "copy-link", "allow-edits", "onboarding"]}
           onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
-          onOnboardingChange={onOnboardingChange}
+          onOnboardingChange={() => onOnboardingChange()}
           lockedReason={lockedReason}
           size="sm"
         />
