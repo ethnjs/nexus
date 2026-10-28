@@ -23,8 +23,8 @@ export type FormTab = "questions" | "responses";
 
 const FORM_TABS_HEIGHT = 64;
 
-const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
-  draft: "default",
+const STATUS_BADGE_VARIANT: Record<FormStatus, "warning" | "confirmed" | "removed"> = {
+  draft: "warning",
   published: "confirmed",
   archived: "removed",
 };

@@ -31,8 +31,8 @@ import { useToast } from "@/lib/useToast";
 // a status move, archive, delete, and the ⋮ menu.
 const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1fr) 90px 100px 170px";
 
-const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
-  draft: "default",
+const STATUS_BADGE_VARIANT: Record<FormStatus, "warning" | "confirmed" | "removed"> = {
+  draft: "warning",
   published: "confirmed",
   archived: "removed",
 };
