@@ -1,17 +1,20 @@
 """What a server's managed roles, categories and channels should be, as pure functions of NEXUS
-data. The build compares this with the server's live state; nothing here touches Discord or
+data and, for which category each channel goes in, an Occupancy the caller reads from the
+server. The build compares this with the server's live state; nothing here touches Discord or
 the database.
 
 Keys are identities. A role's key names the NEXUS object it mirrors ("role:4", "event:12"); a
 channel's key is the set of events it covers ("event:12,13"); a category's is its place
-("building:5", "zone:3", "other"). The fixed categories and channels have fixed keys
-("information", "general"). Names are display only and can change without the object
-being replaced.
+("building:5", "zone:3", "other"), with ":2" and on for its overflow categories. The fixed
+categories and channels have fixed keys ("information", "general"). Names are display only
+and can change without the object being replaced.
 """
 
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
+from itertools import count
 from typing import Literal
 
 from app.core.tournament.permissions import MANAGE_DISCORD, MANAGE_TOURNAMENT
@@ -114,6 +117,20 @@ INFORMATION_KEYS = frozenset(
 
 
 @dataclass(frozen=True)
+class Occupancy:
+    """Where the server's channels sit now, so event channels go where Discord has room.
+
+    `current` maps each existing event channel's key to the category key it's in, or None for a
+    category lobot doesn't manage; a channel with no category is left out, so it gets a place.
+    `taken` counts each category's other channels. With `moving` (a reset), channels outside
+    their own place's categories are placed again; without it they stay put and take no room."""
+
+    current: Mapping[str, str | None] = field(default_factory=dict)
+    taken: Mapping[str, int] = field(default_factory=dict)
+    moving: bool = True
+
+
+@dataclass(frozen=True)
 class Layout:
     """Roles top to bottom, categories in server order (the fixed ones first), event channels in
     order within each category, and the fixed channels, which every server has."""
@@ -182,14 +199,17 @@ def _sort_name(name: str) -> str:
 
 
 def compute_layout(
-    roles: Iterable[LayoutRole], events: Iterable[LayoutEvent], settings: LayoutSettings
+    roles: Iterable[LayoutRole],
+    events: Iterable[LayoutEvent],
+    settings: LayoutSettings,
+    occupancy: Occupancy | None = None,
 ) -> Layout:
     events = list(events)
-    categories = _category_specs(events, settings)
+    categories, channels = _event_specs(events, settings, occupancy or Occupancy())
     return Layout(
         roles=_role_specs(roles, events),
         categories=(*FIXED_CATEGORIES, *categories),
-        channels=_channel_specs(events, settings, [c.key for c in categories]),
+        channels=channels,
     )
 
 
@@ -224,7 +244,7 @@ def _base_category_key(place: Place | None, settings: LayoutSettings) -> str:
     return f"{settings.category_grouping}:{place.id}" if place else OTHER_KEY
 
 
-def _category_specs(events: list[LayoutEvent], settings: LayoutSettings) -> list[CategorySpec]:
+def _base_categories(events: list[LayoutEvent], settings: LayoutSettings) -> list[CategorySpec]:
     places = {p.id: p for e in events if (p := _place(e, settings)) is not None}
     placed = sorted(places.values(), key=lambda p: (_sort_name(p.name), p.id))
     bases = [CategorySpec(_base_category_key(p, settings), p.name) for p in placed]
@@ -232,20 +252,23 @@ def _category_specs(events: list[LayoutEvent], settings: LayoutSettings) -> list
         bases.append(
             CategorySpec(OTHER_KEY, OTHER_CATEGORY_NAME if placed else UNPLACED_CATEGORY_NAME)
         )
-
-    counts = _channels_per_category(events, settings)
-    result = []
-    for base in bases:
-        for n in range(_chunks(counts.get(base.key, 0))):
-            if n == 0:
-                result.append(base)
-            else:
-                result.append(CategorySpec(f"{base.key}:{n + 1}", f"{base.name} ({n + 1})"))
-    return result
+    return bases
 
 
-def _chunks(count: int) -> int:
-    return max(1, -(-count // CATEGORY_CAPACITY))
+def chunk_key(base: str, n: int) -> str:
+    return base if n == 1 else f"{base}:{n}"
+
+
+def chunk_name(name: str, n: int) -> str:
+    return name if n == 1 else f"{name} ({n})"
+
+
+def chunk_of(category_key: str | None, base: str) -> int | None:
+    """Which of `base`'s categories this is ("building:5:2" is building:5's second), if any."""
+    if category_key == base:
+        return 1
+    suffix = (category_key or "").removeprefix(f"{base}:")
+    return int(suffix) if suffix != category_key and suffix.isdigit() else None
 
 
 def _groups(events: list[LayoutEvent], settings: LayoutSettings) -> list[list[LayoutEvent]]:
@@ -276,29 +299,54 @@ def _group_name(group: list[LayoutEvent]) -> str:
     return f"{base} {divisions}" if divisions else base
 
 
-def _channels_per_category(events: list[LayoutEvent], settings: LayoutSettings) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for group in _groups(events, settings):
-        key = _base_category_key(_place(group[0], settings), settings)
-        counts[key] = counts.get(key, 0) + 1
-    return counts
-
-
-def _channel_specs(
-    events: list[LayoutEvent], settings: LayoutSettings, category_order: list[str]
-) -> tuple[ChannelSpec, ...]:
-    by_category: dict[str, list[tuple[str, tuple[int, ...]]]] = {}
+def _event_specs(
+    events: list[LayoutEvent], settings: LayoutSettings, occupancy: Occupancy
+) -> tuple[list[CategorySpec], tuple[ChannelSpec, ...]]:
+    """A place's channels fill its category, then "Name (2)" and on, at most 50 to a category
+    counting what's already there. A channel already in one of its place's categories stays."""
+    by_base: dict[str, list[tuple[str, tuple[int, ...]]]] = {}
     for group in _groups(events, settings):
         base = _base_category_key(_place(group[0], settings), settings)
         ids = tuple(sorted(e.id for e in group))
-        by_category.setdefault(base, []).append((slug(_group_name(group)), ids))
+        by_base.setdefault(base, []).append((slug(_group_name(group)), ids))
+    base_of = {channel_key(ids): base for base, chs in by_base.items() for _, ids in chs}
 
-    result = []
-    for base, channels in by_category.items():
-        channels.sort(key=lambda c: (c[0], c[1]))
-        for i, (name, ids) in enumerate(channels):
-            n = i // CATEGORY_CAPACITY
-            category = base if n == 0 else f"{base}:{n + 1}"
-            result.append(ChannelSpec(channel_key(ids), name, category, ids))
-    order = {key: i for i, key in enumerate(category_order)}
-    return tuple(sorted(result, key=lambda c: (order[c.category_key], c.name, c.key)))
+    # A channel outside its place's categories holds its slot until it moves, so a reset's
+    # moves fit in any order.
+    taken = Counter(occupancy.taken)
+    for key, category in occupancy.current.items():
+        if category is not None and chunk_of(category, base_of.get(key, "")) is None:
+            taken[category] += 1
+
+    categories: list[CategorySpec] = []
+    channels: list[ChannelSpec] = []
+    for base in _base_categories(events, settings):
+        load = Counter({n: c for k, c in taken.items() if (n := chunk_of(k, base.key))})
+        placed_in: dict[str, int] = {}
+        unplaced = []
+        for _name, ids in sorted(by_base.get(base.key, [])):
+            key = channel_key(ids)
+            if key in occupancy.current:
+                n = chunk_of(occupancy.current[key], base.key)
+                if n is not None:
+                    placed_in[key] = n
+                    load[n] += 1
+                    continue
+                if not occupancy.moving:
+                    placed_in[key] = 1
+                    continue
+            unplaced.append(key)
+        for key in unplaced:
+            placed_in[key] = next(n for n in count(1) if load[n] < CATEGORY_CAPACITY)
+            load[placed_in[key]] += 1
+
+        for n in sorted({1, *placed_in.values()}):
+            categories.append(CategorySpec(chunk_key(base.key, n), chunk_name(base.name, n)))
+        channels.extend(
+            ChannelSpec(
+                channel_key(ids), name, chunk_key(base.key, placed_in[channel_key(ids)]), ids
+            )
+            for name, ids in by_base.get(base.key, [])
+        )
+    order = {c.key: i for i, c in enumerate(categories)}
+    return categories, tuple(sorted(channels, key=lambda c: (order[c.category_key], c.name, c.key)))

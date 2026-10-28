@@ -375,6 +375,43 @@ class TestStructure:
         assert guild.overwrite(channel, role) == (VIEW_CHANNEL, 0)
         assert guild.overwrite(channel, GUILD_ID) == (0, VIEW_CHANNEL)
 
+    async def test_a_new_event_overflows_a_full_category(
+        self, db, built, guild, scope, td_tournament, track_id, events
+    ):
+        rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
+        for i in range(48):
+            guild.add_channel(f"chat-{i}", parent_id=int(rowland["id"]))
+        building = events["Circuit Lab B"].track_details[0].building_id
+        boom = TournamentEvent(tournament_id=td_tournament.id, name="Boomilever", division="C")
+        db.add(boom)
+        db.flush()
+        db.add(
+            TournamentEventTrack(
+                tournament_event_id=boom.id, track_id=track_id, building_id=building
+            )
+        )
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error is None
+        overflow = guild.channel("Rowland Hall (2)", GUILD_CATEGORY)
+        assert guild.children(overflow) == ["boomilever-c"]
+
+    async def test_a_full_archive_overflows(self, db, built, guild, scope, events):
+        archived = guild.add_channel("Archived", GUILD_CATEGORY)
+        for i in range(50):
+            guild.add_channel(f"old-{i}", parent_id=archived)
+        built.archived_category_id = archived
+        db.delete(events["Anatomy C"])
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error is None
+        overflow = guild.channel("Archived (2)", GUILD_CATEGORY)
+        assert guild.children(overflow) == ["anatomy-c"]
+
     async def test_a_deleted_event_archives_its_channel(self, db, built, guild, scope, events):
         anatomy = events["Anatomy C"]
         channel = guild.channel("anatomy-c")

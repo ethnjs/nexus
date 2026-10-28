@@ -14,14 +14,11 @@ import logging
 from dataclasses import dataclass
 
 from app.core.discord.build import (
-    ARCHIVED_CATEGORY_NAME,
-    ARCHIVED_KEY,
     TOP,
     VERIFY_CHANNEL_NAME,
     VERIFY_KEY,
     Action,
     AddOverwrite,
-    ArchiveChannel,
     Context,
     CreateChannel,
     CreateRole,
@@ -39,6 +36,9 @@ from app.core.discord.build import (
     _event_channel_overwrites,
     _staff_overwrite,
     _verify_overwrites,
+    archive_actions,
+    fit_to_server,
+    is_archive_key,
     overwrites_differ,
     parse_roles,
 )
@@ -110,7 +110,6 @@ class _SyncPlanner:
         self.tiers = dict(snapshot.tiers)
         self.ready_categories: set[str] = set()
         self.recreated_categories: set[str] = set()
-        self.archive_ready = False
         self.claimed: set[int] = set()
         # Channel keys this plan adopts, with the adopted ids.
         self.adopted: dict[str, int] = {}
@@ -247,20 +246,6 @@ class _SyncPlanner:
             _category_overwrites(key, self.staff_keys),
         )
 
-    def ensure_archive(self) -> None:
-        if self.archive_ready:
-            return
-        self.archive_ready = True
-        if self.live_channel(ARCHIVED_KEY) is None:
-            self.create_channel(
-                f"Category: {ARCHIVED_CATEGORY_NAME}",
-                ARCHIVED_KEY,
-                ARCHIVED_CATEGORY_NAME,
-                GUILD_CATEGORY,
-                TOP,
-                _category_overwrites(ARCHIVED_KEY, self.staff_keys),
-            )
-
     def channels_step(self) -> None:
         layout = self.s.layout
         on_track = {e for spec in layout.channels for e in spec.event_ids}
@@ -270,6 +255,7 @@ class _SyncPlanner:
         # Events each managed event channel still covers.
         covers: dict[str, set[int]] = {}
         covered_by: dict[int, str] = {}
+        archive = []
         for key, channel_id in self.s.channel_ids.items():
             if not key.startswith("event:"):
                 continue
@@ -278,11 +264,23 @@ class _SyncPlanner:
                 covers[key] = surviving
                 covered_by.update(dict.fromkeys(surviving, key))
             elif channel_id in self.live.channels:
-                self.ensure_archive()
-                name = self.live.channels[channel_id].name
-                self.add(ArchiveChannel(None, f"#{name}", key, channel_id))
+                archive.append((key, self.live.channels[channel_id]))
             else:
                 self.add(ForgetChannel(None, key, key))
+        for action in archive_actions(
+            self.s, self.live, archive, self.staff_keys, create_group=None, archive_group=None
+        ):
+            if isinstance(action, CreateChannel):
+                self.create_channel(
+                    action.label,
+                    action.key,
+                    action.name,
+                    action.type,
+                    action.parent,
+                    action.overwrites,
+                )
+            else:
+                self.add(action)
 
         new_specs = []
         for spec in layout.channels:
@@ -297,7 +295,10 @@ class _SyncPlanner:
             covered_by.update(dict.fromkeys(uncovered, joined))
 
         for key, channel_id in self.s.channel_ids.items():
-            if key.startswith("event:") or key in (VERIFY_KEY, ARCHIVED_KEY, *FIXED_CHANNEL_KEYS):
+            if key.startswith("event:") or key in (VERIFY_KEY, *FIXED_CHANNEL_KEYS):
+                continue
+            # A deleted Archived category is remade when something next needs it.
+            if is_archive_key(key):
                 continue
             if channel_id not in self.live.channels:
                 if key in category_keys:
@@ -407,7 +408,7 @@ class _SyncPlanner:
 
 def plan_structure(snapshot: Snapshot, live: Live) -> tuple[Plan, set[str]]:
     """The structure reconcile's actions, and the names of managed roles above the bot."""
-    planner = _SyncPlanner(snapshot, live)
+    planner = _SyncPlanner(fit_to_server(snapshot, live, moving=False), live)
     planner.roles_step()
     planner.channels_step()
     planner.fixed_step()
