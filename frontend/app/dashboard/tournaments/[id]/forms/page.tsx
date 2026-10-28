@@ -31,6 +31,7 @@ import { formatRelativeTime } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useToast } from "@/lib/useToast";
 
 // Name / Status / Prerequisites / Creator / Responses / Updated / Actions.
@@ -271,6 +272,9 @@ export default function FormsPage() {
   const [prerequisiteTarget, setPrerequisiteTarget] = useState<FormListItem | null>(null);
   const [roleLabels, setRoleLabels] = useState<Map<number, string>>(new Map());
   const { show } = useToast();
+  // Bumped when the browser tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1), canManageForms);
 
   const loadForms = useCallback(
     () =>
@@ -287,7 +291,7 @@ export default function FormsPage() {
       .list(tournamentId)
       .then((roles) => setRoleLabels(new Map(roles.map((r) => [r.id, r.label]))))
       .catch(() => {});
-  }, [canManageForms, loadForms, tournamentId]);
+  }, [canManageForms, loadForms, tournamentId, refreshKey]);
 
   if (membershipLoading) {
     return (
