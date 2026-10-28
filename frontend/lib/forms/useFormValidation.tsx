@@ -97,6 +97,7 @@ function validateFields(
 ): FieldValidationIssue[] {
   const issues: FieldValidationIssue[] = [];
   const keyCounts = new Map<string, number>();
+  const lastWithKey = new Map<string, string>();
 
   // Counted by the key each field will actually save with, not the raw
   // (possibly blank) field_key — two untouched fields whose labels happen
@@ -104,7 +105,9 @@ function validateFields(
   // with the same typed key would.
   for (const field of fields) {
     const key = effectiveFieldKey(field);
-    if (key) keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1);
+    if (!key) continue;
+    keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1);
+    lastWithKey.set(key, field.clientKey);
   }
 
   for (const field of fields) {
@@ -117,8 +120,10 @@ function validateFields(
         message: "An option jumps to a question above this one.",
       });
     }
+    // Only the last question holding a repeated key is flagged — it's the one
+    // reusing a key an earlier question already has, and where Save scrolls.
     const key = effectiveFieldKey(field);
-    if (key && (keyCounts.get(key) ?? 0) > 1) {
+    if (key && (keyCounts.get(key) ?? 0) > 1 && lastWithKey.get(key) === field.clientKey) {
       issues.push({
         clientKey: field.clientKey,
         message: "This field key is already used by another question on this form.",
@@ -177,7 +182,7 @@ export function useFormValidation() {
     if (!(e instanceof ApiError)) return [];
     const dupKey = DUPLICATE_FIELD_KEY_PATTERN.exec(e.message)?.[1];
     const target =
-      dupKey && fields ? fields.find((f) => effectiveFieldKey(f) === dupKey) : undefined;
+      dupKey && fields ? fields.findLast((f) => effectiveFieldKey(f) === dupKey) : undefined;
     if (target) {
       const issues: FieldValidationIssue[] = [
         {
