@@ -3,10 +3,14 @@ paths:
   - "backend/app/core/form/**"
   - "backend/app/api/routes/forms.py"
   - "backend/app/api/routes/tournament/onboarding.py"
+  - "backend/app/core/tournament/onboarding.py"
+  - "backend/app/core/tournament/form_prerequisites.py"
+  - "backend/app/core/tournament/form_flow.py"
   - "backend/app/schemas/form.py"
   - "backend/tests/core/test_form_*.py"
   - "backend/tests/api/test_forms.py"
   - "backend/tests/api/tournament/test_onboarding.py"
+  - "backend/tests/core/test_tournament_form_prerequisites.py"
   - "frontend/lib/forms/**"
   - "frontend/components/forms/**"
   - "frontend/components/tournament/forms/**"
@@ -21,6 +25,7 @@ Before changing form behavior, read the relevant design note in `backend/docs/`:
 - `form-question-types-reference.md`: field, config, option and answer shapes, reserved keys, form status.
 - `form-edit-lifecycle.md`: archive vs. invalidate, response editing, write-through.
 - `track-status-rules.md`: the two track-status writers and why they differ.
+- `onboarding-and-prerequisites.md`: role prerequisites, a member's onboarding path, and why `onboarded_at` is only a snapshot.
 
 Invariants that are easy to break:
 

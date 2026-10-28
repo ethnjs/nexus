@@ -22,7 +22,7 @@ This is the shape of form fields, their `config`, and their answers. Config sche
 - **`field_key`** is semantic. Every field has one, slugified from a TD-typed name (lowercase letters, digits and underscores). It must be unique among a form's **live** fields; an archived field releases its key, and other forms may reuse it (see [Shared field keys](form-edit-lifecycle.md#shared-field-keys)). A reserved key (below) layers validation and write-through onto an ordinary `question_type`.
 - **`field_id`**, not `field_key`, is the field's identity. Answers and branching reference the id, so renaming a key is free.
 
-Because keys can be reused, two different questions may carry the same key. Answers stay unambiguous (each records its `field_id` and the key it was given under), but a view that groups by key alone merges them.
+Because keys can be reused, two different questions may carry the same key. Answers stay unambiguous (each records its `field_id` and the key it was given under), and member views deliberately merge them, showing the latest answer per key.
 
 ## Options
 
