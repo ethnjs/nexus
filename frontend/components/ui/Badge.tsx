@@ -50,7 +50,7 @@ export function Badge({
   style,
   ...props
 }: BadgeProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedAt, setCopiedAt] = useState<{ top: number; left: number } | null>(null);
 
   async function handleClick(e: MouseEvent<HTMLSpanElement>) {
     // Copying is a self-contained action — don't let it also trigger
@@ -58,9 +58,10 @@ export function Badge({
     e.stopPropagation();
     onClick?.(e);
     if (!copyValue) return;
+    const rect = e.currentTarget.getBoundingClientRect();
     await navigator.clipboard.writeText(copyValue);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setCopiedAt({ top: rect.bottom + 4, left: rect.left + rect.width / 2 });
+    setTimeout(() => setCopiedAt(null), 1500);
   }
 
   return (
@@ -75,16 +76,17 @@ export function Badge({
         variantStyles[variant],
         className,
       ].join(" ")}
-      style={copyValue ? { cursor: "pointer", position: "relative", ...style } : style}
+      style={copyValue ? { cursor: "pointer", ...style } : style}
       {...props}
     >
       {children}
-      {copied && (
+      {copiedAt && (
+        // Fixed, not absolute, so a table's overflow clipping can't hide it.
         <span
           style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: "50%",
+            position: "fixed",
+            top: copiedAt.top,
+            left: copiedAt.left,
             transform: "translateX(-50%)",
             padding: "3px 8px",
             borderRadius: "var(--radius-sm)",
