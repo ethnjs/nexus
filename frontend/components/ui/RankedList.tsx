@@ -181,6 +181,7 @@ export function RankedList({
                 }
               }}
               allowFreeText={false}
+              stayOpenOnSelect
               placeholder={`Add choice ${picked.length + 1} of ${ranks}`}
               maxResults={remainingOptions.length}
               error={error}

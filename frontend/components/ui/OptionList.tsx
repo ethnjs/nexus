@@ -159,9 +159,13 @@ export function OptionList({
     update();
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
+    // The anchor also moves when content above it grows, e.g. a ranked pick adding a row.
+    const observer = new ResizeObserver(update);
+    observer.observe(document.body);
     return () => {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
+      observer.disconnect();
     };
   }, [anchorRef]);
 

@@ -34,6 +34,8 @@ interface ComboboxProps<T> {
   /** An inert row shown when the list is open with nothing in it — so a
    *  focused field with an empty catalog says so instead of showing nothing. */
   emptyMessage?: string;
+  /** Keep the list open after a pick, for a field that clears itself to take another. */
+  stayOpenOnSelect?: boolean;
   onBlur?: () => void;
 }
 
@@ -59,6 +61,7 @@ export function Combobox<T>({
   getDisabled,
   getDisabledReason,
   emptyMessage,
+  stayOpenOnSelect = false,
   onBlur,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false);
@@ -149,11 +152,23 @@ export function Combobox<T>({
   function handleSelect(option: T) {
     if (getDisabled?.(option)) return;
     onChange(getLabel(option), option);
-    setOpen(false);
+    if (stayOpenOnSelect) {
+      setTyped(false);
+      setActive(-1);
+    } else {
+      setOpen(false);
+    }
   }
 
   function handleSelectCustom() {
     setOpen(false);
+  }
+
+  function openList() {
+    if (locked) return;
+    setOpen(true);
+    setTyped(false);
+    setActive(-1);
   }
 
   const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && !exactMatch;
@@ -172,13 +187,9 @@ export function Combobox<T>({
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={(e) => handleTextChange(e.target.value)}
-        onFocus={() => {
-          if (!locked) {
-            setOpen(true);
-            setTyped(false);
-            setActive(-1);
-          }
-        }}
+        onFocus={openList}
+        // Picking a row keeps focus here, so a click after a pick gets no focus event to reopen on.
+        onClick={() => !open && openList()}
         onKeyDown={handleKeyDown}
         onBlur={() => {
           setTimeout(() => setOpen(false), 150);
