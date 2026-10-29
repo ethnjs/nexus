@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { type EditableOption, OptionsEditor } from "@/components/forms/builder/OptionsEditor";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -24,6 +24,7 @@ import { type ExtendableField, useFieldExtension } from "@/lib/forms/builderAddo
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
 import {
   isOtherAnswer,
+  OTHER_LABEL,
   OTHER_TEXT_MAX_LENGTH,
   type OtherAnswer,
   pickedOptionId,
@@ -255,6 +256,12 @@ function QuestionBody({
   removedOptions?: FormFieldOption[];
 }) {
   const config = field.config ?? {};
+  // What's typed in the Other field. It outlives unpicking Other so the text stays on screen
+  // and comes back on a re-pick, but only the answer is submitted, and it drops Other.
+  const [otherDraft, setOtherDraft] = useState(() => {
+    const items = Array.isArray(value) ? value : [value];
+    return items.find(isOtherAnswer)?.text ?? "";
+  });
   const labelFor =
     config.show_shift_times === false ? (opt: FormFieldOption) => opt.label : optionLabel;
   // Locked keeps the answer on screen but refuses edits, so every input is
@@ -278,33 +285,66 @@ function QuestionBody({
     if (!editable) return;
     onChange?.(
       optionId === otherOptionId
-        ? { option_id: optionId, text: singleOther?.text ?? "" }
+        ? { option_id: optionId, text: singleOther?.text ?? otherDraft }
         : optionId,
     );
   }
-  function withOtherText(
+  // As in Google Forms, the Other field shows whenever the question offers Other, and typing
+  // in it picks Other. A read-only answer shows it only when Other was the pick.
+  function showsOtherField(other: OtherAnswer | null) {
+    return !!other || (!!otherOptionId && !(interactive && !editable));
+  }
+  function otherField(other: OtherAnswer | null, setText: (text: string) => void) {
+    return (
+      <Input
+        font="sans"
+        value={other?.text ?? (editable ? otherDraft : "")}
+        onChange={(e) => {
+          if (!editable) return;
+          setOtherDraft(e.target.value);
+          setText(e.target.value);
+        }}
+        placeholder={OTHER_LABEL}
+        maxLength={OTHER_TEXT_MAX_LENGTH}
+        locked={!editable}
+        fullWidth
+      />
+    );
+  }
+  // A list row holds the field in place of the Other label. An answer whose Other option is
+  // gone from the question has no row to sit in.
+  function hasOtherRow(other: OtherAnswer | null) {
+    return (
+      config.display_style !== "buttons" &&
+      !!otherOptionId &&
+      (!other || other.option_id === otherOptionId)
+    );
+  }
+  function otherRowContent(
+    opt: FormFieldOption,
+    other: OtherAnswer | null,
+    setText: (text: string) => void,
+  ) {
+    if (opt.option_id !== otherOptionId || !showsOtherField(other)) return undefined;
+    return <div style={{ width: "min(320px, 60vw)" }}>{otherField(other, setText)}</div>;
+  }
+  function withOtherField(
     control: ReactNode,
     other: OtherAnswer | null,
     setText: (text: string) => void,
   ) {
-    if (!other) return control;
+    if (!showsOtherField(other)) return control;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {control}
-        <Input
-          font="sans"
-          value={other.text}
-          onChange={(e) => editable && setText(e.target.value)}
-          placeholder="Your answer"
-          maxLength={OTHER_TEXT_MAX_LENGTH}
-          locked={!editable}
-          fullWidth
-        />
+        {otherField(other, setText)}
       </div>
     );
   }
-  const setSingleOtherText = (text: string) =>
-    singleOther && onChange?.({ option_id: singleOther.option_id, text });
+  const setSingleOtherText = (text: string) => {
+    const optionId = singleOther?.option_id ?? otherOptionId;
+    if (optionId) onChange?.({ option_id: optionId, text });
+  };
 
   switch (field.question_type) {
     case "short_text":
@@ -362,10 +402,12 @@ function QuestionBody({
 
     case "single_select_radio": {
       const options = liveOptions;
+      const inline = hasOtherRow(singleOther);
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
         label: labelFor(opt),
         badge: badgeFor(opt.option_id),
+        content: inline ? otherRowContent(opt, singleOther, setSingleOtherText) : undefined,
       }));
 
       const control =
@@ -388,12 +430,12 @@ function QuestionBody({
             gap="8px"
           />
         );
-      return withOtherText(control, singleOther, setSingleOtherText);
+      return inline ? control : withOtherField(control, singleOther, setSingleOtherText);
     }
 
     case "single_select_dropdown": {
       const options = liveOptions;
-      return withOtherText(
+      return withOtherField(
         <Dropdown
           value={singleSelected}
           onChange={pickSingle}
@@ -413,27 +455,36 @@ function QuestionBody({
 
     case "multi_select_checkbox": {
       const options = liveOptions;
-      const displayOptions = options.map((opt) => ({
-        value: opt.option_id,
-        label: labelFor(opt),
-        badge: badgeFor(opt.option_id),
-      }));
       // Each item is an option_id, or {option_id, text} for Other.
       const items = interactive ? ((value as unknown[] | undefined) ?? []) : [];
       const selected = items.map((item) => String(pickedOptionId(item)));
       const otherItem = items.find(isOtherAnswer) ?? null;
+      const inline = hasOtherRow(otherItem);
 
       function toggle(optionId: string) {
         if (!editable) return;
         onChange?.(
           selected.includes(optionId)
             ? items.filter((item) => pickedOptionId(item) !== optionId)
-            : [...items, optionId === otherOptionId ? { option_id: optionId, text: "" } : optionId],
+            : [
+                ...items,
+                optionId === otherOptionId ? { option_id: optionId, text: otherDraft } : optionId,
+              ],
         );
       }
       function setOtherText(text: string) {
-        onChange?.(items.map((item) => (isOtherAnswer(item) ? { ...item, text } : item)));
+        if (otherItem) {
+          onChange?.(items.map((item) => (isOtherAnswer(item) ? { ...item, text } : item)));
+        } else if (otherOptionId) {
+          onChange?.([...items, { option_id: otherOptionId, text }]);
+        }
       }
+      const displayOptions = options.map((opt) => ({
+        value: opt.option_id,
+        label: labelFor(opt),
+        badge: badgeFor(opt.option_id),
+        content: inline ? otherRowContent(opt, otherItem, setOtherText) : undefined,
+      }));
 
       const control =
         config.display_style === "buttons" ? (
@@ -457,7 +508,7 @@ function QuestionBody({
             labelGap="16px"
           />
         );
-      return withOtherText(control, otherItem, setOtherText);
+      return inline ? control : withOtherField(control, otherItem, setOtherText);
     }
 
     case "ranked_choice": {

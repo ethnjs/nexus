@@ -8,6 +8,8 @@ export interface CheckboxListOption {
   label: string;
   /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
   badge?: ReactNode;
+  /** Replaces the label, e.g. an Other option's text field. */
+  content?: ReactNode;
 }
 
 interface CheckboxListProps {
@@ -47,7 +49,7 @@ export function CheckboxList({
       {options.map((opt) => (
         <CheckboxRow
           key={opt.value}
-          label={opt.label}
+          label={opt.content ?? opt.label}
           badge={opt.badge}
           dataOptionValue={opt.value}
           checked={value.includes(opt.value)}

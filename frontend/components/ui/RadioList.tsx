@@ -8,6 +8,8 @@ export interface RadioListOption {
   label: string;
   /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
   badge?: ReactNode;
+  /** Replaces the label, e.g. an Other option's text field. */
+  content?: ReactNode;
 }
 
 interface RadioListProps {
@@ -90,15 +92,17 @@ function RadioRow({
       {/* Dimmed to match the circle, which already greys itself when
           disabled — a locked row reads as inactive rather than as an option
           that simply isn't responding. */}
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize,
-          color: locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-        }}
-      >
-        {option.label}
-      </span>
+      {option.content ?? (
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize,
+            color: locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
+          }}
+        >
+          {option.label}
+        </span>
+      )}
       {option.badge}
     </label>
   );
