@@ -204,6 +204,10 @@ def list_memberships(
     shift: list[str] = Query(default=[]),
     # "trackId:assigned|unassigned" — staffed on that track or not.
     assigned: list[str] = Query(default=[]),
+    # A school's short name or an employer, as the column shows it; and
+    # "1".."5", "graduate", "non_student".
+    affiliation: list[str] = Query(default=[]),
+    year_level: list[str] = Query(default=[]),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -241,6 +245,8 @@ def list_memberships(
         age_flags=age,
         shifts=shift,
         assigned=assigned,
+        affiliations=affiliation,
+        year_levels=year_level,
     )
     query = apply_member_search(
         query,

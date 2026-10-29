@@ -20,7 +20,7 @@ from __future__ import annotations
 import operator
 
 from sqlalchemy import exists, func, or_, true
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, aliased
 
 from app.models.models import (
     TournamentMembership,
@@ -30,6 +30,7 @@ from app.models.models import (
     TournamentMembershipTrackStatus,
     TournamentRole,
     TournamentTrackAssignment,
+    University,
     User,
     UserCompetitionExperience,
     UserVolunteerExperience,
@@ -64,6 +65,18 @@ RANK_OPS = {
 LUNCH_UNANSWERED = "__unanswered__"
 LUNCH_NONE = "__none__"
 LUNCH_NOT_NONE = "__not_none__"
+
+# Year level values: an undergraduate year ("1".."5", where 5 means fifth or
+# later, as on the profile form) or one of these.
+YEAR_LEVEL_GRADUATE = "graduate"
+YEAR_LEVEL_NON_STUDENT = "non_student"
+MAX_YEAR_LEVEL = 5
+STUDENT_STATUSES = ("Undergraduate", "Graduate")
+
+
+def _university_short_name():
+    """What the members table shows for a school: its abbreviation, else its name."""
+    return func.coalesce(func.nullif(func.trim(University.abbreviation), ""), University.name)
 
 
 def _split_pairs(values: list[str]) -> list[tuple[str, str]]:
@@ -134,6 +147,8 @@ def apply_member_filters(
     age_flags: list[str] | None = None,
     shifts: list[str] | None = None,
     assigned: list[str] | None = None,
+    affiliations: list[str] | None = None,
+    year_levels: list[str] | None = None,
 ) -> Query:
     """Narrows a TournamentMembership query by the roster's filter params.
 
@@ -315,6 +330,51 @@ def apply_member_filters(
                 clauses.append(true())
         if clauses:
             query = query.filter(or_(*clauses))
+
+    # The text the Affiliation column shows, matched without case: one value
+    # covers a student at a school and a non-student working at one by the
+    # same name. Year level is what tells the two apart.
+    names = {value.strip().lower() for value in affiliations or [] if value.strip()}
+    if names:
+        # Aliased so the EXISTS stays correlated on its own User even when the
+        # name search has already joined one into the outer query.
+        user = aliased(User)
+        schools = query.session.query(University.id).filter(
+            func.lower(_university_short_name()).in_(names)
+        )
+        query = query.filter(
+            exists().where(
+                (user.id == TournamentMembership.user_id)
+                & or_(
+                    user.student_status.in_(STUDENT_STATUSES) & user.university_id.in_(schools),
+                    (user.student_status == "Non-Student")
+                    & func.lower(func.trim(user.employer)).in_(names),
+                )
+            )
+        )
+
+    if year_levels:
+        user = aliased(User)
+        clauses = []
+        for value in year_levels:
+            if value == YEAR_LEVEL_GRADUATE:
+                clauses.append(user.student_status == "Graduate")
+            elif value == YEAR_LEVEL_NON_STUDENT:
+                clauses.append(user.student_status == "Non-Student")
+            elif value.isdigit() and 1 <= int(value) <= MAX_YEAR_LEVEL:
+                year = int(value)
+                clauses.append(
+                    (user.student_status == "Undergraduate")
+                    & (
+                        user.year_level >= year
+                        if year == MAX_YEAR_LEVEL
+                        else user.year_level == year
+                    )
+                )
+        if clauses:
+            query = query.filter(
+                exists().where((user.id == TournamentMembership.user_id) & or_(*clauses))
+            )
 
     return query
 
@@ -535,6 +595,26 @@ def build_filter_options(db, tournament) -> dict:
             .order_by(Event.name)
         ]
 
+    # Only what members have entered: every university in the catalog would
+    # make the picker useless, as with experience. Spellings differing only in
+    # case or spacing are one option, labelled as the school spells it.
+    members = db.query(User).filter(User.id.in_(db.query(member_user_ids.c.user_id)))
+    school_names = (
+        members.filter(User.student_status.in_(STUDENT_STATUSES))
+        .join(University, User.university_id == University.id)
+        .with_entities(_university_short_name())
+        .distinct()
+    )
+    employer_names = (
+        members.filter(User.student_status == "Non-Student")
+        .with_entities(func.trim(User.employer))
+        .distinct()
+    )
+    affiliations: dict[str, str] = {}
+    for (name,) in [*school_names, *employer_names]:
+        if name:
+            affiliations.setdefault(name.lower(), name)
+
     # Roles aren't here: the members page already holds the tournament's role
     # list for the roles editor, so refetching it would be a second source.
     return {
@@ -544,6 +624,9 @@ def build_filter_options(db, tournament) -> dict:
         "event_preferences": event_preferences,
         "competition_events": experience_events(UserCompetitionExperience),
         "volunteer_events": experience_events(UserVolunteerExperience),
+        "affiliations": [
+            {"value": name, "label": name} for _, name in sorted(affiliations.items())
+        ],
         "collect_is_over_18": bool(tournament.collect_is_over_18),
         "collect_is_over_21": bool(tournament.collect_is_over_21),
     }

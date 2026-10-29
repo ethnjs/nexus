@@ -1305,6 +1305,8 @@ export interface MemberFilterOptions {
   event_preferences: FilterOptionGroup[];
   competition_events: FilterOptionItem[];
   volunteer_events: FilterOptionItem[];
+  // Schools' short names and employers, merged where they read the same.
+  affiliations: FilterOptionItem[];
   collect_is_over_18: boolean;
   collect_is_over_21: boolean;
 }

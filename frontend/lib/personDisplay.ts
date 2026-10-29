@@ -28,17 +28,18 @@ export function userName(user: UserSlim): string {
 
 type EducationFields = Pick<UserFull, "student_status" | "university" | "year_level" | "employer">;
 
+// The profile's year dropdown tops out at 5, which stands for fifth or later.
+export const YEAR_LEVEL_OPTIONS = [
+  { value: "1", label: "1st Year" },
+  { value: "2", label: "2nd Year" },
+  { value: "3", label: "3rd Year" },
+  { value: "4", label: "4th Year" },
+  { value: "5", label: "5th Year+" },
+];
+
 export function formatYearLevel(year: number | null): string | null {
   if (year === null) return null;
-  const suffix =
-    year % 10 === 1 && year % 100 !== 11
-      ? "st"
-      : year % 10 === 2 && year % 100 !== 12
-        ? "nd"
-        : year % 10 === 3 && year % 100 !== 13
-          ? "rd"
-          : "th";
-  return `${year}${suffix} Year`;
+  return YEAR_LEVEL_OPTIONS.find((o) => o.value === String(Math.min(year, 5)))?.label ?? null;
 }
 
 /** The school for a student, the employer otherwise — never both. `short`

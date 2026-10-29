@@ -1214,6 +1214,103 @@ class TestRosterFilters:
             "alice@example.com"
         }
 
+    def _profiled_members(self, db, tournament_id):
+        """Undergrads at UCLA, a grad student with no school, and non-students
+        working at UCLA, spelled their own way."""
+        from app.models.models import University
+
+        ucla = University(name="University of California, Los Angeles", abbreviation="UCLA")
+        db.add(ucla)
+        db.flush()
+        profiles = {
+            "frosh@example.com": {
+                "student_status": "Undergraduate",
+                "university_id": ucla.id,
+                "year_level": 1,
+            },
+            "super@example.com": {
+                "student_status": "Undergraduate",
+                "university_id": ucla.id,
+                "year_level": 6,
+            },
+            "grad@example.com": {"student_status": "Graduate", "university_id": None},
+            "staff@example.com": {"student_status": "Non-Student", "employer": "UCLA"},
+            "staff2@example.com": {"student_status": "Non-Student", "employer": " ucla "},
+            # A school left over from before they graduated is not an affiliation.
+            "alum@example.com": {
+                "student_status": "Non-Student",
+                "university_id": ucla.id,
+                "employer": "Acme",
+            },
+        }
+        for email, fields in profiles.items():
+            user = _db_user_for_filter(db, email)
+            for name, value in fields.items():
+                setattr(user, name, value)
+            _make_membership(db, tournament_id, user.id)
+        db.commit()
+
+    def test_affiliation_filter_matches_school_and_employer_alike(
+        self, client, db, td_user, td_tournament
+    ):
+        """One value covers students at the school (by its short name) and
+        anyone employed there, whatever the case or spacing."""
+        self._profiled_members(db, td_tournament.id)
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?affiliation=ucla") == {
+            "frosh@example.com",
+            "super@example.com",
+            "staff@example.com",
+            "staff2@example.com",
+        }
+        assert self._roster(client, td_tournament.id, "?affiliation=UCLA&affiliation=Acme") == {
+            "frosh@example.com",
+            "super@example.com",
+            "staff@example.com",
+            "staff2@example.com",
+            "alum@example.com",
+        }
+
+    def test_year_level_filter(self, client, db, td_user, td_tournament):
+        self._profiled_members(db, td_tournament.id)
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?year_level=1") == {"frosh@example.com"}
+        # 5 is "5th Year+", so it takes anything past it.
+        assert self._roster(client, td_tournament.id, "?year_level=5") == {"super@example.com"}
+        assert self._roster(
+            client, td_tournament.id, "?year_level=graduate&year_level=non_student"
+        ) == {
+            "grad@example.com",
+            "staff@example.com",
+            "staff2@example.com",
+            "alum@example.com",
+        }
+
+    def test_affiliation_filter_combines_with_name_search(self, client, db, td_user, td_tournament):
+        """The search joins User into the outer query; the filter's EXISTS must
+        still check each member's own profile."""
+        self._profiled_members(db, td_tournament.id)
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?q=frosh&affiliation=UCLA") == {
+            "frosh@example.com"
+        }
+        assert self._roster(client, td_tournament.id, "?q=frosh&affiliation=Acme") == set()
+
+    def test_affiliation_filter_options(self, client, db, td_user, td_tournament):
+        """The school and the employers spelled like it are one option, under
+        the school's spelling."""
+        self._profiled_members(db, td_tournament.id)
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        assert body["affiliations"] == [
+            {"value": "Acme", "label": "Acme"},
+            {"value": "UCLA", "label": "UCLA"},
+        ]
+
 
 def test_list_memberships_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")

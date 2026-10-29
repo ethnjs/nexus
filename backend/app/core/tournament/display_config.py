@@ -125,6 +125,8 @@ KNOWN_FILTER_KEYS = frozenset(
         "age",
         "shift",
         "assigned",
+        "affiliation",
+        "year_level",
     }
 )
 
