@@ -23,6 +23,8 @@ EXPORT_FIXED_COLUMNS = frozenset(
         "last_name",
         "email",
         "phone",
+        "affiliation",
+        "year_level",
         "shirt_size",
         "dietary_restriction",
         "roles",

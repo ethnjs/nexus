@@ -16,7 +16,7 @@ import {
   LUNCH_PREFIX,
   TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
-import { userName } from "@/lib/personDisplay";
+import { userAffiliation, userName, userYearLevel } from "@/lib/personDisplay";
 
 // The export column registry. Column names are the members table's
 // ("email", "track:3", "field_key:shirt_size") plus export-only ones, so a name
@@ -201,6 +201,12 @@ const FIXED: Record<string, FixedDef> = {
   last_name: memberFixed("Last name", [], (r) => r.member.user.last_name ?? ""),
   email: memberFixed("Email", ["contact"], (r) => r.member.user.email),
   phone: memberFixed("Phone", ["contact"], (r) => r.member.user.phone ?? ""),
+  affiliation: memberFixed(
+    "Affiliation",
+    ["profile"],
+    (r) => userAffiliation(r.member.user, true) ?? "",
+  ),
+  year_level: memberFixed("Year level", ["profile"], (r) => userYearLevel(r.member.user) ?? ""),
   shirt_size: memberFixed("Shirt size", ["profile"], (r) => r.member.user.shirt_size ?? ""),
   dietary_restriction: memberFixed(
     "Dietary restriction",
@@ -443,6 +449,8 @@ export function availableExportColumns(
         "last_name",
         "email",
         "phone",
+        "affiliation",
+        "year_level",
         "shirt_size",
         "dietary_restriction",
         "roles",

@@ -1442,6 +1442,45 @@ def test_saved_sort_loads_its_data_onto_the_roster(client, td_user, td_tournamen
     assert rows and all("onboarding" in row for row in rows)
 
 
+def test_members_table_saves_affiliation_and_year_level(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "members_table": {
+                "hidden": [],
+                "columns": ["affiliation", "year_level"],
+                "filters": {"affiliation": ["UCLA"], "year_level": ["1", "graduate"]},
+                "sorts": [
+                    {"field": "affiliation", "direction": "asc"},
+                    {"field": "year_level", "direction": "desc"},
+                ],
+            }
+        },
+    )
+    assert response.status_code == 200, response.json()
+
+
+def test_year_level_sort_loads_the_profile_onto_the_roster(client, td_user, td_tournament, db):
+    """Both values live on the profile, so a sort with neither column showing
+    still has to pull it."""
+    set_display_config(
+        db,
+        td_tournament,
+        td_user,
+        {
+            "members_table": {
+                "hidden": [],
+                "columns": ["email"],
+                "sorts": [{"field": "year_level", "direction": "asc"}],
+            },
+        },
+    )
+    login(client, "td@test.com", "tdpass")
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
+    assert rows and all("student_status" in row["user"] for row in rows)
+
+
 def test_assignment_card_accepts_new_fields_custom_hides_and_member_sorts(
     client, td_user, td_tournament
 ):
