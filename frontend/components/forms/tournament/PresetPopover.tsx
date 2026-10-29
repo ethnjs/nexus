@@ -602,6 +602,7 @@ function LunchParams({
         soleReason="Only one track"
       />
       <Input
+        font="sans"
         label="Category"
         required
         placeholder="e.g. Protein"

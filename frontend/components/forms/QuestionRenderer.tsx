@@ -292,6 +292,7 @@ function QuestionBody({
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {control}
         <Input
+          font="sans"
           value={other.text}
           onChange={(e) => editable && setText(e.target.value)}
           placeholder="Your answer"
@@ -309,6 +310,7 @@ function QuestionBody({
     case "short_text":
       return (
         <Input
+          font="sans"
           value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : "Short answer"}
@@ -320,6 +322,7 @@ function QuestionBody({
     case "long_text":
       return (
         <Textarea
+          font="sans"
           value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : "Long answer"}
@@ -599,6 +602,7 @@ function QuestionEditBody({
               >
                 <div style={{ width: "100px" }}>
                   <Input
+                    font="sans"
                     label="Ranks"
                     type="number"
                     min={1}
@@ -667,6 +671,7 @@ function AcknowledgmentBody({
 }) {
   return (
     <Input
+      font="sans"
       label="Confirmation text"
       value={field.config?.confirm_label ?? ""}
       onChange={(e) =>

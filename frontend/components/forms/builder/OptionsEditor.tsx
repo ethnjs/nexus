@@ -324,6 +324,7 @@ export function OptionsEditor({
     (!syncValueWithLabel
       ? (option: EditableOption) => (
           <Input
+            font="sans"
             value={typeof option.value === "string" ? option.value : ""}
             onChange={(e) => updateOptionValue(option.clientKey, e.target.value)}
             placeholder="Value (shown in exports, defaults to label)"
@@ -660,6 +661,7 @@ function OptionRow({
           />
         </div>
         <Input
+          font="sans"
           ref={inputRef}
           value={option.label}
           onChange={(e) => onChange(e.target.value)}
