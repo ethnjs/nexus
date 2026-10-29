@@ -131,7 +131,17 @@ KNOWN_FILTER_KEYS = frozenset(
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
 # by anything can't be written in the first place.
-KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age", "onboarding"})
+KNOWN_SORT_FIELDS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "joined",
+        "account_age",
+        "onboarding",
+        "affiliation",
+        "year_level",
+    }
+)
 # Plus one sort per track (or per track's event / lunch question), keyed in
 # the same namespaces as the columns so fields_for_surface maps them to data
 # groups the same way. event_pref takes the event too: a sort is by the rank
@@ -158,6 +168,8 @@ COLUMN_JOINED = "joined"
 COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
+COLUMN_AFFILIATION = "affiliation"
+COLUMN_YEAR_LEVEL = "year_level"
 COLUMN_ONBOARDING = "onboarding"
 COLUMN_DIETARY = "dietary_restriction"
 
@@ -169,6 +181,8 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_METHOD, "Join method"),
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
+    (COLUMN_AFFILIATION, "Affiliation"),
+    (COLUMN_YEAR_LEVEL, "Year level"),
     (COLUMN_ONBOARDING, "Onboarding"),
     (COLUMN_DIETARY, "Dietary restriction"),
 )
@@ -962,6 +976,8 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_METHOD: ("membership",),
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
+    COLUMN_AFFILIATION: ("profile",),
+    COLUMN_YEAR_LEVEL: ("profile",),
     COLUMN_ONBOARDING: ("onboarding",),
     # On the user profile, like shirt size — not on the lunch rows.
     COLUMN_DIETARY: ("profile",),

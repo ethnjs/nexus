@@ -1,5 +1,6 @@
 import type { SortFieldOption, SortPill, SortPillOption } from "@/components/ui/SortModal";
 import type { DisplayConfigCatalogItem, FilterOptionGroup, MembershipFull } from "@/lib/api";
+import { userAffiliation } from "@/lib/personDisplay";
 import type { SortRule, SortValue } from "@/lib/sorting";
 
 /** The fields every roster can sort by. Mirrors KNOWN_SORT_FIELDS in
@@ -10,6 +11,8 @@ export const FIXED_MEMBER_SORT_FIELDS = [
   "joined",
   "account_age",
   "onboarding",
+  "affiliation",
+  "year_level",
 ] as const;
 
 /** A fixed field, or one of the per-track ones below. Keys share the column
@@ -42,6 +45,13 @@ const FIXED_OPTIONS: SortFieldOption[] = [
     label: "Onboarding",
     ascLabel: "Least complete first",
     descLabel: "Most complete first",
+  },
+  { value: "affiliation", label: "Affiliation", ascLabel: "A → Z", descLabel: "Z → A" },
+  {
+    value: "year_level",
+    label: "Year level",
+    ascLabel: "1st year first",
+    descLabel: "Not a student first",
   },
 ];
 
@@ -155,16 +165,21 @@ const STATUS_ORDER: Record<string, number> = { confirmed: 0, interested: 1, decl
 // before not having picked the event at all.
 const PICKED_UNRANKED = Number.MAX_SAFE_INTEGER;
 
-/** The response key a sort field reads — absent on the rows means the roster
- *  was fetched without it, and the page has to reload before it can sort. */
-export function memberSortDataKey(field: MemberSortField): keyof MembershipFull | null {
-  if (field === "onboarding") return "onboarding";
-  if (field.startsWith("track:")) return "track_statuses";
-  if (field.startsWith("availability_track:")) return "availability";
-  if (field.startsWith("event_pref:")) return "event_preferences";
-  if (field.startsWith("lunch:")) return "lunch";
-  return null;
+/** Whether `m` was fetched without the data `field` sorts by, so the page
+ *  has to reload before it can sort. */
+export function memberSortDataMissing(m: MembershipFull, field: MemberSortField): boolean {
+  if (field === "affiliation" || field === "year_level") return m.user.student_status === undefined;
+  if (field === "onboarding") return m.onboarding === undefined;
+  if (field.startsWith("track:")) return m.track_statuses === undefined;
+  if (field.startsWith("availability_track:")) return m.availability === undefined;
+  if (field.startsWith("event_pref:")) return m.event_preferences === undefined;
+  if (field.startsWith("lunch:")) return m.lunch === undefined;
+  return false;
 }
+
+// Undergraduate years first, by year, then graduate students, then non-students.
+const GRADUATE_ORDER = 1000;
+const NON_STUDENT_ORDER = 1001;
 
 // A missing name is null, not "", so it sorts last in both directions.
 export function memberSortValue(m: MembershipFull, field: MemberSortField): SortValue {
@@ -183,6 +198,13 @@ export function memberSortValue(m: MembershipFull, field: MemberSortField): Sort
       return m.onboarding && m.onboarding.total > 0
         ? m.onboarding.completed / m.onboarding.total
         : null;
+    // The short form, so the order matches what the column shows.
+    case "affiliation":
+      return userAffiliation(m.user, true);
+    case "year_level":
+      if (m.user.student_status === "Graduate") return GRADUATE_ORDER;
+      if (m.user.student_status === "Non-Student") return NON_STUDENT_ORDER;
+      return m.user.student_status === "Undergraduate" ? m.user.year_level : null;
   }
   const [namespace, first, second] = field.split(":");
   const trackId = Number(first);

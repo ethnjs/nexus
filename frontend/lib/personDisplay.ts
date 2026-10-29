@@ -1,4 +1,4 @@
-import type { PersonRef, UserSlim } from "@/lib/api";
+import type { PersonRef, UserFull, UserSlim } from "@/lib/api";
 
 // How the backend credits an action — a join code's creator, an audit log's
 // actor, a form's author. It carries a name and roles and nothing else: the
@@ -24,4 +24,41 @@ export function personRoles(ref: PersonRef) {
 // full membership or user keep the email fallback, since they have one.
 export function userName(user: UserSlim): string {
   return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+}
+
+type EducationFields = Pick<UserFull, "student_status" | "university" | "year_level" | "employer">;
+
+export function formatYearLevel(year: number | null): string | null {
+  if (year === null) return null;
+  const suffix =
+    year % 10 === 1 && year % 100 !== 11
+      ? "st"
+      : year % 10 === 2 && year % 100 !== 12
+        ? "nd"
+        : year % 10 === 3 && year % 100 !== 13
+          ? "rd"
+          : "th";
+  return `${year}${suffix} Year`;
+}
+
+/** The school for a student, the employer otherwise — never both. `short`
+ *  picks the university's abbreviation, for a table cell. */
+export function userAffiliation(user: EducationFields, short = false): string | null {
+  if (user.student_status === null) return null;
+  if (user.student_status === "Non-Student") return user.employer || null;
+  if (!user.university) return null;
+  return (short && user.university.abbreviation) || user.university.name;
+}
+
+export function userYearLevel(user: EducationFields): string | null {
+  switch (user.student_status) {
+    case "Undergraduate":
+      return formatYearLevel(user.year_level);
+    case "Graduate":
+      return "Graduate";
+    case "Non-Student":
+      return "Not a student";
+    default:
+      return null;
+  }
 }

@@ -18,6 +18,7 @@ import {
   TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
 import type { MemberSortField } from "@/lib/memberSort";
+import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { unslug } from "@/lib/textFormat";
 import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 
@@ -58,6 +59,9 @@ const WIDTHS = {
   method: "100px",
   age: "124px",
   shirtSize: "64px",
+  affiliation: "minmax(max-content, 1fr)",
+  // "Not a student", the widest value.
+  yearLevel: "112px",
   // A 16px ring, a gap and "10/10" — the widest count a real sequence reaches.
   onboarding: "96px",
   track: "104px",
@@ -213,6 +217,38 @@ function fixedColumn(
         label: "Shirt",
         width: WIDTHS.shirtSize,
         render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
+      };
+    case "affiliation":
+      return {
+        key,
+        label: "Affiliation",
+        width: WIDTHS.affiliation,
+        sortField: "affiliation",
+        render: (m) => {
+          const text = userAffiliation(m.user, true);
+          return text ? (
+            <span
+              style={{ ...TEXT_CELL, fontFamily: "var(--font-sans)" }}
+              title={userAffiliation(m.user) ?? undefined}
+            >
+              {text}
+            </span>
+          ) : (
+            <Dash />
+          );
+        },
+      };
+    case "year_level":
+      return {
+        key,
+        label: "Year Level",
+        width: WIDTHS.yearLevel,
+        sortField: "year_level",
+        render: (m) => (
+          <span style={{ ...TEXT_CELL, fontFamily: "var(--font-sans)" }}>
+            {userYearLevel(m.user) ?? "—"}
+          </span>
+        ),
       };
     case "dietary_restriction":
       return {

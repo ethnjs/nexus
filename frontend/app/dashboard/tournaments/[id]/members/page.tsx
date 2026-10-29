@@ -63,7 +63,7 @@ import {
   legacyMemberSortRules,
   MEMBER_SORT_TIEBREAK,
   type MemberSortField,
-  memberSortDataKey,
+  memberSortDataMissing,
   memberSortOptions,
   memberSortTiebreak,
   memberSortValue,
@@ -531,12 +531,7 @@ export default function MembersPage() {
     (next: SortRule<MemberSortField>[]) => {
       setSortRules(next);
       const sample = members?.[0];
-      const missing =
-        !!sample &&
-        next.some((rule) => {
-          const key = memberSortDataKey(rule.field);
-          return key !== null && sample[key] === undefined;
-        });
+      const missing = !!sample && next.some((rule) => memberSortDataMissing(sample, rule.field));
       persistView({ sorts: sortRulesToStored(next), sort: null }).then((saved) => {
         if (saved && missing) setRefreshKey((k) => k + 1);
       });
