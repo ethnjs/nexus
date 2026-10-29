@@ -87,7 +87,8 @@ export default function OverviewPage() {
                         cursor: form.completed ? "pointer" : "default",
                       }}
                     >
-                      <div className={styles.formName}>{form.name}</div>
+                      {/* `name` is the TDs' short name; members see the title. */}
+                      <div className={styles.formName}>{form.title || "Untitled form"}</div>
                       <Badge variant={form.completed ? "confirmed" : "default"}>
                         {form.completed ? "Completed" : "To do"}
                       </Badge>
