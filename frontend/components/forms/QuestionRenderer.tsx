@@ -303,20 +303,18 @@ function QuestionBody({
     text: string,
     onText: (text: string) => void,
     {
-      inline = false,
       autoFocus = false,
       onAddAnother,
       onRemove,
     }: {
-      inline?: boolean;
       autoFocus?: boolean;
       onAddAnother?: () => void;
       onRemove?: () => void;
     } = {},
   ) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-        <div style={inline ? { width: "min(320px, 60vw)" } : { flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1 }}>
           <Input
             font="sans"
             value={text}
@@ -443,7 +441,7 @@ function QuestionBody({
         badge: badgeFor(opt.option_id),
         content:
           inline && singleShowsOther && opt.option_id === otherOptionId
-            ? otherInput(singleOtherText, setSingleOtherText, { inline: true })
+            ? otherInput(singleOtherText, setSingleOtherText)
             : undefined,
       }));
 
@@ -557,7 +555,6 @@ function QuestionBody({
                 otherDrafts.map((d) => (d.key === draft.key ? { ...d, text, checked: true } : d)),
               ),
             {
-              inline,
               autoFocus: draft.key === focusOtherKey,
               onAddAnother: () => addOtherAfter(i),
               onRemove:

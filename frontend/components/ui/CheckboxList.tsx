@@ -51,6 +51,7 @@ export function CheckboxList({
           key={opt.value}
           label={opt.content ?? opt.label}
           badge={opt.badge}
+          fillLabel={!!opt.content}
           dataOptionValue={opt.value}
           checked={value.includes(opt.value)}
           locked={locked}
