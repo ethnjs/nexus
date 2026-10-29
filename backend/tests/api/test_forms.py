@@ -2836,6 +2836,22 @@ class TestOtherOption:
             {"option_id": "opt_other", "value": "Teal", "label": "Other", "text": "Teal"},
         ]
 
+    def test_checkbox_takes_several_other_entries(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament, question_type="multi_select_checkbox")
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(
+            client,
+            form,
+            field,
+            [
+                {"option_id": "opt_other", "text": "Teal"},
+                {"option_id": "opt_other", "text": "Gold"},
+            ],
+        )
+        assert res.status_code == 200, res.json()
+        assert [item["text"] for item in res.json()["answers"][0]["value"]] == ["Teal", "Gold"]
+
     @pytest.mark.parametrize(
         "value",
         [
