@@ -273,7 +273,8 @@ export function OptionList({
                     opt.muted || opt.disabled
                       ? "var(--color-text-tertiary)"
                       : "var(--color-text-primary)",
-                  background: i === active && !opt.disabled ? "var(--color-bg)" : "transparent",
+                  background:
+                    i === active && !opt.disabled ? "var(--color-accent-subtle)" : "transparent",
                   cursor: opt.disabled ? "not-allowed" : "pointer",
                   opacity: opt.disabled ? 0.6 : 1,
                   userSelect: "none",
