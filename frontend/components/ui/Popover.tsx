@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Fragment,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
@@ -113,6 +112,16 @@ export function Popover<T>({
   // shouldn't see a box around a row they never chose. Hover is its own state.
   const [usingKeys, setUsingKeys] = useState(false);
   const [hovered, setHovered] = useState<number | null>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+
+  // Keep the keyboard's row on screen. Its wrapper holds any group heading
+  // above it, so stepping into a group brings the heading along.
+  useEffect(() => {
+    if (!usingKeys) return;
+    rowsRef.current
+      ?.querySelector<HTMLElement>(`[data-idx="${active}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, usingKeys]);
   // Stable, so it runs when the panel mounts and not on every render — an
   // inline ref would pull focus back each time anything re-rendered.
   const focusPanelOnMount = useCallback(
@@ -359,6 +368,7 @@ export function Popover<T>({
               between it and the panel's padded edge. */}
           {/* Shrinks below its cap when the panel is clamped to the viewport. */}
           <div
+            ref={rowsRef}
             style={{
               maxHeight: `${PANEL_MAX_HEIGHT}px`,
               minHeight: 0,
@@ -384,7 +394,7 @@ export function Popover<T>({
                 const disabled = isDisabled?.(item) ?? false;
                 const reason = disabled ? disabledReason?.(item) : undefined;
                 return (
-                  <Fragment key={key}>
+                  <div key={key} data-idx={index}>
                     {groupHeading(index)}
                     <CheckboxRow
                       checked={checked}
@@ -429,7 +439,7 @@ export function Popover<T>({
                         opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                       }}
                     />
-                  </Fragment>
+                  </div>
                 );
               })
             ) : (
@@ -438,7 +448,7 @@ export function Popover<T>({
                 const disabled = isDisabled?.(item) ?? false;
                 const reason = disabled ? disabledReason?.(item) : undefined;
                 return (
-                  <Fragment key={key}>
+                  <div key={key} data-idx={index}>
                     {groupHeading(index)}
                     <button
                       // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
@@ -476,7 +486,7 @@ export function Popover<T>({
                     >
                       {renderLabel(item)}
                     </button>
-                  </Fragment>
+                  </div>
                 );
               })
             )}
