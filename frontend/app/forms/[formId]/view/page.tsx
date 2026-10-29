@@ -7,7 +7,6 @@ import styles from "@/components/forms/FormFlow.module.css";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import cardStyles from "@/components/layout/CenteredCard.module.css";
-import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -303,20 +302,24 @@ export default function FormViewPage() {
               {wasEdited(existing) && ` · Updated ${formatDateTime(existing.updated_at)}`}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {editLockedReason && (
-              <Tooltip variant="info" message={editLockedReason} showIcon={false}>
-                <Badge variant="removed">
-                  <IconLock size={11} /> Locked
-                </Badge>
-              </Tooltip>
-            )}
+          {editLockedReason ? (
+            <Tooltip variant="info" message={editLockedReason} showIcon={false}>
+              {/* A disabled button swallows hover in some browsers, so the wrapper takes it. */}
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled
+                style={{ pointerEvents: "none" }}
+              >
+                <IconLock size={14} /> Edit response
+              </Button>
+            </Tooltip>
+          ) : (
             <Button
               type="button"
               variant="secondary"
               size="md"
-              disabled={!!editLockedReason}
-              title={editLockedReason}
               onClick={() => {
                 setSavedMessage(null);
                 router.push(`/forms/${formId}/view?edit=true`);
@@ -324,7 +327,7 @@ export default function FormViewPage() {
             >
               <IconEdit size={14} /> Edit response
             </Button>
-          </div>
+          )}
         </Card>
 
         <ResponseAnswers fields={form.fields} answers={existing.answers} />
