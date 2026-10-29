@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
@@ -40,6 +41,8 @@ export interface PopoverProps<T> {
   getSearchText?: (item: T) => string;
   /** Rendered above the rows and outside their scroll container — for a control that acts on the list as a whole, e.g. a select-all toggle. */
   header?: ReactNode;
+  /** Heads a run of consecutive items sharing this text, as Dropdown's option groups do. Items must already be ordered by group. */
+  getGroup?: (item: T) => string;
 }
 
 // Anchored from the top (below the trigger) normally; flips to bottom
@@ -87,6 +90,7 @@ export function Popover<T>({
   searchable = false,
   getSearchText,
   header,
+  getGroup,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -214,6 +218,34 @@ export function Popover<T>({
     searchable && needle
       ? items.filter((item) => (getSearchText?.(item) ?? "").toLowerCase().includes(needle))
       : items;
+
+  // Styled like OptionList's group headings, so a grouped menu reads the same
+  // whichever of the two draws it.
+  function groupHeading(index: number): ReactNode {
+    if (!getGroup) return null;
+    const group = getGroup(visibleItems[index]);
+    if (index > 0 && getGroup(visibleItems[index - 1]) === group) return null;
+    return (
+      <>
+        {index > 0 && (
+          <div style={{ height: "1px", background: "var(--color-border)", margin: "4px 0" }} />
+        )}
+        <div
+          style={{
+            padding: "5px 10px 3px",
+            fontFamily: "var(--font-mono)",
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
+          {group}
+        </div>
+      </>
+    );
+  }
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -352,50 +384,52 @@ export function Popover<T>({
                 const disabled = isDisabled?.(item) ?? false;
                 const reason = disabled ? disabledReason?.(item) : undefined;
                 return (
-                  <CheckboxRow
-                    key={key}
-                    checked={checked}
-                    locked={busy}
-                    onChange={() => handleSelect(item)}
-                    label={renderLabel(item)}
-                    labelColor="var(--color-text-primary)"
-                    control={
-                      disabled ? (
-                        <IconLock
-                          size={13}
-                          style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }}
-                        />
-                      ) : undefined
-                    }
-                    // The mouse takes over from the keyboard: its row becomes the
-                    // one Enter would pick, and the keyboard outline steps aside.
-                    onMouseEnter={(e) => {
-                      setHovered(index);
-                      setActive(index);
-                      setUsingKeys(false);
-                      if (reason) showHoverTip(e, reason);
-                    }}
-                    onMouseLeave={() => {
-                      setHovered(null);
-                      if (reason) setHoverTip(null);
-                    }}
-                    style={{
-                      padding: "6px 8px",
-                      borderRadius: "var(--radius-sm)",
-                      cursor: disabled || busy ? "not-allowed" : "pointer",
-                      background: checked
-                        ? "var(--color-accent-subtle)"
-                        : hovered === index && !disabled
-                          ? "var(--color-bg)"
-                          : "transparent",
-                      // The keyboard's row, distinct from ticked.
-                      boxShadow:
-                        usingKeys && index === active
-                          ? "inset 0 0 0 1px var(--color-border-strong)"
-                          : undefined,
-                      opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
-                    }}
-                  />
+                  <Fragment key={key}>
+                    {groupHeading(index)}
+                    <CheckboxRow
+                      checked={checked}
+                      locked={busy}
+                      onChange={() => handleSelect(item)}
+                      label={renderLabel(item)}
+                      labelColor="var(--color-text-primary)"
+                      control={
+                        disabled ? (
+                          <IconLock
+                            size={13}
+                            style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }}
+                          />
+                        ) : undefined
+                      }
+                      // The mouse takes over from the keyboard: its row becomes the
+                      // one Enter would pick, and the keyboard outline steps aside.
+                      onMouseEnter={(e) => {
+                        setHovered(index);
+                        setActive(index);
+                        setUsingKeys(false);
+                        if (reason) showHoverTip(e, reason);
+                      }}
+                      onMouseLeave={() => {
+                        setHovered(null);
+                        if (reason) setHoverTip(null);
+                      }}
+                      style={{
+                        padding: "6px 8px",
+                        borderRadius: "var(--radius-sm)",
+                        cursor: disabled || busy ? "not-allowed" : "pointer",
+                        background: checked
+                          ? "var(--color-accent-subtle)"
+                          : hovered === index && !disabled
+                            ? "var(--color-bg)"
+                            : "transparent",
+                        // The keyboard's row, distinct from ticked.
+                        boxShadow:
+                          usingKeys && index === active
+                            ? "inset 0 0 0 1px var(--color-border-strong)"
+                            : undefined,
+                        opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
+                      }}
+                    />
+                  </Fragment>
                 );
               })
             ) : (
@@ -404,43 +438,45 @@ export function Popover<T>({
                 const disabled = isDisabled?.(item) ?? false;
                 const reason = disabled ? disabledReason?.(item) : undefined;
                 return (
-                  <button
-                    // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
-                    tabIndex={-1}
-                    key={key}
-                    type="button"
-                    disabled={busy || disabled}
-                    onClick={() => handleSelect(item)}
-                    onMouseEnter={(e) => {
-                      setHovered(index);
-                      setActive(index);
-                      setUsingKeys(false);
-                      if (reason) showHoverTip(e, reason);
-                    }}
-                    onMouseLeave={() => {
-                      setHovered(null);
-                      if (reason) setHoverTip(null);
-                    }}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "7px 10px",
-                      border: "none",
-                      background:
-                        !disabled && (hovered === index || (usingKeys && index === active))
-                          ? "var(--color-bg)"
-                          : "transparent",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "13px",
-                      color: "var(--color-text-primary)",
-                      borderRadius: "var(--radius-sm)",
-                      cursor: busy || disabled ? "not-allowed" : "pointer",
-                      opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
-                    }}
-                  >
-                    {renderLabel(item)}
-                  </button>
+                  <Fragment key={key}>
+                    {groupHeading(index)}
+                    <button
+                      // Not Tab stops: ↑/↓ move between rows, so the panel is one stop.
+                      tabIndex={-1}
+                      type="button"
+                      disabled={busy || disabled}
+                      onClick={() => handleSelect(item)}
+                      onMouseEnter={(e) => {
+                        setHovered(index);
+                        setActive(index);
+                        setUsingKeys(false);
+                        if (reason) showHoverTip(e, reason);
+                      }}
+                      onMouseLeave={() => {
+                        setHovered(null);
+                        if (reason) setHoverTip(null);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "7px 10px",
+                        border: "none",
+                        background:
+                          !disabled && (hovered === index || (usingKeys && index === active))
+                            ? "var(--color-bg)"
+                            : "transparent",
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        color: "var(--color-text-primary)",
+                        borderRadius: "var(--radius-sm)",
+                        cursor: busy || disabled ? "not-allowed" : "pointer",
+                        opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
+                      }}
+                    >
+                      {renderLabel(item)}
+                    </button>
+                  </Fragment>
                 );
               })
             )}
