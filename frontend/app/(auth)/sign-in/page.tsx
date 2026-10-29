@@ -77,6 +77,7 @@ function SignInContent() {
         style={{ display: "flex", flexDirection: "column", gap: "20px" }}
       >
         <Input
+          font="sans"
           label="Email"
           type="email"
           placeholder="you@email.com"
@@ -86,11 +87,13 @@ function SignInContent() {
             setErrors((er) => ({ ...er, email: undefined }));
           }}
           autoComplete="email"
+          autoFocus
           error={errors.email}
           fullWidth
         />
         <div>
           <Input
+            font="sans"
             label="Password"
             type="password"
             placeholder="••••••••"

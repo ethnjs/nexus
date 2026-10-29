@@ -70,6 +70,7 @@ export function CredentialsForm({
     >
       {showEmail && (
         <Input
+          font="sans"
           label="Email"
           type="email"
           value={email}
@@ -78,11 +79,13 @@ export function CredentialsForm({
             setErrors((er) => ({ ...er, email: undefined }));
           }}
           autoComplete="email"
+          autoFocus
           error={errors.email}
           fullWidth
         />
       )}
       <Input
+        font="sans"
         label="Password"
         type="password"
         value={password}
@@ -92,6 +95,7 @@ export function CredentialsForm({
           setErrors((er) => ({ ...er, password: undefined }));
         }}
         autoComplete="new-password"
+        autoFocus={!showEmail}
         error={errors.password}
         fullWidth
       />
@@ -99,6 +103,7 @@ export function CredentialsForm({
       {password && (
         <>
           <Input
+            font="sans"
             label="Confirm Password"
             type="password"
             value={confirmPassword}
