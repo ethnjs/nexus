@@ -282,7 +282,7 @@ export function FormFillFlow({
       className={styles.page}
       // Inline because the submit bar's height is measured at runtime.
       style={{
-        paddingBottom: `${22 + submitBarHeight}px`,
+        paddingBottom: `${120 + submitBarHeight}px`,
         transition: "padding-bottom 0.25s ease",
       }}
     >
