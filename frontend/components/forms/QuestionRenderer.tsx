@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { CheckboxList } from "@/components/ui/CheckboxList";
+import { CheckboxList, type CheckboxListOption } from "@/components/ui/CheckboxList";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormattedText } from "@/components/ui/FormattedText";
 import { IconPlus, IconX } from "@/components/ui/Icons";
@@ -215,10 +215,10 @@ export function QuestionRenderer({
   );
 }
 
-type OtherDraft = { key: string; text: string };
+type OtherDraft = { key: string; text: string; checked: boolean };
 
-function newOtherDraft(text = ""): OtherDraft {
-  return { key: crypto.randomUUID(), text };
+function newOtherDraft(text = "", checked = false): OtherDraft {
+  return { key: crypto.randomUUID(), text, checked };
 }
 
 // ResolvedEventOption[] is also an array of objects, so 'start' is what tells
@@ -265,11 +265,12 @@ function QuestionBody({
   const config = field.config ?? {};
   // What's typed in the Other field(s). Drafts outlive unpicking Other so the text stays on
   // screen and comes back on a re-pick, but only the answer is submitted, and it drops Other.
-  // A single select uses the first; a checkbox question can add more with Enter.
+  // A single select uses the first and ignores `checked`; a checkbox question can add more,
+  // each ticked on its own.
   const [otherDrafts, setOtherDrafts] = useState<OtherDraft[]>(() => {
     const items = Array.isArray(value) ? value : [value];
     const texts = items.filter(isOtherAnswer).map((item) => item.text);
-    return (texts.length > 0 ? texts : [""]).map((text) => newOtherDraft(text));
+    return texts.length > 0 ? texts.map((text) => newOtherDraft(text, true)) : [newOtherDraft()];
   });
   const [focusOtherKey, setFocusOtherKey] = useState<string | null>(null);
   const labelFor =
@@ -501,22 +502,29 @@ function QuestionBody({
       const otherId = otherOptionId ?? otherItems[0]?.option_id;
       const otherChecked = otherItems.length > 0;
       const inline = hasOtherRow(otherItems[0]?.option_id);
+      const otherRowValue = (key: string) => `other:${key}`;
 
-      // Blank drafts aren't submitted. A checked Other with nothing typed still sends one
-      // blank entry, so the "type your answer" check catches it.
-      function commitOther(drafts: OtherDraft[], checked: boolean) {
+      // Every ticked entry is submitted, blank or not, so the "type your answer" check
+      // catches a ticked blank one.
+      function commitOther(drafts: OtherDraft[]) {
         setOtherDrafts(drafts);
+        if (!otherId) return;
         const rest = items.filter((item) => pickedOptionId(item) !== otherId);
-        if (!checked || !otherId) return onChange?.(rest);
-        const texts = drafts.map((d) => d.text).filter((text) => text.trim());
         onChange?.([
           ...rest,
-          ...(texts.length > 0 ? texts : [""]).map((text) => ({ option_id: otherId, text })),
+          ...drafts.filter((d) => d.checked).map((d) => ({ option_id: otherId, text: d.text })),
         ]);
       }
       function toggle(optionId: string) {
         if (!editable) return;
-        if (optionId === otherId) return commitOther(otherDrafts, !otherChecked);
+        // The Other button in buttons mode ticks or unticks every entry at once.
+        if (optionId === otherId)
+          return commitOther(otherDrafts.map((d) => ({ ...d, checked: !otherChecked })));
+        const draft = otherDrafts.find((d) => otherRowValue(d.key) === optionId);
+        if (draft)
+          return commitOther(
+            otherDrafts.map((d) => (d === draft ? { ...d, checked: !d.checked } : d)),
+          );
         onChange?.(
           selected.includes(optionId)
             ? items.filter((item) => pickedOptionId(item) !== optionId)
@@ -533,43 +541,37 @@ function QuestionBody({
         setFocusOtherKey(added.key);
       }
 
-      const entries: OtherDraft[] = editable
-        ? otherDrafts
-        : otherItems.length > 0
-          ? otherItems.map((item, i) => ({ key: String(i), text: item.text }))
-          : [{ key: "0", text: "" }];
-      const otherFields = showsOtherField(otherChecked)
-        ? entries.map((draft, i) => (
-            <div key={draft.key}>
-              {otherInput(
-                draft.text,
-                (text) =>
-                  commitOther(
-                    otherDrafts.map((d) => (d.key === draft.key ? { ...d, text } : d)),
-                    true,
-                  ),
-                {
-                  inline,
-                  autoFocus: draft.key === focusOtherKey,
-                  onAddAnother: () => addOtherAfter(i),
-                  onRemove:
-                    editable && otherDrafts.length > 1
-                      ? () =>
-                          commitOther(
-                            otherDrafts.filter((d) => d.key !== draft.key),
-                            otherChecked,
-                          )
-                      : undefined,
-                },
-              )}
-            </div>
-          ))
-        : [];
+      const entries: OtherDraft[] = !showsOtherField(otherChecked)
+        ? []
+        : editable
+          ? otherDrafts
+          : otherItems.length > 0
+            ? otherItems.map((item, i) => ({ key: String(i), text: item.text, checked: true }))
+            : [{ key: "0", text: "", checked: false }];
+      const otherField = (draft: OtherDraft, i: number) => (
+        <div key={draft.key}>
+          {otherInput(
+            draft.text,
+            (text) =>
+              commitOther(
+                otherDrafts.map((d) => (d.key === draft.key ? { ...d, text, checked: true } : d)),
+              ),
+            {
+              inline,
+              autoFocus: draft.key === focusOtherKey,
+              onAddAnother: () => addOtherAfter(i),
+              onRemove:
+                editable && otherDrafts.length > 1
+                  ? () => commitOther(otherDrafts.filter((d) => d.key !== draft.key))
+                  : undefined,
+            },
+          )}
+        </div>
+      );
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
         label: labelFor(opt),
         badge: badgeFor(opt.option_id),
-        content: inline && opt.option_id === otherOptionId ? otherFields[0] : undefined,
       }));
 
       const control =
@@ -583,8 +585,24 @@ function QuestionBody({
           />
         ) : (
           <CheckboxList
-            options={displayOptions}
-            value={selected}
+            // In a list, each Other entry is its own row with its own box.
+            options={displayOptions.flatMap<CheckboxListOption>((opt) =>
+              inline && entries.length > 0 && opt.value === otherOptionId
+                ? entries.map((draft, i) => ({
+                    value: otherRowValue(draft.key),
+                    label: OTHER_LABEL,
+                    content: otherField(draft, i),
+                  }))
+                : [opt],
+            )}
+            value={
+              inline
+                ? [
+                    ...selected.filter((id) => id !== otherId),
+                    ...entries.filter((d) => d.checked).map((d) => otherRowValue(d.key)),
+                  ]
+                : selected
+            }
             onChange={toggle}
             locked={!editable}
             size={19}
@@ -608,10 +626,8 @@ function QuestionBody({
             </Button>
           </div>
         ) : null;
-      const extraFields = [...(inline ? otherFields.slice(1) : otherFields), addAnother].filter(
-        Boolean,
-      );
-      // Indented past the 19px box and 16px label gap to line up under the first field.
+      const extraFields = [...(inline ? [] : entries.map(otherField)), addAnother].filter(Boolean);
+      // Indented past the 19px box and 16px label gap to line up under the Other fields.
       return withOtherFields(control, extraFields, inline ? 35 : 0);
     }
 
