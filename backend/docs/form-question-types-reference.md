@@ -69,7 +69,7 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 
 `single_select_radio`, `single_select_dropdown` and `multi_select_checkbox` may mark one live option `is_other: true`. The respondent types their own answer instead of picking its label, and it branches like any other option. Its `value` is never stored as an answer, so it's exempt from the unique-value check. A preset field (any reserved key, lunch included) can't have one, since its options map to tournament data. A submission that picks Other with blank text (or more than 500 characters), or sends `text` for an option that isn't Other, is rejected with a 400.
 
-A `multi_select_checkbox` answer may hold several Other items, one per typed entry (the respondent adds one with Enter). **Known gap:** nothing caps how many, on the server or in the form, and the same text can repeat. Each entry is limited to 500 characters, but a single answer can still grow without bound. A cap belongs in `invalid_other_answer_field_keys` (`app/core/form/branching.py`).
+A `multi_select_checkbox` answer may hold several Other items, one per typed entry (the respondent adds one with "Add another" or Shift+Enter). **Known gap:** nothing caps how many, on the server or in the form, and the same text can repeat. Each entry is limited to 500 characters, but a single answer can still grow without bound. A cap belongs in `invalid_other_answer_field_keys` (`app/core/form/branching.py`).
 
 ## Branching
 

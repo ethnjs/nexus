@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
 import styles from "@/components/forms/FormFlow.module.css";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
@@ -204,6 +204,37 @@ export function FormFillFlow({
     if (nextField) setPendingScrollId(nextField.id);
     else setPendingBarClearanceId(field.id);
   }
+
+  // Enter continues the active question, the same as its button. The listener reads the latest
+  // handler through a ref so it's attached once.
+  const continueActiveRef = useRef<((target: HTMLElement) => void) | null>(null);
+  useEffect(() => {
+    const active = visibleFields[visibleFields.length - 1];
+    continueActiveRef.current =
+      active && !allContinued && !showSuccess
+        ? (target) => {
+            // Focus left in an earlier card doesn't count, so one key can't skip ahead.
+            const card = target.closest<HTMLElement>("[data-form-field]");
+            if (card ? card.dataset.formField === active.id : target === document.body) {
+              handleContinue(active);
+            }
+          }
+        : null;
+  });
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter" || e.shiftKey || e.defaultPrevented || e.isComposing) return;
+      const target = e.target as HTMLElement;
+      // These keep Enter: a new line, a pressed button or link, a pick from an open list.
+      if (target.closest("textarea, button, a, [contenteditable='true'], [data-select-panel]")) {
+        return;
+      }
+      continueActiveRef.current?.(target);
+      if (target instanceof HTMLInputElement) target.blur();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));

@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { CheckboxList } from "@/components/ui/CheckboxList";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormattedText } from "@/components/ui/FormattedText";
-import { IconX } from "@/components/ui/Icons";
+import { IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { RadioList } from "@/components/ui/RadioList";
 import { RankedList } from "@/components/ui/RankedList";
@@ -304,9 +304,14 @@ function QuestionBody({
     {
       inline = false,
       autoFocus = false,
-      onEnter,
+      onAddAnother,
       onRemove,
-    }: { inline?: boolean; autoFocus?: boolean; onEnter?: () => void; onRemove?: () => void } = {},
+    }: {
+      inline?: boolean;
+      autoFocus?: boolean;
+      onAddAnother?: () => void;
+      onRemove?: () => void;
+    } = {},
   ) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -315,10 +320,11 @@ function QuestionBody({
             font="sans"
             value={text}
             onChange={(e) => editable && onText(e.target.value)}
+            // Plain Enter is left to bubble up, where the form flow takes it as Continue.
             onKeyDown={(e) => {
-              if (e.key !== "Enter" || !onEnter || !editable) return;
+              if (e.key !== "Enter" || !e.shiftKey || !onAddAnother || !editable) return;
               e.preventDefault();
-              onEnter();
+              onAddAnother();
             }}
             placeholder={OTHER_LABEL}
             maxLength={OTHER_TEXT_MAX_LENGTH}
@@ -545,7 +551,7 @@ function QuestionBody({
                 {
                   inline,
                   autoFocus: draft.key === focusOtherKey,
-                  onEnter: () => addOtherAfter(i),
+                  onAddAnother: () => addOtherAfter(i),
                   onRemove:
                     editable && otherDrafts.length > 1
                       ? () =>
@@ -588,10 +594,25 @@ function QuestionBody({
             labelGap="16px"
           />
         );
+      const addAnother =
+        editable && otherId ? (
+          <div key="add-another">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Or press Shift+Enter in an Other field"
+              onClick={() => addOtherAfter(otherDrafts.length - 1)}
+            >
+              <IconPlus size={12} /> Add another
+            </Button>
+          </div>
+        ) : null;
+      const extraFields = [...(inline ? otherFields.slice(1) : otherFields), addAnother].filter(
+        Boolean,
+      );
       // Indented past the 19px box and 16px label gap to line up under the first field.
-      return inline
-        ? withOtherFields(control, otherFields.slice(1), 35)
-        : withOtherFields(control, otherFields);
+      return withOtherFields(control, extraFields, inline ? 35 : 0);
     }
 
     case "ranked_choice": {
