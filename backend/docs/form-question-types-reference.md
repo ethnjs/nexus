@@ -52,15 +52,16 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 | `question_type` | `config` | Answer | Branching |
 |---|---|---|---|
 | `acknowledgment` | `required`, `confirm_label` | `true` | no |
-| `single_select_radio` | `required`, `options`, `display_style` (`"list"` or `"buttons"`), `track_status_enabled` | one snapshot | yes |
+| `single_select_radio` | `required`, `options`, `display_style` (`"list"` or `"buttons"`), `track_status_enabled`, `show_shift_times` | one snapshot | yes |
 | `single_select_dropdown` | `required`, `options` | one snapshot | yes |
-| `multi_select_checkbox` | `required`, `options`, `display_style`, `track_status_enabled` | list of snapshots | no |
+| `multi_select_checkbox` | `required`, `options`, `display_style`, `track_status_enabled`, `show_shift_times` | list of snapshots | no |
 | `ranked_choice` | `required`, `options`, `ranks`, `allow_duplicates` | `{"1": snapshot, "2": snapshot}` | no |
 | `short_text`, `long_text` | `required`, `max_length` | string | no |
 
 - `ranks` can't exceed the number of options.
 - With `allow_duplicates: false`, an answer that picks one option at two ranks is rejected with a 400.
 - `track_status_enabled` is valid only on an `availability_*` field.
+- `show_shift_times` (default `true`) is read only on an `availability_*` field: when `false`, respondent views show each option's label without its shift times.
 
 ## Branching
 

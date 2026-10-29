@@ -190,6 +190,16 @@ class TestValidateFieldConfig:
         )
         assert config["options"][0]["value"]["track_statuses"] == []
 
+    @pytest.mark.parametrize("question_type", ["single_select_radio", "multi_select_checkbox"])
+    def test_show_shift_times_kept_when_set_and_left_out_when_omitted(self, question_type):
+        options = [{"option_id": "opt_1", "value": [], "label": "Morning"}]
+        hidden = validate_field_config(
+            question_type, {"required": False, "show_shift_times": False, "options": options}
+        )
+        assert hidden["show_shift_times"] is False
+        omitted = validate_field_config(question_type, {"required": False, "options": options})
+        assert "show_shift_times" not in omitted
+
     def test_availability_option_naming_a_track_twice_rejected(self):
         with pytest.raises(FormFieldValidationError, match="duplicate track_id"):
             validate_field_config(

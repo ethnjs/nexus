@@ -110,12 +110,12 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
         raise FormFieldValidationError(str(e)) from e
 
     normalized = parsed.model_dump()
-    # These fields were added for track statuses after forms already existed.
-    # Keep an omitted opt-in/mapping omitted instead of rewriting every
-    # unrelated form field the next time its form is saved.
+    # Added after forms already existed: keep an omitted flag omitted instead of
+    # rewriting every unrelated field the next time its form is saved.
     source = config or {}
-    if "track_status_enabled" not in source:
-        normalized.pop("track_status_enabled", None)
+    for key in ("track_status_enabled", "show_shift_times"):
+        if key not in source:
+            normalized.pop(key, None)
     return normalized
 
 

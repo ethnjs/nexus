@@ -129,6 +129,7 @@ class SingleSelectRadioConfig(BaseModel):
     # a style choice), so this doesn't exist on that config.
     display_style: Literal["buttons", "list"] = "list"
     track_status_enabled: bool = False
+    show_shift_times: bool = True
     options: list[BranchingOption]
 
     @field_validator("options")
@@ -153,6 +154,7 @@ class MultiSelectCheckboxConfig(BaseModel):
     required: bool
     display_style: Literal["buttons", "list"] = "list"
     track_status_enabled: bool = False
+    show_shift_times: bool = True
     options: list[PlainOption]
 
     @field_validator("options")

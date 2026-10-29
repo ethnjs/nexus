@@ -1918,6 +1918,8 @@ export interface FormFieldConfig {
   // (always a closed Dropdown control, not a style choice).
   display_style?: "buttons" | "list";
   track_status_enabled?: boolean;
+  /** Availability only: append each option's shift times. Omitted means shown. */
+  show_shift_times?: boolean;
 }
 
 export interface FormField {

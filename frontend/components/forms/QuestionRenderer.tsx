@@ -249,6 +249,8 @@ function QuestionBody({
   removedOptions?: FormFieldOption[];
 }) {
   const config = field.config ?? {};
+  const labelFor =
+    config.show_shift_times === false ? (opt: FormFieldOption) => opt.label : optionLabel;
   // Locked keeps the answer on screen but refuses edits, so every input is
   // locked and every handler is a no-op. `interactive` still decides whether
   // there is an answer to show at all.
@@ -319,7 +321,7 @@ function QuestionBody({
       const options = liveOptions;
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
-        label: optionLabel(opt),
+        label: labelFor(opt),
         badge: badgeFor(opt.option_id),
       }));
       const selected = interactive ? ((value as string | undefined) ?? "") : "";
@@ -371,7 +373,7 @@ function QuestionBody({
       const options = liveOptions;
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
-        label: optionLabel(opt),
+        label: labelFor(opt),
         badge: badgeFor(opt.option_id),
       }));
       const selected = interactive ? ((value as string[] | undefined) ?? []) : [];
