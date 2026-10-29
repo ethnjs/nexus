@@ -7,7 +7,7 @@ import type {
   FormQuestionType,
 } from "@/lib/api";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -43,6 +43,7 @@ export function cleanOption(option: StagedOption, questionType: FormQuestionType
     value: option.value,
     label: option.label,
     ...(option.is_archived !== undefined ? { is_archived: option.is_archived } : {}),
+    ...(option.is_other && OTHER_TYPES.includes(questionType) ? { is_other: true } : {}),
     ...(branching && option.next_field_id !== undefined
       ? { next_field_id: option.next_field_id }
       : {}),

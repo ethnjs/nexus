@@ -1,14 +1,16 @@
 import type { FormField, FormFieldOption } from "@/lib/api";
+import { pickedOptionId } from "@/lib/forms/otherAnswer";
 
 // A stored choice answer holds {option_id, value, label} snapshots (see
 // snapshot_answer_value on the backend), but QuestionRenderer takes the same
 // bare option_id shape a respondent submits. This unwraps one into the other —
 // the frontend twin of the backend's selected_option_ids.
 
+// An Other snapshot keeps its typed text, so it unwraps to {option_id, text}.
 function unwrap(item: unknown): unknown {
-  return item !== null && typeof item === "object" && "option_id" in item
-    ? (item as { option_id: unknown }).option_id
-    : item;
+  if (item === null || typeof item !== "object" || !("option_id" in item)) return item;
+  const { option_id, text } = item as { option_id: unknown; text?: unknown };
+  return typeof text === "string" ? { option_id, text } : option_id;
 }
 
 export function storedAnswerToInput(value: unknown): unknown {
@@ -37,7 +39,7 @@ export function removedPickedOptions(field: FormField, value: unknown): FormFiel
   const removed = new Map<string, FormFieldOption>();
 
   for (const item of storedItems(value)) {
-    const optionId = unwrap(item);
+    const optionId = pickedOptionId(unwrap(item));
     if (typeof optionId !== "string" || live.has(optionId) || removed.has(optionId)) continue;
     const fromConfig = all.find((o) => o.option_id === optionId);
     if (fromConfig) {

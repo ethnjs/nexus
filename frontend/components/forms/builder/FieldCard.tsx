@@ -19,6 +19,7 @@ import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
   OPTION_BEARING_TYPES,
+  OTHER_TYPES,
   QUESTION_TYPE_OPTIONS,
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
@@ -324,7 +325,9 @@ export function FieldCard({
     // Per-option keys too — sanitizeConfigForType only knows config-level
     // ones, and a radio's branch keys on a checkbox option 422 the save.
     if (config.options)
-      config.options = config.options.map((option) => cleanOption(option, questionType));
+      config.options = config.options
+        .filter((option) => !option.is_other || OTHER_TYPES.includes(questionType))
+        .map((option) => cleanOption(option, questionType));
     const needsStarterOption =
       OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = (extension.newOption ?? newOption)();

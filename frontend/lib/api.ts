@@ -1869,6 +1869,8 @@ export interface FormFieldOption {
     | ResolvedEventOption[];
   label: string;
   is_archived?: boolean;
+  /** The respondent types their own answer in place of picking this option's label. */
+  is_other?: boolean;
   // single_select_radio/dropdown only — mutually exclusive with each other.
   next_field_id?: string | null;
   action?: "submit_form" | null;

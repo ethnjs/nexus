@@ -2798,6 +2798,121 @@ class TestAnswerSnapshotting:
 # ---------------------------------------------------------------------------
 
 
+class TestOtherOption:
+    """An is_other option takes the respondent's typed text as the answer."""
+
+    OPTIONS = [
+        {"option_id": "opt_red", "value": "red", "label": "Red"},
+        {"option_id": "opt_other", "value": "Other", "label": "Other", "is_other": True},
+    ]
+
+    def _form(self, db, td_user, td_tournament, question_type="single_select_radio", **config):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db,
+            form,
+            question_type=question_type,
+            config={"required": True, "options": self.OPTIONS, **config},
+        )
+        db.commit()
+        return form, field
+
+    def _submit(self, client, form, field, value):
+        return client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": value}]},
+        )
+
+    def test_typed_text_is_stored_as_the_answer(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament, question_type="multi_select_checkbox")
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(
+            client, form, field, ["opt_red", {"option_id": "opt_other", "text": " Teal "}]
+        )
+        assert res.status_code == 200, res.json()
+        assert res.json()["answers"][0]["value"] == [
+            {"option_id": "opt_red", "value": "red", "label": "Red"},
+            {"option_id": "opt_other", "value": "Teal", "label": "Other", "text": "Teal"},
+        ]
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            {"option_id": "opt_other", "text": "  "},
+            "opt_other",
+            {"option_id": "opt_red", "text": "Teal"},
+        ],
+    )
+    def test_other_without_text_or_text_on_a_regular_option_rejected(
+        self, client, db, td_user, td_tournament, value
+    ):
+        form, field = self._form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(client, form, field, value)
+        assert res.status_code == 400
+        assert "Other" in res.json()["detail"]
+
+    def test_other_follows_its_branch(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament)
+        _make_field(
+            db, form, order=2, field_key="skipped", config={**field.config, "required": True}
+        )
+        last = _make_field(db, form, order=3, field_key="last")
+        field.config = {
+            "required": True,
+            "options": [
+                self.OPTIONS[0],
+                {**self.OPTIONS[1], "next_field_id": last.id},
+            ],
+        }
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        # `skipped` is required, so a 200 means Other's jump took the walk past it.
+        res = self._submit(client, form, field, {"option_id": "opt_other", "text": "Teal"})
+        assert res.status_code == 200, res.json()
+        assert {a["field_id"] for a in res.json()["answers"]} == {field.id}
+
+    def test_patch_replays_a_stored_other_answer(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament)
+        form.allow_response_edits = True
+        second = _make_field(db, form, order=2, field_key="second")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        submitted = self._submit(client, form, field, {"option_id": "opt_other", "text": "Teal"})
+        assert submitted.status_code == 200, submitted.json()
+
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": second.id, "value": "opt_2"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+    def test_preset_field_cannot_have_other(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        track_id = primary_track_id(db, td_tournament.id)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "label": "Lunch",
+                        "field_key": f"lunch_{track_id}_main",
+                        "question_type": "single_select_radio",
+                        "config": {"required": False, "options": self.OPTIONS},
+                    }
+                ]
+            },
+        )
+        assert res.status_code == 422
+        assert "Other" in res.json()["detail"]
+
+
 class TestWriteThroughOnSubmit:
     def test_availability_write_through_on_tournament_form(
         self, client, db, td_user, td_tournament

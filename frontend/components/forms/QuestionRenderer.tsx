@@ -21,7 +21,13 @@ import type {
 } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import { type ExtendableField, useFieldExtension } from "@/lib/forms/builderAddon";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
+import {
+  isOtherAnswer,
+  OTHER_TEXT_MAX_LENGTH,
+  type OtherAnswer,
+  pickedOptionId,
+} from "@/lib/forms/otherAnswer";
 import { formatTimeRange } from "@/lib/timeFormat";
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -264,6 +270,40 @@ function QuestionBody({
   ];
   const badgeFor = (optionId: string) =>
     removedIds.has(optionId) ? <Badge variant="declined">Removed</Badge> : undefined;
+  const otherOptionId = liveOptions.find((opt) => opt.is_other)?.option_id;
+  // A single select's answer: the picked option_id, or {option_id, text} for Other.
+  const singleOther = interactive && isOtherAnswer(value) ? value : null;
+  const singleSelected = interactive ? String(pickedOptionId(value) ?? "") : "";
+  function pickSingle(optionId: string) {
+    if (!editable) return;
+    onChange?.(
+      optionId === otherOptionId
+        ? { option_id: optionId, text: singleOther?.text ?? "" }
+        : optionId,
+    );
+  }
+  function withOtherText(
+    control: ReactNode,
+    other: OtherAnswer | null,
+    setText: (text: string) => void,
+  ) {
+    if (!other) return control;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {control}
+        <Input
+          value={other.text}
+          onChange={(e) => editable && setText(e.target.value)}
+          placeholder="Your answer"
+          maxLength={OTHER_TEXT_MAX_LENGTH}
+          locked={!editable}
+          fullWidth
+        />
+      </div>
+    );
+  }
+  const setSingleOtherText = (text: string) =>
+    singleOther && onChange?.({ option_id: singleOther.option_id, text });
 
   switch (field.question_type) {
     case "short_text":
@@ -324,39 +364,36 @@ function QuestionBody({
         label: labelFor(opt),
         badge: badgeFor(opt.option_id),
       }));
-      const selected = interactive ? ((value as string | undefined) ?? "") : "";
 
-      if (config.display_style === "buttons") {
-        return (
+      const control =
+        config.display_style === "buttons" ? (
           <ButtonGroup
             options={displayOptions}
-            value={selected}
-            onChange={(v) => editable && onChange?.(v)}
+            value={singleSelected}
+            onChange={pickSingle}
             locked={!editable}
             clickThrough={!interactive}
           />
+        ) : (
+          <RadioList
+            options={displayOptions}
+            value={singleSelected}
+            onChange={pickSingle}
+            locked={!editable}
+            size={19}
+            fontSize="16px"
+            gap="8px"
+          />
         );
-      }
-
-      return (
-        <RadioList
-          options={displayOptions}
-          value={selected}
-          onChange={(v) => editable && onChange?.(v)}
-          locked={!editable}
-          size={19}
-          fontSize="16px"
-          gap="8px"
-        />
-      );
+      return withOtherText(control, singleOther, setSingleOtherText);
     }
 
     case "single_select_dropdown": {
       const options = liveOptions;
-      return (
+      return withOtherText(
         <Dropdown
-          value={interactive ? ((value as string | undefined) ?? "") : ""}
-          onChange={(v) => editable && onChange?.(v)}
+          value={singleSelected}
+          onChange={pickSingle}
           options={options.map((opt) => ({
             value: opt.option_id,
             label: opt.label,
@@ -365,7 +402,9 @@ function QuestionBody({
           placeholder="Choose"
           locked={!editable}
           fullWidth
-        />
+        />,
+        singleOther,
+        setSingleOtherText,
       );
     }
 
@@ -376,19 +415,25 @@ function QuestionBody({
         label: labelFor(opt),
         badge: badgeFor(opt.option_id),
       }));
-      const selected = interactive ? ((value as string[] | undefined) ?? []) : [];
+      // Each item is an option_id, or {option_id, text} for Other.
+      const items = interactive ? ((value as unknown[] | undefined) ?? []) : [];
+      const selected = items.map((item) => String(pickedOptionId(item)));
+      const otherItem = items.find(isOtherAnswer) ?? null;
 
       function toggle(optionId: string) {
         if (!editable) return;
         onChange?.(
           selected.includes(optionId)
-            ? selected.filter((id) => id !== optionId)
-            : [...selected, optionId],
+            ? items.filter((item) => pickedOptionId(item) !== optionId)
+            : [...items, optionId === otherOptionId ? { option_id: optionId, text: "" } : optionId],
         );
       }
+      function setOtherText(text: string) {
+        onChange?.(items.map((item) => (isOtherAnswer(item) ? { ...item, text } : item)));
+      }
 
-      if (config.display_style === "buttons") {
-        return (
+      const control =
+        config.display_style === "buttons" ? (
           <ButtonGroup
             options={displayOptions}
             value={selected}
@@ -396,22 +441,20 @@ function QuestionBody({
             locked={!editable}
             clickThrough={!interactive}
           />
+        ) : (
+          <CheckboxList
+            options={displayOptions}
+            value={selected}
+            onChange={toggle}
+            locked={!editable}
+            size={19}
+            fontSize="16px"
+            gap="8px"
+            rowHeight="36px"
+            labelGap="16px"
+          />
         );
-      }
-
-      return (
-        <CheckboxList
-          options={displayOptions}
-          value={selected}
-          onChange={toggle}
-          locked={!editable}
-          size={19}
-          fontSize="16px"
-          gap="8px"
-          rowHeight="36px"
-          labelGap="16px"
-        />
-      );
+      return withOtherText(control, otherItem, setOtherText);
     }
 
     case "ranked_choice": {
@@ -530,6 +573,9 @@ function QuestionEditBody({
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             syncValueWithLabel={!customValuesEnabled}
             errors={errors}
+            allowOther={
+              OTHER_TYPES.includes(field.question_type) && extension.allowsOther !== false
+            }
           />
         )}
         {/* Ranks applies to ranked_choice whichever editor renders the rows —

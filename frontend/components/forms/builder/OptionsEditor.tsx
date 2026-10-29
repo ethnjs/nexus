@@ -25,6 +25,7 @@ import { RadioCircle } from "@/components/ui/RadioCircle";
 import type { FormFieldOption, FormQuestionType } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import { useSuspendCardScroll } from "@/lib/forms/cardScroll";
+import { OTHER_LABEL } from "@/lib/forms/otherAnswer";
 
 // Same option shape the backend expects, plus a client-only stable id for
 // React/dnd-kit — option_id itself is blank ("") for a not-yet-saved option
@@ -34,6 +35,10 @@ export type EditableOption = FormFieldOption & { clientKey: string };
 
 export function newOption(): EditableOption {
   return { clientKey: crypto.randomUUID(), option_id: "", value: "", label: "" };
+}
+
+function newOtherOption(): EditableOption {
+  return { ...newOption(), value: OTHER_LABEL, label: OTHER_LABEL, is_other: true };
 }
 
 // Which disabled "this is what a respondent sees" bullet to show per row —
@@ -169,6 +174,8 @@ interface OptionsEditorProps {
   /** Whether archiving an option is offered alongside removing it. Only
       meaningful once the form has responses — see QuestionRenderer. */
   allowArchive?: boolean;
+  /** Offers an "add Other" link, for a question whose respondent may type their own answer. */
+  allowOther?: boolean;
   /** This field's validation messages (useFormValidation's per-field issues) —
       only consulted to gate the two option-shaped ones ("needs a label"/
       "must be unique") so a row's own Input.error stays blank until a Save
@@ -196,6 +203,7 @@ export function OptionsEditor({
   syncValueWithLabel = true,
   errors = [],
   allowArchive = false,
+  allowOther = false,
 }: OptionsEditorProps) {
   // `options` carries archived entries too, but they're not part of the list
   // a respondent sees — they're listed separately below so they don't join
@@ -205,8 +213,11 @@ export function OptionsEditor({
   // list just throws away your place. Every remove/archive path below says
   // "hold still" first.
   const suspendCardScroll = useSuspendCardScroll();
-  const liveOptions = options.filter((o) => !o.is_archived);
+  // The Other row is always last and isn't dragged, so only the rest are sortable.
+  const liveOptions = options.filter((o) => !o.is_archived && !o.is_other);
+  const otherOptions = options.filter((o) => !o.is_archived && o.is_other);
   const archivedOptions = options.filter((o) => o.is_archived);
+  const canAddOther = allowOther && !options.some((o) => o.is_other);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const bulletType = bulletTypeFor(questionType);
 
@@ -242,7 +253,7 @@ export function OptionsEditor({
     const oldIndex = liveOptions.findIndex((o) => o.clientKey === active.id);
     const newIndex = liveOptions.findIndex((o) => o.clientKey === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-    onChange([...arrayMove(liveOptions, oldIndex, newIndex), ...archivedOptions]);
+    onChange([...arrayMove(liveOptions, oldIndex, newIndex), ...otherOptions, ...archivedOptions]);
   }
 
   function updateOption(clientKey: string, label: string) {
@@ -267,7 +278,7 @@ export function OptionsEditor({
   // last live row can't be removed — only cleared out and edited in place.
   // Archived rows don't count toward that: none of them can be picked.
   function removeOption(clientKey: string) {
-    if (liveOptions.length <= 1) return;
+    if (liveOptions.length <= 1 && liveOptions.some((o) => o.clientKey === clientKey)) return;
     suspendCardScroll();
     onChange(options.filter((o) => o.clientKey !== clientKey));
   }
@@ -280,7 +291,11 @@ export function OptionsEditor({
   }
 
   function addOption() {
-    onChange([...liveOptions, createOption(), ...archivedOptions]);
+    onChange([...liveOptions, createOption(), ...otherOptions, ...archivedOptions]);
+  }
+
+  function addOther() {
+    onChange([...liveOptions, newOtherOption(), ...archivedOptions]);
   }
 
   // Enter from inside a row inserts right after it, rather than appending at
@@ -290,7 +305,7 @@ export function OptionsEditor({
     const created = createOption();
     const next = [...liveOptions];
     next.splice(insertIndex, 0, created);
-    onChange([...next, ...archivedOptions]);
+    onChange([...next, ...otherOptions, ...archivedOptions]);
     setFocusKey(created.clientKey);
   }
 
@@ -346,12 +361,32 @@ export function OptionsEditor({
             />
           ))}
         </SortableContext>
+        {otherOptions.map((option) => (
+          <OptionRow
+            key={option.clientKey}
+            option={option}
+            bulletType={bulletType}
+            number={liveOptions.length + 1}
+            displayStyle={displayStyle}
+            trailing={trailing?.(option)}
+            canRemove
+            allowArchive={allowArchive}
+            autoFocus={false}
+            fixed
+            onChange={() => {}}
+            onRemove={() =>
+              allowArchive ? setArchived(option.clientKey, true) : removeOption(option.clientKey)
+            }
+            onEnter={() => {}}
+          />
+        ))}
       </DndContext>
       <AddOptionRow
         bulletType={bulletType}
-        number={liveOptions.length + 1}
+        number={liveOptions.length + otherOptions.length + 1}
         displayStyle={displayStyle}
         onClick={addOption}
+        onAddOther={canAddOther ? addOther : undefined}
       />
       <ArchivedOptions
         options={archivedOptions}
@@ -449,11 +484,13 @@ function AddOptionRow({
   number,
   displayStyle,
   onClick,
+  onAddOther,
 }: {
   bulletType: BulletType;
   number: number;
   displayStyle?: "list" | "buttons";
   onClick: () => void;
+  onAddOther?: () => void;
 }) {
   if (bulletType === "none") {
     return (
@@ -481,6 +518,22 @@ function AddOptionRow({
       >
         Add option
       </Button>
+      {onAddOther && (
+        <>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            or
+          </span>
+          <Button type="button" variant="ghost" size="sm" onClick={onAddOther}>
+            add &ldquo;{OTHER_LABEL}&rdquo;
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -502,6 +555,7 @@ function OptionRow({
   canRemove,
   allowArchive,
   autoFocus,
+  fixed = false,
   onChange,
   onRemove,
   onEnter,
@@ -520,6 +574,8 @@ function OptionRow({
   allowArchive: boolean;
   /** True for the row just inserted by pressing Enter in the row above it. */
   autoFocus: boolean;
+  /** The Other row: its label is fixed and it can't be dragged. */
+  fixed?: boolean;
   onChange: (label: string) => void;
   /** Archives or deletes depending on allowArchive — the row only knows it's
       the "take this out of the list" action. */
@@ -528,6 +584,7 @@ function OptionRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: option.clientKey,
+    disabled: fixed,
   });
   const [hovered, setHovered] = useState(false);
   // Translate, not Transform — CSS.Transform also emits the scaleX/scaleY
@@ -585,7 +642,7 @@ function OptionRow({
             display: "flex",
             cursor: "grab",
             color: "var(--color-text-tertiary)",
-            opacity: hovered ? 1 : 0,
+            opacity: hovered && !fixed ? 1 : 0,
             transition: "opacity 100ms ease",
             touchAction: "none",
           }}
@@ -609,6 +666,8 @@ function OptionRow({
           onKeyDown={handleKeyDown}
           placeholder="Option"
           error={error}
+          locked={fixed}
+          title={fixed ? "Respondents type their own answer" : undefined}
           size="md"
           fullWidth
         />

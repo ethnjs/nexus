@@ -55,7 +55,8 @@ function coreIssuesFor(field: ValidatableField): string[] {
       issues.push("Add at least one option.");
     } else {
       if (options.some((o) => !o.label.trim())) issues.push("Every option needs a label.");
-      const labels = options.map((o) => o.label.trim().toLowerCase());
+      // An Other row is never matched by its label, so "Other" may also be a real option.
+      const labels = options.filter((o) => !o.is_other).map((o) => o.label.trim().toLowerCase());
       if (new Set(labels).size !== labels.length) issues.push("Option labels must be unique.");
     }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {

@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { FormattedText } from "@/components/ui/FormattedText";
 import type { Form, FormField } from "@/lib/api";
 import { computeWalk } from "@/lib/forms/branching";
+import { hasBlankOther } from "@/lib/forms/otherAnswer";
 import { removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
@@ -35,6 +36,7 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
     return undefined;
   }
   if (required && isBlank(value)) return "This question is required.";
+  if (hasBlankOther(value)) return "Type your Other answer.";
   return undefined;
 }
 

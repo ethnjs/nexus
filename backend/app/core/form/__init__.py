@@ -38,6 +38,16 @@ OPTION_BEARING_TYPES = {
 
 
 def _snapshot_option(options_by_id: dict, option_id) -> dict:
+    if isinstance(option_id, dict) and isinstance(option_id.get("text"), str):
+        # An Other pick, submitted as {option_id, text}: the typed text is the answer.
+        option = options_by_id.get(option_id.get("option_id")) or {}
+        text = option_id["text"].strip()
+        return {
+            "option_id": option_id.get("option_id"),
+            "value": text,
+            "label": option.get("label", "Other"),
+            "text": text,
+        }
     if not isinstance(option_id, str):
         return option_id
     option = options_by_id.get(option_id)
@@ -71,7 +81,7 @@ def snapshot_answer_value(field: FormField, value):
             if isinstance(value, dict)
             else value
         )
-    return _snapshot_option(options_by_id, value) if isinstance(value, str) else value
+    return _snapshot_option(options_by_id, value) if isinstance(value, (str, dict)) else value
 
 
 def selected_option_ids(field: FormField, value) -> set:

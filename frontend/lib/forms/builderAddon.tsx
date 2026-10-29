@@ -33,6 +33,8 @@ export interface FieldExtension {
   /** Defaults to true. */
   allowsCustomValues?: boolean;
   hideAllowDuplicates?: boolean;
+  /** Whether the TD may add an Other choice. Defaults to true. */
+  allowsOther?: boolean;
   /** Seeds a new option row, for add-ons whose option `value` isn't text. */
   newOption?: () => EditableOption;
   /** A duplicate keeps the source's key, and the add-on's popover opens to make it distinct. */

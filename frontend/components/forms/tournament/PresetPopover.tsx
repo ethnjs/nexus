@@ -58,7 +58,8 @@ function carryOptions(
   questionType: FormQuestionType,
 ): EditableOption[] {
   if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
-  const existing = field.config?.options ?? [];
+  // A preset maps every option to tournament data, so a typed Other answer has nowhere to go.
+  const existing = (field.config?.options ?? []).filter((option) => !option.is_other);
   if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
   // cleanOption, not a spread: a carried-over key the new shape doesn't
   // declare (branch keys on a non-branching type, anything preset-specific)

@@ -27,6 +27,13 @@ export const BRANCHING_TYPES: FormQuestionType[] = [
   "single_select_dropdown",
 ];
 
+// Types that can offer an Other choice with a typed answer.
+export const OTHER_TYPES: FormQuestionType[] = [
+  "single_select_radio",
+  "single_select_dropdown",
+  "multi_select_checkbox",
+];
+
 // Types whose config carries display_style — a TD-facing render choice
 // between a plain radio/checkbox list and a ButtonGroup pill layout. Matches
 // SingleSelectRadioConfig/MultiSelectCheckboxConfig's scope in

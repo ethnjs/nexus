@@ -14,7 +14,11 @@ from app.core.form import (
     slugify,
     snapshot_answer_value,
 )
-from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
+from app.core.form.branching import (
+    duplicate_ranked_choice_field_keys,
+    invalid_other_answer_field_keys,
+    missing_required_field_keys,
+)
 from app.core.form.permissions import (
     require_form_editable,
     require_form_manage_access,
@@ -35,6 +39,7 @@ from app.core.form.validation import (
     validate_event_preference_options,
     validate_field_config,
     validate_form_for_publish,
+    validate_other_option,
     validate_reserved_field_key,
     validate_tournament_preset,
     validate_track_status_options,
@@ -756,6 +761,7 @@ def bulk_update_fields(
         try:
             normalized = validate_field_config(question_type, config)
             validate_reserved_field_key(field_key, question_type)
+            validate_other_option(field_key, normalized)
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(
@@ -946,7 +952,11 @@ def _stored_answer_option_ids(
 
 
 def _unwrap_snapshot(item):
-    return item.get("option_id") if isinstance(item, dict) and "option_id" in item else item
+    if not isinstance(item, dict) or "option_id" not in item:
+        return item
+    if "text" in item:
+        return {"option_id": item["option_id"], "text": item["text"]}
+    return item["option_id"]
 
 
 def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
@@ -965,6 +975,15 @@ def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
             value = _unwrap_snapshot(value)
         result[answer.field_id] = value
     return result
+
+
+def _require_valid_other_answers(fields: list[FormField], answers: dict) -> None:
+    invalid = invalid_other_answer_field_keys(fields, answers)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Fill in the Other answer for field(s): {sorted(invalid)}",
+        )
 
 
 def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answers: list) -> None:
@@ -1032,6 +1051,7 @@ def submit_form_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
+    _require_valid_other_answers(active_fields, answers_by_field)
 
     response = FormResponse(form_id=form.id, user_id=current_user.id)
     db.add(response)
@@ -1115,6 +1135,7 @@ def patch_form_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
+    _require_valid_other_answers(list(fields_by_id.values()), answers_by_field)
 
     db.query(FormAnswer).filter(
         FormAnswer.response_id == response.id, FormAnswer.field_id.in_(patched_ids)

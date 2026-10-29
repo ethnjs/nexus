@@ -116,7 +116,20 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     for key in ("track_status_enabled", "show_shift_times"):
         if key not in source:
             normalized.pop(key, None)
+    for option in normalized.get("options", []):
+        if not option.get("is_other"):
+            option.pop("is_other", None)
     return normalized
+
+
+def validate_other_option(field_key: str, config: dict) -> None:
+    """Presets map each option to tournament data, so a free-text answer has
+    nowhere to go."""
+    if any(pattern.match(field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
+        _require(
+            not any(option.get("is_other") for option in config.get("options") or []),
+            f"field_key '{field_key}' is a preset and cannot have an Other option",
+        )
 
 
 def validate_reserved_field_key(field_key: str, question_type: str) -> None:
@@ -336,6 +349,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
 
         for check in (
             partial(validate_reserved_field_key, field.field_key, field.question_type),
+            partial(validate_other_option, field.field_key, normalized_config),
             partial(validate_tournament_preset, field.field_key, form.tournament_id),
             partial(validate_preset_track, db, form.tournament_id, field.field_key),
             partial(

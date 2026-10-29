@@ -200,6 +200,45 @@ class TestValidateFieldConfig:
         omitted = validate_field_config(question_type, {"required": False, "options": options})
         assert "show_shift_times" not in omitted
 
+    def test_other_option_may_share_a_regular_option_value(self):
+        config = validate_field_config(
+            "single_select_radio",
+            {
+                "required": False,
+                "options": [
+                    {"option_id": "opt_1", "value": "Other", "label": "Other"},
+                    {"option_id": "opt_2", "value": "Other", "label": "Other", "is_other": True},
+                ],
+            },
+        )
+        assert "is_other" not in config["options"][0]
+        assert config["options"][1]["is_other"] is True
+
+    def test_two_live_other_options_rejected(self):
+        other = {"value": "Other", "label": "Other", "is_other": True}
+        with pytest.raises(FormFieldValidationError, match="only one Other"):
+            validate_field_config(
+                "multi_select_checkbox",
+                {
+                    "required": False,
+                    "options": [{"option_id": "a", **other}, {"option_id": "b", **other}],
+                },
+            )
+
+    def test_ranked_choice_other_option_rejected(self):
+        with pytest.raises(FormFieldValidationError, match="Other"):
+            validate_field_config(
+                "ranked_choice",
+                {
+                    "required": False,
+                    "ranks": 1,
+                    "allow_duplicates": False,
+                    "options": [
+                        {"option_id": "a", "value": "Other", "label": "Other", "is_other": True}
+                    ],
+                },
+            )
+
     def test_availability_option_naming_a_track_twice_rejected(self):
         with pytest.raises(FormFieldValidationError, match="duplicate track_id"):
             validate_field_config(

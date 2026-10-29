@@ -209,6 +209,7 @@ function extendField(field: ExtendableField): FieldExtension {
     // A track status answer is what moves the member's track, so it can't be skipped.
     requiredLocked: kind === "track_status",
     allowsCustomValues: allowsCustomValues(kind),
+    allowsOther: false,
     // Ranking one event twice means nothing, and the backend rejects the config.
     hideAllowDuplicates: kind === "event_preference",
     newOption: isEntityBackedPreset(kind) ? newEntityOption : undefined,

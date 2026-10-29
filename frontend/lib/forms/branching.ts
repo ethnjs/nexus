@@ -1,5 +1,6 @@
 import type { FormField, FormFieldConfig, FormFieldOption } from "@/lib/api";
 import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
+import { pickedOptionId } from "@/lib/forms/otherAnswer";
 import { toPlainText } from "@/lib/markdown";
 
 // Branching: a single-select option may jump forward to a later question or
@@ -90,7 +91,7 @@ export function computeWalk(fields: FormField[], answers: Record<string, unknown
 
     let next: FormField | null = null;
     if (BRANCHING_TYPES.includes(current.question_type)) {
-      const answer: unknown = answers[current.id];
+      const answer = pickedOptionId(answers[current.id]);
       const options: FormFieldOption[] = current.config?.options ?? [];
       const matched = options.find((o) => o.option_id === answer);
       if (matched) {

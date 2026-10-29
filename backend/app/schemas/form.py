@@ -30,13 +30,18 @@ def _unique_option_fields(options: list) -> list:
     groups. Two options grouping the same entities are redundant, not
     ambiguous — and requiring them to differ would reject the ordinary
     in-progress state where several options have nothing picked yet and are
-    all still empty."""
+    all still empty.
+
+    An Other option's value is never stored as an answer (the respondent's
+    text is), so it's left out of the value check. At most one may be live."""
     seen_ids, seen_values = set(), set()
+    if sum(1 for o in options if o.is_other and not o.is_archived) > 1:
+        raise ValueError("a question can have only one Other option")
     for option in options:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        if isinstance(option.value, str):
+        if isinstance(option.value, str) and not option.is_other:
             if option.value in seen_values:
                 raise ValueError(f"duplicate option value '{option.value}'")
             seen_values.add(option.value)
@@ -93,6 +98,8 @@ class PlainOption(BaseModel):
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
+    # The respondent types their own answer; see snapshot_answer_value.
+    is_other: bool = False
 
 
 class BranchingOption(BaseModel):
@@ -104,6 +111,7 @@ class BranchingOption(BaseModel):
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
+    is_other: bool = False
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
 
@@ -179,6 +187,8 @@ class RankedChoiceConfig(BaseModel):
     def _ranks_within_options(self):
         if self.ranks > len(self.options):
             raise ValueError("ranks cannot exceed the number of options")
+        if any(option.is_other for option in self.options):
+            raise ValueError("ranked_choice does not support an Other option")
         return self
 
 

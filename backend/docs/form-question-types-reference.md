@@ -45,6 +45,8 @@ All config and option schemas use `extra="forbid"`: an unknown key is a validati
 
 An answer to an option-bearing question stores a `{option_id, value, label}` snapshot taken at submission, so later edits to an option's text never change how a past answer reads. A checkbox answer stores a list of snapshots and a ranked answer stores `{rank: snapshot}`.
 
+An Other pick is submitted as `{"option_id": ..., "text": "..."}` in place of the bare `option_id` and stored as `{option_id, value, label, text}`, with the typed text in both `value` and `text`. Anything that displays `value` therefore shows what the respondent typed.
+
 Availability answers stored bare `option_id`s until revision 17852c91b77c, which copied in each option as it stood then. An id whose option was already gone from the config stays bare.
 
 ## Question types
@@ -62,6 +64,10 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 - With `allow_duplicates: false`, an answer that picks one option at two ranks is rejected with a 400.
 - `track_status_enabled` is valid only on an `availability_*` field.
 - `show_shift_times` (default `true`) is read only on an `availability_*` field: when `false`, respondent views show each option's label without its shift times.
+
+### Other
+
+`single_select_radio`, `single_select_dropdown` and `multi_select_checkbox` may mark one live option `is_other: true`. The respondent types their own answer instead of picking its label, and it branches like any other option. Its `value` is never stored as an answer, so it's exempt from the unique-value check. A preset field (any reserved key, lunch included) can't have one, since its options map to tournament data. A submission that picks Other with blank text (or more than 500 characters), or sends `text` for an option that isn't Other, is rejected with a 400.
 
 ## Branching
 
