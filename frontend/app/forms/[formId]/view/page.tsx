@@ -4,6 +4,7 @@ import { notFound, useParams, useRouter, useSearchParams } from "next/navigation
 import { useEffect, useMemo, useState } from "react";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import cardStyles from "@/components/layout/CenteredCard.module.css";
 import { Badge } from "@/components/ui/Badge";
@@ -101,6 +102,7 @@ export default function FormViewPage() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const { user, loading: authLoading } = useAuth();
   const [missing, setMissing] = useState(false);
+  const [noAccess, setNoAccess] = useState(false);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -117,6 +119,8 @@ export default function FormViewPage() {
           router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
         } else if (error instanceof ApiError && error.status === 404) {
           setMissing(true);
+        } else if (error instanceof ApiError && error.status === 403) {
+          setNoAccess(true);
         } else {
           setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
         }
@@ -194,6 +198,10 @@ export default function FormViewPage() {
 
   if (!user) return <SignInCard formId={formId} />;
   if (missing) notFound();
+  if (noAccess)
+    return (
+      <NoFormAccess description="This form is only open to some members of the tournament. If you think you should have it, contact the tournament director." />
+    );
 
   if (loadError) {
     return (

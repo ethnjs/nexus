@@ -10,7 +10,7 @@ How NEXUS decides which tournament forms a member sees, and which onboarding ste
 
 Managers with `manage_forms` skip the check. For everyone else, the gate on a published standard form runs whether or not they've answered it, so a member who loses a required role can no longer open their response. An archived form they answered stays readable.
 
-Onboarding forms take prerequisites too. A step a member fails is left off their path rather than blocking them.
+Onboarding forms take prerequisites too. A step a member fails is left off their path rather than blocking them, and opening its link gets the same prerequisites 403 as a standard form, not a redirect into the sequence.
 
 ## A member's onboarding path
 

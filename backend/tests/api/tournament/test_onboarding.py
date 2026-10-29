@@ -369,7 +369,10 @@ def test_progress_skips_steps_whose_prerequisites_the_member_fails(
     done = client.post(f"/tournaments/{td_tournament.id}/onboarding/progress/")
 
     assert first.json()["next_form_id"] == general.id
-    assert client.get(f"/forms/{supervisors.id}/").status_code == 403
+    # Off their path, so a plain no rather than a trip into the sequence.
+    excluded = client.get(f"/forms/{supervisors.id}/")
+    assert excluded.status_code == 403
+    assert excluded.json()["detail"] == "You do not meet this form's prerequisites"
     assert done.json()["next_form_id"] is None
     assert done.json()["onboarded_at"] is not None
 

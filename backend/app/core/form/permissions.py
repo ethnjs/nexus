@@ -77,6 +77,13 @@ def _form_not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
 
 
+def _prerequisites_not_met() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not meet this form's prerequisites",
+    )
+
+
 def _onboarding_required(tournament_id: int, is_onboarding: bool) -> HTTPException:
     """The frontend can't load the form, so the detail says whose sequence to
     send the member into and whether to come back after: a step of that
@@ -137,16 +144,18 @@ def require_form_view_access(
         if tournament_form.is_onboarding:
             # Their current step, or one they already completed — a finished
             # step stays reachable so its response can be read and revised
-            # (flagged updates, allow_response_edits).
-            if not responded and next_required_onboarding_form_id(db, membership) != form.id:
-                raise _onboarding_required(form.tournament_id, is_onboarding=True)
+            # (flagged updates, allow_response_edits). A step their roles keep
+            # off their path is a plain no; sending them into the sequence
+            # would find nothing for them there.
+            if not responded:
+                if not member_meets_form_prerequisites(db, membership, tournament_form):
+                    raise _prerequisites_not_met()
+                if next_required_onboarding_form_id(db, membership) != form.id:
+                    raise _onboarding_required(form.tournament_id, is_onboarding=True)
         elif needs_tournament_onboarding(db, membership, permissions):
             raise _onboarding_required(form.tournament_id, is_onboarding=False)
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not meet this form's prerequisites",
-            )
+            raise _prerequisites_not_met()
     else:
         if (
             current_user.role != "admin"
