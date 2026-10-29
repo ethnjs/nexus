@@ -91,6 +91,8 @@ export function FormFillFlow({
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   // Scrolled to in an effect, after the render that reveals its card commits.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // Focused the same way, so the next Tab lands in that question rather than at the page top.
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   // On the final Continue the submit bar slides in and the card drops its button; both have
   // to settle before we can tell whether the bar covers the card.
   const [pendingBarClearanceId, setPendingBarClearanceId] = useState<string | null>(null);
@@ -135,6 +137,14 @@ export function FormFillFlow({
       return next;
     });
   }, [walk]);
+
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    setPendingFocusId(null);
+    document
+      .querySelector<HTMLElement>(`[data-form-field="${pendingFocusId}"]`)
+      ?.focus({ preventScroll: true });
+  }, [pendingFocusId]);
 
   useEffect(() => {
     if (!pendingScrollId) return;
@@ -198,11 +208,15 @@ export function FormFillFlow({
 
   function handleContinue(field: FormField) {
     setAttemptedIds((prev) => new Set(prev).add(field.id));
-    if (fieldErrorMessage(field, answers[field.id])) return;
+    if (fieldErrorMessage(field, answers[field.id])) {
+      setPendingFocusId(field.id);
+      return;
+    }
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
     else setPendingBarClearanceId(field.id);
+    setPendingFocusId(nextField?.id ?? field.id);
   }
 
   // Enter continues the active question, the same as its button. The listener reads the latest
@@ -326,6 +340,7 @@ export function FormFillFlow({
             <Card
               key={field.id}
               data-form-field={field.id}
+              tabIndex={-1}
               radius="lg"
               variant={errorMessage ? "danger" : "normal"}
               className={styles.card}

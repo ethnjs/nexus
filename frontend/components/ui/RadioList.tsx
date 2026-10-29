@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { RadioCircle } from "@/components/ui/RadioCircle";
+import styles from "@/components/ui/RadioList.module.css";
 
 export interface RadioListOption {
   value: string;
@@ -26,7 +27,8 @@ interface RadioListProps {
 const ROW_HEIGHT = "36px";
 
 // Plain radio-circle list — the fallback for single-select when option
-// labels are too long for ButtonGroup's pill layout to read well.
+// labels are too long for ButtonGroup's pill layout to read well. Each row
+// holds a hidden native radio, so Tab, arrows and Space work as usual.
 export function RadioList({
   options,
   value,
@@ -36,11 +38,13 @@ export function RadioList({
   fontSize = "13px",
   gap = "8px",
 }: RadioListProps) {
+  const name = useId();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap }}>
       {options.map((opt) => (
         <RadioRow
           key={opt.value}
+          name={name}
           option={opt}
           checked={!!value && value === opt.value}
           locked={locked}
@@ -54,6 +58,7 @@ export function RadioList({
 }
 
 function RadioRow({
+  name,
   option,
   checked,
   locked,
@@ -61,6 +66,7 @@ function RadioRow({
   fontSize,
   onClick,
 }: {
+  name: string;
   option: RadioListOption;
   checked: boolean;
   locked: boolean;
@@ -69,8 +75,10 @@ function RadioRow({
   onClick: () => void;
 }) {
   return (
-    // biome-ignore lint/a11y/noLabelWithoutControl: RadioCircle is drawn, not an input; deferred to the accessibility pass
+    // onClick, not just the radio's change: a click into a row's own content (an Other text
+    // field) has to pick the row too, and labels don't forward those.
     <label
+      className={styles.row}
       onClick={onClick}
       // Lets a read-only preview of this list report which option was
       // clicked (the form builder focuses that option's editor row).
@@ -86,8 +94,18 @@ function RadioRow({
         borderRadius: "var(--radius-md)",
         background: "var(--color-surface)",
         cursor: locked ? "default" : "pointer",
+        position: "relative",
       }}
     >
+      <input
+        type="radio"
+        name={name}
+        value={option.value}
+        checked={checked}
+        disabled={locked}
+        onChange={onClick}
+        className={styles.input}
+      />
       <RadioCircle checked={checked} disabled={locked} size={size} />
       {/* Dimmed to match the circle, which already greys itself when
           disabled — a locked row reads as inactive rather than as an option

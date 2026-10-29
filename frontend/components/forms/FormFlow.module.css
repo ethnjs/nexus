@@ -18,6 +18,11 @@
   padding: 24px;
 }
 
+/* A card takes focus only as a starting point for Tab after Continue. */
+.card:focus {
+  outline: none;
+}
+
 @media (max-width: 640px) {
   .page {
     /*
