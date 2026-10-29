@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { newOption } from "@/components/forms/builder/OptionsEditor";
+import { type EditableOption, newOption } from "@/components/forms/builder/OptionsEditor";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -199,6 +199,17 @@ export function FieldCard({
   const addon = useFormBuilderAddon();
   const extension = useFieldExtension(field);
   const optionLabel = useOptionLabel(field);
+  // Unsaved options have no option_id yet, and the preview keys and matches options by it.
+  const options = field.config?.options as EditableOption[] | undefined;
+  const previewField = options?.some((o) => !o.option_id)
+    ? {
+        ...field,
+        config: {
+          ...field.config,
+          options: options.map((o) => (o.option_id ? o : { ...o, option_id: o.clientKey })),
+        },
+      }
+    : field;
   // Key errors and the add-on's own surface exclusively through FieldToolbar's
   // popovers (danger-colored trigger + inline message) — the card itself
   // doesn't show the key, so it shouldn't double-report the same problem in
@@ -505,7 +516,11 @@ export function FieldCard({
                 because the targets are rendered by shared components that
                 the respondent-facing form uses too. */}
             <div className="field-preview">
-              <QuestionRenderer field={field} interactive={false} optionLabel={optionLabel} />
+              <QuestionRenderer
+                field={previewField}
+                interactive={false}
+                optionLabel={optionLabel}
+              />
             </div>
           </Card>
         )}
