@@ -207,28 +207,26 @@ export function QuestionRenderer({
   );
 }
 
-// ResolvedShiftOption[] (GET-resolved, respondent-facing shape) elements are
-// objects. ResolvedEventOption[] is also an array of objects but has no
-// start/end, so checking for 'start' is what actually distinguishes the two
-// resolved shapes (event_preference options must never get a time range).
+// ResolvedEventOption[] is also an array of objects, so 'start' is what tells
+// the two resolved shapes apart — event options must never get a time range.
 function isResolvedShiftOptions(value: FormFieldOption["value"]): value is ResolvedShiftOption[] {
   return (
     Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && "start" in value[0]
   );
 }
 
-// availability's option label alone doesn't tell a respondent when it
-// actually is — this appends the span across every shift grouped under the
-// option (min start to max end, not one shift's own range) so "All Day"
-// reads as "All Day (7:00 AM–5:00 PM)" instead of leaving them to guess or
-// hunt down each shift individually. GET resolves `value` into those shifts;
-// the builder's preview still has raw ids, and gets its text from
-// `optionLabel` instead.
+// An availability option with track statuses wraps its shifts in `{shifts, track_statuses}`.
+function resolvedShifts(value: FormFieldOption["value"]): ResolvedShiftOption[] | null {
+  const shifts = typeof value === "object" && !Array.isArray(value) ? value.shifts : value;
+  return shifts && isResolvedShiftOptions(shifts) ? shifts : null;
+}
+
+// Appends the span across every shift grouped under an availability option,
+// so "All Day" reads as "All Day (7:00 AM–5:00 PM)". The builder's preview
+// still has raw ids and gets its text from `optionLabel` instead.
 function optionDisplayLabel(option: FormFieldOption): string {
-  if (isResolvedShiftOptions(option.value)) {
-    return `${option.label} (${formatTimeRange(option.value)})`;
-  }
-  return option.label;
+  const shifts = resolvedShifts(option.value);
+  return shifts ? `${option.label} (${formatTimeRange(shifts)})` : option.label;
 }
 
 function QuestionBody({
