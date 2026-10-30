@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GridWarp } from "@/components/home/GridWarp";
 import { Button } from "@/components/ui/Button";
@@ -12,10 +13,8 @@ export default function HomePage() {
       {/*
         dvh, not vh (h-screen): on iOS Chrome and Safari 100vh is the *large*
         viewport — the height the page would have if the URL bar were
-        retracted — so a 100vh hero runs taller than what's actually on screen
-        and pushes the bottom-anchored nav island below the fold. 100dvh
-        tracks the bar, and since the hero is exactly one viewport tall there's
-        nothing to scroll, so the bar never retracts and the value stays put.
+        retracted — so a 100vh hero pushes the bottom-anchored nav island
+        below the fold. 100dvh tracks the bar.
       */}
       <section
         className="relative h-dvh flex flex-col items-center justify-center overflow-hidden"
@@ -99,6 +98,25 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <footer
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: "20px",
+          padding: "24px",
+          borderTop: "1px solid var(--color-border)",
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+        }}
+      >
+        <Link href="/terms" className="link-subtle">
+          Terms of Service
+        </Link>
+        <Link href="/privacy" className="link-subtle">
+          Privacy Policy
+        </Link>
+      </footer>
 
       <style>{`
         @keyframes fade-in {
