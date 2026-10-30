@@ -1,7 +1,8 @@
 /*
- * The calendar inside DateRangePicker: react-day-picker's markup, styled here
- * through its classNames prop rather than its own stylesheet, so it takes the
- * app's tokens. The look is shadcn's — rounded squares, one band per week.
+ * The calendar inside DatePicker and DateRangePicker: react-day-picker's
+ * markup, styled here through its classNames prop rather than its own
+ * stylesheet, so it takes the app's tokens. The look is shadcn's — rounded
+ * squares, one band per week.
  */
 
 .shortcut:hover {
@@ -66,6 +67,48 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
+}
+
+.dropdowns {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A native select laid invisibly over its caption label, which is what shows:
+   the OS list still opens on click, and the caption takes the app's look. */
+.dropdownRoot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dropdown {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  opacity: 0;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dropdownRoot .captionLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+}
+
+.dropdownRoot:hover .captionLabel {
+  background: var(--color-accent-subtle);
+}
+
+.dropdown:focus-visible ~ .captionLabel {
+  outline: 2px solid var(--color-border-strong);
+  outline-offset: -2px;
 }
 
 .monthGrid {
@@ -159,6 +202,8 @@
   border-radius: var(--radius-md);
 }
 
+/* DatePicker's pick, or a range's ends. */
+.selected .dayButton,
 .rangeStart .dayButton,
 .rangeEnd .dayButton {
   background: var(--color-accent);

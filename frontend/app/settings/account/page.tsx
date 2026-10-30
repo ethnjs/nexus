@@ -8,6 +8,7 @@ import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconInfo } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
@@ -21,6 +22,7 @@ import {
   validateDateOfBirth,
   validatePhone,
 } from "@/lib/auth";
+import { todayLocalDateString } from "@/lib/date";
 import { useAuth } from "@/lib/useAuth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 
@@ -340,12 +342,13 @@ export default function AccountSettingsPage() {
           }
           last
         >
-          <Input
-            type="date"
+          <DatePicker
             fullWidth
+            aria-label="Date of birth"
+            max={todayLocalDateString()}
             value={draft.date_of_birth}
-            onChange={(e) => {
-              setDraft((d) => (d ? { ...d, date_of_birth: e.target.value } : d));
+            onChange={(v) => {
+              setDraft((d) => (d ? { ...d, date_of_birth: v } : d));
               setErrors((er) => ({ ...er, date_of_birth: undefined }));
             }}
             error={errors.date_of_birth}

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { type ChevronProps, type DateRange, DayPicker, type Matcher } from "react-day-picker";
-import { IconCalendar, IconChevronLeft, IconChevronRight } from "@/components/ui/Icons";
+import { type DateRange, DayPicker } from "react-day-picker";
+import { CALENDAR_PROPS, fieldDate, outOfBounds } from "@/components/ui/Calendar";
+import { IconCalendar } from "@/components/ui/Icons";
 import { PickerField, type PickerFieldCommonProps } from "@/components/ui/PickerField";
 import { parseLocalDate, todayLocalDateString, toLocalDateString } from "@/lib/date";
 import { useIsMobile } from "@/lib/useIsMobile";
-import styles from "./DateRangePicker.module.css";
+import styles from "./Calendar.module.css";
 
 /** One quick pick down the panel's side. `range` runs when it's clicked, so
  *  "next 30 days" is counted from the day it's used. */
@@ -30,13 +31,6 @@ interface DateRangePickerProps extends PickerFieldCommonProps {
   shortcuts?: DateRangeShortcut[];
 }
 
-const fieldDate = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "2-digit",
-  year: "numeric",
-});
-const weekdayName = new Intl.DateTimeFormat(undefined, { weekday: "short" });
-
 /** "Feb 13, 2027 – Mar 01, 2027", one day, or one open end. */
 function formatRange(from: string, to: string): string | null {
   if (!from && !to) return null;
@@ -45,30 +39,6 @@ function formatRange(from: string, to: string): string | null {
   if (from === to) return fieldDate.format(parseLocalDate(from));
   return `${fieldDate.format(parseLocalDate(from))} – ${fieldDate.format(parseLocalDate(to))}`;
 }
-
-function Chevron({ orientation }: ChevronProps) {
-  return orientation === "left" ? <IconChevronLeft size={14} /> : <IconChevronRight size={14} />;
-}
-
-const CLASS_NAMES = {
-  root: styles.root,
-  months: styles.months,
-  nav: styles.nav,
-  button_previous: styles.navButton,
-  button_next: styles.navButton,
-  month_caption: styles.monthCaption,
-  caption_label: styles.captionLabel,
-  month_grid: styles.monthGrid,
-  weekday: styles.weekday,
-  day: styles.day,
-  day_button: styles.dayButton,
-  disabled: styles.disabled,
-  outside: styles.outside,
-  today: styles.today,
-  range_start: styles.rangeStart,
-  range_middle: styles.rangeMiddle,
-  range_end: styles.rangeEnd,
-};
 
 /**
  * A field that opens a calendar (react-day-picker) for picking a range of
@@ -130,10 +100,6 @@ export function DateRangePicker({
     ? { from: parseLocalDate(shownStart), to: parseLocalDate(shownEnd || shownStart) }
     : undefined;
 
-  const disabled: Matcher[] = [];
-  if (min) disabled.push({ before: parseLocalDate(min) });
-  if (max) disabled.push({ after: parseLocalDate(max) });
-
   return (
     <PickerField
       {...fieldProps}
@@ -191,6 +157,7 @@ export function DateRangePicker({
               doesn't drop the preview for a frame. */}
           <div onMouseLeave={() => setHoverDay(null)}>
             <DayPicker
+              {...CALENDAR_PROPS}
               mode="range"
               selected={selected}
               onSelect={(_range, triggerDate) => pick(triggerDate)}
@@ -198,15 +165,8 @@ export function DateRangePicker({
               month={month}
               onMonthChange={setMonth}
               numberOfMonths={isMobile ? 1 : 2}
-              showOutsideDays
               autoFocus
-              disabled={disabled}
-              classNames={CLASS_NAMES}
-              components={{ Chevron }}
-              formatters={{
-                // "Su", "Mo": the short weekday's first two letters.
-                formatWeekdayName: (date) => weekdayName.format(date).slice(0, 2),
-              }}
+              disabled={outOfBounds(min, max)}
             />
           </div>
         </>

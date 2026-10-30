@@ -30,6 +30,7 @@ import {
 } from "@/components/profile/ProfileFields";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
 import { Button } from "@/components/ui/Button";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { IconInfo } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -519,12 +520,13 @@ function OnboardingContent() {
                 }}
                 isActive={state === STATE.DATE_OF_BIRTH}
               >
-                <Input
-                  type="date"
+                <DatePicker
+                  required
+                  aria-label="Date of birth"
                   value={profileData.date_of_birth ?? ""}
                   max={todayLocalDateString()}
-                  onChange={(e) => {
-                    setProfileData((d) => ({ ...d, date_of_birth: e.target.value }));
+                  onChange={(v) => {
+                    setProfileData((d) => ({ ...d, date_of_birth: v }));
                     setErrors((er) => ({ ...er, date_of_birth: undefined }));
                   }}
                   error={errors.date_of_birth}
