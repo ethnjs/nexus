@@ -140,8 +140,11 @@ export function PickerField({
   useEffect(() => {
     if (!open) return;
     function handleDown(e: MouseEvent) {
-      const target = e.target as Node;
+      const target = e.target as Element;
       if (fieldRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      // A caption dropdown's row picks on this same press and unmounts before
+      // this runs, so it's no longer inside the panel.
+      if (target.closest("[data-select-panel]")) return;
       onOpenChange(false);
     }
     document.addEventListener("mousedown", handleDown);
