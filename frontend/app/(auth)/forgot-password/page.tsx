@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -36,18 +37,10 @@ export default function ForgotPasswordPage() {
 
   return (
     <>
-      <div style={{ marginBottom: "30px" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "28px",
-            fontWeight: "700",
-            color: "var(--color-text-primary)",
-          }}
-        >
-          Reset your password
-        </h2>
-      </div>
+      <AuthHeading
+        title="Reset your password"
+        subtitle={sent ? undefined : "Enter your email and we'll send you a link to reset it."}
+      />
 
       {sent ? (
         <Banner

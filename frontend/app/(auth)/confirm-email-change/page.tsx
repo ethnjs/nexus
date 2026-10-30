@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
@@ -37,18 +38,7 @@ function ConfirmEmailChangeContent() {
 
   return (
     <>
-      <div style={{ marginBottom: "30px" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "28px",
-            fontWeight: "700",
-            color: "var(--color-text-primary)",
-          }}
-        >
-          Confirm Email Change
-        </h2>
-      </div>
+      <AuthHeading title="Confirm email change" />
 
       {state === "loading" && <Spinner size="lg" />}
 

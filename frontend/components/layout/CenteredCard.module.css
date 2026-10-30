@@ -53,9 +53,93 @@
   margin-bottom: 28px;
 }
 
-.backRow {
+/* The home page's grid, behind the auth pages. Fixed, so it stays put while a
+   long form scrolls; the content after it is positioned so it paints on top. */
+.authGrid {
+  position: fixed;
+  inset: 0;
+}
+
+/* Faded behind the card, the grid only showing around it. In
+   px rather than the home page's share of the viewport: the card is a narrow
+   column, not a wide wordmark, and a viewport-wide fade left a broad band. */
+.authGrid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Solid only under the card itself (which covers it anyway), then a long
+     taper rather than a hard edge just past the card. */
+  background: radial-gradient(
+    ellipse 680px 740px at 50% 50%,
+    var(--color-bg) 0%,
+    var(--color-bg) 30%,
+    color-mix(in srgb, var(--color-bg) 70%, transparent) 55%,
+    color-mix(in srgb, var(--color-bg) 30%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+/* The page background faded out around text sitting straight on the grid, so
+   the lines don't run through it — the same treatment as the home wordmark. */
+.cloud {
+  padding: 14px 28px;
+  background: radial-gradient(
+    closest-side,
+    var(--color-bg) 0%,
+    var(--color-bg) 55%,
+    transparent 100%
+  );
+}
+
+/* The auth pages: the card plus the sign-in/sign-up switch under it. */
+.authStack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
   width: 100%;
-  margin-bottom: 24px;
+  max-width: 420px;
+}
+
+.authCard {
+  padding: 40px;
+}
+
+.wordmarkCompact {
+  font-size: 28px;
+  margin-bottom: 20px;
+}
+
+/* Page navigation, not part of the form, so it sits outside the card. */
+.backLink {
+  position: absolute;
+  /* Less the cloud's own padding, so the text sits about 24px in. */
+  top: 10px;
+  left: 0;
+  /* Keeps the halo below's z-index: -1 behind the text but above the grid. */
+  isolation: isolate;
+}
+
+/* A wider fade than .cloud alone: the corner is where the grid is least
+   faded, so the link needs more clearing around it than the footer does. */
+.backLink::before {
+  content: "";
+  position: absolute;
+  inset: -24px -40px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    var(--color-bg) 0%,
+    var(--color-bg) 60%,
+    transparent 100%
+  );
+}
+
+.page:has(.backLink) {
+  position: relative;
 }
 
 @media (max-width: 640px) {
@@ -68,7 +152,8 @@
   }
 
   .card,
-  .cardWide {
+  .cardWide,
+  .authCard {
     padding: 36px 24px;
   }
 
@@ -76,5 +161,23 @@
   .wordmarkSm {
     font-size: 36px;
     margin-bottom: 20px;
+  }
+
+  .wordmarkCompact {
+    font-size: 26px;
+  }
+
+  /* No room beside the card on a phone, so it goes above it instead. */
+  .page:has(.backLink) {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .backLink {
+    /* Relative, not static: it still has to paint above the grid. */
+    position: relative;
+    top: 0;
+    align-self: flex-start;
+    margin: -14px 0 2px -28px;
   }
 }

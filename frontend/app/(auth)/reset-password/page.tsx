@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
@@ -62,18 +63,10 @@ function ResetPasswordContent() {
 
   return (
     <>
-      <div style={{ marginBottom: "30px" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "28px",
-            fontWeight: "700",
-            color: "var(--color-text-primary)",
-          }}
-        >
-          Set a new password
-        </h2>
-      </div>
+      <AuthHeading
+        title="Set a new password"
+        subtitle={success ? undefined : "Choose a new password for your account."}
+      />
 
       {success ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>

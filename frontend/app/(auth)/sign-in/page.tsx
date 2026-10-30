@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
@@ -25,7 +26,6 @@ function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
-  const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : "/sign-up";
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -58,23 +58,12 @@ function SignInContent() {
 
   return (
     <div style={{ width: "100%" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 30px",
-          textAlign: "center",
-        }}
-      >
-        Sign In
-      </h2>
+      <AuthHeading title="Welcome back" subtitle="Sign in to your account." />
 
       <form
         onSubmit={handleSubmit}
         noValidate
-        style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+        style={{ display: "flex", flexDirection: "column", gap: "16px" }}
       >
         <Input
           font="sans"
@@ -91,73 +80,46 @@ function SignInContent() {
           error={errors.email}
           fullWidth
         />
-        <div>
-          <Input
-            font="sans"
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setErrors((er) => ({ ...er, password: undefined }));
-            }}
-            autoComplete="current-password"
-            error={errors.password}
-            fullWidth
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
+        <Input
+          font="sans"
+          label="Password"
+          labelExtra={
             <button
               type="button"
               onClick={() => router.push("/forgot-password")}
               className="link-subtle"
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-              }}
+              style={{ marginLeft: "auto", fontFamily: "var(--font-sans)", fontSize: "12px" }}
             >
               Forgot password?
             </button>
-          </div>
-        </div>
-        <Button type="submit" loading={loading} fullWidth>
-          Sign In
-        </Button>
-
-        <div>
-          {errors.form && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "14px",
-                color: "var(--color-danger)",
-              }}
-            >
-              {errors.form}
-            </p>
-          )}
-        </div>
-      </form>
-
-      <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "13px",
-            color: "var(--color-text-secondary)",
+          }
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setErrors((er) => ({ ...er, password: undefined }));
           }}
-        >
-          Don&rsquo;t have an account?{" "}
-        </span>
-        <button
-          type="button"
-          onClick={() => router.push(signUpHref)}
-          className="link-subtle"
-          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}
-        >
-          Sign up
-        </button>
-      </div>
+          autoComplete="current-password"
+          error={errors.password}
+          fullWidth
+        />
+        {errors.form && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-danger)",
+              margin: 0,
+            }}
+          >
+            {errors.form}
+          </p>
+        )}
+        <Button type="submit" loading={loading} fullWidth style={{ marginTop: "8px" }}>
+          Sign in
+        </Button>
+      </form>
     </div>
   );
 }

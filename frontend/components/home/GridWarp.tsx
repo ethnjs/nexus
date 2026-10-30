@@ -22,7 +22,8 @@ const LINE_COLOR = 0xc8c8c2; // matches --color-border-strong
 
 // Full-viewport WebGL grid that warps toward the cursor like a gravity well —
 // grid points near the cursor get pulled toward it with inverse-linear falloff.
-export function GridWarp() {
+// `lineColor` is a hex number, since three.js can't read a CSS variable.
+export function GridWarp({ lineColor = LINE_COLOR }: { lineColor?: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export function GridWarp() {
       geometry.setAttribute("position", new THREE.BufferAttribute(posArray, 3));
 
       const material = new THREE.LineBasicMaterial({
-        color: LINE_COLOR,
+        color: lineColor,
         transparent: true,
         opacity: 0.9,
       });
@@ -175,7 +176,7 @@ export function GridWarp() {
       geometry.dispose();
       container.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [lineColor]);
 
   return <div ref={containerRef} className="absolute inset-0 pointer-events-none" />;
 }

@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
 import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, authApi } from "@/lib/api";
@@ -55,30 +56,10 @@ function AccountSetupContent() {
 
   return (
     <div style={{ width: "100%" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 10px",
-          textAlign: "center",
-        }}
-      >
-        Set up your account
-      </h2>
-
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "14px",
-          color: "var(--color-text-secondary)",
-          margin: "0 0 30px",
-          textAlign: "center",
-        }}
-      >
-        Choose a password to finish setting up your account.
-      </p>
+      <AuthHeading
+        title="Set up your account"
+        subtitle="Choose a password to finish setting up your account."
+      />
 
       <CredentialsForm
         onSubmit={handleConfirm}
