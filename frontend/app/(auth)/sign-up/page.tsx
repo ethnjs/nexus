@@ -117,6 +117,38 @@ function SignUpContent() {
         formError={formError}
       />
 
+      <p
+        style={{
+          marginTop: "16px",
+          textAlign: "center",
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        By signing up, you agree to the{" "}
+        <a
+          href="/terms"
+          target="_blank"
+          className="link-subtle"
+          style={{ textDecoration: "underline" }}
+          rel="noopener"
+        >
+          Terms of Service
+        </a>{" "}
+        and{" "}
+        <a
+          href="/privacy"
+          target="_blank"
+          className="link-subtle"
+          style={{ textDecoration: "underline" }}
+          rel="noopener"
+        >
+          Privacy Policy
+        </a>
+        .
+      </p>
+
       <div style={{ marginTop: "20px", textAlign: "center" }}>
         <span
           style={{
