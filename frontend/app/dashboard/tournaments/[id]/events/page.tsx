@@ -576,6 +576,15 @@ export default function EventsPage() {
     );
   }, [events, search, filters, sortRules, byEvent]);
 
+  const toggleVisibleEvent = useCallback(
+    (id: number) =>
+      toggleSelected(
+        id,
+        visibleEvents.map((e) => e.id),
+      ),
+    [toggleSelected, visibleEvents],
+  );
+
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
   const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleEvents, (e) => e.id);
@@ -1104,7 +1113,7 @@ export default function EventsPage() {
                     selectMode={selectMode}
                     selected={selectedIds.has(e.id)}
                     selectionLocked={panelDirty}
-                    onToggleSelect={toggleSelected}
+                    onToggleSelect={toggleVisibleEvent}
                     focused={focusedEventId === e.id}
                     edit={editContext}
                   />
@@ -1314,6 +1323,8 @@ const EventRow = memo(function EventRow({
       data-active={highlighted ? "true" : undefined}
       data-pending={isPending ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}

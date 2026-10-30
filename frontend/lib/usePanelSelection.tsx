@@ -30,7 +30,10 @@ export interface PanelSelection {
   /** Row "Edit"/"Expand", or clicking another row while one is focused. */
   focusItem: (id: number) => void;
   toggleSelectMode: () => void;
-  toggleSelected: (id: number) => void;
+  /** With Shift held, every row in `order` (the table's visible rows, in
+   *  display order) between the last one toggled and this one takes this
+   *  one's new state. */
+  toggleSelected: (id: number, order?: number[]) => void;
   /** Header "select all" checkbox, over the currently visible ids. */
   toggleSelectAll: (ids: number[], checked: boolean) => void;
   /** SelectionBar's "Edit" — the only thing that opens the mass panel. */
@@ -96,7 +99,30 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
     setPanelDirty(false);
   }, []);
 
+  // The row a Shift range starts from: the last one toggled.
+  const anchorRef = useRef<number | null>(null);
+  // Tracked here rather than read off the click: the checkbox's onChange
+  // carries no mouse event, and a row toggles from the keyboard too.
+  const shiftHeldRef = useRef(false);
+  useEffect(() => {
+    const track = (e: KeyboardEvent) => {
+      shiftHeldRef.current = e.shiftKey;
+    };
+    const release = () => {
+      shiftHeldRef.current = false;
+    };
+    window.addEventListener("keydown", track);
+    window.addEventListener("keyup", track);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", track);
+      window.removeEventListener("keyup", track);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
+
   const clearSelection = useCallback(() => {
+    anchorRef.current = null;
     setSelectedIds(new Set());
     setSelectMode(false);
     setMassPanelOpen(false);
@@ -116,6 +142,7 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
     // you press Edit again. A caller-owned draft (only reachable here while
     // clean, since a dirty one is blocked above) is simply dropped.
     clearExternalRef.current?.();
+    anchorRef.current = focusedId;
     if (focusedId !== null) {
       setSelectedIds(new Set([focusedId]));
       setFocusedId(null);
@@ -135,11 +162,23 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
   }, []);
 
   const toggleSelected = useCallback(
-    (id: number) => {
+    (id: number, order?: number[]) => {
       if (panelDirty) return;
       const next = new Set(selectedIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const select = !next.has(id);
+      // An anchor filtered out of view since doesn't start a range: the rows
+      // between would be ones the user can't see.
+      const from = anchorRef.current === null ? -1 : (order?.indexOf(anchorRef.current) ?? -1);
+      const to = order?.indexOf(id) ?? -1;
+      const range =
+        shiftHeldRef.current && order && from !== -1 && to !== -1
+          ? order.slice(Math.min(from, to), Math.max(from, to) + 1)
+          : [id];
+      for (const rowId of range) {
+        if (select) next.add(rowId);
+        else next.delete(rowId);
+      }
+      anchorRef.current = id;
       applySelection(next);
     },
     [panelDirty, selectedIds, applySelection],
@@ -164,6 +203,7 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
     (id: number) => {
       if (panelDirty) return;
       clearExternalRef.current?.();
+      anchorRef.current = null;
       setSelectMode(false);
       setSelectedIds(new Set());
       setMassPanelOpen(false);

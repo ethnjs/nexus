@@ -808,7 +808,12 @@ export default function ShiftsPage() {
                 selectMode={selectMode}
                 selected={selectedIds.has(shift.id)}
                 selectionLocked={panelDirty}
-                onToggleSelect={() => toggleSelected(shift.id)}
+                onToggleSelect={() =>
+                  toggleSelected(
+                    shift.id,
+                    visibleShifts.map((s) => s.id),
+                  )
+                }
                 edit={editContext}
               />
             ))}
@@ -1054,6 +1059,8 @@ function ShiftRow({
       data-active={highlighted ? "true" : undefined}
       data-pending={track?.is_archived ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
