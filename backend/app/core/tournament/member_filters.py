@@ -73,6 +73,10 @@ YEAR_LEVEL_NON_STUDENT = "non_student"
 MAX_YEAR_LEVEL = 5
 STUDENT_STATUSES = ("Undergraduate", "Graduate")
 
+ONBOARDING_NOT_STARTED = "not_started"
+ONBOARDING_IN_PROGRESS = "in_progress"
+ONBOARDING_COMPLETE = "complete"
+
 
 def _university_short_name():
     """What the members table shows for a school: its abbreviation, else its name."""
@@ -420,6 +424,31 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
     return [m for m in memberships if matches(m)]
 
 
+def filter_onboarding(db, tournament_id: int, memberships: list, states: list[str]) -> list:
+    """Keeps members whose onboarding is in one of `states`: "not_started",
+    "in_progress" or "complete".
+
+    In Python, like filter_age_flags: a member's path depends on which steps
+    their roles qualify them for, so there's no stored progress to query. A
+    member with no steps at all has no state and never matches.
+    """
+    if not states:
+        return memberships
+    from app.core.tournament.onboarding import onboarding_paths
+
+    paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
+
+    def state(path) -> str | None:
+        if not path:
+            return None
+        done = sum(step.completed for step in path)
+        if done == len(path):
+            return ONBOARDING_COMPLETE
+        return ONBOARDING_IN_PROGRESS if done else ONBOARDING_NOT_STARTED
+
+    return [m for m in memberships if state(paths[m.user_id]) in states]
+
+
 def build_filter_options(db, tournament) -> dict:
     """Everything the roster's filter modal offers, derived from what this
     tournament actually holds.
@@ -450,6 +479,7 @@ def build_filter_options(db, tournament) -> dict:
         Form,
         FormField,
         TournamentEvent,
+        TournamentForm,
         TournamentShift,
         TournamentTrack,
     )
@@ -629,6 +659,17 @@ def build_filter_options(db, tournament) -> dict:
         ],
         "collect_is_over_18": bool(tournament.collect_is_over_18),
         "collect_is_over_21": bool(tournament.collect_is_over_21),
+        # The steps onboarding_paths counts: live ones, and archived ones
+        # that may still have answers.
+        "has_onboarding": db.query(TournamentForm.form_id)
+        .join(Form, TournamentForm.form_id == Form.id)
+        .filter(
+            TournamentForm.tournament_id == tournament.id,
+            TournamentForm.is_onboarding == True,
+            Form.status.in_(["published", "archived"]),
+        )
+        .first()
+        is not None,
     }
 
 

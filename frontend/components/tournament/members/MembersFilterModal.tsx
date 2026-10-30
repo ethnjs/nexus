@@ -37,6 +37,7 @@ export const MEMBERS_FILTER_KEYS = [
   "assigned",
   "affiliation",
   "year_level",
+  "onboarding",
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
@@ -178,6 +179,13 @@ export function defaultMemberFiltersForTab(
     track: new Set(scope.flatMap((id) => [`${id}:interested`, `${id}:confirmed`])),
   };
 }
+
+// Shared with the backend's ONBOARDING_* values.
+const ONBOARDING_OPTIONS: FilterOptionItem[] = [
+  { value: "not_started", label: "Not started" },
+  { value: "in_progress", label: "In progress" },
+  { value: "complete", label: "Complete" },
+];
 
 // Shared with the backend's YEAR_LEVEL_* values.
 const YEAR_LEVEL_FILTER_OPTIONS: FilterOptionItem[] = [
@@ -583,6 +591,13 @@ export function MembersFilterModal({
       addLabel: "Filter by track",
       emptyMessage: "No active tracks.",
     }),
+    {
+      key: "onboarding",
+      title: "Onboarding",
+      control: "buttons",
+      options: ONBOARDING_OPTIONS,
+      hidden: !options?.has_onboarding,
+    },
     // Two options at most, both fixed — a chip row with an add popover is
     // more machinery than picking between 18+ and 21+ deserves.
     {

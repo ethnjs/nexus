@@ -1311,6 +1311,51 @@ class TestRosterFilters:
             {"value": "UCLA", "label": "UCLA"},
         ]
 
+    def test_onboarding_filter(self, client, db, td_user, td_tournament):
+        from app.models.models import FormResponse
+
+        steps = []
+        for order in (1, 2):
+            form = _make_form(db, td_user, td_tournament.id, name=f"Step {order}")
+            db.add(
+                TournamentForm(
+                    form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=order
+                )
+            )
+            steps.append(form)
+        answered = {"alice@example.com": 0, "bob@example.com": 1, "carol@example.com": 2}
+        for email, count in answered.items():
+            user = _db_user_for_filter(db, email)
+            _make_membership(db, td_tournament.id, user.id)
+            db.add_all(FormResponse(form_id=form.id, user_id=user.id) for form in steps[:count])
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        # The TD's path has the same two steps, neither answered.
+        assert self._roster(client, td_tournament.id, "?onboarding=not_started") == {
+            "alice@example.com",
+            "td@test.com",
+        }
+        assert self._roster(client, td_tournament.id, "?onboarding=in_progress") == {
+            "bob@example.com"
+        }
+        assert self._roster(
+            client, td_tournament.id, "?onboarding=in_progress&onboarding=complete"
+        ) == {"bob@example.com", "carol@example.com"}
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        assert body["has_onboarding"] is True
+
+    def test_onboarding_filter_without_steps_matches_nobody(
+        self, client, db, td_user, td_tournament
+    ):
+        """No steps is no state, not "not started"."""
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?onboarding=not_started") == set()
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        assert body["has_onboarding"] is False
+
 
 def test_list_memberships_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")

@@ -32,6 +32,7 @@ from app.core.tournament.member_filters import (
     apply_member_search,
     build_filter_options,
     filter_age_flags,
+    filter_onboarding,
 )
 from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.memberships import (
@@ -208,6 +209,8 @@ def list_memberships(
     # "1".."5", "graduate", "non_student".
     affiliation: list[str] = Query(default=[]),
     year_level: list[str] = Query(default=[]),
+    # "not_started", "in_progress", "complete".
+    onboarding: list[str] = Query(default=[]),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -257,8 +260,10 @@ def list_memberships(
         max_rank=max_rank,
     )
     memberships = query.order_by(TournamentMembership.id).all()
-    # Age flags are derived, not stored, so they can't be part of the query.
+    # Age flags and onboarding are derived, not stored, so they can't be part
+    # of the query.
     memberships = filter_age_flags(memberships, age)
+    memberships = filter_onboarding(db, tournament_id, memberships, onboarding)
     responses = [MembershipFullResponse.model_validate(m) for m in memberships]
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, memberships, responses)

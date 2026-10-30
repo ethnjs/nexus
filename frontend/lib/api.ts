@@ -1309,6 +1309,8 @@ export interface MemberFilterOptions {
   affiliations: FilterOptionItem[];
   collect_is_over_18: boolean;
   collect_is_over_21: boolean;
+  // Whether there are onboarding steps to filter by.
+  has_onboarding: boolean;
 }
 
 export interface FilterOptionItem {

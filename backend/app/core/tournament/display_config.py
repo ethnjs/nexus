@@ -127,6 +127,7 @@ KNOWN_FILTER_KEYS = frozenset(
         "assigned",
         "affiliation",
         "year_level",
+        "onboarding",
     }
 )
 
