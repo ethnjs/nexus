@@ -80,30 +80,39 @@ function SignInContent() {
           error={errors.email}
           fullWidth
         />
-        <Input
-          font="sans"
-          label="Password"
-          labelExtra={
-            <button
-              type="button"
-              onClick={() => router.push("/forgot-password")}
-              className="link-subtle"
-              style={{ marginLeft: "auto", fontFamily: "var(--font-sans)", fontSize: "12px" }}
-            >
-              Forgot password?
-            </button>
-          }
-          type="password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setErrors((er) => ({ ...er, password: undefined }));
-          }}
-          autoComplete="current-password"
-          error={errors.password}
-          fullWidth
-        />
+        {/* The link comes after the field in the DOM, so Tab reaches the
+            password first, and is placed back onto the label row. */}
+        <div style={{ position: "relative" }}>
+          <Input
+            font="sans"
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setErrors((er) => ({ ...er, password: undefined }));
+            }}
+            autoComplete="current-password"
+            error={errors.password}
+            fullWidth
+          />
+          <button
+            type="button"
+            onClick={() => router.push("/forgot-password")}
+            className="link-subtle"
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              lineHeight: "16px",
+            }}
+          >
+            Forgot password?
+          </button>
+        </div>
         {errors.form && (
           <p
             style={{
