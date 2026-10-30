@@ -157,9 +157,9 @@ function CatalogView({
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        {/* Grows into the room the toolbar leaves and is the first thing to
+        {/* Takes all the room the toolbar leaves, and is the first thing to
             give it back — narrows before anything else has to wrap. */}
-        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+        <div style={{ flex: "1 1 220px", minWidth: "180px" }}>
           <Input
             placeholder="Search events"
             value={search}
@@ -456,9 +456,9 @@ function SeasonView({
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        {/* Grows into the room the toolbar leaves and is the first thing to
+        {/* Takes all the room the toolbar leaves, and is the first thing to
             give it back — narrows before anything else has to wrap. */}
-        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+        <div style={{ flex: "1 1 220px", minWidth: "180px" }}>
           <Input
             placeholder="Search this season"
             value={search}
