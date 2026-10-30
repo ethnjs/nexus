@@ -75,42 +75,6 @@
   gap: 4px;
 }
 
-/* A native select laid invisibly over its caption label, which is what shows:
-   the OS list still opens on click, and the caption takes the app's look. */
-.dropdownRoot {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.dropdown {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  opacity: 0;
-  appearance: none;
-  cursor: pointer;
-  font: inherit;
-}
-
-.dropdownRoot .captionLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: var(--radius-md);
-}
-
-.dropdownRoot:hover .captionLabel {
-  background: var(--color-accent-subtle);
-}
-
-.dropdown:focus-visible ~ .captionLabel {
-  outline: 2px solid var(--color-border-strong);
-  outline-offset: -2px;
-}
-
 .monthGrid {
   margin-top: 8px;
   border-collapse: separate;

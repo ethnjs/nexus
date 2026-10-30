@@ -146,7 +146,8 @@ export function PickerField({
   }, [open]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== "Escape") return;
+    // Already handled by a control inside, such as a Dropdown closing its list.
+    if (e.key !== "Escape" || e.defaultPrevented) return;
     // Kept from a modal around the field, which would close on it too.
     e.preventDefault();
     e.stopPropagation();
