@@ -56,6 +56,9 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
         cursor: locked ? "not-allowed" : "pointer",
+        // Overrides the global :focus-visible ring, which on a box this small
+        // reads as a second checkbox around the first.
+        outline: "none",
         flex: "0 0 auto",
         transition: "background 120ms ease, border-color 120ms ease",
       }}
