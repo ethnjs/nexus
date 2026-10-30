@@ -173,6 +173,7 @@ export function OptionList({
 }: OptionListProps) {
   const [pos, setPos] = useState<Pos | null>(null);
   const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const sizing = SIZES[size];
 
@@ -331,8 +332,14 @@ export function OptionList({
                 onMouseMove={() => {
                   if (!opt.disabled && i !== active) onActiveChange(i);
                 }}
-                onMouseEnter={tooltip ? (e) => showHoverTip(e, tooltip) : undefined}
-                onMouseLeave={tooltip ? () => setHoverTip(null) : undefined}
+                onMouseEnter={(e) => {
+                  setHovered(i);
+                  if (tooltip) showHoverTip(e, tooltip);
+                }}
+                onMouseLeave={() => {
+                  setHovered(null);
+                  if (tooltip) setHoverTip(null);
+                }}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (!opt.disabled) onPick(i);
@@ -351,11 +358,19 @@ export function OptionList({
                     opt.muted || opt.disabled
                       ? "var(--color-text-tertiary)"
                       : "var(--color-text-primary)",
-                  background: (checklist ? opt.checked : highlighted)
-                    ? "var(--color-accent-subtle)"
-                    : "transparent",
+                  background: !checklist
+                    ? highlighted
+                      ? "var(--color-accent-subtle)"
+                      : "transparent"
+                    : opt.checked
+                      ? "var(--color-accent-subtle)"
+                      : hovered === i && !opt.disabled
+                        ? "var(--color-bg)"
+                        : "transparent",
+                  // Only once the arrows have moved off the hovered row — a
+                  // mouse user shouldn't see a box around the row they're on.
                   boxShadow:
-                    checklist && highlighted
+                    checklist && highlighted && hovered !== i
                       ? "inset 0 0 0 1px var(--color-border-strong)"
                       : undefined,
                   cursor: opt.disabled ? "not-allowed" : "pointer",
