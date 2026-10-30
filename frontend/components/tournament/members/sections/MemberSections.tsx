@@ -38,9 +38,8 @@ export interface MemberSectionsProps {
   shifts: TournamentShift[];
   /** Every track, for the assignments section's per-day timelines. */
   tracks: TournamentTrack[];
-  /** Tracks the viewer turned off in the panel config ("track:3" in the
-   *  surface's hidden list). Server-side filtering already drops the member's
-   *  own rows for them; this is what keeps their empty timelines away too. */
+  /** Tracks whose timelines the viewer turned off in the Assignments section
+   *  ("assignment_track:3" in the surface's hidden list). */
   hiddenTrackIds: Set<number>;
   /** Membership id — the assignments section writes against it. */
   membershipId: number;

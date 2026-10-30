@@ -490,6 +490,8 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
         "method",
         "age",
         "shirt_size",
+        "affiliation",
+        "year_level",
         "onboarding",
         "dietary_restriction",
         f"track:{main.id}",
@@ -506,6 +508,13 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
         "age",
         "onboarding",
         f"track:{main.id}",
+    ]
+    # Assignments hides a track's timeline under its own key, so turning off a
+    # track's status in Membership doesn't take its assignments with it.
+    assignments = next(s for s in body["sections"] if s["id"] == "assignments")
+    assert [f["key"] for f in assignments["fields"]] == [
+        "availability",
+        f"assignment_track:{main.id}",
     ]
 
 

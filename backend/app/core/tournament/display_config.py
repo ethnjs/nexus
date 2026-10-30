@@ -494,6 +494,10 @@ LUNCH_NAMESPACE = "lunch:"
 EVENT_PREF_NAMESPACE = "event_pref:"
 FIELD_KEY_NAMESPACE = "field_key:"
 AVAILABILITY_TRACK_NAMESPACE = "availability_track:"
+# A track's timeline in the panel's Assignments section. Its own namespace, not
+# TRACK_NAMESPACE, so hiding a track's status in Membership leaves its
+# assignments showing. Only the client reads it; the data isn't filtered.
+ASSIGNMENT_TRACK_NAMESPACE = "assignment_track:"
 
 KNOWN_NAMESPACES = (
     TRACK_NAMESPACE,
@@ -501,6 +505,7 @@ KNOWN_NAMESPACES = (
     EVENT_PREF_NAMESPACE,
     FIELD_KEY_NAMESPACE,
     AVAILABILITY_TRACK_NAMESPACE,
+    ASSIGNMENT_TRACK_NAMESPACE,
 )
 
 
@@ -831,7 +836,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "membership": track_items,
         # Tracks, not availability days: this section is laid out one timeline
         # per track, so a track is the thing you turn off.
-        "assignments": track_items,
+        "assignments": [
+            {"key": f"{ASSIGNMENT_TRACK_NAMESPACE}{t.id}", "label": t.name} for t in tracks
+        ],
         "availability": availability_items,
         "lunch": lunch_items,
         "event_preferences": event_pref_items,
