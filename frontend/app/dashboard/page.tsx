@@ -6,7 +6,9 @@ import { AddTournamentModal } from "@/components/tournament/AddTournamentModal";
 import { TournamentCard } from "@/components/tournament/TournamentCard";
 import { Banner, type BannerProps } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { IconPlus } from "@/components/ui/Icons";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { IconPlus, IconTrophy } from "@/components/ui/Icons";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Tooltip, type TooltipStatus } from "@/components/ui/Tooltip";
@@ -202,46 +204,23 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : tournaments.length === 0 ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "320px",
-              gap: "12px",
-              textAlign: "center",
-            }}
-          >
-            <p
-              style={{
-                fontFamily: "Georgia, serif",
-                fontSize: "24px",
-                color: "var(--color-text-primary)",
-              }}
-            >
-              No tournaments yet
-            </p>
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "14px",
-                color: "var(--color-text-secondary)",
-                maxWidth: "280px",
-              }}
-            >
-              Join one with an invite, or create your own.
-            </p>
-            <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-              <Button variant="primary" size="md" onClick={() => setModalView("join")}>
-                Join with an invite
-              </Button>
-              <Button variant="secondary" size="md" onClick={() => setModalView("create")}>
-                <IconPlus />
-                Create tournament
-              </Button>
-            </div>
-          </div>
+          <Card radius="lg" style={{ padding: "8px" }}>
+            <EmptyState
+              icon={<IconTrophy size={28} />}
+              title="No tournaments yet"
+              description="Join one with an invite, or create your own."
+              action={
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <Button variant="primary" size="sm" onClick={() => setModalView("join")}>
+                    Join with an invite
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setModalView("create")}>
+                    <IconPlus size={12} /> Create tournament
+                  </Button>
+                </div>
+              }
+            />
+          </Card>
         ) : (
           // Masonry, not a grid: a multi-site tournament listing a row per
           // track is legitimately taller than a single-day one, and a grid
