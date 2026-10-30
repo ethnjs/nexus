@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
-import { Input } from "@/components/ui/Input";
+import { Input, type InputFont } from "@/components/ui/Input";
 import { enterIndex, type ListOption, OptionList, stepActive } from "@/components/ui/OptionList";
 
 type ComboboxSize = "sm" | "md";
@@ -25,6 +25,7 @@ interface ComboboxProps<T> {
   maxResults?: number;
   error?: string;
   size?: ComboboxSize;
+  font?: InputFont;
   variant?: ComboboxVariant;
   locked?: boolean;
   /** Rows for which this returns true render inert (dimmed, unselectable) instead of being filtered out — e.g. a field_key already in use elsewhere. */
@@ -56,6 +57,7 @@ export function Combobox<T>({
   maxResults = 8,
   error,
   size = "md",
+  font,
   variant = "primary",
   locked = false,
   getDisabled,
@@ -197,6 +199,7 @@ export function Combobox<T>({
         }}
         error={displayedError}
         size={size}
+        font={font}
         variant={variant}
         locked={locked}
         fullWidth

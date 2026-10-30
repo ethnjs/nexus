@@ -652,7 +652,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           error={shownDetails.name}
-                          placeholder="e.g. Caltech Invitational"
+                          placeholder="Caltech Invitational"
+                          font="sans"
                           fullWidth
                         />
                         <Input
@@ -660,7 +661,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                           charset="alpha"
                           value={shortName}
                           onChange={(e) => setShortName(e.target.value)}
-                          placeholder="e.g. SoCal, OC, LA"
+                          placeholder="SoCal, OC, LA"
+                          font="sans"
                           fullWidth
                         />
                         <Combobox
@@ -676,7 +678,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                             setMatchedState(matched);
                           }}
                           error={shownDetails.state}
-                          placeholder="e.g. Southern California"
+                          placeholder="Southern California"
+                          font="sans"
                         />
                         <Combobox
                           label="Level"
@@ -691,7 +694,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                             setMatchedLevel(matched);
                           }}
                           error={shownDetails.level}
-                          placeholder="e.g. Invitational"
+                          placeholder="Invitational"
+                          font="sans"
                         />
                       </>
                     )}
@@ -712,7 +716,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                               setMatchedUniversity(matched);
                             }}
                             error={shownSchedule.location}
-                            placeholder="e.g. Caltech, Pasadena CA"
+                            placeholder="Caltech, Pasadena CA"
+                            font="sans"
                             locked={locationTbd}
                           />
                           <TbdCheckbox
@@ -984,7 +989,7 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                                     required
                                     font="sans"
                                     fullWidth
-                                    placeholder="e.g. Day 1 or Test Writing"
+                                    placeholder="Day 1 or Test Writing"
                                     value={row.draft.name}
                                     onChange={(e) =>
                                       updateTrackRow(row.key, { name: e.target.value })
@@ -1063,7 +1068,7 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                   }}
                   error={inviteError}
                   placeholder={`${window.location.origin}/join?code=${EXAMPLE_CODE}`}
-                  font="mono"
+                  font="sans"
                   fullWidth
                 />
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>

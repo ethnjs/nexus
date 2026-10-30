@@ -12,7 +12,7 @@ import {
 
 import { IconX } from "@/components/ui/Icons";
 
-type InputFont = "sans" | "mono" | "serif";
+export type InputFont = "sans" | "mono" | "serif";
 type InputSize = "xs" | "sm" | "md" | "lg";
 // primary -- light gray; secondary -- white
 type InputVariant = "primary" | "secondary";

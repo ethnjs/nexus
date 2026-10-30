@@ -113,7 +113,8 @@ export function TrackFields({
               onChange={(text, matched) =>
                 onChange({ location: text, university_id: matched?.id ?? null })
               }
-              placeholder="e.g. UCI"
+              placeholder="UCI"
+              font="sans"
               locked={locked || draft.location_tbd}
               error={errors.location}
             />
