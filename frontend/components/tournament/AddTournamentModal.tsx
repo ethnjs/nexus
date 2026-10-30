@@ -482,17 +482,31 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
       onClose={onClose}
       closeOnOverlayClick={false}
       width={view === "create" && step === 2 && advanced ? 820 : 440}
+      onBack={
+        view === "choose"
+          ? undefined
+          : view === "create" && step === 2
+            ? () => setStep(1)
+            : () => setView("choose")
+      }
       footer={
         view === "choose" ? (
           <Button type="button" variant="secondary" size="md" fullWidth onClick={onClose}>
             Cancel
           </Button>
         ) : view === "join" ? (
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
-            <Button type="button" variant="ghost" size="md" onClick={() => setView("choose")}>
-              Back
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Button type="button" variant="secondary" size="md" fullWidth onClick={onClose}>
+              Cancel
             </Button>
-            <Button type="submit" form={JOIN_FORM_ID} variant="primary" size="md" loading={joining}>
+            <Button
+              type="submit"
+              form={JOIN_FORM_ID}
+              variant="primary"
+              size="md"
+              fullWidth
+              loading={joining}
+            >
               Join
             </Button>
           </div>
@@ -511,14 +525,8 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
               </p>
             )}
             <div style={{ display: "flex", gap: "10px" }}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                fullWidth
-                onClick={step === 1 ? () => setView("choose") : () => setStep(1)}
-              >
-                Back
+              <Button type="button" variant="secondary" size="md" fullWidth onClick={onClose}>
+                Cancel
               </Button>
               {/* Distinct keys so Create is a new element, not Next with its type
                 flipped mid-click — otherwise the click that sets step 2 lands

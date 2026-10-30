@@ -2,6 +2,8 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/Button";
+import { IconChevronLeft } from "@/components/ui/Icons";
 import { useExitAnimation } from "@/lib/useExitAnimation";
 import { useIsClient } from "@/lib/useIsClient";
 
@@ -18,6 +20,9 @@ interface ModalProps {
   closeOnOverlayClick?: boolean;
   variant?: ModalVariant;
   contentStyle?: React.CSSProperties;
+  /** Shows a back chevron before the title, for a modal with steps — so the
+   *  footer can keep Cancel on every one of them. */
+  onBack?: () => void;
 }
 
 export function Modal({
@@ -29,6 +34,7 @@ export function Modal({
   closeOnOverlayClick = true,
   variant = "normal",
   contentStyle,
+  onBack,
 }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
@@ -100,17 +106,40 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <h2
+          <div
             style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: "22px",
-              color: variant === "danger" ? "var(--color-danger)" : "var(--color-text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
               marginBottom: "20px",
-              flexShrink: 0,
+              // Pulled left by the button's own padding, so the chevron's
+              // glyph lines up with the body's edge rather than its box.
+              marginLeft: onBack ? "-8px" : undefined,
             }}
           >
-            {title}
-          </h2>
+            {onBack && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                iconOnly
+                title="Back"
+                onClick={onBack}
+              >
+                <IconChevronLeft size={16} />
+              </Button>
+            )}
+            <h2
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "22px",
+                color: variant === "danger" ? "var(--color-danger)" : "var(--color-text-primary)",
+                flexShrink: 0,
+              }}
+            >
+              {title}
+            </h2>
+          </div>
         )}
         {children}
         {footer && <div style={{ paddingTop: "16px" }}>{footer}</div>}
