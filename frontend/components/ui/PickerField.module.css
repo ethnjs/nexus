@@ -1,0 +1,31 @@
+/* Opens like a modal does: a quick fade and a slight grow from the field.
+   No fill-mode, so no transform is left on the panel once it's open. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes panel-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.panel {
+  animation: panel-in 140ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  transform-origin: top left;
+}
+
+.panelAbove {
+  animation-name: panel-in-above;
+  transform-origin: bottom left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}

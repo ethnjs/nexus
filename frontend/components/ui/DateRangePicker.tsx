@@ -1,8 +1,9 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { type ChevronProps, type DateRange, DayPicker } from "react-day-picker";
-import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "@/components/ui/Icons";
+import { useState } from "react";
+import { type ChevronProps, type DateRange, DayPicker, type Matcher } from "react-day-picker";
+import { IconCalendar, IconChevronLeft, IconChevronRight } from "@/components/ui/Icons";
+import { PickerField, type PickerFieldCommonProps } from "@/components/ui/PickerField";
 import { parseLocalDate, todayLocalDateString, toLocalDateString } from "@/lib/date";
 import { useIsMobile } from "@/lib/useIsMobile";
 import styles from "./DateRangePicker.module.css";
@@ -14,21 +15,20 @@ export interface DateRangeShortcut {
   range: () => [from: string, to: string];
 }
 
-interface DateRangePickerProps {
-  /** "YYYY-MM-DD", or "" for an open end. */
+interface DateRangePickerProps extends PickerFieldCommonProps {
+  /** "YYYY-MM-DD", or "" for an unset end. */
   from: string;
   to: string;
   onChange: (from: string, to: string) => void;
+  /** Lets either end stay empty, for a filter. Otherwise a pick is always a
+   *  whole range, one day long until a second click extends it. */
+  openEnds?: boolean;
+  /** "YYYY-MM-DD" bounds; days outside them can't be picked. */
+  min?: string;
+  max?: string;
   placeholder?: string;
   shortcuts?: DateRangeShortcut[];
-  "aria-label"?: string;
 }
-
-const PANEL_GAP = 4;
-// Kept clear between the panel and the viewport edge.
-const VIEWPORT_MARGIN = 8;
-// Roughly the panel's height, for deciding whether it fits below the field.
-const PANEL_HEIGHT = 340;
 
 const fieldDate = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -37,11 +37,12 @@ const fieldDate = new Intl.DateTimeFormat(undefined, {
 });
 const weekdayName = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 
-/** "Feb 13, 2027 – Mar 01, 2027", or one open end. */
+/** "Feb 13, 2027 – Mar 01, 2027", one day, or one open end. */
 function formatRange(from: string, to: string): string | null {
   if (!from && !to) return null;
   if (!to) return `From ${fieldDate.format(parseLocalDate(from))}`;
   if (!from) return `Until ${fieldDate.format(parseLocalDate(to))}`;
+  if (from === to) return fieldDate.format(parseLocalDate(from));
   return `${fieldDate.format(parseLocalDate(from))} – ${fieldDate.format(parseLocalDate(to))}`;
 }
 
@@ -61,6 +62,7 @@ const CLASS_NAMES = {
   weekday: styles.weekday,
   day: styles.day,
   day_button: styles.dayButton,
+  disabled: styles.disabled,
   outside: styles.outside,
   today: styles.today,
   range_start: styles.rangeStart,
@@ -68,192 +70,83 @@ const CLASS_NAMES = {
   range_end: styles.rangeEnd,
 };
 
-type Pos = { left: number; maxHeight: number } & (
-  | { top: number; bottom?: undefined }
-  | { bottom: number; top?: undefined }
-);
-
 /**
  * A field that opens a calendar (react-day-picker) for picking a range of
  * days: the first click sets the start, the second the end, previewed under
- * the pointer in between. Either end may be left open. Values are ISO dates.
+ * the pointer in between. Values are ISO dates.
  */
 export function DateRangePicker({
   from,
   to,
   onChange,
+  openEnds = false,
+  min,
+  max,
   placeholder = "Any dates",
   shortcuts = [],
-  "aria-label": ariaLabel,
+  ...fieldProps
 }: DateRangePickerProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => parseLocalDate(from || todayLocalDateString()));
   const [hoverDay, setHoverDay] = useState<string | null>(null);
-  const [pos, setPos] = useState<Pos | null>(null);
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  // Mid-pick: a start with no end yet, so the next click finishes the range.
-  const picking = !!from && !to;
+  // The start clicked in this opening, while the next click would end it.
+  const [anchor, setAnchor] = useState<string | null>(null);
+  // With open ends, a stored start with no end is itself mid-pick.
+  const start = openEnds ? from : anchor;
+  const picking = !!start && (!openEnds || !to);
 
-  function openPanel() {
-    setMonth(parseLocalDate(from || to || todayLocalDateString()));
-    setHoverDay(null);
-    setOpen(true);
-  }
-
-  // Every way of closing goes through here, so the next opening is placed
-  // afresh rather than flashing at the old spot.
-  function close() {
-    setOpen(false);
-    setPos(null);
-  }
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const r = fieldRef.current?.getBoundingClientRect();
-      if (!r) return;
-      const below = window.innerHeight - r.bottom - PANEL_GAP;
-      const above = r.top - PANEL_GAP;
-      const flip = below < PANEL_HEIGHT && above > below;
-      const maxHeight = Math.round((flip ? above : below) - VIEWPORT_MARGIN);
-      const left = Math.round(r.left);
-      setPos(
-        flip
-          ? { bottom: Math.round(window.innerHeight - r.top + PANEL_GAP), left, maxHeight }
-          : { top: Math.round(r.bottom + PANEL_GAP), left, maxHeight },
-      );
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleDown(e: MouseEvent) {
-      const target = e.target as Node;
-      if (fieldRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-      // close(), spelled out: it's a fresh function each render, so naming
-      // it here would re-attach this listener on every one.
-      setOpen(false);
-      setPos(null);
+  function setOpenState(next: boolean) {
+    if (next) {
+      setMonth(parseLocalDate(from || to || todayLocalDateString()));
+      setHoverDay(null);
+      setAnchor(null);
     }
-    document.addEventListener("mousedown", handleDown);
-    return () => document.removeEventListener("mousedown", handleDown);
-  }, [open]);
+    setOpen(next);
+  }
 
   // By the clicked day rather than the range DayPicker proposes, which treats
   // one click as a whole one-day range: here the first click is only a start.
   function pick(date: Date) {
     const day = toLocalDateString(date);
-    if (picking && day >= from) {
-      onChange(from, day);
-      close();
-    } else {
+    if (picking && start && day >= start) {
+      onChange(start, day);
+      setOpenState(false);
+    } else if (openEnds) {
       // A fresh range, or a day before the start, which begins it again there.
       onChange(day, "");
+    } else {
+      onChange(day, day);
+      setAnchor(day);
     }
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== "Escape") return;
-    // Kept from the filter modal around it, which would close on it too.
-    e.preventDefault();
-    e.stopPropagation();
-    close();
   }
 
   // What the calendar draws: the range so far, or while picking, from the
   // start to the day under the pointer. A lone end is a one-day range, so it
   // shows as a single square rather than half a band.
-  const shownEnd = picking ? (hoverDay && hoverDay >= from ? hoverDay : from) : to;
-  const shownStart = from || to;
+  const shownStart = picking ? start : from || to;
+  const shownEnd = picking && start ? (hoverDay && hoverDay >= start ? hoverDay : start) : to;
   const selected: DateRange | undefined = shownStart
     ? { from: parseLocalDate(shownStart), to: parseLocalDate(shownEnd || shownStart) }
     : undefined;
 
-  const label = formatRange(from, to);
+  const disabled: Matcher[] = [];
+  if (min) disabled.push({ before: parseLocalDate(min) });
+  if (max) disabled.push({ after: parseLocalDate(max) });
 
   return (
-    <div ref={fieldRef} style={{ position: "relative", width: "100%" }}>
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => (open ? close() : openPanel())}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          width: "100%",
-          height: "36px",
-          padding: label ? "0 34px 0 10px" : "0 10px",
-          fontFamily: "var(--font-sans)",
-          fontSize: "14px",
-          fontWeight: 500,
-          textAlign: "left",
-          color: label ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-          background: "var(--color-bg)",
-          border: `1px solid ${open ? "var(--color-border-strong)" : "var(--color-border)"}`,
-          borderRadius: "var(--radius-md)",
-          cursor: "pointer",
-          transition: "border-color 150ms ease",
-        }}
-      >
-        <IconCalendar size={14} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {label ?? placeholder}
-        </span>
-      </button>
-      {label && (
-        <button
-          type="button"
-          title="Clear dates"
-          onClick={() => {
-            onChange("", "");
-            close();
-          }}
-          className="link-subtle"
-          style={{
-            position: "absolute",
-            right: "10px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            display: "flex",
-          }}
-        >
-          <IconX size={12} />
-        </button>
-      )}
-
-      {open && pos && (
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-label={ariaLabel ?? "Pick dates"}
-          onKeyDown={handleKeyDown}
-          // Off the calendar rather than off each day, so moving between days
-          // doesn't drop the preview for a frame.
-          onMouseLeave={() => setHoverDay(null)}
-          className={`${styles.panel} ${pos.top === undefined ? styles.panelAbove : ""}`}
-          style={{
-            position: "fixed",
-            left: pos.left,
-            ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
-            maxHeight: `${pos.maxHeight}px`,
-            overflowY: "auto",
-            zIndex: 9999,
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-lg)",
-            boxShadow: "var(--shadow-lg)",
-          }}
-        >
+    <PickerField
+      {...fieldProps}
+      icon={<IconCalendar size={14} />}
+      display={formatRange(from, to)}
+      placeholder={placeholder}
+      onClear={fieldProps.required ? undefined : () => onChange("", "")}
+      open={open}
+      onOpenChange={setOpenState}
+      panelLabel={fieldProps["aria-label"] ?? fieldProps.label ?? "Pick dates"}
+      panelStyle={{ display: "flex", flexDirection: isMobile ? "column" : "row" }}
+      panel={
+        <>
           {shortcuts.length > 0 && (
             <div
               style={{
@@ -275,7 +168,7 @@ export function DateRangePicker({
                   onClick={() => {
                     const [start, end] = shortcut.range();
                     onChange(start, end);
-                    close();
+                    setOpenState(false);
                   }}
                   className={styles.shortcut}
                   style={{
@@ -294,25 +187,30 @@ export function DateRangePicker({
             </div>
           )}
 
-          <DayPicker
-            mode="range"
-            selected={selected}
-            onSelect={(_range, triggerDate) => pick(triggerDate)}
-            onDayMouseEnter={(date) => setHoverDay(toLocalDateString(date))}
-            month={month}
-            onMonthChange={setMonth}
-            numberOfMonths={isMobile ? 1 : 2}
-            showOutsideDays
-            autoFocus
-            classNames={CLASS_NAMES}
-            components={{ Chevron }}
-            formatters={{
-              // "Su", "Mo": the short weekday's first two letters.
-              formatWeekdayName: (date) => weekdayName.format(date).slice(0, 2),
-            }}
-          />
-        </div>
-      )}
-    </div>
+          {/* Off the calendar rather than off each day, so moving between days
+              doesn't drop the preview for a frame. */}
+          <div onMouseLeave={() => setHoverDay(null)}>
+            <DayPicker
+              mode="range"
+              selected={selected}
+              onSelect={(_range, triggerDate) => pick(triggerDate)}
+              onDayMouseEnter={(date) => setHoverDay(toLocalDateString(date))}
+              month={month}
+              onMonthChange={setMonth}
+              numberOfMonths={isMobile ? 1 : 2}
+              showOutsideDays
+              autoFocus
+              disabled={disabled}
+              classNames={CLASS_NAMES}
+              components={{ Chevron }}
+              formatters={{
+                // "Su", "Mo": the short weekday's first two letters.
+                formatWeekdayName: (date) => weekdayName.format(date).slice(0, 2),
+              }}
+            />
+          </div>
+        </>
+      }
+    />
   );
 }

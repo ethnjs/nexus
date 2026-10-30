@@ -141,6 +141,7 @@ export function TournamentsFilterModal({
         return (
           <DateRangePicker
             aria-label="Tournament dates"
+            openEnds
             from={from}
             to={to}
             onChange={(nextFrom, nextTo) => onChange(rangeValues(nextFrom, nextTo))}
