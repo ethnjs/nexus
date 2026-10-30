@@ -1,0 +1,71 @@
+---
+title: v1.7.0-beta
+description: Forms for the right people, onboarding paths per member, and a faster way to find tournaments
+date: 2026-10-29T12:00:00-07:00
+---
+
+You can now decide which members see each form based on their roles, and onboarding follows the same rules, so each member only does the steps meant for them. Finding, adding and joining tournaments is quicker too.
+
+## What's new
+
+### Choose who sees a form
+
+Any tournament form can now require roles. Open a form's menu, choose **Edit prerequisites**, and add conditions like "has the Event Supervisor role" or "has none of these roles". As you build them, you see the list of members who'd get the form.
+
+- Members who don't meet a form's prerequisites don't see it in their forms list, and its link shows a page saying they don't have access.
+- If someone loses a required role, they can no longer open the form or their response to it.
+
+### Onboarding built for each member
+
+Onboarding steps follow prerequisites too. A step a member doesn't qualify for is left off their onboarding, so a judge and a runner can have different steps.
+
+- Turn a form into an onboarding step with **Onboarding step** in its menu. The Onboarding tab is gone.
+- The new **Form flow** button on the Forms page puts the onboarding order and every form's access in one place. Pick a member to see exactly which steps and forms they get.
+- You can add a draft to onboarding ahead of time. Members only need to do it once you publish it.
+- The onboarding ring on the members table counts each member's own steps, and hovering it lists them.
+
+### Reuse a question across forms
+
+Questions on different forms can now share the same key. When they do, the members table, member panel and exports show each member's most recent answer. When you set a question's key, the builder suggests keys already used on your other forms.
+
+### Other, please specify
+
+Multiple choice, dropdown and checkbox questions can have an **Other** option where people type their own answer. On checkbox questions, people can add more than one.
+
+### Add or join a tournament
+
+**Add tournament** on the dashboard now lets you create a tournament or join one by pasting an invite link or code. Tournament and track dates are picked on one calendar.
+
+### Search, filter and sort tournaments
+
+The dashboard's tournament list has search, filters (including a date range) and sorting.
+
+## Improvements
+
+**Forms**
+- Fill out every type of question from the keyboard. Press Enter to continue.
+- Availability questions have a switch to hide shift times.
+- **Edit response** shows a lock and explains why when editing is turned off.
+- The forms list refreshes when you come back to the tab.
+
+**Members and exports**
+- Add affiliation and year level columns to the members table, sort by them, and filter by them.
+- Filter the members table by onboarding progress: not started, in progress or complete.
+- Exports can include affiliation and year level. Drag to reorder a preset's columns, and add columns from an **Add column** menu.
+- Shift-click to select a range of rows.
+- Search your invites. **Add invite** is now above the table.
+
+**Sign in and profile**
+- Sign in, sign up and the other account pages have a new look.
+- Pick your date of birth from a calendar with month and year menus.
+
+**Admins**
+- Filter and sort the tournaments and users tables. Users show affiliation and year level.
+- Click a tournament's row to open it in a new tab.
+
+## Fixes
+- Shift times show on availability options that also set a track status.
+- The overview's Forms card shows each form's title instead of its short name.
+- Hiding a track's assignments in the member panel no longer hides its status too.
+- The ranked choice picker stays open for the next choice.
+- Arrow keys keep the highlighted option in view in long menus.
