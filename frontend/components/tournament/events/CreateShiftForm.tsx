@@ -5,6 +5,7 @@ import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicke
 import { soleTrackId, TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
 import {
   ApiError,
   type TournamentShift,
@@ -113,26 +114,18 @@ export function CreateShiftForm({
         value={resolvedDay}
         onChange={setDay}
       />
-      <div style={{ display: "flex", gap: "8px" }}>
-        <Input
-          label="Start"
-          required
-          type="time"
-          size="sm"
-          fullWidth
-          value={startTime}
-          onChange={(e) => setStartTime(e.target.value)}
-        />
-        <Input
-          label="End"
-          required
-          type="time"
-          size="sm"
-          fullWidth
-          value={endTime}
-          onChange={(e) => setEndTime(e.target.value)}
-        />
-      </div>
+      <TimeRangePicker
+        label="Time"
+        required
+        size="sm"
+        fullWidth
+        start={startTime}
+        end={endTime}
+        onChange={(start, end) => {
+          setStartTime(start);
+          setEndTime(end);
+        }}
+      />
       {error && (
         <p
           style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}

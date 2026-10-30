@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconEvents, IconPlus, IconSearch, IconTrash, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
 import {
   ApiError,
   type TournamentEvent,
@@ -338,25 +339,15 @@ export function ShiftPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Start">
-            <Input
-              type="time"
+          <SettingsRow label="Time" last>
+            <TimeRangePicker
+              aria-label="Time"
               fullWidth
               locked={locked}
-              value={draft.startTime}
-              onChange={(e) => patch({ startTime: e.target.value })}
-              error={fieldErrors.startTime}
-            />
-          </SettingsRow>
-
-          <SettingsRow label="End" last>
-            <Input
-              type="time"
-              fullWidth
-              locked={locked}
-              value={draft.endTime}
-              onChange={(e) => patch({ endTime: e.target.value })}
-              error={fieldErrors.endTime}
+              start={draft.startTime}
+              end={draft.endTime}
+              onChange={(start, end) => patch({ startTime: start, endTime: end })}
+              error={fieldErrors.startTime ?? fieldErrors.endTime}
             />
           </SettingsRow>
         </SettingsSection>

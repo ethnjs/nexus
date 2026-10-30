@@ -45,14 +45,17 @@ interface PickerFieldProps extends PickerFieldCommonProps {
   panelStyle?: CSSProperties;
 }
 
-const SIZE_MAP: Record<PickerFieldSize, { height: string; paddingX: string; fontSize: string }> = {
+export const PICKER_FIELD_SIZES: Record<
+  PickerFieldSize,
+  { height: string; paddingX: string; fontSize: string }
+> = {
   xs: { height: "26px", paddingX: "8px", fontSize: "12px" },
   sm: { height: "28px", paddingX: "10px", fontSize: "13px" },
   md: { height: "36px", paddingX: "10px", fontSize: "14px" },
   lg: { height: "48px", paddingX: "16px", fontSize: "15px" },
 };
 
-const BACKGROUND_MAP: Record<PickerFieldVariant, string> = {
+export const PICKER_FIELD_BACKGROUNDS: Record<PickerFieldVariant, string> = {
   primary: "var(--color-bg)",
   secondary: "var(--color-surface)",
 };
@@ -97,7 +100,7 @@ export function PickerField({
 }: PickerFieldProps) {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
-  const sizing = SIZE_MAP[size];
+  const sizing = PICKER_FIELD_SIZES[size];
   const [focused, setFocused] = useState(false);
   const [pos, setPos] = useState<Pos | null>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -218,7 +221,7 @@ export function PickerField({
               ? "var(--color-accent-subtle)"
               : error
                 ? "var(--color-danger-subtle)"
-                : BACKGROUND_MAP[variant],
+                : PICKER_FIELD_BACKGROUNDS[variant],
             border: `1px solid ${borderColor}`,
             borderRadius: "var(--radius-md)",
             outline: "none",
