@@ -126,7 +126,7 @@ export default function AccountSettingsPage() {
       return;
     }
 
-    const dobErr = draft.date_of_birth ? validateDateOfBirth(draft.date_of_birth) : null;
+    const dobErr = validateDateOfBirth(draft.date_of_birth);
     if (dobErr) {
       setErrors((e) => ({ ...e, date_of_birth: dobErr }));
       setSaving(false);
@@ -138,7 +138,7 @@ export default function AccountSettingsPage() {
         first_name: draft.first_name,
         last_name: draft.last_name,
         phone: draft.phone,
-        date_of_birth: draft.date_of_birth || null,
+        date_of_birth: draft.date_of_birth,
       });
       setOriginal(updated);
       setDraft(toDraft(updated));
@@ -343,6 +343,7 @@ export default function AccountSettingsPage() {
           last
         >
           <DatePicker
+            required
             fullWidth
             aria-label="Date of birth"
             max={todayLocalDateString()}
