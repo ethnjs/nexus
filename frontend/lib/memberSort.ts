@@ -1,6 +1,6 @@
 import type { SortFieldOption, SortPill, SortPillOption } from "@/components/ui/SortModal";
 import type { DisplayConfigCatalogItem, FilterOptionGroup, MembershipFull } from "@/lib/api";
-import { userAffiliation } from "@/lib/personDisplay";
+import { userAffiliation, yearLevelOrder } from "@/lib/personDisplay";
 import type { SortRule, SortValue } from "@/lib/sorting";
 
 /** The fields every roster can sort by. Mirrors KNOWN_SORT_FIELDS in
@@ -177,10 +177,6 @@ export function memberSortDataMissing(m: MembershipFull, field: MemberSortField)
   return false;
 }
 
-// Undergraduate years first, by year, then graduate students, then non-students.
-const GRADUATE_ORDER = 1000;
-const NON_STUDENT_ORDER = 1001;
-
 // A missing name is null, not "", so it sorts last in both directions.
 export function memberSortValue(m: MembershipFull, field: MemberSortField): SortValue {
   switch (field) {
@@ -202,9 +198,7 @@ export function memberSortValue(m: MembershipFull, field: MemberSortField): Sort
     case "affiliation":
       return userAffiliation(m.user, true);
     case "year_level":
-      if (m.user.student_status === "Graduate") return GRADUATE_ORDER;
-      if (m.user.student_status === "Non-Student") return NON_STUDENT_ORDER;
-      return m.user.student_status === "Undergraduate" ? m.user.year_level : null;
+      return yearLevelOrder(m.user);
   }
   const [namespace, first, second] = field.split(":");
   const trackId = Number(first);

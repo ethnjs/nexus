@@ -391,7 +391,7 @@ interface AdminUserUpdate {
 }
 
 export const adminUsersApi = {
-  list: () => api.get<AdminUserSlim[]>("/admin/users/"),
+  list: () => api.get<AdminUserFull[]>("/admin/users/"),
   get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
   getByEmail: (email: string) =>
     api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),

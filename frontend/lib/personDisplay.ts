@@ -51,6 +51,31 @@ export function userAffiliation(user: EducationFields, short = false): string | 
   return (short && user.university.abbreviation) || user.university.name;
 }
 
+// The year level filter's choices: a year, or one of the two non-years.
+// Shared with the roster's backend filter (member_filters.YEAR_LEVEL_*).
+export const YEAR_LEVEL_FILTER_OPTIONS = [
+  ...YEAR_LEVEL_OPTIONS,
+  { value: "graduate", label: "Graduate" },
+  { value: "non_student", label: "Not a student" },
+];
+
+/** The user's YEAR_LEVEL_FILTER_OPTIONS value, or null with nothing to go on. */
+export function yearLevelFilterValue(user: EducationFields): string | null {
+  if (user.student_status === "Graduate") return "graduate";
+  if (user.student_status === "Non-Student") return "non_student";
+  if (user.student_status === "Undergraduate" && user.year_level !== null)
+    return String(Math.min(user.year_level, 5));
+  return null;
+}
+
+/** For sorting: undergraduate years by year, then graduate students, then
+ *  non-students. Null with no status, so it sorts last either way. */
+export function yearLevelOrder(user: EducationFields): number | null {
+  if (user.student_status === "Graduate") return 1000;
+  if (user.student_status === "Non-Student") return 1001;
+  return user.student_status === "Undergraduate" ? user.year_level : null;
+}
+
 export function userYearLevel(user: EducationFields): string | null {
   switch (user.student_status) {
     case "Undergraduate":

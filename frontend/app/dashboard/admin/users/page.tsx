@@ -3,14 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
+import {
+  ADMIN_USERS_FILTER_KEYS,
+  AdminUsersFilterModal,
+  type AdminUsersFilterState,
+  affiliationOptions,
+  userPassesFilters,
+} from "@/components/admin/AdminUsersFilterModal";
 import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Card } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterButton } from "@/components/ui/FilterButton";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconCheckCircle,
@@ -26,10 +34,22 @@ import {
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
-import { type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
+import {
+  ADMIN_USER_SORT_OPTIONS,
+  ADMIN_USER_SORT_TIEBREAK,
+  type AdminUserSortField,
+  adminUserSortTiebreak,
+  adminUserSortValue,
+  DEFAULT_ADMIN_USER_SORT,
+} from "@/lib/adminUserSort";
+import { type AdminUserFull, type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
+import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
+import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { formatDuration } from "@/lib/timeFormat";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
@@ -45,6 +65,8 @@ const COLUMNS = [
   "minmax(190px, 1.4fr)", // name — avatar + gap eat ~36px before the name
   "minmax(200px, 1.6fr)", // email — the longest content, so the largest share
   "minmax(124px, 0.8fr)", // phone — widest formatted number is ~108px
+  "minmax(120px, 0.8fr)", // affiliation — a school's short name or an employer
+  "112px", // year level — "Not a student", the widest value
   "minmax(92px, 0.6fr)", // role — one badge
   "minmax(104px, 0.7fr)", // status — one badge
   "minmax(96px, 0.7fr)", // joined
@@ -56,15 +78,7 @@ const COLUMNS = [
   "124px", // actions — 4 * 28px buttons + 3 * 4px gaps
 ].join(" ");
 
-const MIN_TABLE_WIDTH = 1030;
-
-type RoleFilter = "all" | "admin" | "user";
-
-const ROLE_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "admin", label: "Admins" },
-  { value: "user", label: "Users" },
-];
+const MIN_TABLE_WIDTH = 1262;
 
 const NUM_CELL: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
@@ -94,7 +108,7 @@ function UserRow({
   onOpen,
   onAction,
 }: {
-  user: AdminUserSlim;
+  user: AdminUserFull;
   /** The account doing the looking — the backend refuses every one of these on yourself. */
   isSelf: boolean;
   /** This row is the one the panel is showing. */
@@ -141,6 +155,12 @@ function UserRow({
       <span style={{ ...NUM_CELL, textAlign: "left" }}>
         {user.phone ? formatPhone(user.phone) : "—"}
       </span>
+
+      <span style={TEXT_CELL} title={userAffiliation(user) ?? undefined}>
+        {userAffiliation(user, true) ?? "—"}
+      </span>
+
+      <span style={{ ...TEXT_CELL, textAlign: "center" }}>{userYearLevel(user) ?? "—"}</span>
 
       <span style={{ display: "flex", justifyContent: "center" }}>
         <Badge variant={user.role === "admin" ? "admin" : "default"}>
@@ -268,16 +288,22 @@ function UserRow({
 
 type PendingAction = {
   kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete";
-  user: AdminUserSlim;
+  user: AdminUserFull;
 };
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const run = useActionToast();
-  const [users, setUsers] = useState<AdminUserSlim[] | null>(null);
+  const [users, setUsers] = useState<AdminUserFull[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState<RoleFilter>("all");
+  const [filters, setFilters] = useState<AdminUsersFilterState>(() =>
+    emptyFilterState(ADMIN_USERS_FILTER_KEYS),
+  );
+  const [sortRules, setSortRules] =
+    useState<SortRule<AdminUserSortField>[]>(DEFAULT_ADMIN_USER_SORT);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const [panelUserId, setPanelUserId] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -299,8 +325,8 @@ export default function AdminUsersPage() {
   const visible = useMemo(() => {
     const rows = users ?? [];
     const query = search.trim().toLowerCase();
-    return rows.filter((u) => {
-      if (role !== "all" && u.role !== role) return false;
+    const matching = rows.filter((u) => {
+      if (!userPassesFilters(u, filters)) return false;
       if (!query) return true;
       return (
         userName(u).toLowerCase().includes(query) ||
@@ -308,7 +334,8 @@ export default function AdminUsersPage() {
         (u.phone?.includes(query) ?? false)
       );
     });
-  }, [users, search, role]);
+    return sortRows(matching, sortRules, adminUserSortValue, adminUserSortTiebreak);
+  }, [users, search, filters, sortRules]);
 
   // Position in the *filtered* order, so the arrows step through what the
   // reader is actually looking at rather than the unfiltered list.
@@ -338,8 +365,10 @@ export default function AdminUsersPage() {
     // panel goes absent->present, so this doesn't restart the slide.
   }, [panelUserId, prevUser, nextUser, setPanel, clearPanel]);
 
+  // Merged, not swapped: the PATCH answers with the slim user, and the row
+  // still needs the profile the list loaded.
   function replaceRow(updated: AdminUserSlim) {
-    setUsers((prev) => (prev ?? []).map((u) => (u.id === updated.id ? updated : u)));
+    setUsers((prev) => (prev ?? []).map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
   }
 
   function removeRows(ids: (number | string)[]) {
@@ -348,7 +377,7 @@ export default function AdminUsersPage() {
     if (panelUserId !== null && ids.includes(panelUserId)) setPanelUserId(null);
   }
 
-  const isFiltered = search.trim() !== "" || role !== "all";
+  const isFiltered = search.trim() !== "" || isFilterActive(filters);
 
   return (
     <>
@@ -367,33 +396,51 @@ export default function AdminUsersPage() {
         </p>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          alignItems: "center",
-          marginBottom: "16px",
-          flexWrap: "wrap",
-        }}
-      >
-        <Input
-          placeholder="Search name, email or phone"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          icon={<IconSearch size={16} />}
-          size="md"
-          font="sans"
-          variant="secondary"
-          style={{ width: "420px" }}
+      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Input
+            placeholder="Search name, email or phone"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            icon={<IconSearch size={16} />}
+            size="md"
+            font="sans"
+            variant="secondary"
+            fullWidth
+          />
+        </div>
+        <FilterButton
+          active={isFilterActive(filters)}
+          onOpen={() => setShowFilterModal(true)}
+          onClear={() => setFilters(emptyFilterState(ADMIN_USERS_FILTER_KEYS))}
         />
-        <ButtonGroup
-          options={ROLE_OPTIONS}
-          value={role}
-          onChange={(v) => setRole(v as RoleFilter)}
-          size="md"
+        <SortButton
+          active={!sameSortRules(sortRules, DEFAULT_ADMIN_USER_SORT)}
+          onOpen={() => setShowSortModal(true)}
+          onReset={() => setSortRules(DEFAULT_ADMIN_USER_SORT)}
         />
       </div>
+
+      {showFilterModal && (
+        <AdminUsersFilterModal
+          affiliations={affiliationOptions(users ?? [])}
+          filters={filters}
+          onApply={setFilters}
+          onClose={() => setShowFilterModal(false)}
+        />
+      )}
+      {showSortModal && (
+        <SortModal
+          title="Sort users"
+          fields={ADMIN_USER_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_ADMIN_USER_SORT}
+          tiebreakLabel={ADMIN_USER_SORT_TIEBREAK}
+          onApply={(next) => setSortRules(next as SortRule<AdminUserSortField>[])}
+          onClose={() => setShowSortModal(false)}
+        />
+      )}
 
       {users === null ? (
         <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
@@ -405,7 +452,7 @@ export default function AdminUsersPage() {
             icon={<IconMembers size={26} />}
             title={isFiltered ? "No matching users" : "No users yet"}
             description={
-              isFiltered ? "Try adjusting your search or filter." : "Nobody has signed up."
+              isFiltered ? "Try adjusting your search or filters." : "Nobody has signed up."
             }
           />
         </Card>
@@ -419,6 +466,8 @@ export default function AdminUsersPage() {
               <span>Name</span>
               <span>Email</span>
               <span>Phone</span>
+              <span>Affiliation</span>
+              <span style={{ textAlign: "center" }}>Year Level</span>
               <span style={{ textAlign: "center" }}>Role</span>
               <span style={{ textAlign: "center" }}>Status</span>
               <span style={{ textAlign: "center" }}>Joined</span>

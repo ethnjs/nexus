@@ -22,7 +22,7 @@ import {
   type MemberFilterOptions,
   membersApi,
 } from "@/lib/api";
-import { YEAR_LEVEL_OPTIONS } from "@/lib/personDisplay";
+import { YEAR_LEVEL_FILTER_OPTIONS } from "@/lib/personDisplay";
 
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
@@ -185,13 +185,6 @@ const ONBOARDING_OPTIONS: FilterOptionItem[] = [
   { value: "not_started", label: "Not started" },
   { value: "in_progress", label: "In progress" },
   { value: "complete", label: "Complete" },
-];
-
-// Shared with the backend's YEAR_LEVEL_* values.
-const YEAR_LEVEL_FILTER_OPTIONS: FilterOptionItem[] = [
-  ...YEAR_LEVEL_OPTIONS,
-  { value: "graduate", label: "Graduate" },
-  { value: "non_student", label: "Not a student" },
 ];
 
 // Per track, like track status: "who's unassigned for Day 1".
