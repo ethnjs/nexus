@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
+import { AddTournamentModal } from "@/components/tournament/AddTournamentModal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconPlus } from "@/components/ui/Icons";
 import type { Tournament } from "@/lib/api";
@@ -31,14 +31,14 @@ export function TournamentDropdown({ tournamentId, fullWidth = false }: Tourname
   const router = useRouter();
   const { tournaments, refresh } = useTournament();
   const { guard } = useUnsavedChanges();
-  const [showNewModal, setShowNewModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // No optimistic setSelectedTournament here — the [id]/layout.tsx shell
   // refetches the full tournament keyed off the URL id on every navigation,
   // which is the sole writer of selectedTournament (see useTournament.tsx).
   async function handleCreated(t: Tournament) {
     await refresh();
-    setShowNewModal(false);
+    setShowAddModal(false);
     router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
 
@@ -67,13 +67,13 @@ export function TournamentDropdown({ tournamentId, fullWidth = false }: Tourname
         {...(fullWidth ? { fullWidth: true } : { width: 280 })}
         searchable={tournaments.length > 8}
         emptyMessage="No tournaments yet"
-        footerLabel="New tournament"
+        footerLabel="Add tournament"
         footerIcon={<IconPlus />}
-        onFooterClick={() => setShowNewModal(true)}
+        onFooterClick={() => setShowAddModal(true)}
       />
 
-      {showNewModal && (
-        <NewTournamentModal onClose={() => setShowNewModal(false)} onCreated={handleCreated} />
+      {showAddModal && (
+        <AddTournamentModal onClose={() => setShowAddModal(false)} onCreated={handleCreated} />
       )}
     </>
   );

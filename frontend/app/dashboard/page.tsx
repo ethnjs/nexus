@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
+import { AddTournamentModal } from "@/components/tournament/AddTournamentModal";
 import { TournamentCard } from "@/components/tournament/TournamentCard";
 import { Banner, type BannerProps } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
@@ -38,7 +38,8 @@ export default function DashboardPage() {
   const router = useRouter();
   const [tournaments, setTournaments] = useState<TournamentSummary[]>([]);
   const [loading, setLoading] = useState<Record<string, boolean>>({ page: true });
-  const [showModal, setShowModal] = useState(false);
+  // Which view the add-tournament modal opens on, or null while it's closed.
+  const [modalView, setModalView] = useState<"choose" | "create" | "join" | null>(null);
 
   const [dismissedBanners, setDismissedBanners] = useState<Record<number, string>>(() => {
     const dismissed =
@@ -129,7 +130,7 @@ export default function DashboardPage() {
 
   function handleCreated(t: Tournament) {
     setTournaments((prev) => [...prev, { ...t, event_count: 0, volunteer_count: 0 }]);
-    setShowModal(false);
+    setModalView(null);
     router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
 
@@ -172,7 +173,7 @@ export default function DashboardPage() {
                 : `${tournaments.length} tournament${tournaments.length !== 1 ? "s" : ""}`
           }
           action={
-            <Button variant="primary" size="md" onClick={() => setShowModal(true)}>
+            <Button variant="primary" size="md" onClick={() => setModalView("choose")}>
               <IconPlus />
               Add Tournament
             </Button>
@@ -229,17 +230,17 @@ export default function DashboardPage() {
                 maxWidth: "280px",
               }}
             >
-              Create your first tournament to get started.
+              Join one with an invite, or create your own.
             </p>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => setShowModal(true)}
-              style={{ marginTop: "8px" }}
-            >
-              <IconPlus />
-              Create tournament
-            </Button>
+            <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+              <Button variant="primary" size="md" onClick={() => setModalView("join")}>
+                Join with an invite
+              </Button>
+              <Button variant="secondary" size="md" onClick={() => setModalView("create")}>
+                <IconPlus />
+                Create tournament
+              </Button>
+            </div>
           </div>
         ) : (
           // Masonry, not a grid: a multi-site tournament listing a row per
@@ -259,8 +260,12 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {showModal && (
-        <NewTournamentModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
+      {modalView && (
+        <AddTournamentModal
+          initialView={modalView === "choose" ? undefined : modalView}
+          onClose={() => setModalView(null)}
+          onCreated={handleCreated}
+        />
       )}
     </>
   );
