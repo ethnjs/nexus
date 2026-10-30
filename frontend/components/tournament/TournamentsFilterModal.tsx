@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { todayLocalDateString, toLocalDateString } from "@/lib/date";
 
-export const TOURNAMENTS_FILTER_KEYS = ["dates", "level", "division", "state"] as const;
+export const TOURNAMENTS_FILTER_KEYS = ["status", "dates", "level", "division", "state"] as const;
 type TournamentsFilterKey = (typeof TOURNAMENTS_FILTER_KEYS)[number];
 
 export type TournamentsFilterState = FilterState<TournamentsFilterKey>;
@@ -67,6 +67,11 @@ const DATE_SHORTCUTS: DateRangeShortcut[] = [
   { label: "Last season", range: () => season(1) },
 ];
 
+const STATUS_OPTIONS: FilterOption[] = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+];
+
 const LEVEL_OPTIONS: FilterOption[] = TOURNAMENT_LEVELS.map((level) => ({
   value: level,
   label: level[0].toUpperCase() + level.slice(1),
@@ -83,9 +88,11 @@ const STATE_OPTIONS: FilterOption[] = TOURNAMENT_STATES.map((state) => ({
 }));
 
 export function tournamentPassesFilters(
-  tournament: TournamentSummary,
+  // The dashboard's summaries and the admin table's rows both carry these.
+  tournament: Pick<TournamentSummary, "is_archived" | "level" | "state" | "division" | "dates">,
   filters: TournamentsFilterState,
 ): boolean {
+  if (!filterAllows(filters.status, tournament.is_archived ? "archived" : "active")) return false;
   if (!filterAllows(filters.level, tournament.level)) return false;
   if (!filterAllows(filters.state, tournament.state)) return false;
   // A tournament runs several divisions; any one of them picked is a match.
@@ -102,16 +109,27 @@ export function tournamentPassesFilters(
 }
 
 export function TournamentsFilterModal({
+  withStatus = false,
   filters,
   onApply,
   onClose,
 }: {
+  /** Offer Active / Archived — off where the page already splits them (the
+   *  dashboard's sections). */
+  withStatus?: boolean;
   filters: TournamentsFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: TournamentsFilterState) => void;
   onClose: () => void;
 }) {
   const sections: FilterSectionConfig<TournamentsFilterKey>[] = [
+    {
+      key: "status",
+      title: "Status",
+      options: STATUS_OPTIONS,
+      control: "buttons",
+      hidden: !withStatus,
+    },
     {
       key: "dates",
       title: "Dates",
