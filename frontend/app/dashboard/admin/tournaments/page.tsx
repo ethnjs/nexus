@@ -26,6 +26,7 @@ import { SortModal } from "@/components/ui/SortModal";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { type AdminTournament, ApiError, adminTournamentsApi, tournamentsApi } from "@/lib/api";
+import { rowActivation } from "@/lib/rowActivation";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { formatDuration } from "@/lib/timeFormat";
 import {
@@ -211,11 +212,33 @@ function TournamentRow({
 }) {
   const primary = primaryTracks(tournament);
 
+  // A new tab, so the admin keeps their place in this list. Site admins hold
+  // every permission, so the overview opens whatever the tournament.
+  function openTournament() {
+    window.open(`/dashboard/tournaments/${tournament.id}/overview`, "_blank", "noopener");
+  }
+
+  // The owner link and the action buttons do their own thing.
+  function fromOwnControl(e: React.MouseEvent) {
+    return (e.target as HTMLElement).closest("button, a") !== null;
+  }
+
   return (
     // Deliberately not dimmed. A dimmed row reads as "unavailable to you",
     // which is backwards here: an archived tournament is exactly the one an
     // admin is here to unarchive or purge. The Archived badge carries the state.
-    <div className={table.row}>
+    <div
+      className={table.row}
+      onClick={(e) => {
+        if (!fromOwnControl(e)) openTournament();
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1 && !fromOwnControl(e)) openTournament();
+      }}
+      {...rowActivation(openTournament)}
+      title="Open in a new tab"
+      style={{ cursor: "pointer" }}
+    >
       <span
         style={{
           fontFamily: "var(--font-sans)",
