@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TbdCheckbox, TrackFields, TrackSummary } from "@/components/tournament/TrackFields";
 import { Button } from "@/components/ui/Button";
-import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
 import { CompoundButton } from "@/components/ui/CompoundButton";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -228,9 +228,6 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
   const [levelText, setLevelText] = useState("");
   const [matchedLevel, setMatchedLevel] = useState<LevelOption | null>(null);
   const [division, setDivision] = useState<TournamentDivision[]>([]);
-  // Most tournaments run one day, so the end date only appears when the TD
-  // says it spans more — same treatment a track's dates get in TrackFields.
-  const [spansDays, setSpansDays] = useState(false);
   // Simple mode's own TBD switches, mirroring the two in TrackFields. A blank
   // date or venue is still an error; TBD is the way to say it isn't decided.
   const [datesTbd, setDatesTbd] = useState(false);
@@ -311,7 +308,6 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
       setMatchedUniversity(universities.find((u) => u.id === primary.university_id) ?? null);
       setStartDate(primary.start_date);
       setEndDate(primary.end_date);
-      setSpansDays(!!primary.end_date && primary.end_date !== primary.start_date);
       setDivision(primary.division);
       setDatesTbd(primary.dates_tbd);
       setLocationTbd(primary.location_tbd);
@@ -733,72 +729,22 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                           />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: spansDays && !datesTbd ? "1fr 1fr" : "1fr",
-                              gap: "12px",
+                          {/* Locked and reading "TBD" rather than removed, so the field stays put. */}
+                          <DateRangePicker
+                            label="Dates"
+                            required
+                            fullWidth
+                            from={datesTbd ? "" : startDate}
+                            to={datesTbd ? "" : endDate}
+                            placeholder={datesTbd ? TBD : "Pick dates"}
+                            locked={datesTbd}
+                            min={todayLocalDateString()}
+                            onChange={(from, to) => {
+                              setStartDate(from);
+                              setEndDate(to);
                             }}
-                          >
-                            <Input
-                              label={spansDays && !datesTbd ? "Start Date" : "Date"}
-                              required
-                              // Locked and reading "TBD" rather than removed — the field
-                              // stays put, and a date input can only hold a date, so the
-                              // type swaps to text to show the word.
-                              type={datesTbd ? "text" : "date"}
-                              value={datesTbd ? TBD : startDate}
-                              locked={datesTbd}
-                              // A single-day tournament keeps its end date in step: the
-                              // track it creates needs both, and the TD has said it
-                              // doesn't span days.
-                              onChange={(e) => {
-                                setStartDate(e.target.value);
-                                if (!spansDays) setEndDate(e.target.value);
-                              }}
-                              error={shownSchedule.startDate}
-                              min={todayLocalDateString()}
-                              fullWidth
-                            />
-                            {spansDays && !datesTbd && (
-                              <Input
-                                label="End Date"
-                                required
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                error={shownSchedule.endDate}
-                                min={startDate || todayLocalDateString()}
-                                fullWidth
-                              />
-                            )}
-                          </div>
-                          <label
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              cursor: datesTbd ? "default" : "pointer",
-                            }}
-                          >
-                            <Checkbox
-                              checked={spansDays && !datesTbd}
-                              locked={datesTbd}
-                              onChange={(checked) => {
-                                setSpansDays(checked);
-                                if (!checked) setEndDate(startDate);
-                              }}
-                            />
-                            <span
-                              style={{
-                                fontFamily: "var(--font-sans)",
-                                fontSize: "13px",
-                                color: "var(--color-text-secondary)",
-                              }}
-                            >
-                              Runs more than one day
-                            </span>
-                          </label>
+                            error={shownSchedule.startDate ?? shownSchedule.endDate}
+                          />
                           <TbdCheckbox
                             label="Date not decided yet"
                             checked={datesTbd}
@@ -806,7 +752,6 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
                             onChange={(checked) => {
                               setDatesTbd(checked);
                               if (checked) {
-                                setSpansDays(false);
                                 setStartDate("");
                                 setEndDate("");
                               }
