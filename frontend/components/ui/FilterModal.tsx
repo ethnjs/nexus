@@ -98,6 +98,9 @@ interface SectionBase<K extends string> {
   /** Drop the section entirely — heading included — for one with nothing to
    *  offer this tournament (no age collected, no lunch questions). */
   hidden?: boolean;
+  /** False for a control that clears itself (a date range field with its own
+   *  ✕), so the section doesn't offer a second Clear beside it. */
+  clearable?: boolean;
 }
 
 /** A section over a flat list of values, rendered by one of the stock controls. */
@@ -147,11 +150,13 @@ interface FilterBodyProps {
 function FilterSection({
   title,
   active,
+  clearable = true,
   onClear,
   children,
 }: {
   title: string;
   active: boolean;
+  clearable?: boolean;
   onClear: () => void;
   children: ReactNode;
 }) {
@@ -181,18 +186,20 @@ function FilterSection({
             is taller than the title beside it, so mounting it on the first
             selection grew the header and shifted every section below. Hidden
             rather than just invisible — out of the tab order and inert too. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onClear}
-          disabled={!active}
-          aria-hidden={!active}
-          tabIndex={active ? undefined : -1}
-          style={{ visibility: active ? "visible" : "hidden" }}
-        >
-          Clear
-        </Button>
+        {clearable && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            disabled={!active}
+            aria-hidden={!active}
+            tabIndex={active ? undefined : -1}
+            style={{ visibility: active ? "visible" : "hidden" }}
+          >
+            Clear
+          </Button>
+        )}
       </div>
       {children}
     </div>
@@ -400,6 +407,7 @@ export function FilterModal<K extends string>({
                   key={section.key}
                   title={section.title}
                   active={selected.size > 0}
+                  clearable={section.clearable}
                   onClear={() => onChange(new Set())}
                 >
                   {control}

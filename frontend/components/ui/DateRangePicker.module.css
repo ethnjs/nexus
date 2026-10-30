@@ -1,0 +1,189 @@
+/*
+ * The calendar inside DateRangePicker: react-day-picker's markup, styled here
+ * through its classNames prop rather than its own stylesheet, so it takes the
+ * app's tokens. The look is shadcn's — rounded squares, one band per week.
+ */
+
+/* Opens like a modal does: a quick fade and a slight grow from the field.
+   No fill-mode, so no transform is left on the panel once it's open. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes panel-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.panel {
+  animation: panel-in 140ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  transform-origin: top left;
+}
+
+.panelAbove {
+  animation-name: panel-in-above;
+  transform-origin: bottom left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+.shortcut:hover {
+  background: var(--color-accent-subtle);
+}
+
+.root {
+  position: relative;
+  padding: 12px 14px 14px;
+}
+
+.months {
+  display: flex;
+  gap: 20px;
+}
+
+/* Over the captions, its two buttons at the outer edges of the months. */
+.nav {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.navButton {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.navButton:hover {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+.navButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.monthCaption {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captionLabel {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.monthGrid {
+  margin-top: 8px;
+  border-collapse: separate;
+  border-spacing: 0 2px;
+}
+
+.weekday {
+  width: 36px;
+  height: 28px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.day {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  text-align: center;
+}
+
+.dayButton {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.dayButton:hover {
+  background: var(--color-accent-subtle);
+}
+
+.dayButton:focus-visible {
+  outline: 2px solid var(--color-border-strong);
+  outline-offset: -2px;
+}
+
+.outside .dayButton {
+  color: var(--color-text-tertiary);
+}
+
+.today .dayButton {
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+/* The band: square through the middle, rounded at the range's ends and at
+   each week's edges, so a range reads as one bar per row. */
+.rangeMiddle {
+  background: var(--color-accent-subtle);
+}
+
+.rangeMiddle .dayButton {
+  border-radius: 0;
+}
+
+.rangeMiddle:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.rangeMiddle:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.rangeStart {
+  background: var(--color-accent-subtle);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.rangeEnd {
+  background: var(--color-accent-subtle);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.rangeStart.rangeEnd {
+  border-radius: var(--radius-md);
+}
+
+.rangeStart .dayButton,
+.rangeEnd .dayButton {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
