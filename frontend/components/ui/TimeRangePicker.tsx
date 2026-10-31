@@ -142,9 +142,15 @@ export function TimeRangePicker({
     return true;
   }
 
+  // Which half of the day a bare hour like "9" lands in: an empty start reads
+  // as morning, an empty end as afternoon.
+  function parseTyped(half: Half, text: string) {
+    return parseLooseTime(text, value[half] || (half === "start" ? DEFAULT_SLOT : "12:00"));
+  }
+
   function commitDraft(half: Half) {
     const text = draft.trim();
-    const parsed = text ? parseLooseTime(text, value[half] || "12:00") : "";
+    const parsed = text ? parseTyped(half, text) : "";
     if (parsed === null || !commit(half, parsed)) setDraft(formatTimeOfDay(value[half]));
   }
 
@@ -211,7 +217,7 @@ export function TimeRangePicker({
         onChange={(e) => {
           setDraft(e.target.value);
           typed.current = true;
-          const parsed = parseLooseTime(e.target.value, value[half] || "12:00");
+          const parsed = parseTyped(half, e.target.value);
           if (parsed) setActive(slotIndex(half, parsed));
         }}
         onBlur={() => {
