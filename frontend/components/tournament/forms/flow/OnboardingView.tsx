@@ -118,6 +118,7 @@ export function OnboardingView({
           items={addable}
           getKey={(f) => f.id}
           renderLabel={(f) => f.name}
+          getSearchText={(f) => f.name}
           onSelect={(f) => setEdited([...steps, f])}
           emptyMessage="Every form is already a step."
           searchable
