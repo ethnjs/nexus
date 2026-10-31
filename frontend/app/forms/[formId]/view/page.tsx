@@ -199,7 +199,7 @@ export default function FormViewPage() {
   if (missing) notFound();
   if (noAccess)
     return (
-      <NoFormAccess description="This form is only open to some members of the tournament. If you think you should have it, contact the tournament director." />
+      <NoFormAccess description="This form is only open to some members. If you think you should have it, contact whoever runs it." />
     );
 
   if (loadError) {
