@@ -514,6 +514,8 @@ def update_tournament_form_prerequisites(
     prerequisites = payload.model_dump()
     _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
     tournament_form.prerequisites = prerequisites
+    if tournament_form.is_onboarding:
+        recompute_onboarding(db, tournament_id)
     db.commit()
     db.refresh(form)
     return form

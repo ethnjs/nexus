@@ -393,3 +393,27 @@ def test_progress_unonboards_a_member_whose_new_role_adds_a_step(
 
     assert response.json() == {"next_form_id": supervisors.id, "onboarded_at": None}
     assert _membership(db, td_tournament.id, other_user.id).onboarded_at is None
+
+
+def test_changing_a_steps_prerequisites_unonboards_members_it_now_applies_to(
+    client, db, td_user, td_tournament, other_user
+):
+    step = _make_form(db, td_user, td_tournament, name="Supervisors only")
+    _as_steps(step)
+    _requires(db, step, td_tournament, "Lead Event Supervisor")
+    grant_role(db, td_tournament, other_user, "Runner").onboarded_at = td_tournament.created_at
+    runner = (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == td_tournament.id, TournamentRole.label == "Runner")
+        .one()
+    )
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/forms/{step.id}/prerequisites/",
+        json={"roles": [{"ids": [runner.id]}]},
+    )
+
+    assert response.status_code == 200
+    assert _membership(db, td_tournament.id, other_user.id).onboarded_at is None

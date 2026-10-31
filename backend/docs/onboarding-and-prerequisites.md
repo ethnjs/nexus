@@ -27,7 +27,7 @@ The roster's onboarding ring and step list count the member's own path, so two m
 
 Nothing gates on `TournamentMembership.onboarded_at`; every gate reads the path live. The timestamp is kept close by two writers:
 
-- `recompute_onboarding` re-derives it for the whole tournament whenever the sequence changes: a step added, removed or changing status, or a response to a step deleted.
+- `recompute_onboarding` re-derives it for the whole tournament whenever the sequence changes: a step added, removed, changing status or changing prerequisites, or a response to a step deleted.
 - `advance_onboarding_progress`, which the client calls after each submission, corrects it in both directions.
 
 Role changes don't recompute it. A member whose new role adds a step keeps a stale `onboarded_at` until their next progress call, but their gates and the roster are right immediately.
