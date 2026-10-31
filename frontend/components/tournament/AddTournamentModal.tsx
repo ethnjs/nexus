@@ -92,7 +92,7 @@ interface TrackRow {
 
 // The submit button lives in the modal's pinned footer, outside the <form>,
 // so it has to name the form it submits.
-const FORM_ID = "new-tournament-form";
+const FORM_ID = "create-tournament-form";
 
 const STEP_LABELS = ["Details", "Date and location"] as const;
 
@@ -233,23 +233,12 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
   const [datesTbd, setDatesTbd] = useState(false);
   const [locationTbd, setLocationTbd] = useState(false);
   const [loading, setLoading] = useState(false);
-  // Only the API failure is *stored*. Field errors are derived from the
-  // inputs on every render (see below), so they can never describe a value
-  // that has since changed — which is what made them survive into a step the
-  // TD had not filled in yet.
   const [formError, setFormError] = useState<string | null>(null);
-  // Which steps have had their button pressed. Nothing is shown against a
-  // step until its own action has been attempted, so arriving somewhere new
-  // is always clean no matter what the inputs currently say.
+  // A step shows no field errors until its own button has been pressed.
   const [attempted, setAttempted] = useState({ details: false, schedule: false });
-  // Two steps rather than one long form: identity first, then when/where.
-  // The split is by what a TD knows at once — the name and level are decided
-  // long before the venue is booked.
   const [step, setStep] = useState<1 | 2>(1);
 
-  // Advanced mode swaps the single venue/dates/divisions for a repeatable
-  // track editor. Simple mode is not a lesser thing — it creates exactly the
-  // same shape, one primary track named after the tournament.
+  // Simple mode creates one primary track named after the tournament.
   const [advanced, setAdvanced] = useState(false);
   const [trackRows, setTrackRows] = useState<TrackRow[]>([]);
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
@@ -298,9 +287,7 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
     setAdvanced(true);
   }
 
-  // The way back. The first competition day becomes the single site again —
-  // any further tracks are dropped, which is the whole point of going back,
-  // so the button says so rather than doing it silently.
+  // The primary track becomes the single site again; other tracks are dropped.
   function disableAdvanced() {
     const primary = trackRows.find((row) => row.draft.is_primary)?.draft;
     if (primary) {
@@ -329,14 +316,6 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
     );
   }
 
-  /**
-   * Validation is split by step, so each button only judges what is actually
-   * on screen: Next checks step 1, Create checks both. Neither validator
-   * touches state — they return what is wrong and the caller decides what to
-   * show, which is what lets Create surface step 1's problems by sending you
-   * back to step 1 rather than reporting them against fields you can't see.
-   */
-
   /** Step 1 — the tournament's identity. */
   function validateDetails(): Record<string, string> {
     const fieldErrors: Record<string, string> = {};
@@ -348,11 +327,7 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
     return fieldErrors;
   }
 
-  /**
-   * Step 2 — when and where. Two shapes behind one result: simple mode owns
-   * the fields directly, advanced mode defers to each track's own validator,
-   * so `rows` is keyed by track and `fields` by field name.
-   */
+  /** Step 2 — when and where. Advanced mode's per-track errors go in `rows`, keyed by track. */
   function validateSchedule(): {
     fields: Record<string, string>;
     rows: Record<number, Record<string, string>>;
@@ -459,20 +434,14 @@ export function AddTournamentModal({ onClose, onCreated, initialView }: AddTourn
     }
   }
 
-  // Recomputed every render, so an error disappears the moment the input it
-  // describes becomes valid — no clearing on change, nothing to go stale.
+  // Derived every render, so an error clears the moment its input is valid.
   const detailErrors = validateDetails();
   const scheduleErrors = validateSchedule();
-  // What is actually rendered: gated on that step having been attempted, so
-  // a step you have only just arrived at shows nothing.
   const shownDetails = attempted.details ? detailErrors : ({} as Record<string, string>);
   const shownSchedule = attempted.schedule ? scheduleErrors.fields : ({} as Record<string, string>);
   const trackErrors = attempted.schedule ? scheduleErrors.rows : {};
 
   return (
-    // Steps replaced the old two-column advanced layout: the track editor now
-    // gets a step of its own, so it no longer has to share a row with the
-    // details and can use the full width.
     <Modal
       title={TITLES[view]}
       onClose={onClose}

@@ -1144,8 +1144,6 @@ export type MembershipField =
   | "assignments"
   | "onboarding";
 
-// Live onboarding steps answered out of the live total — skipped (draft or
-// archived) steps count toward neither.
 export interface MembershipOnboardingStep {
   form_id: string;
   name: string;
