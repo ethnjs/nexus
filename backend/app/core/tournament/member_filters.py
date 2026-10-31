@@ -430,7 +430,7 @@ def filter_onboarding(db, tournament_id: int, memberships: list, states: list[st
 
     In Python, like filter_age_flags: a member's path depends on which steps
     their roles qualify them for, so there's no stored progress to query. A
-    member with no steps at all has no state and never matches.
+    member with no steps owes nothing, so counts as complete.
     """
     if not states:
         return memberships
@@ -438,9 +438,7 @@ def filter_onboarding(db, tournament_id: int, memberships: list, states: list[st
 
     paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
 
-    def state(path) -> str | None:
-        if not path:
-            return None
+    def state(path) -> str:
         done = sum(step.completed for step in path)
         if done == len(path):
             return ONBOARDING_COMPLETE

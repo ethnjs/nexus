@@ -1345,14 +1345,18 @@ class TestRosterFilters:
         body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         assert body["has_onboarding"] is True
 
-    def test_onboarding_filter_without_steps_matches_nobody(
+    def test_onboarding_filter_counts_no_steps_as_complete(
         self, client, db, td_user, td_tournament
     ):
-        """No steps is no state, not "not started"."""
+        """No steps owed is complete, matching the overview's completed count."""
         _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
 
         login(client, "td@test.com", "tdpass")
         assert self._roster(client, td_tournament.id, "?onboarding=not_started") == set()
+        assert self._roster(client, td_tournament.id, "?onboarding=complete") == {
+            "alice@example.com",
+            "td@test.com",
+        }
         body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         assert body["has_onboarding"] is False
 
