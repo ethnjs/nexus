@@ -55,6 +55,25 @@ def _validate_division(division: str | None, tournament) -> None:
         )
 
 
+SEASON_FIELDS = ("format", "has_impound", "has_self_schedule")
+
+
+def _season_event(
+    db: Session, tournament, event_id: int | None, division: str | None
+) -> SeasonEvent | None:
+    if event_id is None or division is None or tournament.season_year is None:
+        return None
+    return (
+        db.query(SeasonEvent)
+        .filter(
+            SeasonEvent.event_id == event_id,
+            SeasonEvent.division == division,
+            SeasonEvent.year == tournament.season_year,
+        )
+        .first()
+    )
+
+
 # There is no bounds check on an event any more. An event has no times of its
 # own — its schedule is the union of its shifts, and each of those is
 # already bounded by its own track's date range. That also
@@ -414,6 +433,11 @@ def create_event(
     _validate_division(payload.division, tournament)
 
     data = payload.model_dump()
+    season_event = _season_event(db, tournament, payload.event_id, payload.division)
+    if season_event is not None:
+        for field in SEASON_FIELDS:
+            if field not in payload.model_fields_set:
+                data[field] = getattr(season_event, field)
     shift_ids = data.pop("shift_ids")
     # From the payload, not the dump: model_dump would hand back plain dicts,
     # and the link writer works in EventTrackDetail.
@@ -500,8 +524,8 @@ def delete_event(
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/events/load-defaults/ — manage_events
-# Bulk-creates TournamentEvent rows from every active SeasonEvent whose
-# division the tournament supports.
+# Bulk-creates TournamentEvent rows from every active SeasonEvent in the
+# tournament's season whose division the tournament supports.
 # ---------------------------------------------------------------------------
 @router.post(
     "/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED
@@ -513,11 +537,17 @@ def load_default_events(
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
+    if tournament.season_year is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Set the tournament's dates first. Its season decides which events load.",
+        )
 
     active_season_events = (
         db.query(SeasonEvent)
         .options(joinedload(SeasonEvent.event))
         .filter(
+            SeasonEvent.year == tournament.season_year,
             SeasonEvent.is_active.is_(True),
             SeasonEvent.division.in_(tournament.division or []),
         )
@@ -554,6 +584,7 @@ def load_default_events(
             event_id=season_event.event_id,
             division=season_event.division,
             name=season_event.event.name,
+            **{field: getattr(season_event, field) for field in SEASON_FIELDS},
         )
         db.add(event)
         created.append(event)

@@ -10,6 +10,13 @@ from app.schemas.tournament.shift import TournamentShiftBase, TournamentShiftRea
 from app.schemas.tournament.track import TournamentTrackRead
 
 VALID_EVENT_TYPES = {"standard", "trial"}
+VALID_EVENT_FORMATS = {"test", "hybrid", "build"}
+
+
+def validate_event_format(v: str | None) -> str | None:
+    if v is not None and v not in VALID_EVENT_FORMATS:
+        raise ValueError(f"format must be one of: {VALID_EVENT_FORMATS}")
+    return v
 
 
 def _clean_rooms(value: list[str]) -> list[str]:
@@ -140,6 +147,11 @@ class EventBase(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str = "standard"
+    # Left out on create, these are copied from the season event matching the
+    # catalog event, division and the tournament's season (see the route).
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     event_id: int | None = None
     # An event's schedule *is* its shifts, and the tracks it runs on are
     # stated outright. Both are whole-set: a PATCH sending shift_ids replaces
@@ -163,6 +175,8 @@ class EventBase(BaseModel):
             raise ValueError(f"event_type must be one of: {VALID_EVENT_TYPES}")
         return v
 
+    _validate_format = field_validator("format")(validate_event_format)
+
     @model_validator(mode="after")
     def validate_name_or_event_id(self) -> EventBase:
         if self.name is None and self.event_id is None:
@@ -184,6 +198,9 @@ class EventUpdate(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str | None = None
+    format: str | None = None
+    has_impound: bool | None = None
+    has_self_schedule: bool | None = None
     event_id: int | None = None
     # Whole-set, like on create. None means "not sent"; [] means "clear".
     shift_ids: list[int] | None = None
@@ -203,6 +220,8 @@ class EventUpdate(BaseModel):
             raise ValueError(f"event_type must be one of: {VALID_EVENT_TYPES}")
         return v
 
+    _validate_format = field_validator("format")(validate_event_format)
+
 
 class EventRead(BaseModel):
     id: int
@@ -210,6 +229,9 @@ class EventRead(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     event_id: int | None = None
     # Joined canonical event — set only when event_id is set. Carries
     # category, since TournamentEvent no longer has its own category field.
@@ -270,14 +292,17 @@ class EventMemberRead(BaseModel):
     schedule the TD hadn't committed to. That no longer holds: members already
     answer availability questions built from these exact shifts, so the
     schedule is not a secret being leaked — it is the thing they were asked
-    about. `event_type` joins it because "trial" is something a member should
-    be able to see before signing up for an event.
+    about. `event_type`, `format` and the impound and self-schedule flags join
+    it because a member should know what kind of event they're signing up for.
     """
 
     id: int
     name: str | None = None
     division: str | None = None
     event_type: str = "standard"
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     shifts: list[TournamentShiftBase] = []
 
     @classmethod
@@ -289,6 +314,9 @@ class EventMemberRead(BaseModel):
             name=event.display_name,
             division=event.division,
             event_type=event.event_type,
+            format=event.format,
+            has_impound=event.has_impound,
+            has_self_schedule=event.has_self_schedule,
             shifts=[TournamentShiftBase.model_validate(s) for s in event.shifts],
         )
 
