@@ -174,3 +174,89 @@
   color: var(--color-text-inverse);
   font-weight: 600;
 }
+
+/* Month changes, driven by DayPicker's `animate`: it slides the old month's
+   weeks out and the new one's in, and fades the captions. The library only
+   cleans up on the exiting caption's animationend, so reduced motion shortens
+   these rather than removing them. */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.weeksBeforeEnter,
+.weeksBeforeExit,
+.weeksAfterEnter,
+.weeksAfterExit,
+.captionEnter,
+.captionExit {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: forwards;
+}
+
+.weeksBeforeEnter {
+  animation-name: slide-in-left;
+}
+
+.weeksBeforeExit {
+  animation-name: slide-out-left;
+}
+
+.weeksAfterEnter {
+  animation-name: slide-in-right;
+}
+
+.weeksAfterExit {
+  animation-name: slide-out-right;
+}
+
+.captionEnter {
+  animation-name: fade-in;
+}
+
+.captionExit {
+  animation-name: fade-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weeksBeforeEnter,
+  .weeksBeforeExit,
+  .weeksAfterEnter,
+  .weeksAfterExit,
+  .captionEnter,
+  .captionExit {
+    animation-duration: 1ms;
+  }
+}

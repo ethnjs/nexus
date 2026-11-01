@@ -33,6 +33,7 @@ const weekdayName = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 /** The DayPicker props DatePicker and DateRangePicker share, for the app's look. */
 export const CALENDAR_PROPS = {
   showOutsideDays: true,
+  animate: true,
   classNames: {
     root: styles.root,
     months: styles.months,
@@ -52,6 +53,14 @@ export const CALENDAR_PROPS = {
     range_start: styles.rangeStart,
     range_middle: styles.rangeMiddle,
     range_end: styles.rangeEnd,
+    weeks_before_enter: styles.weeksBeforeEnter,
+    weeks_before_exit: styles.weeksBeforeExit,
+    weeks_after_enter: styles.weeksAfterEnter,
+    weeks_after_exit: styles.weeksAfterExit,
+    caption_before_enter: styles.captionEnter,
+    caption_before_exit: styles.captionExit,
+    caption_after_enter: styles.captionEnter,
+    caption_after_exit: styles.captionExit,
   },
   components: { Chevron, Dropdown: CalendarDropdown },
   formatters: {

@@ -107,12 +107,13 @@ export function PickerField({
   const panelRef = useRef<HTMLDivElement>(null);
   const showClear = !!onClear && !locked && display !== null;
 
-  // Cleared on close, so the next opening is placed afresh rather than
-  // flashing at the old spot.
+  // Kept mounted after close until its exit animation ends, then cleared so
+  // the next opening is placed afresh rather than flashing at the old spot.
+  const [closing, setClosing] = useState(false);
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);
-    if (!open) setPos(null);
+    setClosing(!open && pos !== null);
   }
 
   useLayoutEffect(() => {
@@ -262,13 +263,19 @@ export function PickerField({
         )}
       </div>
 
-      {open && pos && (
+      {(open || closing) && pos && (
         <div
           ref={panelRef}
           role="dialog"
           aria-label={panelLabel}
+          aria-hidden={closing || undefined}
           onKeyDown={handleKeyDown}
-          className={`${styles.panel} ${pos.top === undefined ? styles.panelAbove : ""}`}
+          onAnimationEnd={(e) => {
+            if (e.target !== e.currentTarget || !closing) return;
+            setClosing(false);
+            setPos(null);
+          }}
+          className={`${styles.panel} ${pos.top === undefined ? styles.panelAbove : ""} ${closing ? styles.panelOut : ""}`}
           style={{
             position: "fixed",
             left: pos.left,
@@ -280,6 +287,7 @@ export function PickerField({
             border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-lg)",
             boxShadow: "var(--shadow-lg)",
+            pointerEvents: closing ? "none" : undefined,
             ...panelStyle,
           }}
         >

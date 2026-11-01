@@ -24,8 +24,36 @@
   transform-origin: bottom left;
 }
 
+/* The open animation in reverse, held at its end until the panel unmounts. */
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes panel-out-above {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.panelOut {
+  animation: panel-out 100ms ease-in forwards;
+}
+
+.panelAbove.panelOut {
+  animation-name: panel-out-above;
+}
+
+/* The panel unmounts on animationend, so closing keeps a 1ms animation. */
 @media (prefers-reduced-motion: reduce) {
   .panel {
     animation: none;
+  }
+
+  .panelOut {
+    animation: panel-out 1ms forwards;
   }
 }
