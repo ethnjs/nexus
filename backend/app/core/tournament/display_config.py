@@ -215,6 +215,9 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
+EVENT_COLUMN_FORMAT = "format"
+EVENT_COLUMN_IMPOUND = "impound"
+EVENT_COLUMN_SELF_SCHEDULE = "self_schedule"
 EVENT_COLUMN_CATEGORY = "category"
 EVENT_COLUMN_TRACKS = "tracks"
 EVENT_COLUMN_TIME = "time"
@@ -242,6 +245,9 @@ EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
     (EVENT_COLUMN_TYPE, "Type"),
+    (EVENT_COLUMN_FORMAT, "Format"),
+    (EVENT_COLUMN_IMPOUND, "Impound"),
+    (EVENT_COLUMN_SELF_SCHEDULE, "Self-schedule"),
     (EVENT_COLUMN_CATEGORY, "Category"),
     (EVENT_COLUMN_TRACKS, "Tracks"),
     (EVENT_COLUMN_TIME, "Time"),
@@ -255,6 +261,7 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION,
     EVENT_COLUMN_TYPE,
+    EVENT_COLUMN_FORMAT,
     EVENT_COLUMN_CATEGORY,
     EVENT_COLUMN_TRACKS,
     EVENT_COLUMN_TIME,
@@ -272,6 +279,9 @@ KNOWN_EVENT_FILTER_KEYS = frozenset(
     {
         "division",
         "type",
+        "format",
+        "impound",
+        "self_schedule",
         "category",
         "track",
         "building",
@@ -293,6 +303,9 @@ KNOWN_EVENT_SORT_FIELDS = frozenset(
         "start",
         "staffing",
         "location",
+        "format",
+        "impound",
+        "self_schedule",
         "day",
     }
 )
@@ -366,6 +379,9 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset(
         "start",
         "staffing",
         "location",
+        "format",
+        "impound",
+        "self_schedule",
     }
 )
 
