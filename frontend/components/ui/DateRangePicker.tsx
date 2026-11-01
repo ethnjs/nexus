@@ -10,7 +10,8 @@ import { useIsMobile } from "@/lib/useIsMobile";
 import styles from "./Calendar.module.css";
 
 /** One quick pick down the panel's side. `range` runs when it's clicked, so
- *  "next 30 days" is counted from the day it's used. */
+ *  "next 30 days" is counted from the day it's used. While the value is
+ *  exactly its range, the field reads its label. */
 export interface DateRangeShortcut {
   label: string;
   range: () => [from: string, to: string];
@@ -104,7 +105,12 @@ export function DateRangePicker({
     <PickerField
       {...fieldProps}
       icon={<IconCalendar size={14} />}
-      display={formatRange(from, to)}
+      display={
+        shortcuts.find((s) => {
+          const [start, end] = s.range();
+          return start === from && end === to;
+        })?.label ?? formatRange(from, to)
+      }
       placeholder={placeholder}
       onClear={fieldProps.required ? undefined : () => onChange("", "")}
       open={open}

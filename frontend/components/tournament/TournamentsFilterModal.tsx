@@ -17,14 +17,7 @@ import {
 import { todayLocalDateString, toLocalDateString } from "@/lib/date";
 import { formatSeason } from "@/lib/tournamentDisplay";
 
-export const TOURNAMENTS_FILTER_KEYS = [
-  "status",
-  "season",
-  "dates",
-  "level",
-  "division",
-  "state",
-] as const;
+export const TOURNAMENTS_FILTER_KEYS = ["status", "dates", "level", "division", "state"] as const;
 type TournamentsFilterKey = (typeof TOURNAMENTS_FILTER_KEYS)[number];
 
 export type TournamentsFilterState = FilterState<TournamentsFilterKey>;
@@ -52,16 +45,7 @@ function inMonths(n: number): string {
   return toLocalDateString(d);
 }
 
-/** September through June: the Science Olympiad season the given number of
- *  seasons back from the current one. */
-function season(back: number): [string, string] {
-  const now = new Date();
-  // Before September, the season under way started the previous year.
-  const start = now.getFullYear() - (now.getMonth() < 8 ? 1 : 0) - back;
-  return [`${start}-09-01`, `${start + 1}-06-30`];
-}
-
-const DATE_SHORTCUTS: DateRangeShortcut[] = [
+const RELATIVE_SHORTCUTS: DateRangeShortcut[] = [
   {
     label: "Next 30 days",
     range: () => {
@@ -71,9 +55,20 @@ const DATE_SHORTCUTS: DateRangeShortcut[] = [
     },
   },
   { label: "Next 3 months", range: () => [todayLocalDateString(), inMonths(3)] },
-  { label: "This season", range: () => season(0) },
-  { label: "Last season", range: () => season(1) },
 ];
+
+// Aug 1 – Jul 31, the same cutoff as the backend's Tournament.season_year.
+function dateShortcuts(seasons: number[]): DateRangeShortcut[] {
+  return [
+    ...RELATIVE_SHORTCUTS,
+    ...[...seasons]
+      .sort((a, b) => b - a)
+      .map((year) => ({
+        label: `${formatSeason(year)} season`,
+        range: (): [string, string] => [`${year - 1}-08-01`, `${year}-07-31`],
+      })),
+  ];
+}
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "active", label: "Active" },
@@ -97,14 +92,10 @@ const STATE_OPTIONS: FilterOption[] = TOURNAMENT_STATES.map((state) => ({
 
 export function tournamentPassesFilters(
   // The dashboard's summaries and the admin table's rows both carry these.
-  tournament: Pick<
-    TournamentSummary,
-    "is_archived" | "season_year" | "level" | "state" | "division" | "dates"
-  >,
+  tournament: Pick<TournamentSummary, "is_archived" | "level" | "state" | "division" | "dates">,
   filters: TournamentsFilterState,
 ): boolean {
   if (!filterAllows(filters.status, tournament.is_archived ? "archived" : "active")) return false;
-  if (!filterAllows(filters.season, String(tournament.season_year ?? ""))) return false;
   if (!filterAllows(filters.level, tournament.level)) return false;
   if (!filterAllows(filters.state, tournament.state)) return false;
   // A tournament runs several divisions; any one of them picked is a match.
@@ -120,7 +111,8 @@ export function tournamentPassesFilters(
   return true;
 }
 
-/** The seasons to offer the modal: every one the given tournaments fall in. */
+/** The seasons to offer as date shortcuts: every one the given tournaments
+ *  fall in. */
 export function seasonsOf(tournaments: Pick<TournamentSummary, "season_year">[]): number[] {
   return [...new Set(tournaments.flatMap((t) => (t.season_year === null ? [] : [t.season_year])))];
 }
@@ -135,7 +127,7 @@ export function TournamentsFilterModal({
   /** Offer Active / Archived — off where the page already splits them (the
    *  dashboard's sections). */
   withStatus?: boolean;
-  /** The seasons the page's tournaments fall in, offered as options. */
+  /** The seasons the page's tournaments fall in, offered as date shortcuts. */
   seasons: number[];
   filters: TournamentsFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
@@ -149,14 +141,6 @@ export function TournamentsFilterModal({
       options: STATUS_OPTIONS,
       control: "buttons",
       hidden: !withStatus,
-    },
-    {
-      key: "season",
-      title: "Season",
-      options: [...seasons]
-        .sort((a, b) => b - a)
-        .map((year) => ({ value: String(year), label: formatSeason(year) })),
-      control: "chips",
     },
     {
       key: "dates",
@@ -173,7 +157,7 @@ export function TournamentsFilterModal({
             from={from}
             to={to}
             onChange={(nextFrom, nextTo) => onChange(rangeValues(nextFrom, nextTo))}
-            shortcuts={DATE_SHORTCUTS}
+            shortcuts={dateShortcuts(seasons)}
           />
         );
       },
