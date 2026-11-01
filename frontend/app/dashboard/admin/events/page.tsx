@@ -48,7 +48,7 @@ import {
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
-import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK } from "@/lib/eventSort";
+import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, FORMAT_RANK } from "@/lib/eventSort";
 import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
@@ -112,7 +112,14 @@ type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self
 
 // The TD events table's sorts that a season row can answer; start time,
 // staffing and location come from a tournament's shifts and rooms.
-const SEASON_SORT_FIELDS = ["name", "division", "category"] as const;
+const SEASON_SORT_FIELDS = [
+  "name",
+  "division",
+  "category",
+  "format",
+  "impound",
+  "self_schedule",
+] as const;
 type SeasonSortField = (typeof SEASON_SORT_FIELDS)[number];
 const SEASON_SORT_OPTIONS = EVENT_SORT_OPTIONS.filter((o) =>
   (SEASON_SORT_FIELDS as readonly string[]).includes(o.value),
@@ -510,6 +517,14 @@ function SeasonView({
             return TOURNAMENT_DIVISIONS.find((d) => byCell.get(`${e.id}:${d}`)?.is_active) ?? null;
           case "category":
             return e.category.name;
+          case "format": {
+            const format = detailsRow.get(e.id)?.format;
+            return format ? FORMAT_RANK[format] : null;
+          }
+          case "impound":
+            return detailsRow.get(e.id)?.has_impound ? 0 : 1;
+          case "self_schedule":
+            return detailsRow.get(e.id)?.has_self_schedule ? 0 : 1;
         }
       },
       (a, b) => compareValues(a.name, b.name) || a.id - b.id,

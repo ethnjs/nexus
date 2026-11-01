@@ -18,6 +18,9 @@ import { type MassNote, MassResultsCard } from "@/components/ui/MassResultsCard"
 import { Popover } from "@/components/ui/Popover";
 import {
   ApiError,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
+  type EventFormat,
   type Role,
   rolesApi,
   type TournamentDivision,
@@ -48,7 +51,19 @@ export const MASS_EVENT_EDITOR_WIDTH = 480;
 interface MassEventDraft {
   division?: TournamentDivision;
   event_type?: "standard" | "trial";
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
 }
+
+const NO_FORMAT = "none";
+
+const ON_OFF = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+];
+
+const onOff = (v: boolean | undefined) => (v === undefined ? "" : v ? "on" : "off");
 
 interface EventResult {
   event: TournamentEvent;
@@ -213,6 +228,9 @@ export function MassEventEditor({
   const isDirty =
     draft.division !== undefined ||
     draft.event_type !== undefined ||
+    draft.format !== undefined ||
+    draft.has_impound !== undefined ||
+    draft.has_self_schedule !== undefined ||
     shiftsToAdd.size > 0 ||
     shiftsToRemove.size > 0 ||
     tracksToAdd.size > 0 ||
@@ -308,6 +326,10 @@ export function MassEventEditor({
         const patch: Partial<TournamentEventInput> = {};
         if (draft.division !== undefined) patch.division = draft.division;
         if (draft.event_type !== undefined) patch.event_type = draft.event_type;
+        if (draft.format !== undefined) patch.format = draft.format;
+        if (draft.has_impound !== undefined) patch.has_impound = draft.has_impound;
+        if (draft.has_self_schedule !== undefined)
+          patch.has_self_schedule = draft.has_self_schedule;
 
         // Shifts are a property of the event and set whole-set, so the pending
         // adds and removes fold into the same PATCH — one request per event
@@ -457,7 +479,7 @@ export function MassEventEditor({
             />
           </SettingsRow>
 
-          <SettingsRow label="Type" last>
+          <SettingsRow label="Type">
             <ButtonGroup
               options={[
                 { value: "standard", label: "Standard" },
@@ -465,6 +487,35 @@ export function MassEventEditor({
               ]}
               value={draft.event_type ?? ""}
               onChange={(v) => setDraft((d) => ({ ...d, event_type: v as "standard" | "trial" }))}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Format">
+            <ButtonGroup
+              options={[
+                ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+                { value: NO_FORMAT, label: "None" },
+              ]}
+              value={draft.format === undefined ? "" : (draft.format ?? NO_FORMAT)}
+              onChange={(v) =>
+                setDraft((d) => ({ ...d, format: v === NO_FORMAT ? null : (v as EventFormat) }))
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Impound">
+            <ButtonGroup
+              options={ON_OFF}
+              value={onOff(draft.has_impound)}
+              onChange={(v) => setDraft((d) => ({ ...d, has_impound: v === "on" }))}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Self-schedule" last>
+            <ButtonGroup
+              options={ON_OFF}
+              value={onOff(draft.has_self_schedule)}
+              onChange={(v) => setDraft((d) => ({ ...d, has_self_schedule: v === "on" }))}
             />
           </SettingsRow>
         </SettingsSection>

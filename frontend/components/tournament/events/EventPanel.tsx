@@ -22,10 +22,14 @@ import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconCalendar, IconEye, IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
+import { Switch } from "@/components/ui/Switch";
 import {
   ApiError,
   type CanonicalEvent,
   displayConfigApi,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
+  type EventFormat,
   type EventTrackDetail,
   type Role,
   type TournamentBuilding,
@@ -54,6 +58,9 @@ interface EventDraft {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   // The tracks this event runs on, each with where it happens there and how
   // many of each role it wants. Not derived from its shifts: a cosmetic track
   // (Test Writing) has none by construction, so an event that belongs to one
@@ -65,6 +72,10 @@ interface EventDraft {
   trackDetails: DraftTrackDetail[];
 }
 
+const SEASON_FIELDS = ["format", "has_impound", "has_self_schedule"] as const;
+
+const NO_FORMAT = "none";
+
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
   return {
     eventText: event?.event?.name ?? event?.name ?? "",
@@ -72,6 +83,9 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     name: event?.name ?? null,
     division: event?.division ?? null,
     event_type: event?.event_type ?? "standard",
+    format: event?.format ?? null,
+    has_impound: event?.has_impound ?? false,
+    has_self_schedule: event?.has_self_schedule ?? false,
     // Sorted on both levels so the isDirty JSON compare comes out stable —
     // the server has no guaranteed order for either list, and an unsorted
     // round trip would leave an untouched panel reading as dirty.
@@ -251,10 +265,19 @@ export function EventPanel({
   }
 
   function buildPayload(trackDetails: EventTrackDetail[]): TournamentEventInput {
+    // A new event leaves out what the TD didn't change, so the backend fills
+    // it from the matching season event instead of overwriting it with blanks.
+    const blank = draftFromEvent(null);
+    const seasonFields: Partial<TournamentEventInput> = {};
+    for (const field of SEASON_FIELDS) {
+      if (!isNew || draft[field] !== blank[field])
+        Object.assign(seasonFields, { [field]: draft[field] });
+    }
     return {
       name: draft.event_id ? null : draft.name?.trim() || null,
       division: draft.division,
       event_type: draft.event_type,
+      ...seasonFields,
       event_id: draft.event_id,
       track_details: trackDetails,
     };
@@ -516,6 +539,41 @@ export function EventPanel({
               ]}
               value={draft.event_type}
               onChange={(v) => patch({ event_type: v as "standard" | "trial" })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            label="Format"
+            helper={
+              isNew && draft.event_id
+                ? "Left as is, these come from this season's events."
+                : undefined
+            }
+          >
+            <ButtonGroup
+              options={[
+                ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+                { value: NO_FORMAT, label: "None" },
+              ]}
+              value={draft.format ?? NO_FORMAT}
+              onChange={(v) => patch({ format: v === NO_FORMAT ? null : (v as EventFormat) })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Impound">
+            <Switch
+              checked={draft.has_impound}
+              onChange={(v) => patch({ has_impound: v })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Self-schedule">
+            <Switch
+              checked={draft.has_self_schedule}
+              onChange={(v) => patch({ has_self_schedule: v })}
               locked={locked}
             />
           </SettingsRow>

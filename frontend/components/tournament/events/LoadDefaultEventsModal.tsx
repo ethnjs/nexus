@@ -6,18 +6,22 @@ import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
+  EVENT_FORMAT_LABELS,
   type SeasonEvent,
   seasonEventsApi,
   type TournamentDivision,
   type TournamentEvent,
   tournamentEventsApi,
 } from "@/lib/api";
+import { formatSeason } from "@/lib/tournamentDisplay";
 
-const PREVIEW_ROW_COLUMNS = "1fr 90px 1fr";
+const PREVIEW_ROW_COLUMNS = "1fr 90px 90px 1fr";
 
 interface LoadDefaultEventsModalProps {
   tournamentId: number;
   divisions: TournamentDivision[];
+  /** Null until the tournament has dates, and then there's no season to load. */
+  seasonYear: number | null;
   existingEvents: TournamentEvent[];
   onClose: () => void;
   onLoaded: (created: TournamentEvent[]) => void;
@@ -26,6 +30,7 @@ interface LoadDefaultEventsModalProps {
 export function LoadDefaultEventsModal({
   tournamentId,
   divisions,
+  seasonYear,
   existingEvents,
   onClose,
   onLoaded,
@@ -35,17 +40,19 @@ export function LoadDefaultEventsModal({
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    // No year param — matches the backend's own load-defaults query, which
-    // pulls every active SeasonEvent for the tournament's divisions regardless
-    // of year. is_active and already-loaded are still filtered client-side
-    // below so the preview is exactly what the backend will create.
+    // The same season and divisions the backend loads from. is_active and
+    // already-loaded are filtered below, so the preview is exactly what it creates.
+    if (seasonYear === null) {
+      setSeasonEvents([]);
+      return;
+    }
     seasonEventsApi
-      .list({ division: divisions })
+      .list({ year: seasonYear, division: divisions })
       .then(setSeasonEvents)
       .catch((err) =>
         setLoadError(err instanceof ApiError ? err.message : "Failed to load season events."),
       );
-  }, [divisions]);
+  }, [seasonYear, divisions]);
 
   const existingPairs = useMemo(
     () =>
@@ -93,9 +100,11 @@ export function LoadDefaultEventsModal({
               marginBottom: "16px",
             }}
           >
-            {previewRows.length === 0
-              ? "There are no new default events to add for this tournament's divisions."
-              : `This will add ${previewRows.length} event${previewRows.length === 1 ? "" : "s"} to this tournament:`}
+            {seasonYear === null
+              ? "Set the tournament's dates first. Its season decides which events load."
+              : previewRows.length === 0
+                ? `There are no new ${formatSeason(seasonYear)} events to add for this tournament's divisions.`
+                : `This will add ${previewRows.length} ${formatSeason(seasonYear)} event${previewRows.length === 1 ? "" : "s"} to this tournament:`}
           </p>
 
           {previewRows.length > 0 && (
@@ -128,6 +137,7 @@ export function LoadDefaultEventsModal({
               >
                 <span>Event</span>
                 <span style={{ textAlign: "center" }}>Division</span>
+                <span style={{ textAlign: "center" }}>Format</span>
                 <span>Category</span>
               </div>
               {previewRows.map((se, i) => (
@@ -195,6 +205,16 @@ function PreviewRow({ seasonEvent, isLast }: { seasonEvent: SeasonEvent; isLast:
         }}
       >
         {seasonEvent.division}
+      </span>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+        }}
+      >
+        {seasonEvent.format ? EVENT_FORMAT_LABELS[seasonEvent.format] : "—"}
       </span>
       <span
         style={{

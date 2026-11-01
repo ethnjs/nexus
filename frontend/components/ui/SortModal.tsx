@@ -210,7 +210,7 @@ export function SortModal({
   }
 
   return (
-    <Modal title={title} onClose={onClose} width={hasPills ? 880 : 520}>
+    <Modal title={title} onClose={onClose} width={hasPills ? 880 : 680}>
       <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
         {draft.length === 0 ? (
           <EmptyState size="sm" title="No sort" description="Rows keep the order they arrive in." />
@@ -250,10 +250,11 @@ export function SortModal({
                         >
                           {index === 0 ? "Sort by" : "then by"}
                         </span>
+                        {/* Never squeezed to nothing by long direction labels. */}
                         <div
                           style={{
                             flex: 1,
-                            minWidth: 0,
+                            minWidth: "150px",
                             display: "flex",
                             alignItems: "center",
                             gap: "8px",

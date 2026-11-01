@@ -775,6 +775,10 @@ export interface TournamentEvent {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
+  // Copied from the season event on creation, then the TD's to change.
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event_id: number | null;
   // Joined canonical event — set only when event_id is set. Carries
   // category, since TournamentEvent has no category field of its own.
@@ -839,6 +843,10 @@ export interface TournamentEventInput {
   name?: string | null;
   division?: TournamentDivision | null;
   event_type?: "standard" | "trial";
+  // Left out on create, these are copied from the matching season event.
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
   event_id?: number | null;
   // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
   // rather than adding to them. Omit either to leave it alone. Setting
@@ -2069,6 +2077,9 @@ export interface TournamentEventMember {
   name: string | null;
   division: string | null;
   event_type: string;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   shifts: TournamentShiftBase[];
 }
 
