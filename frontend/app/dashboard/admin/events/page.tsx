@@ -27,6 +27,8 @@ import {
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
@@ -44,6 +46,8 @@ import {
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
+import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK } from "@/lib/eventSort";
+import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 
@@ -94,6 +98,15 @@ const YES_NO_OPTIONS: FilterOption[] = [
 /** Shared by every division of an event in a season; the backend keeps them in step. */
 type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self_schedule">;
 
+// The TD events table's sorts that a season row can answer; start time,
+// staffing and location come from a tournament's shifts and rooms.
+const SEASON_SORT_FIELDS = ["name", "division", "category"] as const;
+type SeasonSortField = (typeof SEASON_SORT_FIELDS)[number];
+const SEASON_SORT_OPTIONS = EVENT_SORT_OPTIONS.filter((o) =>
+  (SEASON_SORT_FIELDS as readonly string[]).includes(o.value),
+);
+const DEFAULT_SEASON_SORT: SortRule<SeasonSortField>[] = [{ field: "name", direction: "asc" }];
+
 const CENTERED: React.CSSProperties = { display: "flex", justifyContent: "center" };
 
 const CELL_TEXT: React.CSSProperties = {
@@ -108,12 +121,6 @@ const TOOLBAR: React.CSSProperties = {
   alignItems: "center",
   marginBottom: "16px",
   flexWrap: "wrap",
-};
-
-const LABEL: React.CSSProperties = {
-  fontFamily: "var(--font-sans)",
-  fontSize: "13px",
-  color: "var(--color-text-secondary)",
 };
 
 // ─── Catalog view ─────────────────────────────────────────────────────────────
@@ -152,11 +159,15 @@ function CatalogView({
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return events.filter((e) => {
-      if (!filterAllows(filters.category, e.category.name)) return false;
-      if (!query) return true;
-      return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
-    });
+    return events
+      .filter((e) => {
+        if (!filterAllows(filters.category, e.category.name)) return false;
+        if (!query) return true;
+        return (
+          e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => compareValues(a.name, b.name) || a.id - b.id);
   }, [events, search, filters]);
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
@@ -356,6 +367,8 @@ function SeasonView({
     emptyFilterState(SEASON_FILTER_KEYS),
   );
   const [showFilters, setShowFilters] = useState(false);
+  const [sortRules, setSortRules] = useState<SortRule<SeasonSortField>[]>(DEFAULT_SEASON_SORT);
+  const [showSort, setShowSort] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<CanonicalEvent | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -424,7 +437,7 @@ function SeasonView({
   const rows = useMemo(() => {
     const ids = new Set((seasonEvents ?? []).map((s) => s.event.id));
     const query = search.trim().toLowerCase();
-    return events.filter((e) => {
+    const matching = events.filter((e) => {
       if (!ids.has(e.id)) return false;
       if (!filterAllows(filters.category, e.category.name)) return false;
       // Matches an event *active* in any of the picked divisions, which is
@@ -442,7 +455,23 @@ function SeasonView({
       if (!query) return true;
       return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
     });
-  }, [events, seasonEvents, search, filters, byCell, detailsRow]);
+    return sortRows(
+      matching,
+      sortRules,
+      (e, field) => {
+        switch (field) {
+          case "name":
+            return e.name;
+          // Its lowest active division, so an event in B and C files with the B events.
+          case "division":
+            return TOURNAMENT_DIVISIONS.find((d) => byCell.get(`${e.id}:${d}`)?.is_active) ?? null;
+          case "category":
+            return e.category.name;
+        }
+      },
+      (a, b) => compareValues(a.name, b.name) || a.id - b.id,
+    );
+  }, [events, seasonEvents, search, filters, byCell, detailsRow, sortRules]);
 
   const seasonSections: FilterSectionConfig<SeasonFilterKey>[] = [
     {
@@ -516,7 +545,6 @@ function SeasonView({
   }
 
   const existingPairs = useMemo(() => new Set(byCell.keys()), [byCell]);
-  const activeCount = (seasonEvents ?? []).filter((s) => s.is_active).length;
 
   // Every division row for the event being removed — the confirm deletes the
   // event from the season, not one division of it.
@@ -548,7 +576,11 @@ function SeasonView({
           onOpen={() => setShowFilters(true)}
           onClear={() => setFilters(emptyFilterState(SEASON_FILTER_KEYS))}
         />
-        <span style={LABEL}>{activeCount} active</span>
+        <SortButton
+          active={!sameSortRules(sortRules, DEFAULT_SEASON_SORT)}
+          onOpen={() => setShowSort(true)}
+          onReset={() => setSortRules(DEFAULT_SEASON_SORT)}
+        />
         <Button
           variant="primary"
           size="md"
@@ -686,6 +718,18 @@ function SeasonView({
             ))}
           </div>
         </Card>
+      )}
+
+      {showSort && (
+        <SortModal
+          title="Sort season"
+          fields={SEASON_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_SEASON_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => setSortRules(next as SortRule<SeasonSortField>[])}
+          onClose={() => setShowSort(false)}
+        />
       )}
 
       {showFilters && (
