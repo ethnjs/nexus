@@ -16,7 +16,13 @@ from app.models.models import (
     TournamentTrackAssignment,
     University,
 )
-from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, future_date, grant_role, login
+from tests.conftest import (
+    FUTURE_YEAR,
+    TOURNAMENT_REQUIRED_FIELDS,
+    future_date,
+    grant_role,
+    login,
+)
 
 # Required fields every TournamentCreate payload needs now (state/level/division
 # + non-null dates). Tests that only care about other fields spread this in.
@@ -88,6 +94,26 @@ def test_list_my_tournaments_returns_summary_shape(client, td_user, td_tournamen
     assert summary["volunteer_count"] == 2  # owner (td_user) + other_user
     assert "roles" not in summary
     assert "owner_id" not in summary
+
+
+def test_list_my_tournaments_season_year_starts_in_august(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    for name, day in [("July", future_date(7, 31)), ("August", future_date(8, 1))]:
+        track = {
+            "name": "Main",
+            "is_primary": True,
+            "start_date": day,
+            "end_date": day,
+            "division": ["B"],
+        }
+        response = client.post(
+            "/tournaments/", json={**REQUIRED_FIELDS, "name": name, "tracks": [track]}
+        )
+        assert response.status_code == 201, response.text
+
+    seasons = {t["name"]: t["season_year"] for t in client.get("/tournaments/me/").json()}
+    assert seasons["July"] == FUTURE_YEAR
+    assert seasons["August"] == FUTURE_YEAR + 1
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +215,7 @@ def test_create_tournament_full(client, td_user):
     assert data["is_multi_day"] is True
     assert data["location"] == "USC"
     assert data["division"] == ["B", "C"]
+    assert data["season_year"] == FUTURE_YEAR
     assert len(data["tracks"]) == 1
 
 
@@ -328,6 +355,7 @@ def test_create_tournament_with_an_undated_track_is_tbd(client, td_user):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["dates"] == []
+    assert body["season_year"] is None
     assert body["is_multi_day"] is False
     assert body["location"] == "Test Location"
 

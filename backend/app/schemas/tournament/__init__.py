@@ -201,6 +201,8 @@ class TournamentRead(BaseModel):
     # Day 1 on Feb 13 and Day 2 on Feb 20 runs on two days; a range would
     # claim it also runs on the six days between them.
     dates: list[date] = []
+    # Null until a primary track has dates. See Tournament.season_year.
+    season_year: int | None = None
     university: UniversityResponse | None = None
     location: str | None = None
     state: str
@@ -270,6 +272,7 @@ class TournamentSummary(TournamentPublic):
     """GET /tournaments/me/ — lightweight card view, no roles/owner."""
 
     id: int
+    season_year: int | None = None
     is_public: bool
     is_archived: bool
     event_count: int

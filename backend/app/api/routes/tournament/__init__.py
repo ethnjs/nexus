@@ -49,6 +49,7 @@ def _serialize(tournament: Tournament) -> dict:
         # tournament does not run on the weekdays in between. `live_tracks`
         # rather than `tracks` so a pending-delete track never reaches a member.
         "dates": tournament.dates,
+        "season_year": tournament.season_year,
         "university": tournament.university,
         "location": tournament.location,
         "state": tournament.state,

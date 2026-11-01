@@ -610,6 +610,8 @@ export interface TournamentPublic {
 
 export interface Tournament extends TournamentPublic {
   id: number;
+  // Named for the spring it ends in; null until a primary track has dates.
+  season_year: number | null;
   timezone: string;
   is_multi_day: boolean;
   is_public: boolean;
@@ -624,6 +626,7 @@ export interface Tournament extends TournamentPublic {
 // GET /tournaments/me/ — lightweight card view, no roles/owner
 export interface TournamentSummary extends TournamentPublic {
   id: number;
+  season_year: number | null;
   is_public: boolean;
   is_archived: boolean;
   event_count: number;

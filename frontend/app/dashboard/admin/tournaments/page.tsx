@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
 import {
+  seasonsOf,
   TOURNAMENTS_FILTER_KEYS,
   TournamentsFilterModal,
   type TournamentsFilterState,
@@ -534,6 +535,7 @@ export default function AdminTournamentsPage() {
       {showFilterModal && (
         <TournamentsFilterModal
           withStatus
+          seasons={seasonsOf(tournaments ?? [])}
           filters={filters}
           onApply={setFilters}
           onClose={() => setShowFilterModal(false)}

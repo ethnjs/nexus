@@ -263,3 +263,14 @@ export function tournamentFactRows(
   }
   return [{ key: "tournament", name: null, place: placeOf(t), dates: formatDates(t.dates, style) }];
 }
+
+/** "2026–27" for season 2027. Seasons are named for the spring they end in. */
+export function formatSeason(seasonYear: number): string {
+  return `${seasonYear - 1}–${String(seasonYear % 100).padStart(2, "0")}`;
+}
+
+/** The season under way today; from August on, that's next spring's. */
+export function currentSeasonYear(): number {
+  const now = new Date();
+  return now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear();
+}
