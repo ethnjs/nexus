@@ -199,6 +199,9 @@ class Event(Base):
 # SeasonEvent — admin-curated "this canonical event, in this division, is
 # active this year" list. Drives the tournament events bulk-load default
 # list (see TournamentEvent); independent of any single tournament.
+#
+# format/has_impound/has_self_schedule live here rather than on Event because
+# the rules change between seasons. TournamentEvent copies them on creation.
 # ---------------------------------------------------------------------------
 class SeasonEvent(Base):
     __tablename__ = "season_events"
@@ -208,6 +211,9 @@ class SeasonEvent(Base):
     year: Mapped[int] = mapped_column(Integer)
     division: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     event: Mapped["Event"] = relationship("Event")
@@ -1004,6 +1010,10 @@ class TournamentEvent(Base):
     name: Mapped[str | None] = mapped_column(String(255))
     division: Mapped[str | None] = mapped_column(String(4))  # "A" | "B" | "C"
     event_type: Mapped[str] = mapped_column(String(32), default="standard")  # "standard" | "trial"
+    # Copied from the matching SeasonEvent on creation, then the TD's to edit.
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Canonical event table link — SET NULL on delete so custom (event_id-less)
     # events are just the default, not a broken reference.

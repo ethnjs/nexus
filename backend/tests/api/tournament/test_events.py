@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from app.models.models import SeasonEvent
 from tests.conftest import grant_role, login, primary_track_id
 
 # td_tournament spans [today, today + 1 day] — event/shift times must fall
@@ -47,6 +48,9 @@ def test_create_event_minimal(client, td_user, td_tournament):
     assert data["division"] == "C"
     assert data["tournament_id"] == td_tournament.id
     assert data["event_type"] == "standard"
+    assert data["format"] is None
+    assert data["has_impound"] is False
+    assert data["has_self_schedule"] is False
     assert data["track_details"] == []
 
 
@@ -73,6 +77,53 @@ def test_create_event_with_catalog_link_inherits_category(client, td_user, td_to
     data = response.json()
     assert data["event_id"] == event.id
     assert data["event"]["category"]["name"] == event.category.name
+
+
+def test_create_catalog_event_copies_its_season_event(client, td_user, td_tournament, event, db):
+    db.add(
+        SeasonEvent(
+            event_id=event.id,
+            year=td_tournament.season_year,
+            division="C",
+            format="build",
+            has_impound=True,
+        )
+    )
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    data = _make_event(
+        client, td_tournament.id, name=None, event_id=event.id, has_self_schedule=True
+    ).json()
+    assert data["format"] == "build"
+    assert data["has_impound"] is True
+    # Sent explicitly, so the season event's false doesn't overwrite it.
+    assert data["has_self_schedule"] is True
+
+
+def test_create_catalog_event_ignores_other_seasons(client, td_user, td_tournament, event, db):
+    db.add(
+        SeasonEvent(
+            event_id=event.id, year=td_tournament.season_year - 1, division="C", format="build"
+        )
+    )
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    data = _make_event(client, td_tournament.id, name=None, event_id=event.id).json()
+    assert data["format"] is None
+
+
+def test_update_event_format_and_flags(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"format": "hybrid", "has_impound": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["format"] == "hybrid"
+    assert response.json()["has_impound"] is True
 
 
 def test_create_event_without_catalog_link_has_no_category(client, td_user, td_tournament):
@@ -387,13 +438,22 @@ def test_list_events_public_readable_by_plain_member(client, td_user, other_tour
 
 def test_list_events_public_omits_location_and_staffing(client, td_user, td_tournament):
     """Room assignment stays staff-side until the day, and staffing needs
-    are a planning target. Shifts and event_type are *not* withheld: members
-    already answer availability questions built from these same shifts, and
-    whether an event is trial is something they should see before signing up."""
+    are a planning target. Shifts and the kind of event are *not* withheld:
+    members already answer availability questions built from these same
+    shifts, and should know what they're signing up for."""
     login(client, "td@test.com", "tdpass")
     _make_event(client, td_tournament.id, name="Boomilever", division="C")
     rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
-    assert set(rows[0]) == {"id", "name", "division", "event_type", "shifts"}
+    assert set(rows[0]) == {
+        "id",
+        "name",
+        "division",
+        "event_type",
+        "format",
+        "has_impound",
+        "has_self_schedule",
+        "shifts",
+    }
 
 
 def test_list_events_public_carries_shifts_without_event_count(
