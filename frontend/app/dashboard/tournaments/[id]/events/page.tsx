@@ -111,6 +111,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
@@ -1036,7 +1037,7 @@ export default function EventsPage() {
               // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
               onKeyDown={handleGridArrows}
             >
-              <div className={table.header}>
+              <div ref={stickyHeader} className={table.header}>
                 <span
                   className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                   style={{ display: "flex", justifyContent: "center" }}

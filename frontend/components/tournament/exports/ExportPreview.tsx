@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
+import { stickyHeader } from "@/lib/stickyHeader";
 
 // Narrowest a column gets before the table scrolls sideways instead.
 const MIN_COLUMN_WIDTH = 140;
@@ -65,7 +66,11 @@ export function ExportPreview({ header, rows, warnings, loading, blocked }: Expo
           >
             {/* Only when the export has one: what shows is what gets exported. */}
             {header && (
-              <div className={table.header} style={{ paddingTop: "8px", paddingBottom: "8px" }}>
+              <div
+                ref={stickyHeader}
+                className={table.header}
+                style={{ paddingTop: "8px", paddingBottom: "8px" }}
+              >
                 {Array.from({ length: width }, (_, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: preview cells are positional
                   <span key={i} style={WRAP}>

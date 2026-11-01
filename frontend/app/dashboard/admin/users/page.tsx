@@ -50,6 +50,7 @@ import { type AdminUserFull, type AdminUserSlim, ApiError, adminUsersApi } from 
 import { formatPhone } from "@/lib/auth";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { formatDuration } from "@/lib/timeFormat";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
@@ -462,7 +463,7 @@ export default function AdminUsersPage() {
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>Name</span>
               <span>Email</span>
               <span>Phone</span>
