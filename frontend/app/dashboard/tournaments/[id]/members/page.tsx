@@ -79,6 +79,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
@@ -938,7 +939,7 @@ export default function MembersPage() {
               data-roles-hidden={rolesLaidOut ? undefined : "true"}
               style={{ gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns) }}
             >
-              <div className={styles.header}>
+              <div ref={stickyHeader} className={styles.header}>
                 <span
                   className={`${styles.collapsible} ${selectMode ? "" : styles.collapsed}`}
                   style={{ display: "flex", justifyContent: "center" }}

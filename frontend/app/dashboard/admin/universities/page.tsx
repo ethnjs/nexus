@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { ApiError, type University, universitiesApi } from "@/lib/api";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { useActionToast } from "@/lib/useActionToast";
 
 const COLUMNS = [
@@ -211,7 +212,7 @@ export default function AdminUniversitiesPage() {
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>Name</span>
               <span>Abbreviation</span>
               <span>Location</span>

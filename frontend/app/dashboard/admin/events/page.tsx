@@ -50,6 +50,7 @@ import {
 } from "@/lib/api";
 import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK } from "@/lib/eventSort";
 import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -258,7 +259,7 @@ function CatalogView({
             className={table.table}
             style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "620px" }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>
                 Event — {visible.length}
                 {isFiltered ? ` of ${events.length}` : ""}
@@ -723,7 +724,7 @@ function SeasonView({
             className={`${table.table} ${table.animatedTracks}`}
             style={{ gridTemplateColumns: seasonColumns(selectMode), minWidth: "960px" }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span
                 className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                 style={CENTERED}

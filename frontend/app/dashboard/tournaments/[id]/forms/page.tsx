@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import { type FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 import { prerequisiteSummary } from "@/lib/forms/prerequisites";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
@@ -228,7 +229,7 @@ function FormTable({
       style={{ padding: "8px 12px", marginBottom: "16px" }}
     >
       <div className={table.table} style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}>
-        <div className={table.header}>
+        <div ref={stickyHeader} className={table.header}>
           <span>Forms — {forms.length}</span>
           <span style={{ textAlign: "center" }}>Status</span>
           <span>Prerequisites</span>
