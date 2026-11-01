@@ -543,6 +543,16 @@ class Tournament(Base):
         return days[-1] if days else None
 
     @property
+    def season_year(self) -> int | None:
+        """The Science Olympiad season this tournament runs in, named for the
+        spring it ends in: a tournament from August 2026 on is in 2027, the
+        same number SeasonEvent.year holds."""
+        day = self.first_day
+        if day is None:
+            return None
+        return day.year + 1 if day.month >= 8 else day.year
+
+    @property
     def division(self) -> list[str]:
         return sorted({d for t in self.primary_tracks for d in (t.division or [])})
 

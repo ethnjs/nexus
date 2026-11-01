@@ -15,8 +15,16 @@ import {
   type TournamentSummary,
 } from "@/lib/api";
 import { todayLocalDateString, toLocalDateString } from "@/lib/date";
+import { formatSeason } from "@/lib/tournamentDisplay";
 
-export const TOURNAMENTS_FILTER_KEYS = ["status", "dates", "level", "division", "state"] as const;
+export const TOURNAMENTS_FILTER_KEYS = [
+  "status",
+  "season",
+  "dates",
+  "level",
+  "division",
+  "state",
+] as const;
 type TournamentsFilterKey = (typeof TOURNAMENTS_FILTER_KEYS)[number];
 
 export type TournamentsFilterState = FilterState<TournamentsFilterKey>;
@@ -89,10 +97,14 @@ const STATE_OPTIONS: FilterOption[] = TOURNAMENT_STATES.map((state) => ({
 
 export function tournamentPassesFilters(
   // The dashboard's summaries and the admin table's rows both carry these.
-  tournament: Pick<TournamentSummary, "is_archived" | "level" | "state" | "division" | "dates">,
+  tournament: Pick<
+    TournamentSummary,
+    "is_archived" | "season_year" | "level" | "state" | "division" | "dates"
+  >,
   filters: TournamentsFilterState,
 ): boolean {
   if (!filterAllows(filters.status, tournament.is_archived ? "archived" : "active")) return false;
+  if (!filterAllows(filters.season, String(tournament.season_year ?? ""))) return false;
   if (!filterAllows(filters.level, tournament.level)) return false;
   if (!filterAllows(filters.state, tournament.state)) return false;
   // A tournament runs several divisions; any one of them picked is a match.
@@ -108,8 +120,14 @@ export function tournamentPassesFilters(
   return true;
 }
 
+/** The seasons to offer the modal: every one the given tournaments fall in. */
+export function seasonsOf(tournaments: Pick<TournamentSummary, "season_year">[]): number[] {
+  return [...new Set(tournaments.flatMap((t) => (t.season_year === null ? [] : [t.season_year])))];
+}
+
 export function TournamentsFilterModal({
   withStatus = false,
+  seasons,
   filters,
   onApply,
   onClose,
@@ -117,6 +135,8 @@ export function TournamentsFilterModal({
   /** Offer Active / Archived — off where the page already splits them (the
    *  dashboard's sections). */
   withStatus?: boolean;
+  /** The seasons the page's tournaments fall in, offered as options. */
+  seasons: number[];
   filters: TournamentsFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: TournamentsFilterState) => void;
@@ -129,6 +149,14 @@ export function TournamentsFilterModal({
       options: STATUS_OPTIONS,
       control: "buttons",
       hidden: !withStatus,
+    },
+    {
+      key: "season",
+      title: "Season",
+      options: [...seasons]
+        .sort((a, b) => b - a)
+        .map((year) => ({ value: String(year), label: formatSeason(year) })),
+      control: "chips",
     },
     {
       key: "dates",

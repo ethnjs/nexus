@@ -38,6 +38,7 @@ import {
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
+import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 
 // The season selector's "edit the catalog itself" position. A sentinel rather
@@ -404,7 +405,7 @@ function SeasonView({
     if (busy.has(key)) return;
     setBusy((prev) => new Set(prev).add(key));
     setError(undefined);
-    const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${year}`;
+    const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${formatSeason(year)}`;
     try {
       await run(label, async () => {
         const existing = byCell.get(key);
@@ -509,7 +510,9 @@ function SeasonView({
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState
             icon={<IconEvents size={26} />}
-            title={search.trim() ? "No matching events" : `Nothing set for ${year} yet`}
+            title={
+              search.trim() ? "No matching events" : `Nothing set for ${formatSeason(year)} yet`
+            }
             description={
               search.trim()
                 ? "Try adjusting your search."
@@ -586,7 +589,7 @@ function SeasonView({
                     variant="secondary"
                     size="sm"
                     iconOnly
-                    title={`Remove from ${year}`}
+                    title={`Remove from ${formatSeason(year)}`}
                     onClick={() => setRemoveTarget(event)}
                   >
                     <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
@@ -628,13 +631,15 @@ function SeasonView({
           noun="entry"
           description={
             <>
-              Remove <strong>{removeTarget.name}</strong> from {year}? This drops it from every
-              division it&rsquo;s in this season. The event stays in the catalog — switch a division
-              off instead if you only want it out of the defaults.
+              Remove <strong>{removeTarget.name}</strong> from {formatSeason(year)}? This drops it
+              from every division it&rsquo;s in this season. The event stays in the catalog — switch
+              a division off instead if you only want it out of the defaults.
             </>
           }
           onDelete={(row) =>
-            run(`${row.event.name} removed from ${year}`, () => seasonEventsApi.delete(row.id))
+            run(`${row.event.name} removed from ${formatSeason(year)}`, () =>
+              seasonEventsApi.delete(row.id),
+            )
           }
           onClose={() => setRemoveTarget(null)}
           onDeleted={(ids) =>
@@ -649,7 +654,7 @@ function SeasonView({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminEventsPage() {
-  const thisYear = new Date().getFullYear();
+  const thisSeason = currentSeasonYear();
   const [view, setView] = useState<string>(CATALOG);
   const [events, setEvents] = useState<CanonicalEvent[] | null>(null);
   const [categories, setCategories] = useState<EventCategory[]>([]);
@@ -670,15 +675,15 @@ export default function AdminEventsPage() {
       });
   }, []);
 
-  // Seasons that exist, plus this year and next, so a new one can be started
+  // Seasons that exist, plus this one and next, so a new one can be started
   // before it holds a single row.
   const viewOptions = useMemo(() => {
-    const years = [...new Set([...knownYears, thisYear, thisYear + 1])].sort((a, b) => b - a);
+    const years = [...new Set([...knownYears, thisSeason, thisSeason + 1])].sort((a, b) => b - a);
     return [
       { value: CATALOG, label: "All events" },
-      ...years.map((y) => ({ value: String(y), label: String(y) })),
+      ...years.map((y) => ({ value: String(y), label: formatSeason(y) })),
     ];
-  }, [knownYears, thisYear]);
+  }, [knownYears, thisSeason]);
 
   const seasonPicker = (
     <Dropdown
