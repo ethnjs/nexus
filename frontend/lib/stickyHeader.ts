@@ -22,15 +22,18 @@ export function stickyHeader(header: HTMLElement | null) {
   let offset = 0;
   let frame = 0;
 
-  // The table's own width rather than the card's scrollWidth, which clip
-  // would hide, so this never has to switch the card back to measure.
+  // The table's own scrollWidth rather than the card's, which clip would
+  // hide, so this never has to switch the card back to measure. Not
+  // offsetWidth: grid tracks (`minmax(max-content, …)`) can overflow the
+  // table's own box, which stays at the card's width.
   function measureFit() {
     if (!table || !card || !cardScrolls) return;
     const style = getComputedStyle(card);
     const content =
       card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    fits = table.offsetWidth <= content + 0.5;
-    card.style.overflowX = fits ? "clip" : "";
+    fits = table.scrollWidth <= content + 0.5;
+    const overflowX = fits ? "clip" : "";
+    if (card.style.overflowX !== overflowX) card.style.overflowX = overflowX;
   }
 
   function verticalScroller(): HTMLElement | null {
@@ -51,6 +54,8 @@ export function stickyHeader(header: HTMLElement | null) {
   function place() {
     frame = 0;
     if (!header || !table || !card) return;
+    // Columns can widen without the table resizing (a column turned on).
+    measureFit();
     const scroller = verticalScroller();
     const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
     if (fits) {
@@ -79,18 +84,21 @@ export function stickyHeader(header: HTMLElement | null) {
 
   // Capture, since scroll events don't bubble and the scroller is an ancestor.
   document.addEventListener("scroll", schedule, { capture: true, passive: true });
-  const observer = new ResizeObserver(() => {
-    measureFit();
-    schedule();
-  });
+  const observer = new ResizeObserver(schedule);
   observer.observe(table);
   observer.observe(card);
-  measureFit();
+  // grid-template-columns is set inline, and a column turned on may not resize anything.
+  const columns = new MutationObserver(schedule);
+  columns.observe(table, { attributes: true, attributeFilter: ["style"] });
+  // ...and on an `.animatedTracks` table it only settles when the transition ends.
+  table.addEventListener("transitionend", schedule);
   schedule();
 
   return () => {
     document.removeEventListener("scroll", schedule, { capture: true });
     observer.disconnect();
+    columns.disconnect();
+    table.removeEventListener("transitionend", schedule);
     cancelAnimationFrame(frame);
     if (cardScrolls) card.style.overflowX = "";
   };
