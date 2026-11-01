@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
 import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
+import { SEASON_MASS_EDITOR_WIDTH, SeasonMassEditor } from "@/components/admin/SeasonMassEditor";
 import { SelectCell } from "@/components/tournament/events/EditableCells";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
@@ -27,6 +28,7 @@ import {
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Spinner } from "@/components/ui/Spinner";
@@ -50,6 +52,9 @@ import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK } from "@/lib/eventSort";
 import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useToast } from "@/lib/useToast";
 
 // The season selector's "edit the catalog itself" position. A sentinel rather
 // than a separate tab: picking a season and picking the catalog are the same
@@ -66,15 +71,21 @@ const EVENT_COLUMNS = [
   "44px", // actions
 ].join(" ");
 
-const SEASON_COLUMNS = [
-  "minmax(300px, 2fr)", // event — name plus its division badges
-  "minmax(200px, 1.2fr)", // category
-  "168px", // divisions — three sm pills plus gaps
-  "96px", // format
-  "72px", // impound
-  "104px", // self-schedule
-  "44px", // actions
-].join(" ");
+// Always a grid track, so Select mode can animate its width from 0.
+const SELECT_COLUMN_WIDTH = "28px";
+
+function seasonColumns(selectMode: boolean) {
+  return [
+    selectMode ? SELECT_COLUMN_WIDTH : "0px",
+    "minmax(240px, 1.4fr)", // event — name plus its division badges
+    "minmax(140px, 1fr)", // category
+    "168px", // divisions — three sm pills plus gaps
+    "minmax(96px, 0.6fr)", // format
+    "minmax(72px, 0.5fr)", // impound
+    "minmax(104px, 0.6fr)", // self-schedule
+    "44px", // actions
+  ].join(" ");
+}
 
 // Division colours are shared with the tournaments table, so a division reads
 // the same everywhere.
@@ -361,6 +372,8 @@ function SeasonView({
   onSeasonAdded: (year: number) => void;
 }) {
   const run = useActionToast();
+  const { show } = useToast();
+  const { setPanel, clearPanel } = useSetLayoutPanel();
   const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[] | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FilterState<SeasonFilterKey>>(() =>
@@ -370,7 +383,20 @@ function SeasonView({
   const [sortRules, setSortRules] = useState<SortRule<SeasonSortField>[]>(DEFAULT_SEASON_SORT);
   const [showSort, setShowSort] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<CanonicalEvent | null>(null);
+  const [removeTargets, setRemoveTargets] = useState<CanonicalEvent[] | null>(null);
+  const {
+    selectMode,
+    selectedIds,
+    massPanelOpen,
+    panelDirty,
+    setPanelDirty,
+    toggleSelectMode,
+    toggleSelected,
+    toggleSelectAll,
+    openMassPanel,
+    clearSelection,
+    forgetItem,
+  } = usePanelSelection();
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
@@ -391,6 +417,22 @@ function SeasonView({
       cancelled = true;
     };
   }, [year]);
+
+  // Without the spinner reset above, so the table stays put behind the panel.
+  const reload = useCallback(() => {
+    seasonEventsApi
+      .list({ year })
+      .then(setSeasonEvents)
+      .catch(() => setError("Couldn't reload this season."));
+  }, [year]);
+
+  // Selection is of events, which leave the season when their last division goes.
+  useEffect(() => {
+    if (seasonEvents === null) return;
+    const present = new Set(seasonEvents.map((s) => s.event.id));
+    const gone = [...selectedIds].filter((id) => !present.has(id));
+    if (gone.length > 0) forgetItem(gone);
+  }, [seasonEvents, selectedIds, forgetItem]);
 
   // (event_id, division) -> row, so a cell is one lookup.
   const byCell = useMemo(() => {
@@ -546,11 +588,45 @@ function SeasonView({
 
   const existingPairs = useMemo(() => new Set(byCell.keys()), [byCell]);
 
-  // Every division row for the event being removed — the confirm deletes the
-  // event from the season, not one division of it.
-  const removeRows = removeTarget
-    ? (seasonEvents ?? []).filter((s) => s.event.id === removeTarget.id)
-    : [];
+  const selectedEvents = useMemo(
+    () => events.filter((e) => selectedIds.has(e.id)),
+    [events, selectedIds],
+  );
+
+  // The slot lives in the layout and would outlive this view otherwise.
+  useEffect(() => clearPanel, [clearPanel]);
+
+  useEffect(() => {
+    if (!massPanelOpen || selectedEvents.length === 0) {
+      clearPanel();
+      return;
+    }
+    setPanel(
+      <SeasonMassEditor
+        year={year}
+        events={selectedEvents}
+        seasonEvents={seasonEvents ?? []}
+        onClose={clearSelection}
+        onSaved={reload}
+        onDirtyChange={setPanelDirty}
+      />,
+      SEASON_MASS_EDITOR_WIDTH,
+    );
+  }, [
+    massPanelOpen,
+    selectedEvents,
+    seasonEvents,
+    year,
+    reload,
+    clearSelection,
+    setPanelDirty,
+    setPanel,
+    clearPanel,
+  ]);
+
+  const visibleIds = rows.map((e) => e.id);
+  // As on the TD tables: in Select mode a click on a cell selects the row.
+  const lockReason = selectMode ? "Leave Select mode to edit in the table" : undefined;
 
   return (
     <>
@@ -581,6 +657,16 @@ function SeasonView({
           onOpen={() => setShowSort(true)}
           onReset={() => setSortRules(DEFAULT_SEASON_SORT)}
         />
+        <Button
+          type="button"
+          variant={selectMode ? "primary" : "secondary"}
+          size="md"
+          onClick={toggleSelectMode}
+          disabled={panelDirty}
+          title={panelDirty ? "Save or discard your changes first" : undefined}
+        >
+          Select
+        </Button>
         <Button
           variant="primary"
           size="md"
@@ -634,10 +720,21 @@ function SeasonView({
       ) : (
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
-            className={table.table}
-            style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "1040px" }}
+            className={`${table.table} ${table.animatedTracks}`}
+            style={{ gridTemplateColumns: seasonColumns(selectMode), minWidth: "960px" }}
           >
             <div className={table.header}>
+              <span
+                className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                style={CENTERED}
+                title={panelDirty ? "Save or discard your changes first" : undefined}
+              >
+                <Checkbox
+                  checked={rows.length > 0 && rows.every((e) => selectedIds.has(e.id))}
+                  locked={panelDirty}
+                  onChange={(checked) => toggleSelectAll(visibleIds, checked)}
+                />
+              </span>
               <span>Event — {rows.length}</span>
               <span>Category</span>
               <span>Divisions</span>
@@ -648,7 +745,37 @@ function SeasonView({
             </div>
 
             {rows.map((event) => (
-              <div key={event.id} className={table.row}>
+              <div
+                key={event.id}
+                className={table.row}
+                data-active={selectMode && selectedIds.has(event.id) ? "true" : undefined}
+                onClick={
+                  selectMode
+                    ? (e) => {
+                        // Controls keep their own clicks. So does anything portalled
+                        // out of the row, like a cell's popover, whose clicks still
+                        // bubble here through React.
+                        const target = e.target as Element;
+                        if (!e.currentTarget.contains(target)) return;
+                        if (target.closest("button, input, a, [role='button']")) return;
+                        toggleSelected(event.id, visibleIds);
+                      }
+                    : undefined
+                }
+                // A Shift-click selects a range of rows, not the text between them.
+                onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
+                style={selectMode ? { cursor: panelDirty ? "not-allowed" : "pointer" } : undefined}
+              >
+                <span
+                  className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                  style={CENTERED}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(event.id)}
+                    locked={panelDirty}
+                    onChange={() => toggleSelected(event.id, visibleIds)}
+                  />
+                </span>
                 {/* Badges sit with the name as the read-out — the control is
                     the button group two cells over. Only active divisions show:
                     an entry switched off isn't in this season's defaults, which
@@ -680,27 +807,30 @@ function SeasonView({
                 {/* All three divisions always offered, so a division can be
                     added to an event already in the season without going back
                     through the add modal. */}
-                <DivisionButtonGroup
-                  options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
-                  value={activeDivisions(event)}
-                  onChange={(v) => {
-                    const division = v as TournamentDivision;
-                    toggle(event, division, !byCell.get(`${event.id}:${division}`)?.is_active);
-                  }}
-                  locked={TOURNAMENT_DIVISIONS.some((d) => busy.has(`${event.id}:${d}`))}
-                />
+                <SelectLock lockReason={lockReason}>
+                  <DivisionButtonGroup
+                    options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
+                    value={activeDivisions(event)}
+                    onChange={(v) => {
+                      const division = v as TournamentDivision;
+                      toggle(event, division, !byCell.get(`${event.id}:${division}`)?.is_active);
+                    }}
+                    locked={TOURNAMENT_DIVISIONS.some((d) => busy.has(`${event.id}:${d}`))}
+                  />
+                </SelectLock>
                 <FormatCell
                   event={event}
                   value={detailsRow.get(event.id)?.format ?? null}
+                  lockReason={lockReason}
                   onSave={saveDetails}
                 />
                 {(["has_impound", "has_self_schedule"] as const).map((field) => (
-                  <span key={field} style={CENTERED}>
+                  <SelectLock key={field} lockReason={lockReason} centered>
                     <Checkbox
                       checked={detailsRow.get(event.id)?.[field] ?? false}
                       onChange={(next) => setFlag(event, field, next)}
                     />
-                  </span>
+                  </SelectLock>
                 ))}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
@@ -709,7 +839,7 @@ function SeasonView({
                     size="sm"
                     iconOnly
                     title={`Remove from ${formatSeason(year)}`}
-                    onClick={() => setRemoveTarget(event)}
+                    onClick={() => setRemoveTargets([event])}
                   >
                     <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
                   </Button>
@@ -756,39 +886,102 @@ function SeasonView({
         />
       )}
 
-      {removeTarget && (
+      <SelectionBar
+        visible={selectMode && !massPanelOpen}
+        count={selectedIds.size}
+        onEdit={openMassPanel}
+        onCancel={toggleSelectMode}
+        actions={
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            title={`Remove selected from ${formatSeason(year)}`}
+            disabled={selectedIds.size === 0}
+            onClick={() => setRemoveTargets(selectedEvents)}
+          >
+            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+          </Button>
+        }
+      />
+
+      {removeTargets && (
         <BulkDeleteModal
-          items={removeRows}
-          noun="entry"
+          items={removeTargets}
+          noun="event"
+          verb="Remove"
+          verbPast="removed"
           description={
             <>
-              Remove <strong>{removeTarget.name}</strong> from {formatSeason(year)}? This drops it
-              from every division it&rsquo;s in this season. The event stays in the catalog — switch
-              a division off instead if you only want it out of the defaults.
+              Remove{" "}
+              {removeTargets.length === 1 ? (
+                <strong>{removeTargets[0].name}</strong>
+              ) : (
+                `${removeTargets.length} events`
+              )}{" "}
+              from {formatSeason(year)}? This drops every division they&rsquo;re in this season. The
+              events stay in the catalog.
             </>
           }
-          onDelete={(row) =>
-            run(`${row.event.name} removed from ${formatSeason(year)}`, () =>
-              seasonEventsApi.delete(row.id),
+          onDelete={(event) =>
+            Promise.all(
+              (seasonEvents ?? [])
+                .filter((s) => s.event.id === event.id)
+                .map((s) => seasonEventsApi.delete(s.id)),
             )
           }
-          onClose={() => setRemoveTarget(null)}
-          onDeleted={(ids) =>
-            setSeasonEvents((prev) => (prev ?? []).filter((s) => !ids.includes(s.id)))
-          }
+          onClose={() => setRemoveTargets(null)}
+          onDeleted={(ids) => {
+            setSeasonEvents((prev) => (prev ?? []).filter((s) => !ids.includes(s.event.id)));
+            forgetItem(ids);
+            show(
+              ids.length === 1
+                ? `${events.find((e) => e.id === ids[0])?.name ?? "Event"} removed from ${formatSeason(year)}`
+                : `${ids.length} events removed from ${formatSeason(year)}`,
+              "success",
+            );
+          }}
         />
       )}
     </>
   );
 }
 
+/** Makes a control inert while locked, so a click on it reaches the row. */
+function SelectLock({
+  lockReason,
+  centered = false,
+  children,
+}: {
+  lockReason?: string;
+  centered?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      title={lockReason}
+      style={{
+        ...(centered ? CENTERED : { display: "flex" }),
+        cursor: lockReason ? "not-allowed" : undefined,
+      }}
+    >
+      <span style={{ display: "flex", pointerEvents: lockReason ? "none" : undefined }}>
+        {children}
+      </span>
+    </span>
+  );
+}
+
 function FormatCell({
   event,
   value,
+  lockReason,
   onSave,
 }: {
   event: CanonicalEvent;
   value: EventFormat | null;
+  lockReason?: string;
   onSave: (event: CanonicalEvent, patch: SeasonDetails) => Promise<void>;
 }) {
   return (
@@ -805,6 +998,7 @@ function FormatCell({
         ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
         { value: "", label: "None" },
       ]}
+      lockReason={lockReason}
       onPick={(next) => onSave(event, { format: (next || null) as EventFormat | null })}
     />
   );

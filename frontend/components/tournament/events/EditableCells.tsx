@@ -116,6 +116,7 @@ export function LockedCell({
         justifyContent: align === "start" ? "flex-start" : "center",
         minWidth: 0,
         minHeight: "28px",
+        cursor: "not-allowed",
       }}
     >
       {children}
