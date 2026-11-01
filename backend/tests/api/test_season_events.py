@@ -103,6 +103,45 @@ def test_update_season_event_clears_format(client, admin_user, event):
     assert response.json()["format"] is None
 
 
+def test_update_season_event_syncs_other_divisions(client, admin_user, event):
+    _login_admin(client)
+    b = _make_season_event(client, event_id=event.id, division="B").json()
+    c = _make_season_event(client, event_id=event.id, division="C").json()
+    client.patch(f"/admin/season-events/{b['id']}/", json={"format": "build", "has_impound": True})
+
+    rows = {r["id"]: r for r in client.get("/season-events/", params={"year": 2026}).json()}
+    assert rows[c["id"]]["format"] == "build"
+    assert rows[c["id"]]["has_impound"] is True
+
+
+def test_update_season_event_leaves_other_years_alone(client, admin_user, event):
+    _login_admin(client)
+    this_year = _make_season_event(client, event_id=event.id, year=2026).json()
+    other_year = _make_season_event(client, event_id=event.id, year=2027).json()
+    client.patch(f"/admin/season-events/{this_year['id']}/", json={"format": "build"})
+
+    [row] = client.get("/season-events/", params={"year": 2027}).json()
+    assert row["id"] == other_year["id"]
+    assert row["format"] is None
+
+
+def test_create_season_event_takes_existing_divisions_values(client, admin_user, event):
+    _login_admin(client)
+    _make_season_event(client, event_id=event.id, division="B", format="hybrid", has_impound=True)
+    c = _make_season_event(client, event_id=event.id, division="C").json()
+    assert c["format"] == "hybrid"
+    assert c["has_impound"] is True
+
+
+def test_create_season_event_with_values_updates_existing_divisions(client, admin_user, event):
+    _login_admin(client)
+    b = _make_season_event(client, event_id=event.id, division="B", format="test").json()
+    _make_season_event(client, event_id=event.id, division="C", format="build")
+
+    rows = {r["id"]: r for r in client.get("/season-events/", params={"year": 2026}).json()}
+    assert rows[b["id"]]["format"] == "build"
+
+
 def test_update_season_event_toggle_active(client, admin_user, event):
     _login_admin(client)
     created = _make_season_event(client, event_id=event.id, is_active=False).json()

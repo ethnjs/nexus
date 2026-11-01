@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
 import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
+import { SelectCell } from "@/components/tournament/events/EditableCells";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EditableText } from "@/components/ui/EditableText";
@@ -31,9 +33,13 @@ import {
   ApiError,
   type CanonicalEvent,
   canonicalEventsApi,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
   type EventCategory,
+  type EventFormat,
   eventCategoriesApi,
   type SeasonEvent,
+  type SeasonEventInput,
   seasonEventsApi,
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
@@ -60,6 +66,9 @@ const SEASON_COLUMNS = [
   "minmax(300px, 2fr)", // event — name plus its division badges
   "minmax(200px, 1.2fr)", // category
   "168px", // divisions — three sm pills plus gaps
+  "96px", // format
+  "72px", // impound
+  "104px", // self-schedule
   "44px", // actions
 ].join(" ");
 
@@ -71,8 +80,21 @@ const DIVISION_VARIANT: Record<TournamentDivision, "divisionA" | "divisionB" | "
   C: "divisionC",
 };
 
-const SEASON_FILTER_KEYS = ["category", "division"] as const;
+const SEASON_FILTER_KEYS = ["category", "division", "format", "impound", "self_schedule"] as const;
 type SeasonFilterKey = (typeof SEASON_FILTER_KEYS)[number];
+
+// The filter's value for an unset format, which FilterState can't hold as null.
+const NO_FORMAT = "none";
+
+const YES_NO_OPTIONS: FilterOption[] = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+/** Shared by every division of an event in a season; the backend keeps them in step. */
+type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self_schedule">;
+
+const CENTERED: React.CSSProperties = { display: "flex", justifyContent: "center" };
 
 const CELL_TEXT: React.CSSProperties = {
   fontFamily: "var(--font-sans)",
@@ -364,6 +386,38 @@ function SeasonView({
     return map;
   }, [seasonEvents]);
 
+  // The row an event's format and flags are read from and written through.
+  // Any division's would do, since the backend keeps them in step; an active
+  // one is preferred over a leftover switched-off row.
+  const detailsRow = useMemo(() => {
+    const map = new Map<number, SeasonEvent>();
+    for (const s of seasonEvents ?? []) {
+      if (!map.get(s.event.id)?.is_active) map.set(s.event.id, s);
+    }
+    return map;
+  }, [seasonEvents]);
+
+  async function saveDetails(event: CanonicalEvent, patch: SeasonDetails) {
+    const row = detailsRow.get(event.id);
+    if (!row) return;
+    await seasonEventsApi.update(row.id, patch);
+    // The backend copied the change to every division, so mirror that here.
+    setSeasonEvents((prev) =>
+      (prev ?? []).map((s) => (s.event.id === event.id ? { ...s, ...patch } : s)),
+    );
+  }
+
+  function setFlag(
+    event: CanonicalEvent,
+    field: "has_impound" | "has_self_schedule",
+    next: boolean,
+  ) {
+    const noun = field === "has_impound" ? "Impound" : "Self-schedule";
+    run(`${event.name} — ${noun} ${next ? "on" : "off"}`, () =>
+      saveDetails(event, { [field]: next }),
+    ).catch(() => setError("Couldn't save that change."));
+  }
+
   // Only events this season actually holds — the catalog lives in the CATALOG
   // position of the picker, and adding is the modal's job, so there's no
   // reason to list 180 rows of mostly-off toggles here.
@@ -380,10 +434,15 @@ function SeasonView({
         const active = TOURNAMENT_DIVISIONS.filter((d) => byCell.get(`${e.id}:${d}`)?.is_active);
         if (!active.some((d) => filters.division.has(d))) return false;
       }
+      const details = detailsRow.get(e.id);
+      const yesNo = (v: boolean | undefined) => (v ? "yes" : "no");
+      if (!filterAllows(filters.format, details?.format ?? NO_FORMAT)) return false;
+      if (!filterAllows(filters.impound, yesNo(details?.has_impound))) return false;
+      if (!filterAllows(filters.self_schedule, yesNo(details?.has_self_schedule))) return false;
       if (!query) return true;
       return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
     });
-  }, [events, seasonEvents, search, filters, byCell]);
+  }, [events, seasonEvents, search, filters, byCell, detailsRow]);
 
   const seasonSections: FilterSectionConfig<SeasonFilterKey>[] = [
     {
@@ -398,6 +457,17 @@ function SeasonView({
       control: "divisions",
       options: TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: `Division ${d}` })),
     },
+    {
+      key: "format",
+      title: "Format",
+      control: "buttons",
+      options: [
+        ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+        { value: NO_FORMAT, label: "Not set" },
+      ],
+    },
+    { key: "impound", title: "Impound", control: "buttons", options: YES_NO_OPTIONS },
+    { key: "self_schedule", title: "Self-schedule", control: "buttons", options: YES_NO_OPTIONS },
   ];
 
   async function toggle(event: CanonicalEvent, division: TournamentDivision, next: boolean) {
@@ -409,18 +479,19 @@ function SeasonView({
     try {
       await run(label, async () => {
         const existing = byCell.get(key);
-        if (existing) {
-          // Patched, not deleted — the row carries created_at, and dropping it
-          // loses when the decision was first made. Removing the event from the
-          // season entirely is the row's own action.
-          const updated = await seasonEventsApi.update(existing.id, { is_active: next });
+        if (!next && existing) {
+          await seasonEventsApi.delete(existing.id);
+          setSeasonEvents((prev) => (prev ?? []).filter((s) => s.id !== existing.id));
+        } else if (existing) {
+          const updated = await seasonEventsApi.update(existing.id, { is_active: true });
           setSeasonEvents((prev) => (prev ?? []).map((s) => (s.id === existing.id ? updated : s)));
         } else {
+          // The backend gives a new division the event's existing format and flags.
           const created = await seasonEventsApi.create({
             event_id: event.id,
             year,
             division,
-            is_active: next,
+            is_active: true,
           });
           setSeasonEvents((prev) => [...(prev ?? []), created]);
         }
@@ -532,12 +603,15 @@ function SeasonView({
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={table.table}
-            style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "760px" }}
+            style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "1040px" }}
           >
             <div className={table.header}>
               <span>Event — {rows.length}</span>
               <span>Category</span>
               <span>Divisions</span>
+              <span style={CENTERED}>Format</span>
+              <span style={CENTERED}>Impound</span>
+              <span style={CENTERED}>Self-schedule</span>
               <span />
             </div>
 
@@ -583,6 +657,19 @@ function SeasonView({
                   }}
                   locked={TOURNAMENT_DIVISIONS.some((d) => busy.has(`${event.id}:${d}`))}
                 />
+                <FormatCell
+                  event={event}
+                  value={detailsRow.get(event.id)?.format ?? null}
+                  onSave={saveDetails}
+                />
+                {(["has_impound", "has_self_schedule"] as const).map((field) => (
+                  <span key={field} style={CENTERED}>
+                    <Checkbox
+                      checked={detailsRow.get(event.id)?.[field] ?? false}
+                      onChange={(next) => setFlag(event, field, next)}
+                    />
+                  </span>
+                ))}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
                     type="button"
@@ -648,6 +735,34 @@ function SeasonView({
         />
       )}
     </>
+  );
+}
+
+function FormatCell({
+  event,
+  value,
+  onSave,
+}: {
+  event: CanonicalEvent;
+  value: EventFormat | null;
+  onSave: (event: CanonicalEvent, patch: SeasonDetails) => Promise<void>;
+}) {
+  return (
+    <SelectCell
+      display={
+        value ? (
+          <Badge variant="default">{EVENT_FORMAT_LABELS[value]}</Badge>
+        ) : (
+          <span style={{ ...CELL_TEXT, color: "var(--color-text-tertiary)" }}>—</span>
+        )
+      }
+      value={value ?? ""}
+      options={[
+        ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+        { value: "", label: "None" },
+      ]}
+      onPick={(next) => onSave(event, { format: (next || null) as EventFormat | null })}
+    />
   );
 }
 

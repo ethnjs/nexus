@@ -965,11 +965,22 @@ export const tournamentEventsApi = {
 // Season Events — admin-curated per-year/division active event list, drives
 // tournamentEventsApi.loadDefaults(). GET is public; writes are admin-only.
 // -------------------------------------------------------------------------
+export const EVENT_FORMATS = ["test", "hybrid", "build"] as const;
+export type EventFormat = (typeof EVENT_FORMATS)[number];
+export const EVENT_FORMAT_LABELS: Record<EventFormat, string> = {
+  test: "Test",
+  hybrid: "Hybrid",
+  build: "Build",
+};
+
 export interface SeasonEvent {
   id: number;
   year: number;
   division: TournamentDivision;
   is_active: boolean;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event: CanonicalEvent;
   created_at: string;
 }
@@ -979,6 +990,9 @@ export interface SeasonEventInput {
   year: number;
   division: TournamentDivision;
   is_active?: boolean;
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
 }
 
 export const seasonEventsApi = {
