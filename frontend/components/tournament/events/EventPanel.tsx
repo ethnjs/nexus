@@ -448,6 +448,12 @@ export function EventPanel({
     ? (canonicalEvents.find((e) => e.id === draft.event_id)?.category.name ??
       current?.event?.category.name)
     : undefined;
+  // Set on the catalog by an admin, so read-only here, like the category.
+  const relatedEvents = draft.event_id
+    ? (canonicalEvents.find((e) => e.id === draft.event_id)?.related_events ??
+      current?.event?.related_events ??
+      [])
+    : [];
 
   return (
     <DockedPanel
@@ -518,6 +524,18 @@ export function EventPanel({
                 }}
               >
                 {categoryName}
+              </span>
+            </SettingsRow>
+          )}
+
+          {relatedEvents.length > 0 && (
+            <SettingsRow label="Related events">
+              <span style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                {relatedEvents.map((r) => (
+                  <Badge key={r.id} variant="default">
+                    {r.name}
+                  </Badge>
+                ))}
               </span>
             </SettingsRow>
           )}
