@@ -18,6 +18,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isEntry = pathname in SWITCHES;
+  const isWide = pathname === "/join";
 
   return (
     <div className={styles.page}>
@@ -43,7 +44,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           Back to home
         </button>
       )}
-      <div className={styles.authStack}>
+      <div className={`${styles.authStack} ${isWide ? styles.authStackWide : ""}`}>
         <section className={`${styles.card} ${styles.authCard}`}>
           <h1 className={`${styles.wordmark} ${styles.wordmarkCompact}`}>NEXUS</h1>
           {children}
