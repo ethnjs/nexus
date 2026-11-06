@@ -18,11 +18,15 @@ dependencies = [
     "sqlalchemy>=2.1.3",
     "uvicorn[standard]>=0.54.0",
     "resend[async]>=2.49.1",
+    "authlib>=1.9.1",
+    "httpx2>=2.13.1",
+    "itsdangerous>=2.2.0",
+    "discord-py>=2.7.1",
+    "cryptography>=50.0.2",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.13.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
@@ -46,8 +50,8 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 ignore = ["E712"]
 
 [tool.ruff.lint.isort]
-# The local alembic/ directory would otherwise make it first-party.
-known-third-party = ["alembic"]
+# The local alembic/ and app/*/discord/ directories would otherwise make these first-party.
+known-third-party = ["alembic", "discord"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency markers are meant to be called in defaults.

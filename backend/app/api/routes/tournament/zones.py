@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.discord.marks import mark_memberships, row_scope
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import authorize_role_grant
 from app.core.tournament.permissions import (
@@ -313,6 +314,11 @@ def delete_zone(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     zone = get_scoped_or_404(db, TournamentZone, zone_id, tournament_id, "Zone")
+    # Its assignments cascade, and a cascade writes no marks of its own.
+    covering = db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.zone_id == zone.id
+    )
+    mark_memberships(db, tournament_id, [row_scope(row) for row in covering])
     db.delete(zone)
     db.commit()
 
@@ -401,6 +407,8 @@ def create_zone_assignment(
     )
     db.add(assignment)
     try:
+        # Inside the try: the marks' queries autoflush the insert, which is what fails.
+        mark_memberships(db, tournament_id, [(membership.id, zone.track_id)])
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -441,5 +449,6 @@ def delete_zone_assignment(
             detail="Zone assignment not found",
         )
 
+    mark_memberships(db, tournament_id, [row_scope(assignment)])
     db.delete(assignment)
     db.commit()

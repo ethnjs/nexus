@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -14,6 +15,7 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
+from app.core.discord.marks import mark_account_everywhere, mark_if_renamed, mark_user_everywhere
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -23,12 +25,19 @@ from app.core.users import find_user_by_id, require_not_last_admin
 from app.db.session import get_db
 from app.models.models import (
     Event,
+    OAuthIdentity,
+    OAuthProvider,
     User,
     UserCompetitionExperience,
     UserSession,
     UserVolunteerExperience,
 )
-from app.schemas.auth import AccountDeactivateRequest, AccountDeleteRequest, MessageResponse
+from app.schemas.auth import (
+    AccountDeactivateRequest,
+    AccountDeleteRequest,
+    MessageResponse,
+    OAuthIdentityResponse,
+)
 from app.schemas.session import SessionResponse
 from app.schemas.user import (
     AdminUserFullResponse,
@@ -38,7 +47,10 @@ from app.schemas.user import (
     UserMeSlimResponse,
     UserUpdate,
 )
-from app.services.email_service import send_password_reset_request_email
+from app.services.email_service import (
+    send_identity_unlinked_notice,
+    send_password_reset_request_email,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -127,6 +139,10 @@ def admin_update_user(
                 detail="You cannot deactivate your own account here — use account settings",
             )
 
+    # Deactivated and locked users lose their Discord roles; reactivated ones get them back.
+    if "status" in updates and updates["status"] != user.status:
+        mark_user_everywhere(db, user.id)
+
     for field, value in updates.items():
         setattr(user, field, value)
 
@@ -169,6 +185,8 @@ def admin_delete_user(
             detail="You cannot delete your own account",
         )
 
+    # Before the cascade removes the Discord link that names their account.
+    mark_user_everywhere(db, user.id)
     db.delete(user)
     db.commit()
 
@@ -268,7 +286,9 @@ def update_user_me(
     Email changes must go through the verify-before-apply flow
     (POST /auth/email/request-change/ + GET /auth/email/confirm-change/).
     """
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    mark_if_renamed(db, user, updates)
+    for field, value in updates.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
@@ -305,6 +325,7 @@ def deactivate_me(
 
     user.status = "deactivated"
     revoke_all_sessions(db, user.id)
+    mark_user_everywhere(db, user.id)
     db.commit()
 
     clear_auth_cookie(response)
@@ -336,11 +357,97 @@ def delete_me(
 
     require_not_last_admin(db, user)
 
+    mark_user_everywhere(db, user.id)
     db.delete(user)
     db.commit()
 
     clear_auth_cookie(response)
     return {"detail": "Account successfully deleted"}
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/identities/ — linked OAuth accounts
+# DELETE /users/me/identities/google/ — unlink, unless it's the only way in
+# DELETE /users/me/identities/discord/ — unlink; Discord never signs in
+# ---------------------------------------------------------------------------
+
+
+def _identity_response(row: OAuthIdentity) -> OAuthIdentityResponse:
+    return OAuthIdentityResponse(
+        provider=row.provider.value,
+        email_at_provider=row.email_at_provider,
+        username_at_provider=row.username_at_provider,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/users/me/identities/", response_model=list[OAuthIdentityResponse])
+def list_my_identities(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.query(OAuthIdentity).filter(OAuthIdentity.user_id == user.id).all()
+    return [_identity_response(row) for row in rows]
+
+
+@router.delete(
+    "/users/me/identities/google/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={
+        400: {"description": "No password set, or Google is not connected"},
+    },
+)
+async def unlink_google(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    def unlink() -> tuple[str, str | None]:
+        row = (
+            db.query(OAuthIdentity)
+            .filter(
+                OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google
+            )
+            .first()
+        )
+        if row is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
+        if not user.hashed_password:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
+            )
+        # Read before the commit expires them.
+        notice = (user.email, row.email_at_provider)
+        db.delete(row)
+        db.commit()
+        return notice
+
+    await send_identity_unlinked_notice(*await asyncio.to_thread(unlink))
+    return {"detail": "Google disconnected"}
+
+
+@router.delete(
+    "/users/me/identities/discord/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={400: {"description": "Discord is not connected"}},
+)
+def unlink_discord(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(OAuthIdentity)
+        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.discord)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discord is not connected")
+    # The old account's managed roles are stripped; it's no longer linked to anyone.
+    mark_account_everywhere(db, user.id, int(row.provider_account_id))
+    db.delete(row)
+    db.commit()
+    return {"detail": "Discord disconnected"}
 
 
 # ---------------------------------------------------------------------------

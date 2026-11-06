@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.discord.marks import mark_servers, mark_users
 
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
@@ -276,6 +277,8 @@ def unarchive_tournament(
         target_type="tournament",
         target_id=tournament.id,
     )
+    # Its servers stopped syncing while it was archived.
+    mark_servers(db, tournament_id, "full")
 
     db.commit()
     db.refresh(tournament)
@@ -346,6 +349,9 @@ def transfer_ownership(
             "new": {"id": payload.new_owner_id, "name": _display_name(new_owner_membership.user)},
         },
     )
+    # The Tournament Owner role follows ownership.
+    owners = [payload.new_owner_id] + ([old_owner.id] if old_owner else [])
+    mark_users(db, tournament_id, owners, [None])
 
     db.commit()
     db.refresh(tournament)

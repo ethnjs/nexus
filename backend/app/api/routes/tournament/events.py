@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.discord.marks import mark_event_staff, mark_memberships, mark_servers, row_scope
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
@@ -26,6 +27,7 @@ from app.models.models import (
     TournamentRole,
     TournamentShift,
     TournamentTrack,
+    TournamentTrackAssignment,
     User,
 )
 from app.schemas.tournament.event import (
@@ -420,8 +422,12 @@ def create_event(
     data.pop("track_details")
     event = TournamentEvent(**data)
     db.add(event)
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
     try:
+        # Everything that queries goes inside the try: a query autoflushes the insert, and a
+        # duplicate catalog event fails there rather than at the commit.
+        _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
+        if event.track_details:
+            mark_servers(db, tournament_id, "structure")
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -448,6 +454,14 @@ def update_event(
     require_not_archived(tournament)
 
     event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
+    # Read before any change: dropping a track cascades its assignments on flush.
+    tracks_before = {detail.track_id for detail in event.track_details}
+    staff_before = [
+        row_scope(row)
+        for row in db.query(TournamentTrackAssignment).filter(
+            TournamentTrackAssignment.tournament_event_id == event.id
+        )
+    ]
 
     update_data = payload.model_dump(exclude_unset=True)
     if "division" in update_data:
@@ -457,18 +471,28 @@ def update_event(
     update_data.pop("track_details", None)
     for field, value in update_data.items():
         setattr(event, field, value)
-    # payload.track_details rather than the dumped copy — see create. None
-    # still means "not sent", which model_dump(exclude_unset) can't express
-    # once the value has become a list of dicts.
-    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
-
-    if event.name is None and event.event_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Cannot clear both name and event_id — at least one must be set",
-        )
-
     try:
+        # Everything that queries goes inside the try: a query autoflushes the update, and a
+        # duplicate catalog event fails there rather than at the commit.
+        # payload.track_details rather than the dumped copy — see create. None
+        # still means "not sent", which model_dump(exclude_unset) can't express
+        # once the value has become a list of dicts.
+        _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, payload.track_details)
+
+        if event.name is None and event.event_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot clear both name and event_id — at least one must be set",
+            )
+
+        # A rename or a track change reaches Discord through the sync; a move between
+        # buildings or zones waits for /reset.
+        tracks_after = {detail.track_id for detail in event.track_details}
+        renamed = any(field in update_data for field in ("name", "division", "event_id"))
+        if renamed or tracks_before != tracks_after:
+            mark_servers(db, tournament_id, "structure")
+        dropped = tracks_before - tracks_after
+        mark_memberships(db, tournament_id, [s for s in staff_before if s[1] in dropped])
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -494,6 +518,9 @@ def delete_event(
     require_not_archived(tournament)
 
     event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
+    # Before the cascade removes the rows that say who staffed it.
+    mark_event_staff(db, tournament_id, event.id)
+    mark_servers(db, tournament_id, "structure")
     db.delete(event)
     db.commit()
 

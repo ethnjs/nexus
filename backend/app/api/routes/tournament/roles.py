@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.discord.marks import mark_memberships, mark_role_holders, mark_servers
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import (
     ROLE_CREATED,
@@ -99,6 +100,7 @@ def apply_default_role_template(
             },
         )
 
+    mark_servers(db, tournament_id, "structure")
     db.commit()
     for role in roles:
         db.refresh(role)
@@ -242,6 +244,8 @@ def create_role(
         },
     )
 
+    # A new role has no holders yet; its Discord role is all that changes.
+    mark_servers(db, tournament_id, "structure")
     db.commit()
     db.refresh(role)
     role.member_count = 0  # brand new — no memberships can hold it yet
@@ -317,6 +321,9 @@ def update_role(
             target_id=role.id,
             extra_data={"changes": changes},
         )
+    # Renames reach Discord through the sync; permission changes wait for /reset.
+    if any(change["field"] == "label" for change in changes):
+        mark_servers(db, tournament_id, "structure")
 
     db.commit()
     db.refresh(role)
@@ -363,6 +370,9 @@ def delete_role(
         extra_data={"label": role.label, "rank": role.rank, "members_affected": members_affected},
     )
 
+    # Before the cascade removes the rows that say who held it.
+    mark_role_holders(db, tournament_id, role.id)
+    mark_servers(db, tournament_id, "structure")
     db.delete(role)
     db.commit()
 
@@ -464,6 +474,9 @@ def update_membership_roles(
         grant_rows.filter(
             TournamentTrackAssignment.role_id.in_(to_remove),
         ).delete(synchronize_session=False)
+    if to_add or to_remove:
+        track_id = None if payload.is_tournament_wide else payload.track_id
+        mark_memberships(db, tournament_id, [(m.id, track_id)])
 
     db.commit()
     db.refresh(m)

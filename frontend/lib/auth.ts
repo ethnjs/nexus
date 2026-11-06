@@ -8,6 +8,20 @@ export function safeRedirectPath(path: string | null | undefined): string | null
   return path;
 }
 
+const DISCORD_LINK_ERRORS: Record<string, string> = {
+  discord_already_linked: "That Discord account is already linked to another NEXUS account.",
+  discord_link_exists:
+    "Your NEXUS account is already linked to a different Discord account. Unlink it in Settings → Security first.",
+  discord_cancelled: "Linking was cancelled in Discord.",
+  discord_unavailable: "Discord linking isn't available right now.",
+};
+
+// Messages for the `error` param the Discord link callback redirects with.
+export function discordLinkErrorMessage(code: string | null): string | null {
+  if (!code?.startsWith("discord_")) return null;
+  return DISCORD_LINK_ERRORS[code] ?? "Something went wrong linking Discord. Try again.";
+}
+
 export function validateEmail(email: string): string | null {
   if (!email) return "Cannot be empty.";
   if (!email.includes("@")) return "An email address must have an @-sign.";

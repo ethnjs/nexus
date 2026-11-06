@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import get_current_user
+from app.core.discord.marks import mark_users
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
     apply_display_config,
@@ -366,6 +367,7 @@ def set_my_age_disclosure(
                 detail="The tournament owner can't decline age disclosure.",
             )
         delete_tournament_form_responses(db, tournament_id, current_user.id)
+        mark_users(db, tournament_id, [current_user.id], [None])
         db.delete(membership)
         db.commit()
         return _no_membership_response(db, tournament, current_user)
@@ -488,6 +490,7 @@ def leave_tournament(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
     delete_tournament_form_responses(db, tournament_id, m.user_id)
+    mark_users(db, tournament_id, [m.user_id], [None])
     db.delete(m)
     db.commit()
 
@@ -515,5 +518,7 @@ def delete_membership(
     # Their answers to this tournament's forms go with them — see
     # delete_tournament_form_responses for why the cascade can't do it.
     delete_tournament_form_responses(db, tournament_id, m.user_id)
+    # Sent back to the gate in every server of the tournament, never kicked.
+    mark_users(db, tournament_id, [m.user_id], [None])
     db.delete(m)
     db.commit()

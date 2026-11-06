@@ -1,15 +1,18 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import (
     auth,
     events,
     forms,
     join,
+    oauth,
     season_event,
     sheets,
     universities,
@@ -21,6 +24,8 @@ from app.api.routes import tournament as tournament_core
 from app.api.routes.chapter import admin as chapter_admin
 from app.api.routes.chapter import join_codes as chapter_join_codes
 from app.api.routes.chapter import memberships as chapter_memberships
+from app.api.routes.discord import guilds as discord_guilds
+from app.api.routes.discord import interactions as discord_interactions
 from app.api.routes.tournament import admin as tournament_admin
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes.tournament import audit as tournament_audit
@@ -36,12 +41,17 @@ from app.api.routes.tournament import setup_checklist as tournament_setup_checkl
 from app.api.routes.tournament import shifts as tournament_shifts
 from app.api.routes.tournament import tracks as tournament_tracks
 from app.api.routes.tournament import zones as tournament_zones
-from app.core.config import get_settings
+from app.core.config import DEV_OAUTH_STATE_SECRET, get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 
 settings = get_settings()
 DEV_DOCS = settings.app_env in ("development", "preview")
+
+if settings.app_env == "production" and settings.oauth_state_secret == DEV_OAUTH_STATE_SECRET:
+    raise RuntimeError("OAUTH_STATE_SECRET must be set in production")
+if settings.app_env == "production" and settings.discord_dev_guild_id:
+    raise RuntimeError("DISCORD_DEV_GUILD_ID is for development only; unset it in production")
 
 
 def _read_app_version() -> str:
@@ -53,16 +63,32 @@ def _read_app_version() -> str:
         return "0.0.0-unknown"
 
 
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
+
+
+def _configure_logging() -> None:
+    """uvicorn configures only its own loggers; this surfaces the app's and discord.py's."""
+    for name in ("app", "discord"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
+        if _log_handler not in logger.handlers:
+            logger.addHandler(_log_handler)
+        logger.propagate = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
 
-    scheduler = None
+    leader = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
+        from app.core.discord.leader import start_leader
         from app.db.seed_canon_events import seed_events_and_categories
         from app.db.seed_universities import seed_universities
         from app.db.session import SessionLocal
 
+        _configure_logging()
         with SessionLocal() as db:
             seed_events_and_categories(db)  # always — dev + prod
             seed_universities(db)  # always — dev + prod
@@ -72,24 +98,16 @@ async def lifespan(app: FastAPI):
             with SessionLocal() as db:
                 seed_dev_data(db)
 
-        from apscheduler.schedulers.background import BackgroundScheduler
-
-        from app.core.tournament.scheduler import archive_ended_tournaments
-
-        def _run_archive_job():
-            with SessionLocal() as db:
-                archive_ended_tournaments(db)
-
-        scheduler = BackgroundScheduler()
-        scheduler.add_job(
-            _run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments"
-        )
-        scheduler.start()
+        # The leader runs APScheduler and the Discord gateway; see core/discord/leader.py.
+        leader = start_leader()
 
     yield
 
-    if scheduler is not None:
-        scheduler.shutdown(wait=False)
+    if leader is not None:
+        await leader.stop()
+        from app.services.discord.rest import close_rest
+
+        await close_rest()
 
 
 app = FastAPI(
@@ -101,6 +119,17 @@ app = FastAPI(
     # Docs UIs are dev-only; in prod the docs site renders the reference from /openapi.json.
     docs_url="/docs" if DEV_DOCS else None,
     redoc_url=None,
+)
+
+# oauth_state cookie: signed handshake for the Google redirect only, not login.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.oauth_state_secret,
+    session_cookie="oauth_state",
+    max_age=600,
+    same_site="lax",
+    https_only=settings.app_env in ("production", "preview"),
+    path="/",
 )
 
 app.add_middleware(
@@ -116,9 +145,10 @@ app.add_middleware(
 
 api_key_dependency = Depends(verify_api_key)
 
-# All routes require API key — including auth (login, logout, register).
+# Every route requires the API key, auth included, except Discord's interactions endpoint.
 # In development with API_KEY unset, security.py skips the check automatically.
 app.include_router(auth.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(oauth.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(join.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(events.admin_router, prefix="", dependencies=[api_key_dependency])
@@ -158,6 +188,8 @@ app.include_router(chapter_admin.router, prefix="", dependencies=[api_key_depend
 app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(discord_guilds.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(discord_interactions.router, prefix="")
 
 
 @app.get("/health", tags=["meta"])
