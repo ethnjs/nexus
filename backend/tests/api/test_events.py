@@ -145,6 +145,102 @@ class TestDeleteEvent:
 
 
 # ---------------------------------------------------------------------------
+# POST/DELETE /admin/events/{id}/related/
+# ---------------------------------------------------------------------------
+
+
+class TestRelatedEvents:
+    def _pair(self, event_factory, event_category):
+        return (
+            event_factory(event_category, name="Heredity"),
+            event_factory(event_category, name="Designer Genes"),
+        )
+
+    def _related(self, client, event_id):
+        row = next(e for e in client.get("/events/").json() if e["id"] == event_id)
+        return [r["name"] for r in row["related_events"]]
+
+    def test_relating_shows_on_both_events(self, client, admin_user, event_factory, event_category):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(
+            f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id}
+        )
+        assert res.status_code == 201
+        assert [r["name"] for r in res.json()["related_events"]] == ["Heredity"]
+        assert self._related(client, heredity.id) == ["Designer Genes"]
+        assert self._related(client, genes.id) == ["Heredity"]
+
+    def test_relating_the_other_way_round_is_a_duplicate(
+        self, client, admin_user, event_factory, event_category
+    ):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id})
+        res = client.post(
+            f"/admin/events/{heredity.id}/related/", json={"related_event_id": genes.id}
+        )
+        assert res.status_code == 409
+
+    def test_cannot_relate_an_event_to_itself(self, client, admin_user, event):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(f"/admin/events/{event.id}/related/", json={"related_event_id": event.id})
+        assert res.status_code == 422
+
+    def test_relating_a_missing_event_404s(self, client, admin_user, event):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(f"/admin/events/{event.id}/related/", json={"related_event_id": 9999})
+        assert res.status_code == 404
+
+    def test_removing_clears_both_events(self, client, admin_user, event_factory, event_category):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id})
+        # Removed from the other side than it was added on.
+        res = client.delete(f"/admin/events/{heredity.id}/related/{genes.id}/")
+        assert res.status_code == 200
+        assert res.json()["related_events"] == []
+        assert self._related(client, genes.id) == []
+
+    def test_removing_an_unrelated_pair_404s(
+        self, client, admin_user, event_factory, event_category
+    ):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/events/{heredity.id}/related/{genes.id}/").status_code == 404
+
+    def test_deleting_an_event_drops_its_relationships(
+        self, client, admin_user, event_factory, event_category
+    ):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id})
+        assert client.delete(f"/admin/events/{genes.id}/").status_code == 204
+        assert self._related(client, heredity.id) == []
+
+    def test_embedded_events_carry_relationships(
+        self, client, admin_user, event_factory, event_category
+    ):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id})
+        client.post(
+            "/admin/season-events/",
+            json={"event_id": heredity.id, "year": 2027, "division": "B", "is_active": True},
+        )
+        [row] = client.get("/season-events/", params={"year": 2027}).json()
+        assert row["event"]["related_events"] == [{"id": genes.id, "name": "Designer Genes"}]
+
+    def test_non_admin_forbidden(self, client, td_user, event_factory, event_category):
+        heredity, genes = self._pair(event_factory, event_category)
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/admin/events/{genes.id}/related/", json={"related_event_id": heredity.id}
+        )
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /event-categories/
 # ---------------------------------------------------------------------------
 
