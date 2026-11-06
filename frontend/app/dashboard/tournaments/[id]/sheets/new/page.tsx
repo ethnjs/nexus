@@ -981,7 +981,7 @@ export default function NewSheetPage() {
           <div>
             <p
               style={{
-                fontFamily: "Georgia, serif",
+                fontFamily: "var(--font-serif)",
                 fontSize: "22px",
                 color: "var(--color-text-primary)",
                 marginBottom: "6px",

@@ -62,7 +62,7 @@ export function EmptyState({
       {icon && <div style={{ color: "var(--color-text-tertiary)", display: "flex" }}>{icon}</div>}
       <p
         style={{
-          fontFamily: compact ? "var(--font-sans)" : "Georgia, serif",
+          fontFamily: compact ? "var(--font-sans)" : "var(--font-serif)",
           fontSize: compact ? "12px" : "20px",
           color: compact ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
         }}

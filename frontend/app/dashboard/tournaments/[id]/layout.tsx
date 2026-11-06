@@ -40,7 +40,7 @@ function TournamentNotFound() {
       </div>
       <p
         style={{
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-serif)",
           fontSize: "20px",
           color: "var(--color-text-primary)",
         }}
