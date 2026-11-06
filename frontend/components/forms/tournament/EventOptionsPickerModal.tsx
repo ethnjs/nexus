@@ -35,7 +35,7 @@ const UNCATEGORIZED = "__uncategorized__";
 
 type SortField = "name" | "division" | "day";
 type SortDir = "asc" | "desc";
-type GroupMode = "ungrouped" | "name" | "category";
+type GroupMode = "ungrouped" | "name" | "category" | "related";
 
 const SORT_FIELD_OPTIONS = [
   { value: "name", label: "Name" },
@@ -47,6 +47,7 @@ const GROUP_MODE_OPTIONS = [
   { value: "ungrouped", label: "Event + Division" },
   { value: "name", label: "Event Name" },
   { value: "category", label: "Category" },
+  { value: "related", label: "Related" },
 ];
 
 const TYPE_OPTIONS = [
@@ -65,6 +66,64 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
     case "day":
       return eventFirstDay(e);
   }
+}
+
+function byName(events: TournamentEvent[]): Map<string, TournamentEvent[]> {
+  const groups = new Map<string, TournamentEvent[]>();
+  for (const e of events) {
+    const n = eventName(e);
+    groups.set(n, [...(groups.get(n) ?? []), e]);
+  }
+  return groups;
+}
+
+/** "Anatomy B/C" for one name across divisions. */
+function nameLabel(name: string, evs: TournamentEvent[]): string {
+  // Sorted (A/B/C, not insertion order) so the label is stable regardless
+  // of which order events happen to appear in — only non-null divisions
+  // count, so a name with just one division-less event still falls
+  // through to eventNameWithDivision's bare-name case below.
+  const divisions = [
+    ...new Set(evs.map((e) => e.division).filter((d): d is TournamentDivision => d != null)),
+  ].sort();
+  return divisions.length > 1 ? `${name} ${divisions.join("/")}` : eventNameWithDivision(evs[0]);
+}
+
+/**
+ * Events joined by their catalog event (Anatomy B and C) or by a catalog
+ * relationship, followed through chains: Astronomy, Solar System and Remote
+ * Sensing are one group when Solar System is related to the other two. In
+ * the order of each group's first event.
+ */
+function relatedGroups(events: TournamentEvent[]): TournamentEvent[][] {
+  const parent = new Map(events.map((e) => [e.id, e.id]));
+  const find = (id: number): number => {
+    const p = parent.get(id) ?? id;
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  const union = (a: number, b: number) => parent.set(find(a), find(b));
+
+  const byCatalogId = new Map<number, TournamentEvent[]>();
+  for (const e of events) {
+    if (e.event_id !== null)
+      byCatalogId.set(e.event_id, [...(byCatalogId.get(e.event_id) ?? []), e]);
+  }
+  for (const e of events) {
+    for (const same of byCatalogId.get(e.event_id ?? -1) ?? []) union(e.id, same.id);
+    for (const related of e.event?.related_events ?? []) {
+      for (const other of byCatalogId.get(related.id) ?? []) union(e.id, other.id);
+    }
+  }
+
+  const groups = new Map<number, TournamentEvent[]>();
+  for (const e of events) {
+    const root = find(e.id);
+    groups.set(root, [...(groups.get(root) ?? []), e]);
+  }
+  return [...groups.values()];
 }
 
 interface PickerRow {
@@ -86,22 +145,21 @@ function computeRows(visibleEvents: TournamentEvent[], groupMode: GroupMode): Pi
   }
 
   if (groupMode === "name") {
-    const byName = new Map<string, TournamentEvent[]>();
-    for (const e of visibleEvents) {
-      const n = eventName(e);
-      byName.set(n, [...(byName.get(n) ?? []), e]);
-    }
-    return [...byName.entries()].map(([name, evs]) => {
-      // Sorted (A/B/C, not insertion order) so the label is stable regardless
-      // of which order events happen to appear in — only non-null divisions
-      // count, so a name with just one division-less event still falls
-      // through to eventNameWithDivision's bare-name case below.
-      const divisions = [
-        ...new Set(evs.map((e) => e.division).filter((d): d is TournamentDivision => d != null)),
-      ].sort();
-      const label =
-        divisions.length > 1 ? `${name} ${divisions.join("/")}` : eventNameWithDivision(evs[0]);
-      return { key: `name-${name}`, label, eventIds: evs.map((e) => e.id) };
+    return [...byName(visibleEvents).entries()].map(([name, evs]) => ({
+      key: `name-${name}`,
+      label: nameLabel(name, evs),
+      eventIds: evs.map((e) => e.id),
+    }));
+  }
+
+  if (groupMode === "related") {
+    return relatedGroups(visibleEvents).map((evs) => {
+      const names = [...byName(evs).entries()].sort(([a], [b]) => a.localeCompare(b));
+      return {
+        key: `related-${evs[0].id}`,
+        label: names.map(([name, group]) => nameLabel(name, group)).join(" / "),
+        eventIds: evs.map((e) => e.id),
+      };
     });
   }
 
