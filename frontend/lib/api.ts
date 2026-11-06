@@ -87,10 +87,17 @@ export interface EventCategory {
   name: string;
 }
 
+export interface RelatedEvent {
+  id: number;
+  name: string;
+}
+
 export interface CanonicalEvent {
   id: number;
   name: string;
   category: EventCategory;
+  // Events on similar topics (Heredity and Designer Genes). Both ways, by name.
+  related_events: RelatedEvent[];
 }
 
 // Writes are admin-only, under /admin/ — GET stays public/unauthenticated.
@@ -109,6 +116,13 @@ export const canonicalEventsApi = {
   update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
     api.patch<CanonicalEvent>(`/admin/events/${id}/`, body),
   delete: (id: number) => api.delete<void>(`/admin/events/${id}/`),
+  /** Relates two events both ways; returns `id`'s event with its new list. */
+  addRelated: (id: number, relatedEventId: number) =>
+    api.post<CanonicalEvent>(`/admin/events/${id}/related/`, {
+      related_event_id: relatedEventId,
+    }),
+  removeRelated: (id: number, relatedEventId: number) =>
+    api.delete<CanonicalEvent>(`/admin/events/${id}/related/${relatedEventId}/`),
 };
 
 // -------------------------------------------------------------------------

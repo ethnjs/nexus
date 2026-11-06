@@ -28,6 +28,7 @@ import {
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Popover } from "@/components/ui/Popover";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
@@ -42,6 +43,7 @@ import {
   type EventCategory,
   type EventFormat,
   eventCategoriesApi,
+  type RelatedEvent,
   type SeasonEvent,
   type SeasonEventInput,
   seasonEventsApi,
@@ -69,8 +71,37 @@ type EventFilterKey = (typeof EVENT_FILTER_KEYS)[number];
 const EVENT_COLUMNS = [
   "minmax(260px, 2fr)", // name
   "minmax(200px, 1.2fr)", // category
+  "minmax(220px, 1.6fr)", // related
   "44px", // actions
 ].join(" ");
+
+/** Adds or removes a pair, mirroring it onto the other event, which the
+ *  backend changed too but didn't return. */
+async function saveRelated(
+  events: CanonicalEvent[],
+  onEventsChanged: (events: CanonicalEvent[]) => void,
+  event: CanonicalEvent,
+  other: RelatedEvent,
+  related: boolean,
+) {
+  const updated = related
+    ? await canonicalEventsApi.addRelated(event.id, other.id)
+    : await canonicalEventsApi.removeRelated(event.id, other.id);
+  const self: RelatedEvent = { id: event.id, name: event.name };
+  onEventsChanged(
+    events.map((e) => {
+      if (e.id === event.id) return updated;
+      if (e.id !== other.id) return e;
+      const rest = e.related_events.filter((r) => r.id !== event.id);
+      return {
+        ...e,
+        related_events: (related ? [...rest, self] : rest).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
+      };
+    }),
+  );
+}
 
 // Always a grid track, so Select mode can animate its width from 0.
 const SELECT_COLUMN_WIDTH = "28px";
@@ -84,6 +115,7 @@ function seasonColumns(selectMode: boolean) {
     "minmax(96px, 0.6fr)", // format
     "minmax(72px, 0.5fr)", // impound
     "minmax(104px, 0.6fr)", // self-schedule
+    "minmax(180px, 1.2fr)", // related — a chip per related event and the picker
     "44px", // actions
   ].join(" ");
 }
@@ -193,7 +225,17 @@ function CatalogView({
   async function handleRename(id: number, name: string) {
     await run(`Renamed to ${name}`, async () => {
       const updated = await canonicalEventsApi.update(id, { name });
-      onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+      // Other events list it by name among their related events.
+      onEventsChanged(
+        events.map((e) =>
+          e.id === id
+            ? updated
+            : {
+                ...e,
+                related_events: e.related_events.map((r) => (r.id === id ? { ...r, name } : r)),
+              },
+        ),
+      );
     });
   }
 
@@ -264,7 +306,7 @@ function CatalogView({
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={table.table}
-            style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "620px" }}
+            style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "860px" }}
           >
             <div ref={stickyHeader} className={table.header}>
               <span>
@@ -272,6 +314,7 @@ function CatalogView({
                 {isFiltered ? ` of ${events.length}` : ""}
               </span>
               <span>Category</span>
+              <span>Related</span>
               <span />
             </div>
 
@@ -296,6 +339,13 @@ function CatalogView({
                   footerLabel="Add category"
                   footerIcon={<IconPlus />}
                   onFooterClick={() => setShowCategories(true)}
+                />
+                <RelatedCell
+                  event={event}
+                  candidates={events}
+                  onChange={(e, other, related) =>
+                    saveRelated(events, onEventsChanged, e, other, related)
+                  }
                 />
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
@@ -371,6 +421,7 @@ function SeasonView({
   categories,
   seasonPicker,
   onSeasonAdded,
+  onEventsChanged,
 }: {
   year: number;
   events: CanonicalEvent[];
@@ -378,6 +429,8 @@ function SeasonView({
   seasonPicker: React.ReactNode;
   /** Bubbles a new season's year up so the picker gains it. */
   onSeasonAdded: (year: number) => void;
+  /** Relationships live on the catalog events, which the page owns. */
+  onEventsChanged: (events: CanonicalEvent[]) => void;
 }) {
   const run = useActionToast();
   const { show } = useToast();
@@ -644,6 +697,14 @@ function SeasonView({
   // As on the TD tables: in Select mode a click on a cell selects the row.
   const lockReason = selectMode ? "Leave Select mode to edit in the table" : undefined;
 
+  const seasonEventsList = useMemo(
+    () => events.filter((e) => detailsRow.has(e.id)),
+    [events, detailsRow],
+  );
+
+  const setRelated = (event: CanonicalEvent, other: RelatedEvent, related: boolean) =>
+    saveRelated(events, onEventsChanged, event, other, related);
+
   return (
     <>
       <div style={TOOLBAR}>
@@ -737,7 +798,7 @@ function SeasonView({
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={`${table.table} ${table.animatedTracks}`}
-            style={{ gridTemplateColumns: seasonColumns(selectMode), minWidth: "960px" }}
+            style={{ gridTemplateColumns: seasonColumns(selectMode), minWidth: "1140px" }}
           >
             <div ref={stickyHeader} className={table.header}>
               <span
@@ -757,6 +818,7 @@ function SeasonView({
               <span style={CENTERED}>Format</span>
               <span style={CENTERED}>Impound</span>
               <span style={CENTERED}>Self-schedule</span>
+              <span>Related</span>
               <span />
             </div>
 
@@ -848,6 +910,12 @@ function SeasonView({
                     />
                   </SelectLock>
                 ))}
+                <RelatedCell
+                  event={event}
+                  candidates={seasonEventsList}
+                  lockReason={lockReason}
+                  onChange={setRelated}
+                />
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
                     type="button"
@@ -965,6 +1033,61 @@ function SeasonView({
 }
 
 /** Makes a control inert while locked, so a click on it reaches the row. */
+function RelatedCell({
+  event,
+  candidates,
+  lockReason,
+  onChange,
+}: {
+  event: CanonicalEvent;
+  /** What the picker offers besides the event itself: the season's events, or the whole catalog. */
+  candidates: CanonicalEvent[];
+  lockReason?: string;
+  onChange: (event: CanonicalEvent, other: RelatedEvent, related: boolean) => Promise<void>;
+}) {
+  const relatedIds = new Set(event.related_events.map((r) => r.id));
+  // A relation to an event outside this season stays listed, so it can be unticked.
+  const items: RelatedEvent[] = [
+    ...candidates.filter((e) => e.id !== event.id),
+    ...event.related_events.filter((r) => !candidates.some((e) => e.id === r.id)),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <SelectLock lockReason={lockReason}>
+      <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px" }}>
+        {event.related_events.map((r) => (
+          <Badge key={r.id} variant="default">
+            {r.name}
+          </Badge>
+        ))}
+        <Popover
+          trigger={
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              iconOnly
+              title={`Relate ${event.name} to other events`}
+            >
+              <IconPlus size={12} />
+            </Button>
+          }
+          items={items}
+          getKey={(r) => r.id}
+          renderLabel={(r) => r.name}
+          checklist
+          isSelected={(r) => relatedIds.has(r.id)}
+          onSelect={(r) => onChange(event, r, !relatedIds.has(r.id))}
+          searchable
+          getSearchText={(r) => r.name}
+          width={260}
+          align="left"
+        />
+      </span>
+    </SelectLock>
+  );
+}
+
 function SelectLock({
   lockReason,
   centered = false,
@@ -1103,6 +1226,7 @@ export default function AdminEventsPage() {
           categories={categories}
           seasonPicker={seasonPicker}
           onSeasonAdded={(y) => setKnownYears((prev) => (prev.includes(y) ? prev : [...prev, y]))}
+          onEventsChanged={setEvents}
         />
       )}
     </>
