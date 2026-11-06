@@ -47,7 +47,7 @@ export function TournamentHeaderCard() {
       // The page's title, so it reads as one: larger, serif, and wrapping
       // rather than truncating a long name.
       titleStyle={{
-        fontFamily: "Georgia, serif",
+        fontFamily: "var(--font-serif)",
         fontSize: "28px",
         fontWeight: 400,
         lineHeight: 1.2,
