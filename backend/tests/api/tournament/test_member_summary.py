@@ -5,9 +5,12 @@ from datetime import UTC, datetime
 from app.models.models import (
     Form,
     FormField,
+    FormResponse,
+    TournamentForm,
     TournamentMembership,
     TournamentMembershipAvailability,
     TournamentMembershipTrackStatus,
+    TournamentRole,
     TournamentShift,
     User,
 )
@@ -191,6 +194,60 @@ def test_draft_form_options_are_not_offered(client, td_user, td_tournament, db):
 def test_onboarding_is_null_without_live_steps(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
     assert client.get(_url(td_tournament)).json()["onboarding"] is None
+
+
+def test_onboarding_counts_each_members_own_path(
+    client, td_user, td_tournament, other_user, admin_user, db
+):
+    """A step a member's roles exclude them from isn't owed by them."""
+    supervisor = (
+        db.query(TournamentRole)
+        .filter(
+            TournamentRole.tournament_id == td_tournament.id,
+            TournamentRole.label == "Lead Event Supervisor",
+        )
+        .one()
+    )
+    steps = []
+    for order, prerequisites in enumerate(
+        ({}, {"roles": [{"ids": [supervisor.id], "match": "any", "inverse": False}]}), start=1
+    ):
+        form = Form(
+            owner_type="tournament",
+            tournament_id=td_tournament.id,
+            name=f"Step {order}",
+            status="published",
+            created_by=td_user.id,
+        )
+        db.add(form)
+        db.flush()
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=td_tournament.id,
+                is_onboarding=True,
+                order=order,
+                prerequisites=prerequisites,
+            )
+        )
+        steps.append(form)
+    grant_role(db, td_tournament, other_user, "Runner")
+    grant_role(db, td_tournament, admin_user, "Lead Event Supervisor")
+    db.add_all(
+        [
+            FormResponse(form_id=steps[0].id, user_id=other_user.id),
+            FormResponse(form_id=steps[0].id, user_id=admin_user.id),
+        ]
+    )
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    # td_user owes step 1; other_user is done (step 2 isn't theirs); admin_user owes step 2.
+    assert client.get(_url(td_tournament)).json()["onboarding"] == {
+        "steps": 2,
+        "completed": 1,
+        "started": 1,
+    }
 
 
 def test_requires_manage_members(client, other_user, td_tournament, db):

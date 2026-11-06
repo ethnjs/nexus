@@ -490,6 +490,8 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
         "method",
         "age",
         "shirt_size",
+        "affiliation",
+        "year_level",
         "onboarding",
         "dietary_restriction",
         f"track:{main.id}",
@@ -506,6 +508,13 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
         "age",
         "onboarding",
         f"track:{main.id}",
+    ]
+    # Assignments hides a track's timeline under its own key, so turning off a
+    # track's status in Membership doesn't take its assignments with it.
+    assignments = next(s for s in body["sections"] if s["id"] == "assignments")
+    assert [f["key"] for f in assignments["fields"]] == [
+        "availability",
+        f"assignment_track:{main.id}",
     ]
 
 
@@ -623,15 +632,34 @@ def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(
         field_key="track_status_writer",
         config={"required": False, "options": []},
     )
-    db.add_all([custom_field, reserved_field])
+    other_form = Form(
+        owner_type="tournament",
+        tournament_id=td_tournament.id,
+        chapter_id=None,
+        name="Follow-up",
+        title="Follow-up",
+        status="published",
+        created_by=td_user.id,
+    )
+    db.add(other_form)
+    db.flush()
+    shared_field = FormField(
+        form_id=other_form.id,
+        order=1,
+        label="Still your favorite color?",
+        question_type="short_text",
+        field_key="favorite_color",
+        config={"required": False},
+    )
+    db.add_all([custom_field, reserved_field, shared_field])
     db.commit()
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
-    # field_key unslugged — not the question label, and not prefixed by the form.
+    # One item per key, unslugged — not the question label, and not per form.
     assert response.json()["custom_fields"] == [
-        {"key": f"form_field:{custom_field.id}", "label": "Favorite Color"},
+        {"key": "field_key:favorite_color", "label": "Favorite Color"},
     ]
 
 
@@ -868,7 +896,7 @@ def test_put_accepts_columns_and_sections(client, td_user, td_tournament):
                     "hidden": False,
                     "hidden_fields": [],
                     "title": "Dietary Notes",
-                    "fields": ["form_field:xyz"],
+                    "fields": ["field_key:xyz"],
                 },
             ],
         },
@@ -937,7 +965,7 @@ def test_put_rejects_fields_on_a_builtin_section(client, td_user, td_tournament)
         json={
             "members_panel": {
                 "sections": [
-                    {"id": "lunch", "fields": ["form_field:xyz"]},
+                    {"id": "lunch", "fields": ["field_key:xyz"]},
                 ]
             }
         },
@@ -1421,6 +1449,45 @@ def test_saved_sort_loads_its_data_onto_the_roster(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
     assert rows and all("onboarding" in row for row in rows)
+
+
+def test_members_table_saves_affiliation_and_year_level(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "members_table": {
+                "hidden": [],
+                "columns": ["affiliation", "year_level"],
+                "filters": {"affiliation": ["UCLA"], "year_level": ["1", "graduate"]},
+                "sorts": [
+                    {"field": "affiliation", "direction": "asc"},
+                    {"field": "year_level", "direction": "desc"},
+                ],
+            }
+        },
+    )
+    assert response.status_code == 200, response.json()
+
+
+def test_year_level_sort_loads_the_profile_onto_the_roster(client, td_user, td_tournament, db):
+    """Both values live on the profile, so a sort with neither column showing
+    still has to pull it."""
+    set_display_config(
+        db,
+        td_tournament,
+        td_user,
+        {
+            "members_table": {
+                "hidden": [],
+                "columns": ["email"],
+                "sorts": [{"field": "year_level", "direction": "asc"}],
+            },
+        },
+    )
+    login(client, "td@test.com", "tdpass")
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table").json()
+    assert rows and all("student_status" in row["user"] for row in rows)
 
 
 def test_assignment_card_accepts_new_fields_custom_hides_and_member_sorts(

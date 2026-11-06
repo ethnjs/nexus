@@ -95,6 +95,25 @@ def test_list_roles_manage_roles_can_access(client, td_user, other_tournament, d
     assert client.get(f"/tournaments/{other_tournament.id}/roles/").status_code == 200
 
 
+def test_list_roles_manage_forms_can_access(client, td_user, other_tournament, db):
+    """Form prerequisites are role conditions, so setting them reads the catalog."""
+    from app.core.tournament.permissions import MANAGE_FORMS
+    from app.models.models import TournamentRole
+
+    db.add(
+        TournamentRole(
+            tournament_id=other_tournament.id,
+            label="Form Admin",
+            rank=50,
+            permissions=[MANAGE_FORMS],
+        )
+    )
+    db.commit()
+    grant_role(db, other_tournament, td_user, "Form Admin")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/roles/").status_code == 200
+
+
 def test_list_roles_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/roles/").status_code == 404

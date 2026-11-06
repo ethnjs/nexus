@@ -391,7 +391,7 @@ interface AdminUserUpdate {
 }
 
 export const adminUsersApi = {
-  list: () => api.get<AdminUserSlim[]>("/admin/users/"),
+  list: () => api.get<AdminUserFull[]>("/admin/users/"),
   get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
   getByEmail: (email: string) =>
     api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
@@ -1039,13 +1039,11 @@ export interface MembershipEventPreference {
 export interface MembershipCustomAnswer {
   form_title: string;
   field_label: string;
-  // Slug key, not the question's full sentence — what the panel labels by.
+  /** The answer's identity: forms may share a key, and this is the member's
+   *  latest answer to it. Also what the panel labels by. */
   field_key: string;
   question_type: string;
   value: unknown;
-  // Stable id behind the display-config "form_field:{id}" key — the label and
-  // key are both TD-editable, this isn't.
-  field_id: string;
 }
 
 // Matches RoleRead
@@ -1146,11 +1144,18 @@ export type MembershipField =
   | "assignments"
   | "onboarding";
 
-// Live onboarding steps answered out of the live total — skipped (draft or
-// archived) steps count toward neither.
+export interface MembershipOnboardingStep {
+  form_id: string;
+  name: string;
+  status: "published" | "archived";
+  completed: boolean;
+}
+
+/** The steps on this member's onboarding path, in order. */
 export interface MembershipOnboarding {
   completed: number;
   total: number;
+  steps: MembershipOnboardingStep[];
 }
 
 // Matches MembershipBaseResponse — the membership data the member themselves
@@ -1298,8 +1303,12 @@ export interface MemberFilterOptions {
   event_preferences: FilterOptionGroup[];
   competition_events: FilterOptionItem[];
   volunteer_events: FilterOptionItem[];
+  // Schools' short names and employers, merged where they read the same.
+  affiliations: FilterOptionItem[];
   collect_is_over_18: boolean;
   collect_is_over_21: boolean;
+  // Whether there are onboarding steps to filter by.
+  has_onboarding: boolean;
 }
 
 export interface FilterOptionItem {
@@ -1862,6 +1871,8 @@ export interface FormFieldOption {
     | ResolvedEventOption[];
   label: string;
   is_archived?: boolean;
+  /** The respondent types their own answer in place of picking this option's label. */
+  is_other?: boolean;
   // single_select_radio/dropdown only — mutually exclusive with each other.
   next_field_id?: string | null;
   action?: "submit_form" | null;
@@ -1911,6 +1922,8 @@ export interface FormFieldConfig {
   // (always a closed Dropdown control, not a style choice).
   display_style?: "buttons" | "list";
   track_status_enabled?: boolean;
+  /** Availability only: append each option's shift times. Omitted means shown. */
+  show_shift_times?: boolean;
 }
 
 export interface FormField {
@@ -1941,22 +1954,22 @@ export interface FormFieldInput {
   config?: FormFieldConfig | null;
 }
 
-export type PrerequisiteMatch = "any" | "all";
+/** A key live on one or more forms. Forms may share a key; a member's latest answer to it wins. */
+export interface FieldKeyUsage {
+  field_key: string;
+  forms: { id: string; name: string }[];
+}
 
-export interface IdPrerequisite {
+/** Holds any (or all) of `ids`; `inverse` flips the result. */
+export interface RolePrerequisite {
   ids: number[];
-  match: PrerequisiteMatch;
+  match: "any" | "all";
+  inverse: boolean;
 }
 
-export interface AvailabilityPrerequisite {
-  shift_ids: number[];
-  match: PrerequisiteMatch;
-}
-
+/** Every condition must pass. */
 export interface TournamentFormPrerequisites {
-  onboarding_complete: boolean;
-  roles?: IdPrerequisite | null;
-  availability?: AvailabilityPrerequisite | null;
+  roles: RolePrerequisite[];
 }
 
 /** The member-facing event shape (?public=true), and what any response embeds
@@ -1997,6 +2010,24 @@ export interface TournamentTrackRef {
   is_primary: boolean;
 }
 
+export interface FlowStep {
+  form_id: string;
+  name: string;
+  status: FormStatus;
+  completed: boolean;
+  /** Onboarding: on the member's path. Other forms: their roles pass the prerequisites. */
+  applies: boolean;
+}
+
+/** One member's forms as a manager previews them, drafts included. */
+export interface MemberFormFlow {
+  exempt_from_onboarding: boolean;
+  /** Still owes a published onboarding step, so other forms wait. */
+  held_to_onboarding: boolean;
+  onboarding: FlowStep[];
+  forms: FlowStep[];
+}
+
 export interface MemberForm {
   id: string;
   name: string;
@@ -2027,6 +2058,8 @@ export interface Form {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
   fields: FormField[];
   /** null for a chapter form — there's no tournament to be archived. */
   tournament_is_archived: boolean | null;
@@ -2058,6 +2091,8 @@ export interface FormListItem {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
 }
 
 export interface FormCreateInput {
@@ -2124,17 +2159,25 @@ export const formsApi = {
   listMineForTournament: (tournamentId: number) =>
     api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
   listForChapter: (chapterId: number) => api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
-  // Every field_key already in use across this tournament's forms (archived
-  // included — an archived key isn't released for reuse) — the builder's
-  // field_key Combobox shows these as disabled options.
+  // Every live field_key on this tournament's forms, with the forms using it —
+  // the builder's key picker suggests reusing them.
   listFieldKeysForTournament: (tournamentId: number) =>
-    api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+    api.get<FieldKeyUsage[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
   updatePrerequisites: (
     tournamentId: number,
     formId: string,
     prerequisites: TournamentFormPrerequisites,
   ) =>
     api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
+  memberFlow: (tournamentId: number, membershipId: number) =>
+    api.get<MemberFormFlow>(
+      `/tournaments/${tournamentId}/forms/flow/?membership_id=${membershipId}`,
+    ),
+  previewPrerequisites: (tournamentId: number, prerequisites: TournamentFormPrerequisites) =>
+    api.post<PersonRef[]>(
+      `/tournaments/${tournamentId}/forms/prerequisites/preview/`,
+      prerequisites,
+    ),
   createForTournament: (
     tournamentId: number,
     body: { name: string; title?: string | null; description?: string | null },
@@ -2411,7 +2454,7 @@ export const zoneAssignmentsApi = {
 };
 
 // Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
-// "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+// "field_key:{key}" — see backend/app/core/tournament/display_config.py.
 // One panel section, in the order the TD arranged them. Built-in sections
 // carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
 // also carries a title and the custom fields assigned to it.

@@ -32,6 +32,8 @@ export interface CheckboxRowProps {
   labelColor?: string;
   /** Rendered after the label, e.g. a "Removed" marker on a past answer. */
   badge?: ReactNode;
+  /** Stretches the label across the row, for a label that is a text field. */
+  fillLabel?: boolean;
   /** Merged onto the row. Padding, background and radius go here: they're
    *  per-list chrome, not the row geometry this component owns. */
   style?: CSSProperties;
@@ -59,6 +61,7 @@ export function CheckboxRow({
   control,
   labelColor,
   badge,
+  fillLabel = false,
   style,
   dataOptionValue,
   onMouseEnter,
@@ -85,6 +88,7 @@ export function CheckboxRow({
           fontFamily: "var(--font-sans)",
           fontSize,
           lineHeight: evenLineBox(fontSize),
+          ...(fillLabel && { flex: 1, minWidth: 0 }),
           color:
             labelColor ?? (locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)"),
         }}

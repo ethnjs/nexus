@@ -665,7 +665,7 @@ function LunchField({ member, display }: FieldProps) {
 // Custom fields — the tournament's own questions, by their key like the panel
 // ---------------------------------------------------------------------------
 function CustomFieldsField({ member, display }: FieldProps) {
-  const answers = (member.custom_responses ?? []).filter((a) => customShown(display, a.field_id));
+  const answers = (member.custom_responses ?? []).filter((a) => customShown(display, a.field_key));
   return (
     <Field label="Custom Fields">
       {answers.length === 0 ? (
@@ -673,7 +673,7 @@ function CustomFieldsField({ member, display }: FieldProps) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           {answers.map((answer) => (
-            <Value key={answer.field_id}>
+            <Value key={answer.field_key}>
               {unslug(answer.field_key)}: {formatAnswer(answer.value)}
             </Value>
           ))}

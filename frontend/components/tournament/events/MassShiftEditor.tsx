@@ -7,8 +7,8 @@ import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { Input } from "@/components/ui/Input";
 import { type MassResult, MassResultsCard } from "@/components/ui/MassResultsCard";
+import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
 import {
   ApiError,
   type TournamentShift,
@@ -165,21 +165,14 @@ export function MassShiftEditor({
             </SettingsRow>
           )}
 
-          <SettingsRow label="Start" helper="Blank keeps each shift's own start.">
-            <Input
-              type="time"
+          <SettingsRow label="Time" helper="Leave either end blank to keep each shift's own." last>
+            <TimeRangePicker
+              aria-label="Time"
+              openEnds
               fullWidth
-              value={draft.startTime}
-              onChange={(e) => setDraft((d) => ({ ...d, startTime: e.target.value }))}
-            />
-          </SettingsRow>
-
-          <SettingsRow label="End" helper="Blank keeps each shift's own end." last>
-            <Input
-              type="time"
-              fullWidth
-              value={draft.endTime}
-              onChange={(e) => setDraft((d) => ({ ...d, endTime: e.target.value }))}
+              start={draft.startTime}
+              end={draft.endTime}
+              onChange={(start, end) => setDraft((d) => ({ ...d, startTime: start, endTime: end }))}
             />
           </SettingsRow>
         </SettingsSection>

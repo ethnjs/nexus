@@ -601,13 +601,9 @@ class TournamentMembership(Base):
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL")
     )
 
-    # Set once this member has answered every currently-onboarding-flagged,
-    # published TournamentForm for this tournament. Permanent once set —
-    # later removing/archiving an onboarding form never unsets it (a
-    # shrinking requirement can only help stragglers finish, never un-onboard
-    # someone already done). Adding a *new* onboarding form is the one
-    # requirement change allowed to null this back out — see the
-    # onboarding-forms POST route, which clears it tournament-wide.
+    # When the member finished their onboarding path (core/tournament/onboarding.py).
+    # A snapshot nothing gates on: sequence changes recompute it, role changes
+    # only catch up at the next progress call.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # null = unanswered, "consented" covers both is_over_18 and is_over_21.
@@ -623,7 +619,7 @@ class TournamentMembership(Base):
     # viewer, not per tournament: two coordinators looking at the same roster
     # each keep their own columns, filters and sort order instead of
     # overwriting each other. Hidden-item strings are namespaced (track:,
-    # lunch_category:, event_pref:, form_field:) so one list covers all four
+    # lunch_category:, event_pref:, field_key:) so one list covers all four
     # kinds. No search/filtering on this, so a JSON column beats a table.
     # Unknown surface keys and unknown namespaces are ignored on read, never
     # an error — a deleted track leaves a dangling "track:3" behind and that
@@ -1982,6 +1978,12 @@ class Form(Base):
         """TournamentForm configuration exposed on generic form responses."""
         return self.tournament_form.prerequisites if self.tournament_form else None
 
+    @property
+    def onboarding_order(self) -> int | None:
+        """This form's step number in the onboarding sequence; None if it isn't one."""
+        tf = self.tournament_form
+        return tf.order if tf is not None and tf.is_onboarding else None
+
 
 # ---------------------------------------------------------------------------
 # TournamentForm — 1:1 companion row every tournament-scoped Form gets at
@@ -1991,14 +1993,10 @@ class Form(Base):
 #
 # is_onboarding + order together define the onboarding step sequence for the
 # tournament (order is only meaningful — and set — for is_onboarding=True
-# rows). Standard, non-onboarding tournament forms leave order null; the
-# eventual prerequisite/visibility mechanism for those is a later phase, not
-# built yet.
+# rows). Standard, non-onboarding tournament forms leave order null.
 #
-# A form linked here with is_onboarding=True cannot be archived or deleted —
-# see the guard in api/routes/forms.py's update_form/archive_form/
-# delete_form — it must be removed from onboarding (is_onboarding flipped
-# back to False) first.
+# A form with is_onboarding=True can't be deleted until it's removed from
+# onboarding (see _reject_if_onboarding in api/routes/forms.py).
 #
 # form_id is this row's own primary key, not a separate surrogate id — the
 # relationship is strictly 1:1, so there's no "which TournamentForm" beyond
@@ -2017,10 +2015,8 @@ class TournamentForm(Base):
     )
     is_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int | None] = mapped_column(Integer)
-    # Optional member-visibility requirements for standard tournament forms.
-    # Shape and referenced-id validation live with the manager API; evaluation
-    # lives in core/tournament/form_prerequisites.py so every future caller
-    # (member form list, rendering, and submission) shares one rule.
+    # Role conditions a member must pass to see the form; shape and evaluation
+    # are in core/tournament/form_prerequisites.py.
     prerequisites: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -2048,10 +2044,9 @@ class FormField(Base):
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
 
-    # Dashboard lookup key — slugified from the TD-typed label at create
-    # time (see app/core/form.slugify) and stable afterward, even if the
-    # label is later edited. Unique per tournament, not just per form (see
-    # app/core/form.check_field_key_available_in_tournament).
+    # Dashboard lookup key, slugified from the label at create time and stable
+    # afterward. Unique among a form's live fields; other forms may reuse it,
+    # and a member's latest answer to a key is the one shown.
     field_key: Mapped[str] = mapped_column(String(64))
 
     config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -2072,10 +2067,8 @@ class FormField(Base):
     answer: Mapped[list["FormAnswer"]] = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
-        # Live fields only. An archived field doesn't reserve its key — see
-        # field_key_taken_in_tournament — so an archived question and the one
-        # replacing it can share a name. A plain UniqueConstraint here would
-        # block that at the DB even though the application allows it.
+        # Live fields only, so an archived question and the one replacing it
+        # can share a key.
         Index(
             "uq_form_field_key",
             "form_id",
@@ -2142,6 +2135,9 @@ class FormAnswer(Base):
     # predating this column; always written on new answers.
     question_type: Mapped[str | None] = mapped_column(String(32))
     field_key: Mapped[str | None] = mapped_column(String(64))
+    # Decides which answer wins when forms share a key. The response's
+    # updated_at can't: editing one answer bumps it for all of them.
+    answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     response: Mapped["FormResponse"] = relationship("FormResponse", back_populates="answers")
     field: Mapped["FormField"] = relationship("FormField", back_populates="answer")

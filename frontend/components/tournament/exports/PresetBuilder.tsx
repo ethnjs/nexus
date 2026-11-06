@@ -1,11 +1,28 @@
 "use client";
 
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useState } from "react";
 import { PanelField } from "@/components/tournament/exports/PanelField";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { IconX } from "@/components/ui/Icons";
+import { IconGripVertical, IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { Popover } from "@/components/ui/Popover";
 import { Switch } from "@/components/ui/Switch";
 import type {
   DisplayConfigSort,
@@ -76,6 +93,7 @@ export function PresetBuilder({
   onTrackChange,
 }: PresetBuilderProps) {
   const selected = new Set(draft.columns.map((c) => c.key));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function changeRowType(rowType: ExportRowType) {
     if (rowType === draft.row_type) return;
@@ -103,14 +121,22 @@ export function PresetBuilder({
     onChange({ columns: draft.columns.map((c) => (c.key === key ? { ...c, mode } : c)) });
   }
 
-  const addOptions = available
-    .map((group) => ({
-      group: group.title,
-      options: group.columns
-        .filter((c) => !selected.has(c.key))
-        .map((c) => ({ value: c.key, label: c.header })),
-    }))
-    .filter((group) => group.options.length > 0);
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    const from = draft.columns.findIndex((c) => c.key === active.id);
+    const to = draft.columns.findIndex((c) => c.key === over.id);
+    if (from === -1 || to === -1) return;
+    onChange({ columns: arrayMove(draft.columns, from, to) });
+  }
+
+  function toggleColumn(key: string) {
+    if (selected.has(key)) removeColumn(key);
+    else onChange({ columns: [...draft.columns, { key }] });
+  }
+
+  const columnOptions = available.flatMap((group) =>
+    group.columns.map((c) => ({ key: c.key, label: c.header, group: group.title })),
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -148,26 +174,58 @@ export function PresetBuilder({
 
       {draft.row_type && (
         <>
-          <PanelField label="Columns" helper="In the order added.">
+          <PanelField label="Columns" helper="Drag to reorder.">
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {draft.columns.map((column) => (
-                <ColumnRow
-                  key={column.key}
-                  column={column}
-                  resolved={resolve(column.key)}
-                  fixed={FIXED_COLUMNS[draft.row_type!].has(column.key)}
-                  onMode={(mode) => setMode(column.key, mode)}
-                  onRemove={() => removeColumn(column.key)}
-                />
-              ))}
-              <Dropdown
-                fullWidth
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={draft.columns.map((c) => c.key)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {draft.columns.map((column) => (
+                    <ColumnRow
+                      key={column.key}
+                      column={column}
+                      resolved={resolve(column.key)}
+                      fixed={FIXED_COLUMNS[draft.row_type!].has(column.key)}
+                      onMode={(mode) => setMode(column.key, mode)}
+                      onRemove={() => removeColumn(column.key)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+              <Popover
+                trigger={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    style={{
+                      width: "100%",
+                      border: "1px dashed var(--color-border-strong)",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    <IconPlus size={11} /> Add column
+                  </Button>
+                }
+                items={columnOptions}
+                getKey={(option) => option.key}
+                renderLabel={(option) => option.label}
+                getGroup={(option) => option.group}
+                getSearchText={(option) => `${option.group} ${option.label}`}
                 searchable
-                value=""
-                placeholder="Add column…"
-                options={addOptions}
-                emptyMessage="Every column is already added"
-                onChange={(key) => key && onChange({ columns: [...draft.columns, { key }] })}
+                checklist
+                isSelected={(option) => selected.has(option.key)}
+                isDisabled={(option) => FIXED_COLUMNS[draft.row_type!].has(option.key)}
+                disabledReason={() => "Every event export has this column"}
+                onSelect={(option) => toggleColumn(option.key)}
+                emptyMessage="No columns to add"
+                width={328}
+                align="left"
               />
             </div>
           </PanelField>
@@ -201,19 +259,57 @@ interface ColumnRowProps {
 }
 
 function ColumnRow({ column, resolved, fixed, onMode, onRemove }: ColumnRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: column.key,
+  });
+  // Closed hand from pointer-down, not from when the drag starts 4px later —
+  // an open hand in that gap reads as a handle that ignored the click.
+  const [pressed, setPressed] = useState(false);
+  useEffect(() => {
+    if (!pressed) return;
+    const release = () => setPressed(false);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, [pressed]);
+
   return (
     <div
+      ref={setNodeRef}
       style={{
         display: "flex",
         alignItems: "center",
         gap: "8px",
         flexWrap: "wrap",
-        padding: "6px 6px 6px 10px",
+        padding: "6px 6px 6px 4px",
         border: "1px solid var(--color-border)",
         borderRadius: "var(--radius-md)",
         background: "var(--color-bg)",
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
       }}
     >
+      <span
+        {...attributes}
+        {...listeners}
+        onPointerDown={(e) => {
+          setPressed(true);
+          listeners?.onPointerDown?.(e);
+        }}
+        title="Drag to reorder"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          cursor: pressed || isDragging ? "grabbing" : "grab",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        <IconGripVertical size={14} />
+      </span>
       <span
         style={{
           flex: 1,

@@ -1,13 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { type EditableOption, OptionsEditor } from "@/components/forms/builder/OptionsEditor";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { CheckboxList } from "@/components/ui/CheckboxList";
+import { CheckboxList, type CheckboxListOption } from "@/components/ui/CheckboxList";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormattedText } from "@/components/ui/FormattedText";
+import { IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { RadioList } from "@/components/ui/RadioList";
 import { RankedList } from "@/components/ui/RankedList";
@@ -21,7 +23,13 @@ import type {
 } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import { type ExtendableField, useFieldExtension } from "@/lib/forms/builderAddon";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
+import {
+  isOtherAnswer,
+  OTHER_LABEL,
+  OTHER_TEXT_MAX_LENGTH,
+  pickedOptionId,
+} from "@/lib/forms/otherAnswer";
 import { formatTimeRange } from "@/lib/timeFormat";
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -207,28 +215,32 @@ export function QuestionRenderer({
   );
 }
 
-// ResolvedShiftOption[] (GET-resolved, respondent-facing shape) elements are
-// objects. ResolvedEventOption[] is also an array of objects but has no
-// start/end, so checking for 'start' is what actually distinguishes the two
-// resolved shapes (event_preference options must never get a time range).
+type OtherDraft = { key: string; text: string; checked: boolean };
+
+function newOtherDraft(text = "", checked = false): OtherDraft {
+  return { key: crypto.randomUUID(), text, checked };
+}
+
+// ResolvedEventOption[] is also an array of objects, so 'start' is what tells
+// the two resolved shapes apart — event options must never get a time range.
 function isResolvedShiftOptions(value: FormFieldOption["value"]): value is ResolvedShiftOption[] {
   return (
     Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && "start" in value[0]
   );
 }
 
-// availability's option label alone doesn't tell a respondent when it
-// actually is — this appends the span across every shift grouped under the
-// option (min start to max end, not one shift's own range) so "All Day"
-// reads as "All Day (7:00 AM–5:00 PM)" instead of leaving them to guess or
-// hunt down each shift individually. GET resolves `value` into those shifts;
-// the builder's preview still has raw ids, and gets its text from
-// `optionLabel` instead.
+// An availability option with track statuses wraps its shifts in `{shifts, track_statuses}`.
+function resolvedShifts(value: FormFieldOption["value"]): ResolvedShiftOption[] | null {
+  const shifts = typeof value === "object" && !Array.isArray(value) ? value.shifts : value;
+  return shifts && isResolvedShiftOptions(shifts) ? shifts : null;
+}
+
+// Appends the span across every shift grouped under an availability option,
+// so "All Day" reads as "All Day (7:00 AM–5:00 PM)". The builder's preview
+// still has raw ids and gets its text from `optionLabel` instead.
 function optionDisplayLabel(option: FormFieldOption): string {
-  if (isResolvedShiftOptions(option.value)) {
-    return `${option.label} (${formatTimeRange(option.value)})`;
-  }
-  return option.label;
+  const shifts = resolvedShifts(option.value);
+  return shifts ? `${option.label} (${formatTimeRange(shifts)})` : option.label;
 }
 
 function QuestionBody({
@@ -251,6 +263,18 @@ function QuestionBody({
   removedOptions?: FormFieldOption[];
 }) {
   const config = field.config ?? {};
+  // What's typed in the Other field(s). Drafts outlive unpicking Other so the text stays on
+  // screen and comes back on a re-pick, but only the answer is submitted, and it drops Other.
+  // A single select uses the first and ignores `checked`; a checkbox question can add more,
+  // each ticked on its own.
+  const [otherDrafts, setOtherDrafts] = useState<OtherDraft[]>(() => {
+    const items = Array.isArray(value) ? value : [value];
+    const texts = items.filter(isOtherAnswer).map((item) => item.text);
+    return texts.length > 0 ? texts.map((text) => newOtherDraft(text, true)) : [newOtherDraft()];
+  });
+  const [focusOtherKey, setFocusOtherKey] = useState<string | null>(null);
+  const labelFor =
+    config.show_shift_times === false ? (opt: FormFieldOption) => opt.label : optionLabel;
   // Locked keeps the answer on screen but refuses edits, so every input is
   // locked and every handler is a no-op. `interactive` still decides whether
   // there is an answer to show at all.
@@ -264,11 +288,101 @@ function QuestionBody({
   ];
   const badgeFor = (optionId: string) =>
     removedIds.has(optionId) ? <Badge variant="declined">Removed</Badge> : undefined;
+  const otherOptionId = liveOptions.find((opt) => opt.is_other)?.option_id;
+  // As in Google Forms, the Other field shows whenever the question offers Other, and typing
+  // in it picks Other. A read-only answer shows it only when Other was the pick.
+  const showsOtherField = (picked: boolean) =>
+    picked || (!!otherOptionId && !(interactive && !editable));
+  // A list row holds the field in place of the Other label. An answer whose Other option is
+  // gone from the question has no row to sit in.
+  const hasOtherRow = (pickedOtherId: string | undefined) =>
+    config.display_style !== "buttons" &&
+    !!otherOptionId &&
+    (!pickedOtherId || pickedOtherId === otherOptionId);
+  function otherInput(
+    text: string,
+    onText: (text: string) => void,
+    {
+      autoFocus = false,
+      onAddAnother,
+      onRemove,
+    }: {
+      autoFocus?: boolean;
+      onAddAnother?: () => void;
+      onRemove?: () => void;
+    } = {},
+  ) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1 }}>
+          <Input
+            font="sans"
+            value={text}
+            onChange={(e) => editable && onText(e.target.value)}
+            // Plain Enter is left to bubble up, where the form flow takes it as Continue.
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !e.shiftKey || !onAddAnother || !editable) return;
+              e.preventDefault();
+              onAddAnother();
+            }}
+            placeholder={OTHER_LABEL}
+            maxLength={OTHER_TEXT_MAX_LENGTH}
+            locked={!editable}
+            autoFocus={autoFocus}
+            fullWidth
+          />
+        </div>
+        {onRemove && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="md"
+            iconOnly
+            title="Remove"
+            onClick={onRemove}
+          >
+            <IconX size={12} />
+          </Button>
+        )}
+      </div>
+    );
+  }
+  function withOtherFields(control: ReactNode, fields: ReactNode[], indent = 0) {
+    if (fields.length === 0) return control;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {control}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginLeft: indent }}>
+          {fields}
+        </div>
+      </div>
+    );
+  }
+
+  // A single select's answer: the picked option_id, or {option_id, text} for Other.
+  const singleOther = interactive && isOtherAnswer(value) ? value : null;
+  const singleSelected = interactive ? String(pickedOptionId(value) ?? "") : "";
+  const singleOtherText = singleOther?.text ?? (editable ? otherDrafts[0].text : "");
+  function pickSingle(optionId: string) {
+    if (!editable) return;
+    onChange?.(
+      optionId === otherOptionId
+        ? { option_id: optionId, text: singleOther?.text ?? otherDrafts[0].text }
+        : optionId,
+    );
+  }
+  function setSingleOtherText(text: string) {
+    setOtherDrafts([{ ...otherDrafts[0], text }]);
+    const optionId = singleOther?.option_id ?? otherOptionId;
+    if (optionId) onChange?.({ option_id: optionId, text });
+  }
+  const singleShowsOther = showsOtherField(!!singleOther);
 
   switch (field.question_type) {
     case "short_text":
       return (
         <Input
+          font="sans"
           value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : "Short answer"}
@@ -280,6 +394,7 @@ function QuestionBody({
     case "long_text":
       return (
         <Textarea
+          font="sans"
           value={interactive ? ((value as string | undefined) ?? "") : ""}
           onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : "Long answer"}
@@ -319,44 +434,48 @@ function QuestionBody({
 
     case "single_select_radio": {
       const options = liveOptions;
+      const inline = hasOtherRow(singleOther?.option_id);
       const displayOptions = options.map((opt) => ({
         value: opt.option_id,
-        label: optionLabel(opt),
+        label: labelFor(opt),
         badge: badgeFor(opt.option_id),
+        content:
+          inline && singleShowsOther && opt.option_id === otherOptionId
+            ? otherInput(singleOtherText, setSingleOtherText)
+            : undefined,
       }));
-      const selected = interactive ? ((value as string | undefined) ?? "") : "";
 
-      if (config.display_style === "buttons") {
-        return (
+      const control =
+        config.display_style === "buttons" ? (
           <ButtonGroup
             options={displayOptions}
-            value={selected}
-            onChange={(v) => editable && onChange?.(v)}
+            value={singleSelected}
+            onChange={pickSingle}
             locked={!editable}
             clickThrough={!interactive}
           />
+        ) : (
+          <RadioList
+            options={displayOptions}
+            value={singleSelected}
+            onChange={pickSingle}
+            locked={!editable}
+            size={19}
+            fontSize="16px"
+            gap="8px"
+          />
         );
-      }
-
-      return (
-        <RadioList
-          options={displayOptions}
-          value={selected}
-          onChange={(v) => editable && onChange?.(v)}
-          locked={!editable}
-          size={19}
-          fontSize="16px"
-          gap="8px"
-        />
-      );
+      return inline || !singleShowsOther
+        ? control
+        : withOtherFields(control, [otherInput(singleOtherText, setSingleOtherText)]);
     }
 
     case "single_select_dropdown": {
       const options = liveOptions;
-      return (
+      const dropdown = (
         <Dropdown
-          value={interactive ? ((value as string | undefined) ?? "") : ""}
-          onChange={(v) => editable && onChange?.(v)}
+          value={singleSelected}
+          onChange={pickSingle}
           options={options.map((opt) => ({
             value: opt.option_id,
             label: opt.label,
@@ -367,28 +486,93 @@ function QuestionBody({
           fullWidth
         />
       );
+      return singleShowsOther
+        ? withOtherFields(dropdown, [otherInput(singleOtherText, setSingleOtherText)])
+        : dropdown;
     }
 
     case "multi_select_checkbox": {
       const options = liveOptions;
-      const displayOptions = options.map((opt) => ({
-        value: opt.option_id,
-        label: optionLabel(opt),
-        badge: badgeFor(opt.option_id),
-      }));
-      const selected = interactive ? ((value as string[] | undefined) ?? []) : [];
+      // Each item is an option_id, or {option_id, text} for Other.
+      const items = interactive ? ((value as unknown[] | undefined) ?? []) : [];
+      const selected = items.map((item) => String(pickedOptionId(item)));
+      const otherItems = items.filter(isOtherAnswer);
+      const otherId = otherOptionId ?? otherItems[0]?.option_id;
+      const otherChecked = otherItems.length > 0;
+      const inline = hasOtherRow(otherItems[0]?.option_id);
+      const otherRowValue = (key: string) => `other:${key}`;
 
+      // Every ticked entry is submitted, blank or not, so the "type your answer" check
+      // catches a ticked blank one.
+      function commitOther(drafts: OtherDraft[]) {
+        setOtherDrafts(drafts);
+        if (!otherId) return;
+        const rest = items.filter((item) => pickedOptionId(item) !== otherId);
+        onChange?.([
+          ...rest,
+          ...drafts.filter((d) => d.checked).map((d) => ({ option_id: otherId, text: d.text })),
+        ]);
+      }
       function toggle(optionId: string) {
         if (!editable) return;
+        // The Other button in buttons mode ticks or unticks every entry at once.
+        if (optionId === otherId)
+          return commitOther(otherDrafts.map((d) => ({ ...d, checked: !otherChecked })));
+        const draft = otherDrafts.find((d) => otherRowValue(d.key) === optionId);
+        if (draft)
+          return commitOther(
+            otherDrafts.map((d) => (d === draft ? { ...d, checked: !d.checked } : d)),
+          );
         onChange?.(
           selected.includes(optionId)
-            ? selected.filter((id) => id !== optionId)
-            : [...selected, optionId],
+            ? items.filter((item) => pickedOptionId(item) !== optionId)
+            : [...items, optionId],
         );
       }
+      function addOtherAfter(index: number) {
+        const added = newOtherDraft();
+        setOtherDrafts([
+          ...otherDrafts.slice(0, index + 1),
+          added,
+          ...otherDrafts.slice(index + 1),
+        ]);
+        setFocusOtherKey(added.key);
+      }
 
-      if (config.display_style === "buttons") {
-        return (
+      const entries: OtherDraft[] = !showsOtherField(otherChecked)
+        ? []
+        : editable
+          ? otherDrafts
+          : otherItems.length > 0
+            ? otherItems.map((item, i) => ({ key: String(i), text: item.text, checked: true }))
+            : [{ key: "0", text: "", checked: false }];
+      const otherField = (draft: OtherDraft, i: number) => (
+        <div key={draft.key}>
+          {otherInput(
+            draft.text,
+            (text) =>
+              commitOther(
+                otherDrafts.map((d) => (d.key === draft.key ? { ...d, text, checked: true } : d)),
+              ),
+            {
+              autoFocus: draft.key === focusOtherKey,
+              onAddAnother: () => addOtherAfter(i),
+              onRemove:
+                editable && otherDrafts.length > 1
+                  ? () => commitOther(otherDrafts.filter((d) => d.key !== draft.key))
+                  : undefined,
+            },
+          )}
+        </div>
+      );
+      const displayOptions = options.map((opt) => ({
+        value: opt.option_id,
+        label: labelFor(opt),
+        badge: badgeFor(opt.option_id),
+      }));
+
+      const control =
+        config.display_style === "buttons" ? (
           <ButtonGroup
             options={displayOptions}
             value={selected}
@@ -396,22 +580,52 @@ function QuestionBody({
             locked={!editable}
             clickThrough={!interactive}
           />
+        ) : (
+          <CheckboxList
+            // In a list, each Other entry is its own row with its own box.
+            options={displayOptions.flatMap<CheckboxListOption>((opt) =>
+              inline && entries.length > 0 && opt.value === otherOptionId
+                ? entries.map((draft, i) => ({
+                    value: otherRowValue(draft.key),
+                    label: OTHER_LABEL,
+                    content: otherField(draft, i),
+                  }))
+                : [opt],
+            )}
+            value={
+              inline
+                ? [
+                    ...selected.filter((id) => id !== otherId),
+                    ...entries.filter((d) => d.checked).map((d) => otherRowValue(d.key)),
+                  ]
+                : selected
+            }
+            onChange={toggle}
+            locked={!editable}
+            size={19}
+            fontSize="16px"
+            gap="8px"
+            rowHeight="36px"
+            labelGap="16px"
+          />
         );
-      }
-
-      return (
-        <CheckboxList
-          options={displayOptions}
-          value={selected}
-          onChange={toggle}
-          locked={!editable}
-          size={19}
-          fontSize="16px"
-          gap="8px"
-          rowHeight="36px"
-          labelGap="16px"
-        />
-      );
+      const addAnother =
+        editable && otherId ? (
+          <div key="add-another">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Or press Shift+Enter in an Other field"
+              onClick={() => addOtherAfter(otherDrafts.length - 1)}
+            >
+              <IconPlus size={12} /> Add another
+            </Button>
+          </div>
+        ) : null;
+      const extraFields = [...(inline ? [] : entries.map(otherField)), addAnother].filter(Boolean);
+      // Indented past the 19px box and 16px label gap to line up under the Other fields.
+      return withOtherFields(control, extraFields, inline ? 35 : 0);
     }
 
     case "ranked_choice": {
@@ -530,6 +744,9 @@ function QuestionEditBody({
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             syncValueWithLabel={!customValuesEnabled}
             errors={errors}
+            allowOther={
+              OTHER_TYPES.includes(field.question_type) && extension.allowsOther !== false
+            }
           />
         )}
         {/* Ranks applies to ranked_choice whichever editor renders the rows —
@@ -553,6 +770,7 @@ function QuestionEditBody({
               >
                 <div style={{ width: "100px" }}>
                   <Input
+                    font="sans"
                     label="Ranks"
                     type="number"
                     min={1}
@@ -621,6 +839,7 @@ function AcknowledgmentBody({
 }) {
   return (
     <Input
+      font="sans"
       label="Confirmation text"
       value={field.config?.confirm_label ?? ""}
       onChange={(e) =>

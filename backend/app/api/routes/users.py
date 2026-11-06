@@ -46,13 +46,27 @@ router = APIRouter(tags=["users"])
 # ---------------------------------------------------------------------------
 # GET /users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/", response_model=list[AdminUserSlimResponse])
+@router.get("/admin/users/", response_model=list[AdminUserFullResponse])
 def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Global user list. Admin only."""
-    return db.query(User).order_by(User.last_name, User.first_name).all()
+    """Global user list, with each user's full profile. Admin only."""
+    return (
+        db.query(User)
+        .options(
+            selectinload(User.university),
+            selectinload(User.tournaments),
+            selectinload(User.competition_experience)
+            .selectinload(UserCompetitionExperience.event)
+            .selectinload(Event.category),
+            selectinload(User.volunteer_experience)
+            .selectinload(UserVolunteerExperience.event)
+            .selectinload(Event.category),
+        )
+        .order_by(User.last_name, User.first_name)
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------

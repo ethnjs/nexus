@@ -1,11 +1,13 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
+import { FormFlowModal } from "@/components/tournament/forms/flow/FormFlowModal";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
+import { PrerequisitesModal } from "@/components/tournament/forms/PrerequisitesModal";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
@@ -15,38 +17,54 @@ import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ApiError, type Form, type FormListItem, type FormStatus, formsApi } from "@/lib/api";
+import {
+  ApiError,
+  type Form,
+  type FormListItem,
+  type FormStatus,
+  formsApi,
+  rolesApi,
+} from "@/lib/api";
 import { type FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
+import { prerequisiteSummary } from "@/lib/forms/prerequisites";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useToast } from "@/lib/useToast";
 
-// Name / Status / Creator / Responses / Updated / Actions. Name and Creator
-// share the free space (Name used to take ~5x Creator's share). Actions is
+// Name / Status / Prerequisites / Creator / Responses / Updated / Actions.
+// Name, Prerequisites and Creator share the free space. Actions is
 // fixed, not auto: each row is its own grid, so a width that followed the
 // button count would misalign rows. 170px fits the most a row ever shows —
 // a status move, archive, delete, and the ⋮ menu.
-const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1fr) 90px 100px 170px";
+const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1.2fr) minmax(0, 1fr) 90px 100px 170px";
 
-const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
-  draft: "default",
+const STATUS_BADGE_VARIANT: Record<FormStatus, "warning" | "confirmed" | "removed"> = {
+  draft: "warning",
   published: "confirmed",
   archived: "removed",
 };
 
 function FormRow({
   form,
+  roleLabel,
   onAction,
   onAllowEditsChange,
+  onOnboardingChange,
+  onEditPrerequisites,
   lockedReason,
 }: {
   form: FormListItem;
+  roleLabel: (id: number) => string;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
+  onOnboardingChange: () => void;
+  onEditPrerequisites: (form: FormListItem) => void;
   lockedReason?: string;
 }) {
+  const summary = prerequisiteSummary(form.prerequisites, roleLabel);
   const [busy, setBusy] = useState(false);
 
   async function act(option: FormActionOption) {
@@ -76,6 +94,11 @@ function FormRow({
         >
           {form.name}
         </span>
+        {form.onboarding_order != null && (
+          <Badge variant="default" style={{ flexShrink: 0 }}>
+            Onboarding #{form.onboarding_order}
+          </Badge>
+        )}
         {!form.allow_response_edits && (
           <span style={{ flexShrink: 0, display: "flex" }}>
             <Tooltip
@@ -93,6 +116,19 @@ function FormRow({
       <Badge variant={STATUS_BADGE_VARIANT[form.status]} style={{ justifySelf: "center" }}>
         {form.status}
       </Badge>
+      <span
+        title={summary ?? undefined}
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: summary ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {summary ?? "None"}
+      </span>
       <CreatorHoverCard
         creator={form.creator}
         noMembershipLabel={
@@ -146,8 +182,18 @@ function FormRow({
         ))}
         <FormActionsMenu
           form={form}
-          items={["edit", "preview", "responses", "copy-link", "allow-edits"]}
+          items={[
+            "edit",
+            "preview",
+            "responses",
+            "copy-link",
+            "prerequisites",
+            "allow-edits",
+            "onboarding",
+          ]}
+          onEditPrerequisites={() => onEditPrerequisites(form)}
           onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
+          onOnboardingChange={() => onOnboardingChange()}
           lockedReason={lockedReason}
           size="sm"
         />
@@ -158,13 +204,19 @@ function FormRow({
 
 function FormTable({
   forms,
+  roleLabel,
   onAction,
   onAllowEditsChange,
+  onOnboardingChange,
+  onEditPrerequisites,
   lockedReason,
 }: {
   forms: FormListItem[];
+  roleLabel: (id: number) => string;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   onAllowEditsChange: (formId: string, allow: boolean) => void;
+  onOnboardingChange: () => void;
+  onEditPrerequisites: (form: FormListItem) => void;
   lockedReason?: string;
 }) {
   return (
@@ -177,6 +229,7 @@ function FormTable({
         <div className={table.header}>
           <span>Forms — {forms.length}</span>
           <span style={{ textAlign: "center" }}>Status</span>
+          <span>Prerequisites</span>
           <span>Creator</span>
           <span style={{ textAlign: "center" }}>Responses</span>
           <span style={{ textAlign: "center" }}>Updated</span>
@@ -187,8 +240,11 @@ function FormTable({
           <FormRow
             key={form.id}
             form={form}
+            roleLabel={roleLabel}
             onAction={onAction}
             onAllowEditsChange={onAllowEditsChange}
+            onOnboardingChange={onOnboardingChange}
+            onEditPrerequisites={onEditPrerequisites}
             lockedReason={lockedReason}
           />
         ))}
@@ -210,16 +266,32 @@ export default function FormsPage() {
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The overview's setup checklist links here with ?flow=onboarding.
+  const [showFlow, setShowFlow] = useState(useSearchParams().get("flow") === "onboarding");
   const [deleteTarget, setDeleteTarget] = useState<FormListItem | null>(null);
+  const [prerequisiteTarget, setPrerequisiteTarget] = useState<FormListItem | null>(null);
+  const [roleLabels, setRoleLabels] = useState<Map<number, string>>(new Map());
   const { show } = useToast();
+  // Bumped when the browser tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1), canManageForms);
 
+  const loadForms = useCallback(
+    () =>
+      formsApi
+        .listForTournament(tournamentId)
+        .then(setForms)
+        .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load forms.")),
+    [tournamentId],
+  );
   useEffect(() => {
     if (!canManageForms) return;
-    formsApi
-      .listForTournament(tournamentId)
-      .then(setForms)
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load forms."));
-  }, [tournamentId, canManageForms]);
+    loadForms();
+    rolesApi
+      .list(tournamentId)
+      .then((roles) => setRoleLabels(new Map(roles.map((r) => [r.id, r.label]))))
+      .catch(() => {});
+  }, [canManageForms, loadForms, tournamentId, refreshKey]);
 
   if (membershipLoading) {
     return (
@@ -250,8 +322,7 @@ export default function FormsPage() {
   }
 
   // Delete confirms first; every other move is one PATCH. The server's
-  // message is the one worth showing on failure — publishing validates the
-  // form, and an onboarding form refuses to archive.
+  // message is the one worth showing on failure — publishing validates the form.
   async function handleAction(form: FormListItem, option: FormActionOption) {
     if (option.action === "delete") {
       setDeleteTarget(form);
@@ -289,15 +360,17 @@ export default function FormsPage() {
     setCreating(false);
     // The builder opened in the other tab, so this list would otherwise sit
     // here without the row that was just created.
-    formsApi
-      .listForTournament(tournamentId)
-      .then(setForms)
-      .catch(() => {});
+    loadForms();
   }
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+      <div
+        style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginBottom: "16px" }}
+      >
+        <Button type="button" variant="secondary" size="md" onClick={() => setShowFlow(true)}>
+          Form flow
+        </Button>
         <Button
           type="button"
           variant="primary"
@@ -348,6 +421,9 @@ export default function FormsPage() {
           forms={forms}
           onAction={handleAction}
           onAllowEditsChange={handleAllowEditsChange}
+          onOnboardingChange={loadForms}
+          onEditPrerequisites={setPrerequisiteTarget}
+          roleLabel={(id) => roleLabels.get(id) ?? "a deleted role"}
           lockedReason={archivedReason}
         />
       )}
@@ -365,6 +441,32 @@ export default function FormsPage() {
           onDelete={(form) => formsApi.delete(form.id)}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(ids) => setForms((prev) => prev?.filter((f) => !ids.includes(f.id)) ?? null)}
+        />
+      )}
+
+      {prerequisiteTarget && (
+        <PrerequisitesModal
+          tournamentId={tournamentId}
+          form={prerequisiteTarget}
+          lockedReason={archivedReason}
+          onClose={() => setPrerequisiteTarget(null)}
+          onSaved={(prerequisites) =>
+            setForms(
+              (prev) =>
+                prev?.map((f) => (f.id === prerequisiteTarget.id ? { ...f, prerequisites } : f)) ??
+                null,
+            )
+          }
+        />
+      )}
+
+      {showFlow && (
+        <FormFlowModal
+          tournamentId={tournamentId}
+          forms={forms}
+          lockedReason={archivedReason}
+          onClose={() => setShowFlow(false)}
+          onChanged={loadForms}
         />
       )}
 

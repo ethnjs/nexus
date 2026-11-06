@@ -14,11 +14,12 @@ from app.core.form.validation import (
     availability_field_track_id,
     option_shift_ids,
 )
-from app.core.tournament.onboarding import onboarding_progress_bulk
+from app.core.tournament.onboarding import onboarding_paths
 from app.models.models import (
     Form,
     FormField,
     Tournament,
+    TournamentForm,
     TournamentMembership,
     TournamentMembershipAvailability,
     TournamentMembershipTrackStatus,
@@ -162,17 +163,28 @@ def build_member_summary(db: Session, tournament: Tournament) -> dict:
             }
         )
 
-    steps, completed = onboarding_progress_bulk(
-        db, tournament.id, [member.user_id for member in members]
+    steps = (
+        db.query(TournamentForm)
+        .join(Form, TournamentForm.form_id == Form.id)
+        .filter(
+            TournamentForm.tournament_id == tournament.id,
+            TournamentForm.is_onboarding == True,
+            Form.status == "published",
+        )
+        .count()
     )
-    onboarding = (
-        {
+    onboarding = None
+    if steps:
+        paths = onboarding_paths(db, tournament.id, [member.user_id for member in members])
+        done = [sum(step.completed for step in path) for path in paths.values()]
+        owed = [
+            any(step.status == "published" and not step.completed for step in path)
+            for path in paths.values()
+        ]
+        onboarding = {
             "steps": steps,
-            "completed": sum(1 for member in members if completed.get(member.user_id, 0) >= steps),
-            "started": sum(1 for member in members if 0 < completed.get(member.user_id, 0) < steps),
+            "completed": owed.count(False),
+            "started": sum(1 for d, o in zip(done, owed, strict=True) if d and o),
         }
-        if steps
-        else None
-    )
 
     return {"member_count": len(members), "onboarding": onboarding, "tracks": track_entries}

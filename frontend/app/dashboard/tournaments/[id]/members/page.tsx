@@ -63,7 +63,7 @@ import {
   legacyMemberSortRules,
   MEMBER_SORT_TIEBREAK,
   type MemberSortField,
-  memberSortDataKey,
+  memberSortDataMissing,
   memberSortOptions,
   memberSortTiebreak,
   memberSortValue,
@@ -210,6 +210,8 @@ const MemberRow = memo(function MemberRow({
       // needs to reach the stylesheet from React.
       data-active={highlighted ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
@@ -420,9 +422,11 @@ export default function MembersPage() {
   useEffect(() => {
     selectionRef.current = { focusItem, toggleSelected };
   });
+  // The visible rows in display order, for a Shift range — set once they're sorted below.
+  const visibleOrderRef = useRef<number[]>([]);
   const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
   const toggleSelectedStable = useCallback(
-    (id: number) => selectionRef.current.toggleSelected(id),
+    (id: number) => selectionRef.current.toggleSelected(id, visibleOrderRef.current),
     [],
   );
 
@@ -531,12 +535,7 @@ export default function MembersPage() {
     (next: SortRule<MemberSortField>[]) => {
       setSortRules(next);
       const sample = members?.[0];
-      const missing =
-        !!sample &&
-        next.some((rule) => {
-          const key = memberSortDataKey(rule.field);
-          return key !== null && sample[key] === undefined;
-        });
+      const missing = !!sample && next.some((rule) => memberSortDataMissing(sample, rule.field));
       persistView({ sorts: sortRulesToStored(next), sort: null }).then((saved) => {
         if (saved && missing) setRefreshKey((k) => k + 1);
       });
@@ -604,6 +603,9 @@ export default function MembersPage() {
     });
     return sortRows(filtered, sortRules, memberSortValue, memberSortTiebreak);
   }, [members, search, sortRules]);
+  useEffect(() => {
+    visibleOrderRef.current = visibleMembers.map((m) => m.id);
+  }, [visibleMembers]);
 
   const roleFilterOptions = useMemo(
     () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),

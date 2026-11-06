@@ -125,13 +125,26 @@ KNOWN_FILTER_KEYS = frozenset(
         "age",
         "shift",
         "assigned",
+        "affiliation",
+        "year_level",
+        "onboarding",
     }
 )
 
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
 # by anything can't be written in the first place.
-KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age", "onboarding"})
+KNOWN_SORT_FIELDS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "joined",
+        "account_age",
+        "onboarding",
+        "affiliation",
+        "year_level",
+    }
+)
 # Plus one sort per track (or per track's event / lunch question), keyed in
 # the same namespaces as the columns so fields_for_surface maps them to data
 # groups the same way. event_pref takes the event too: a sort is by the rank
@@ -158,6 +171,8 @@ COLUMN_JOINED = "joined"
 COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
+COLUMN_AFFILIATION = "affiliation"
+COLUMN_YEAR_LEVEL = "year_level"
 COLUMN_ONBOARDING = "onboarding"
 COLUMN_DIETARY = "dietary_restriction"
 
@@ -169,6 +184,8 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_METHOD, "Join method"),
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
+    (COLUMN_AFFILIATION, "Affiliation"),
+    (COLUMN_YEAR_LEVEL, "Year level"),
     (COLUMN_ONBOARDING, "Onboarding"),
     (COLUMN_DIETARY, "Dietary restriction"),
 )
@@ -366,7 +383,7 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset(
 # ---------------------------------------------------------------------------
 CARD_FIELD_NAMESPACE = "card_field:"
 CARD_TRACK_NAMESPACE = "card_track:"
-# One custom question hidden by its form field id ("card_custom:{field_id}") —
+# One custom question hidden by its field key ("card_custom:{field_key}") —
 # the custom_fields field shows every answer the member gave unless hidden.
 CARD_CUSTOM_NAMESPACE = "card_custom:"
 
@@ -475,15 +492,20 @@ DEFAULT_CUSTOM_SECTION_ID = f"{CUSTOM_SECTION_PREFIX}all"
 TRACK_NAMESPACE = "track:"
 LUNCH_NAMESPACE = "lunch:"
 EVENT_PREF_NAMESPACE = "event_pref:"
-FORM_FIELD_NAMESPACE = "form_field:"
+FIELD_KEY_NAMESPACE = "field_key:"
 AVAILABILITY_TRACK_NAMESPACE = "availability_track:"
+# A track's timeline in the panel's Assignments section. Its own namespace, not
+# TRACK_NAMESPACE, so hiding a track's status in Membership leaves its
+# assignments showing. Only the client reads it; the data isn't filtered.
+ASSIGNMENT_TRACK_NAMESPACE = "assignment_track:"
 
 KNOWN_NAMESPACES = (
     TRACK_NAMESPACE,
     LUNCH_NAMESPACE,
     EVENT_PREF_NAMESPACE,
-    FORM_FIELD_NAMESPACE,
+    FIELD_KEY_NAMESPACE,
     AVAILABILITY_TRACK_NAMESPACE,
+    ASSIGNMENT_TRACK_NAMESPACE,
 )
 
 
@@ -518,8 +540,8 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
         if item.startswith(CARD_CUSTOM_NAMESPACE):
             # Not checked against the forms: a deleted question's entry is inert.
-            field_id = item[len(CARD_CUSTOM_NAMESPACE) :]
-            return bool(field_id) and ":" not in field_id
+            field_key = item[len(CARD_CUSTOM_NAMESPACE) :]
+            return bool(field_key) and ":" not in field_key
         return False
     # An event row's hideable items are the tracks it runs on: hiding one
     # drops its shifts from the timeline, or its column from the no-shift
@@ -577,7 +599,7 @@ def is_known_column(surface: str, key: str) -> bool:
             AVAILABILITY_TRACK_NAMESPACE,
             LUNCH_NAMESPACE,
             EVENT_PREF_NAMESPACE,
-            FORM_FIELD_NAMESPACE,
+            FIELD_KEY_NAMESPACE,
         )
     )
 
@@ -754,15 +776,17 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         )
         .all()
     )
-    # field_key, not the question label: the label is a whole sentence
-    # ("What's your favorite color?"), and the form it came from doesn't
-    # matter to a TD deciding whether the panel shows that answer.
-    custom_field_items = [
-        {"key": f"{FORM_FIELD_NAMESPACE}{field.id}", "label": unslug(field.field_key)}
+    # One item per key, labelled by it rather than the question's sentence:
+    # forms may share a key, and a member's latest answer to it is what shows.
+    custom_keys = {
+        field.field_key
         for field, _form in field_rows
         if not any(
             pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
         )
+    }
+    custom_field_items = [
+        {"key": f"{FIELD_KEY_NAMESPACE}{key}", "label": unslug(key)} for key in sorted(custom_keys)
     ]
 
     # One item per track that has shifts. Was one per *day*, which is the
@@ -812,7 +836,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "membership": track_items,
         # Tracks, not availability days: this section is laid out one timeline
         # per track, so a track is the thing you turn off.
-        "assignments": track_items,
+        "assignments": [
+            {"key": f"{ASSIGNMENT_TRACK_NAMESPACE}{t.id}", "label": t.name} for t in tracks
+        ],
         "availability": availability_items,
         "lunch": lunch_items,
         "event_preferences": event_pref_items,
@@ -931,7 +957,7 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict) -
     if "custom_responses" in data:
         before_custom = data["custom_responses"]
         data["custom_responses"] = [
-            row for row in before_custom if f"{FORM_FIELD_NAMESPACE}{row['field_id']}" not in hidden
+            row for row in before_custom if f"{FIELD_KEY_NAMESPACE}{row['field_key']}" not in hidden
         ]
         _note_if_emptied("custom_responses", before_custom)
 
@@ -960,6 +986,8 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_METHOD: ("membership",),
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
+    COLUMN_AFFILIATION: ("profile",),
+    COLUMN_YEAR_LEVEL: ("profile",),
     COLUMN_ONBOARDING: ("onboarding",),
     # On the user profile, like shirt size — not on the lunch rows.
     COLUMN_DIETARY: ("profile",),
@@ -969,7 +997,7 @@ _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
     (TRACK_NAMESPACE, "tracks"),
     (LUNCH_NAMESPACE, "lunch"),
     (EVENT_PREF_NAMESPACE, "event_prefs"),
-    (FORM_FIELD_NAMESPACE, "custom"),
+    (FIELD_KEY_NAMESPACE, "custom"),
     (AVAILABILITY_TRACK_NAMESPACE, "availability"),
 )
 

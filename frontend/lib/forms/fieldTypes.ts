@@ -27,6 +27,13 @@ export const BRANCHING_TYPES: FormQuestionType[] = [
   "single_select_dropdown",
 ];
 
+// Types that can offer an Other choice with a typed answer.
+export const OTHER_TYPES: FormQuestionType[] = [
+  "single_select_radio",
+  "single_select_dropdown",
+  "multi_select_checkbox",
+];
+
 // Types whose config carries display_style — a TD-facing render choice
 // between a plain radio/checkbox list and a ButtonGroup pill layout. Matches
 // SingleSelectRadioConfig/MultiSelectCheckboxConfig's scope in
@@ -46,9 +53,21 @@ const CONFIG_KEYS_BY_TYPE: Record<FormQuestionType, (keyof FormFieldConfig)[]> =
   short_text: ["required", "max_length"],
   long_text: ["required", "max_length"],
   acknowledgment: ["required", "confirm_label"],
-  single_select_radio: ["required", "display_style", "track_status_enabled", "options"],
+  single_select_radio: [
+    "required",
+    "display_style",
+    "track_status_enabled",
+    "show_shift_times",
+    "options",
+  ],
   single_select_dropdown: ["required", "options"],
-  multi_select_checkbox: ["required", "display_style", "track_status_enabled", "options"],
+  multi_select_checkbox: [
+    "required",
+    "display_style",
+    "track_status_enabled",
+    "show_shift_times",
+    "options",
+  ],
   ranked_choice: ["required", "ranks", "allow_duplicates", "options"],
 };
 

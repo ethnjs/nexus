@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
-import { Input } from "@/components/ui/Input";
+import { Input, type InputFont } from "@/components/ui/Input";
 import { enterIndex, type ListOption, OptionList, stepActive } from "@/components/ui/OptionList";
 
 type ComboboxSize = "sm" | "md";
@@ -25,6 +25,7 @@ interface ComboboxProps<T> {
   maxResults?: number;
   error?: string;
   size?: ComboboxSize;
+  font?: InputFont;
   variant?: ComboboxVariant;
   locked?: boolean;
   /** Rows for which this returns true render inert (dimmed, unselectable) instead of being filtered out — e.g. a field_key already in use elsewhere. */
@@ -34,6 +35,9 @@ interface ComboboxProps<T> {
   /** An inert row shown when the list is open with nothing in it — so a
    *  focused field with an empty catalog says so instead of showing nothing. */
   emptyMessage?: string;
+  /** Keep the list open after a pick, for a field that clears itself to take another. */
+  stayOpenOnSelect?: boolean;
+  onBlur?: () => void;
 }
 
 const CUSTOM_THRESHOLD = 3;
@@ -53,11 +57,14 @@ export function Combobox<T>({
   maxResults = 8,
   error,
   size = "md",
+  font,
   variant = "primary",
   locked = false,
   getDisabled,
   getDisabledReason,
   emptyMessage,
+  stayOpenOnSelect = false,
+  onBlur,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false);
   // Whether the text has been edited since the field took focus. Until it
@@ -147,11 +154,23 @@ export function Combobox<T>({
   function handleSelect(option: T) {
     if (getDisabled?.(option)) return;
     onChange(getLabel(option), option);
-    setOpen(false);
+    if (stayOpenOnSelect) {
+      setTyped(false);
+      setActive(-1);
+    } else {
+      setOpen(false);
+    }
   }
 
   function handleSelectCustom() {
     setOpen(false);
+  }
+
+  function openList() {
+    if (locked) return;
+    setOpen(true);
+    setTyped(false);
+    setActive(-1);
   }
 
   const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && !exactMatch;
@@ -170,17 +189,17 @@ export function Combobox<T>({
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={(e) => handleTextChange(e.target.value)}
-        onFocus={() => {
-          if (!locked) {
-            setOpen(true);
-            setTyped(false);
-            setActive(-1);
-          }
-        }}
+        onFocus={openList}
+        // Picking a row keeps focus here, so a click after a pick gets no focus event to reopen on.
+        onClick={() => !open && openList()}
         onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          setTimeout(() => setOpen(false), 150);
+          onBlur?.();
+        }}
         error={displayedError}
         size={size}
+        font={font}
         variant={variant}
         locked={locked}
         fullWidth

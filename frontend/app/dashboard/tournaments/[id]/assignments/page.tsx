@@ -131,6 +131,7 @@ import {
   eventSortValue,
   isEventSortField,
 } from "@/lib/eventSort";
+import { FIELD_KEY_PREFIX } from "@/lib/memberColumnKeys";
 import {
   isMemberSortField,
   MEMBER_SORT_TIEBREAK,
@@ -1900,9 +1901,9 @@ export default function AssignmentsPage() {
           display={memberDisplay}
           defaults={memberDisplayDefaults}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
-          // "form_field:{id}" in the catalog; the card hides by the bare id.
+          // "field_key:{key}" in the catalog; the card hides by the bare key.
           customFields={(catalog?.custom_fields ?? []).map((f) => ({
-            id: f.key.split(":")[1],
+            id: f.key.slice(FIELD_KEY_PREFIX.length),
             label: f.label,
           }))}
           onApply={applyMemberDisplay}

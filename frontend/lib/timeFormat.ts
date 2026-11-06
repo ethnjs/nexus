@@ -24,24 +24,8 @@ export function formatDate(iso: string): string {
   return DATE_FMT.format(new Date(iso));
 }
 
-// For binding an ISO datetime to <input type="datetime-local">, whose value
-// format is always "YYYY-MM-DDTHH:mm" in the user's local time, no seconds
-// or timezone offset.
-export function toDatetimeLocal(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-export function fromDatetimeLocal(local: string): string | null {
-  return local ? new Date(local).toISOString() : null;
-}
-
-// Day-only ("YYYY-MM-DD") and time-only ("HH:mm") halves of a datetime-local
-// value — for a day-picker + time-input pair instead of one combined field,
-// e.g. an event/shift editor where the day rarely varies (usually locked to
-// the tournament's single day) but the time always does.
+// An ISO datetime's local day ("YYYY-MM-DD") and time of day ("HH:mm"), the
+// values the date and time pickers hold, and back again with fromDayAndTime.
 export function toDateInput(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -60,9 +44,7 @@ export function fromDayAndTime(day: string, time: string): string | null {
   return day && time ? new Date(`${day}T${time}`).toISOString() : null;
 }
 
-// Formats a bare "HH:mm" (a time-input value with no date attached) as
-// "2:30 PM" — for a view-mode row whose day is already shown in its own
-// column, so there's no ISO datetime to format from directly.
+// A bare "HH:mm" with no date attached as "2:30 PM".
 export function formatTimeOfDay(hhmm: string): string {
   if (!hhmm) return "";
   const [h, m] = hhmm.split(":").map(Number);

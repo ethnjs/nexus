@@ -21,7 +21,7 @@ It refuses to run unless `APP_ENV` is `development` or `preview`.
 
 Names, profiles, form responses and every id are left as they are.
 
-- **Ids are never changed.** Track, shift and event ids are embedded in form field keys (`availability_7`, `lunch_7_veg`), field configs, answer values, display configs, export presets and form prerequisites. Scrubbing in place keeps them all valid. Remapping ids would mean rewriting them inside JSON, and a missed one fails silently.
+- **Ids are never changed.** Track, shift, event and role ids are embedded in form field keys (`availability_7`, `lunch_7_veg`), field configs, answer values, display configs, export presets and form prerequisites. Scrubbing in place keeps them all valid. Remapping ids would mean rewriting them inside JSON, and a missed one fails silently.
 - **`nexus.dev`** matches the dev seed accounts and is unregistered, so an email sent from the copy bounces. Don't use `.test`: Pydantic's `EmailStr` rejects special-use TLDs, so every response containing a user email would fail validation.
 - **Sessions and tokens are truncated** because prod sessions mean nothing on the copy, and an unused password-reset token would let someone set a password there.
 

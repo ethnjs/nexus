@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -165,15 +165,11 @@ class MembershipCustomAnswerRead(BaseModel):
 
     form_title: str
     field_label: str
-    # The panel labels answers by key, not by the question's full sentence —
-    # see the members-panel display config, which does the same.
+    # The answer's identity, and what the panel labels it by: forms may share
+    # a key, and this is the member's latest answer to it.
     field_key: str
     question_type: str
     value: Any
-    # Not part of the original 1.2 shape — added for 3.3's display_config
-    # "form_field:{field_id}" hidden-item matching, which needs a stable id
-    # to key on (field_label is TD-editable display text, not stable).
-    field_id: str
 
 
 def _flatten_track_statuses(v):
@@ -265,11 +261,19 @@ class MembershipBaseResponse(BaseModel):
         return v
 
 
+class MembershipOnboardingStepRead(BaseModel):
+    form_id: str
+    name: str
+    status: Literal["published", "archived"]
+    completed: bool
+
+
 class MembershipOnboardingRead(BaseModel):
-    """Live onboarding steps answered, out of the live total."""
+    """The steps on this member's onboarding path, in order."""
 
     completed: int
     total: int
+    steps: list[MembershipOnboardingStepRead]
 
 
 class MembershipFullResponse(MembershipBaseResponse):
@@ -295,8 +299,7 @@ class MembershipFullResponse(MembershipBaseResponse):
     # base on purpose: members do not see their own assignments yet, and the
     # base is what /members/me returns.
     assignments: list[AssignmentRead] = []
-    # Null when the tournament has no live onboarding steps — there's no
-    # progress to report, which "0/0" would misstate as complete or not.
+    # Null when no step is on this member's path — "0/0" would misstate it.
     onboarding: MembershipOnboardingRead | None = None
 
     # Sections the surface's display config emptied out — set by

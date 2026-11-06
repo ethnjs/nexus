@@ -15,11 +15,12 @@ interface HoverCardProps {
    * over-wide box, which reads as misaligned even though the box is centred.
    */
   width?: number | "fit";
+  placement?: "top" | "bottom";
   /** Merged onto the trigger wrapper — e.g. justifyContent to center the trigger within a stretched grid cell. */
   style?: CSSProperties;
 }
 
-type CardPos = { bottom: number; left: number };
+type CardPos = { top?: number; bottom?: number; left: number };
 
 // Hover-triggered popover for compact rows that need more detail than fits
 // inline (e.g. a creator's email + roles). Tooltip covers the plain-string,
@@ -30,14 +31,25 @@ type CardPos = { bottom: number; left: number };
 // card anchored to a relative wrapper gets clipped/painted-under by any
 // scrollable ancestor between it and the viewport (e.g. a side panel's
 // scroll container).
-export function HoverCard({ content, children, width = 220, style }: HoverCardProps) {
+export function HoverCard({
+  content,
+  children,
+  width = 220,
+  placement = "top",
+  style,
+}: HoverCardProps) {
   const [cardPos, setCardPos] = useState<CardPos | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
   function handleEnter() {
     if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
-    setCardPos({ bottom: window.innerHeight - r.top + 6, left: r.left + r.width / 2 });
+    const left = r.left + r.width / 2;
+    setCardPos(
+      placement === "top"
+        ? { bottom: window.innerHeight - r.top + 6, left }
+        : { top: r.bottom + 6, left },
+    );
   }
 
   return (
@@ -52,6 +64,7 @@ export function HoverCard({ content, children, width = 220, style }: HoverCardPr
         <div
           style={{
             position: "fixed",
+            top: cardPos.top,
             bottom: cardPos.bottom,
             left: cardPos.left,
             transform: "translateX(-50%)",

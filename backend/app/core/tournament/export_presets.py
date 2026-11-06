@@ -23,6 +23,8 @@ EXPORT_FIXED_COLUMNS = frozenset(
         "last_name",
         "email",
         "phone",
+        "affiliation",
+        "year_level",
         "shirt_size",
         "dietary_restriction",
         "roles",
@@ -42,7 +44,7 @@ _EXPORT_ENTITY_COLUMN_PATTERN = re.compile(
     r"^("
     r"(track|availability_track|event_pref|track_events|track_roles|track_shifts):\d+"
     r"|lunch:\d+:[a-z0-9_]+"
-    r"|form_field:[A-Za-z0-9_-]+"
+    r"|field_key:[a-z0-9_]+"
     r")$"
 )
 

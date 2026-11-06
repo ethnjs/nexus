@@ -12,14 +12,14 @@ import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 import {
   AVAILABILITY_TRACK_PREFIX,
   EVENT_PREF_PREFIX,
-  FORM_FIELD_PREFIX,
+  FIELD_KEY_PREFIX,
   LUNCH_PREFIX,
   TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
-import { userName } from "@/lib/personDisplay";
+import { userAffiliation, userName, userYearLevel } from "@/lib/personDisplay";
 
 // The export column registry. Column names are the members table's
-// ("email", "track:3", "form_field:12") plus export-only ones, so a name
+// ("email", "track:3", "field_key:shirt_size") plus export-only ones, so a name
 // means the same thing on both surfaces. Mirrors is_known_export_column.
 
 /** A member and their assignments, trimmed to the export's track and events. */
@@ -201,6 +201,12 @@ const FIXED: Record<string, FixedDef> = {
   last_name: memberFixed("Last name", [], (r) => r.member.user.last_name ?? ""),
   email: memberFixed("Email", ["contact"], (r) => r.member.user.email),
   phone: memberFixed("Phone", ["contact"], (r) => r.member.user.phone ?? ""),
+  affiliation: memberFixed(
+    "Affiliation",
+    ["profile"],
+    (r) => userAffiliation(r.member.user, true) ?? "",
+  ),
+  year_level: memberFixed("Year level", ["profile"], (r) => userYearLevel(r.member.user) ?? ""),
   shirt_size: memberFixed("Shirt size", ["profile"], (r) => r.member.user.shirt_size ?? ""),
   dietary_restriction: memberFixed(
     "Dietary restriction",
@@ -336,11 +342,11 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     });
   }
 
-  if (key.startsWith(FORM_FIELD_PREFIX)) {
+  if (key.startsWith(FIELD_KEY_PREFIX)) {
     if (!label) return null;
-    const fieldId = key.slice(FORM_FIELD_PREFIX.length);
+    const fieldKey = key.slice(FIELD_KEY_PREFIX.length);
     return memberColumn(key, label, ["custom"], (r) => {
-      const answer = (r.member.custom_responses ?? []).find((a) => a.field_id === fieldId);
+      const answer = (r.member.custom_responses ?? []).find((a) => a.field_key === fieldKey);
       if (!answer || answer.value === null || answer.value === undefined) return "";
       // Stored as {"1": option, "2": option}; one column per rank.
       if (answer.question_type === "ranked_choice" && typeof answer.value === "object") {
@@ -443,6 +449,8 @@ export function availableExportColumns(
         "last_name",
         "email",
         "phone",
+        "affiliation",
+        "year_level",
         "shirt_size",
         "dietary_restriction",
         "roles",

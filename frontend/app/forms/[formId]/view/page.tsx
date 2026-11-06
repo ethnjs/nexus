@@ -4,9 +4,9 @@ import { notFound, useParams, useRouter, useSearchParams } from "next/navigation
 import { useEffect, useMemo, useState } from "react";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
 import cardStyles from "@/components/layout/CenteredCard.module.css";
-import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -101,6 +101,7 @@ export default function FormViewPage() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const { user, loading: authLoading } = useAuth();
   const [missing, setMissing] = useState(false);
+  const [noAccess, setNoAccess] = useState(false);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -117,6 +118,8 @@ export default function FormViewPage() {
           router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
         } else if (error instanceof ApiError && error.status === 404) {
           setMissing(true);
+        } else if (error instanceof ApiError && error.status === 403) {
+          setNoAccess(true);
         } else {
           setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
         }
@@ -194,6 +197,10 @@ export default function FormViewPage() {
 
   if (!user) return <SignInCard formId={formId} />;
   if (missing) notFound();
+  if (noAccess)
+    return (
+      <NoFormAccess description="This form is only open to some members. If you think you should have it, contact whoever runs it." />
+    );
 
   if (loadError) {
     return (
@@ -295,20 +302,24 @@ export default function FormViewPage() {
               {wasEdited(existing) && ` · Updated ${formatDateTime(existing.updated_at)}`}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {editLockedReason && (
-              <Tooltip variant="info" message={editLockedReason} showIcon={false}>
-                <Badge variant="removed">
-                  <IconLock size={11} /> Locked
-                </Badge>
-              </Tooltip>
-            )}
+          {editLockedReason ? (
+            <Tooltip variant="info" message={editLockedReason} showIcon={false}>
+              {/* A disabled button swallows hover in some browsers, so the wrapper takes it. */}
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled
+                style={{ pointerEvents: "none" }}
+              >
+                <IconLock size={14} /> Edit response
+              </Button>
+            </Tooltip>
+          ) : (
             <Button
               type="button"
               variant="secondary"
               size="md"
-              disabled={!!editLockedReason}
-              title={editLockedReason}
               onClick={() => {
                 setSavedMessage(null);
                 router.push(`/forms/${formId}/view?edit=true`);
@@ -316,7 +327,7 @@ export default function FormViewPage() {
             >
               <IconEdit size={14} /> Edit response
             </Button>
-          </div>
+          )}
         </Card>
 
         <ResponseAnswers fields={form.fields} answers={existing.answers} />

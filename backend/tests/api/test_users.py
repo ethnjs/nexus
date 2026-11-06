@@ -44,6 +44,26 @@ class TestAdminListUsers:
         assert res.status_code == 200
         assert len(res.json()) >= 2
 
+    def test_list_carries_each_users_profile(self, client, admin_user, td_user, db):
+        """The table's affiliation and year level columns read these straight
+        off the list, rather than fetching every user."""
+        from app.models.models import University
+
+        ucla = University(name="University of California, Los Angeles", abbreviation="UCLA")
+        db.add(ucla)
+        db.flush()
+        td_user.student_status = "Undergraduate"
+        td_user.university_id = ucla.id
+        td_user.year_level = 2
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        row = next(u for u in client.get("/admin/users/").json() if u["id"] == td_user.id)
+        assert row["student_status"] == "Undergraduate"
+        assert row["university"]["abbreviation"] == "UCLA"
+        assert row["year_level"] == 2
+        assert row["employer"] is None
+
     def test_non_admin_forbidden(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         assert client.get("/admin/users/").status_code == 403

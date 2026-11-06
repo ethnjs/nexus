@@ -1,5 +1,4 @@
-// Returns today's date in the local timezone as YYYY-MM-DD, suitable for
-// <input type="date"> min/max attributes (which are timezone-naive).
+// Today in the local timezone as YYYY-MM-DD, the date pickers' value format.
 export function todayLocalDateString(): string {
   const now = new Date();
   const year = now.getFullYear();

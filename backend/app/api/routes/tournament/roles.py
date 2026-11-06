@@ -12,6 +12,7 @@ from app.core.tournament.audit import (
 )
 from app.core.tournament.permissions import (
     DEFAULT_ROLES,
+    MANAGE_FORMS,
     MANAGE_MEMBERS,
     MANAGE_ROLES,
     require_any_permission,
@@ -169,21 +170,24 @@ def reorder_roles_bulk(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/roles/ — manage_members or manage_roles
+# GET /tournaments/{tournament_id}/roles/ — manage_members, manage_roles or
+# manage_forms
 #
 # The catalog is staff-facing: it carries every role's rank, permissions and
 # member count, which is org structure a rank-and-file member has no reason
 # to enumerate — their own roles already come back on their membership.
 #
-# Two permissions, because the two jobs that need it are separate and neither
-# implies the other: manage_members assigns roles to people, manage_roles
-# defines them (see the settings/roles page, which is gated on the latter).
+# Three jobs need it and none implies another: manage_members assigns roles,
+# manage_roles defines them, and manage_forms sets the role prerequisites
+# that decide who sees a form.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[RoleWithMemberCount])
 def list_roles(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_MEMBERS, MANAGE_ROLES)),
+    current_user: User = Depends(
+        require_any_permission(MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_FORMS)
+    ),
 ):
     roles = (
         db.query(TournamentRole)

@@ -1,20 +1,14 @@
-"""Eligibility evaluation for standard tournament forms.
+"""Eligibility evaluation for tournament forms.
 
-TournamentForm.prerequisites is deliberately evaluated here, rather than in a
-route, so listing a member's forms and protecting direct render/submission
-links cannot drift apart.
+Evaluated here, rather than in a route, so listing a member's forms, the
+render/submit gate and the manager's preview can't drift apart.
 """
 
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.models import (
-    TournamentForm,
-    TournamentMembership,
-    TournamentMembershipAvailability,
-    TournamentTrackAssignment,
-)
+from app.models.models import TournamentForm, TournamentMembership, TournamentTrackAssignment
 
 
 def member_meets_form_prerequisites(
@@ -22,68 +16,42 @@ def member_meets_form_prerequisites(
     membership: TournamentMembership,
     tournament_form: TournamentForm,
 ) -> bool:
-    """Return whether ``membership`` passes every configured requirement.
+    return meets_prerequisites(
+        tournament_form.prerequisites, _membership_role_ids(db, membership.id)
+    )
 
-    The persisted shape is::
 
-        {
-          "onboarding_complete": true,
-          "roles": {"ids": [1, 2], "match": "any"},
-          "availability": {"shift_ids": [3, 4], "match": "all"}
-        }
+def meets_prerequisites(prerequisites: object, role_ids: set[int]) -> bool:
+    """Whether a member holding `role_ids` passes every role condition.
 
-    An omitted or empty group does not constrain access. Manager-side schema
-    validation is added with the prerequisite API; this evaluator fails closed
-    for malformed non-empty groups so corrupt JSON cannot grant visibility.
+    The stored shape is ``{"roles": [{"ids": [1, 2], "match": "any", "inverse": false}]}``.
+    Malformed JSON fails closed so a corrupt row can't grant access.
     """
-    prerequisites = tournament_form.prerequisites or {}
+    if not prerequisites:
+        return True
     if not isinstance(prerequisites, dict):
         return False
+    conditions = prerequisites.get("roles", [])
+    if not isinstance(conditions, list):
+        return False
+    return all(_passes(condition, role_ids) for condition in conditions)
 
-    if prerequisites.get("onboarding_complete") is True and membership.onboarded_at is None:
+
+def _passes(condition: object, role_ids: set[int]) -> bool:
+    if not isinstance(condition, dict):
+        return False
+    ids = condition.get("ids")
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
         return False
 
-    roles = prerequisites.get("roles")
-    if not _matches_group(
-        roles,
-        _membership_role_ids(db, membership.id),
-        id_key="ids",
-    ):
-        return False
-
-    availability = prerequisites.get("availability")
-    if not _matches_group(
-        availability,
-        _membership_shift_ids(db, membership.id),
-        id_key="shift_ids",
-    ):
-        return False
-
-    return True
-
-
-def _matches_group(group: object, actual_ids: set[int], *, id_key: str) -> bool:
-    """Apply an optional any/all ID group against the member's IDs."""
-    if group is None:
-        return True
-    if not isinstance(group, dict):
-        return False
-
-    required_ids = group.get(id_key, [])
-    if not isinstance(required_ids, list) or not all(
-        isinstance(item, int) for item in required_ids
-    ):
-        return False
-    if not required_ids:
-        return True
-
-    match = group.get("match", "any")
-    required = set(required_ids)
+    match = condition.get("match", "any")
     if match == "any":
-        return bool(required & actual_ids)
-    if match == "all":
-        return required <= actual_ids
-    return False
+        holds = bool(set(ids) & role_ids)
+    elif match == "all":
+        holds = set(ids) <= role_ids
+    else:
+        return False
+    return holds != (condition.get("inverse") is True)
 
 
 def _membership_role_ids(db: Session, membership_id: int) -> set[int]:
@@ -91,14 +59,5 @@ def _membership_role_ids(db: Session, membership_id: int) -> set[int]:
         role_id
         for (role_id,) in db.query(TournamentTrackAssignment.role_id)
         .filter(TournamentTrackAssignment.membership_id == membership_id)
-        .all()
-    }
-
-
-def _membership_shift_ids(db: Session, membership_id: int) -> set[int]:
-    return {
-        shift_id
-        for (shift_id,) in db.query(TournamentMembershipAvailability.tournament_shift_id)
-        .filter(TournamentMembershipAvailability.membership_id == membership_id)
         .all()
     }

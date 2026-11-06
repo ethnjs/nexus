@@ -640,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"refusing to seed with APP_ENV={settings.app_env!r} - pass --force to override")
         return 1
 
-    from app.core.tournament.onboarding import advance_onboarding_progress
+    from app.core.tournament.onboarding import advance_onboarding_progress, onboarding_paths
     from app.db.session import SessionLocal
     from app.models.models import Event, Tournament, University
 
@@ -719,6 +719,9 @@ def main(argv: list[str] | None = None) -> int:
 
         from app.api.routes.forms import _active_fields
 
+        forms_by_id = {f.id: f for f in forms}
+        paths = onboarding_paths(db, tournament.id, [u.id for u, _ in pairs]) if forms else {}
+
         for index, (user, membership) in enumerate(pairs):
             if args.profiles:
                 seed_profile(rng, user, university_ids, reference_year)
@@ -738,7 +741,14 @@ def main(argv: list[str] | None = None) -> int:
                 # states are guaranteed to exist instead of depending on the seed.
                 unstarted = args.unstarted_every and index and index % args.unstarted_every == 0
                 stops_early = args.stop_every and index and index % args.stop_every == 0
-                to_submit = [] if unstarted else (forms[:1] if stops_early else forms)
+                # Only the steps their roles put on their path, as the form
+                # access check would allow.
+                path = [
+                    forms_by_id[step.form_id]
+                    for step in paths[user.id]
+                    if step.form_id in forms_by_id
+                ]
+                to_submit = [] if unstarted else (path[:1] if stops_early else path)
 
                 for form in to_submit:
                     active = _active_fields(db, form)

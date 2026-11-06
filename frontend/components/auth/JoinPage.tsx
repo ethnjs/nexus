@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import styles from "@/components/layout/CenteredCard.module.css";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -22,17 +22,6 @@ function ageDisclosureCopy(preview: JoinPreviewTournament): string {
     return "This tournament asks which age group members are in: under 21 or 21+.";
   }
   return "This tournament asks which age group members are in: under 18 or 18+.";
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className={styles.page}>
-      <section className={`${styles.card} ${styles.cardWide}`}>
-        <h1 className={`${styles.wordmark} ${styles.wordmarkSm}`}>NEXUS</h1>
-        {children}
-      </section>
-    </div>
-  );
 }
 
 function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
@@ -62,9 +51,11 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
       <h2
         style={{
           fontFamily: "var(--font-serif)",
-          fontSize: "24px",
+          fontSize: "26px",
+          fontWeight: 400,
           color: "var(--color-text-primary)",
           textAlign: "center",
+          margin: 0,
         }}
       >
         {year} {preview.name}
@@ -131,44 +122,9 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
   );
 }
 
-function InvalidState() {
-  return (
-    <>
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "18px",
-          fontWeight: 600,
-          color: "var(--color-text-primary)",
-          textAlign: "center",
-          marginBottom: "8px",
-        }}
-      >
-        This invite is no longer valid
-      </p>
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "14px",
-          color: "var(--color-text-secondary)",
-          textAlign: "center",
-        }}
-      >
-        It may have expired or been deactivated. Ask whoever invited you for a new link.
-      </p>
-    </>
-  );
-}
-
 export function JoinPage() {
   return (
-    <Suspense
-      fallback={
-        <Shell>
-          <Spinner size="lg" />
-        </Shell>
-      }
-    >
+    <Suspense fallback={<Spinner size="lg" />}>
       <JoinPageContent />
     </Suspense>
   );
@@ -186,6 +142,7 @@ function JoinPageContent() {
 
   const [membershipChecked, setMembershipChecked] = useState(false);
   const [alreadyMember, setAlreadyMember] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | undefined>(undefined);
@@ -207,7 +164,10 @@ function JoinPageContent() {
     if (!preview || preview === "chapter") return;
     membersApi
       .getMe(preview.target_id, [])
-      .then((me) => setAlreadyMember(me.id !== null))
+      .then((me) => {
+        setAlreadyMember(me.id !== null);
+        setNeedsOnboarding(me.needs_onboarding);
+      })
       .catch(() => setAlreadyMember(false))
       .finally(() => setMembershipChecked(true));
   }, [authLoading, user, preview]);
@@ -228,51 +188,28 @@ function JoinPageContent() {
 
   if (previewError) {
     return (
-      <Shell>
-        <InvalidState />
-      </Shell>
+      <AuthHeading
+        title="This invite is no longer valid"
+        subtitle="It may have expired or been deactivated. Ask whoever invited you for a new link."
+      />
     );
   }
 
   if (preview === null) {
-    return (
-      <Shell>
-        <Spinner size="lg" />
-      </Shell>
-    );
+    return <Spinner size="lg" />;
   }
 
   if (preview === "chapter") {
     return (
-      <Shell>
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "18px",
-            fontWeight: 600,
-            color: "var(--color-text-primary)",
-            textAlign: "center",
-            marginBottom: "8px",
-          }}
-        >
-          Chapter invites aren&rsquo;t supported yet
-        </p>
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-            color: "var(--color-text-secondary)",
-            textAlign: "center",
-          }}
-        >
-          This invite is for a chapter, which NEXUS doesn&rsquo;t support joining yet.
-        </p>
-      </Shell>
+      <AuthHeading
+        title="Chapter invites aren’t supported yet"
+        subtitle="This invite is for a chapter, which NEXUS doesn’t support joining yet."
+      />
     );
   }
 
   return (
-    <Shell>
+    <>
       <TournamentFacts preview={preview} />
 
       {authLoading ? (
@@ -336,12 +273,21 @@ function JoinPageContent() {
           >
             You&rsquo;re already a member of this tournament.
           </p>
-          <Button
-            fullWidth
-            onClick={() => router.push(`/tournaments/${preview.target_id}/onboarding`)}
-          >
-            Continue onboarding
-          </Button>
+          {needsOnboarding ? (
+            <Button
+              fullWidth
+              onClick={() => router.push(`/tournaments/${preview.target_id}/onboarding`)}
+            >
+              Continue onboarding
+            </Button>
+          ) : (
+            <Button
+              fullWidth
+              onClick={() => router.push(`/dashboard/tournaments/${preview.target_id}/overview`)}
+            >
+              Go to tournament
+            </Button>
+          )}
         </div>
       ) : (
         <div
@@ -429,6 +375,6 @@ function JoinPageContent() {
           )}
         </div>
       )}
-    </Shell>
+    </>
   );
 }

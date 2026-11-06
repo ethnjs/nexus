@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { newOption } from "@/components/forms/builder/OptionsEditor";
+import { type EditableOption, newOption } from "@/components/forms/builder/OptionsEditor";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -19,6 +19,7 @@ import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
   OPTION_BEARING_TYPES,
+  OTHER_TYPES,
   QUESTION_TYPE_OPTIONS,
   sanitizeConfigForType,
 } from "@/lib/forms/fieldTypes";
@@ -168,7 +169,6 @@ export function FieldCard({
   onDuplicate,
   onDelete,
   allFields,
-  usedFieldKeys,
   errors,
   allowArchive = false,
   onOpenAddon,
@@ -187,8 +187,6 @@ export function FieldCard({
   onDuplicate: () => void;
   onDelete: () => void;
   allFields: EditableField[];
-  /** Every field_key already saved on the owner's forms — see duplicateKey below. */
-  usedFieldKeys: string[];
   errors: string[];
   /** Opens this field's add-on popover — see AddonOptionsEditorProps.onOpenAddon. */
   onOpenAddon?: () => void;
@@ -201,6 +199,17 @@ export function FieldCard({
   const addon = useFormBuilderAddon();
   const extension = useFieldExtension(field);
   const optionLabel = useOptionLabel(field);
+  // Unsaved options have no option_id yet, and the preview keys and matches options by it.
+  const options = field.config?.options as EditableOption[] | undefined;
+  const previewField = options?.some((o) => !o.option_id)
+    ? {
+        ...field,
+        config: {
+          ...field.config,
+          options: options.map((o) => (o.option_id ? o : { ...o, option_id: o.clientKey })),
+        },
+      }
+    : field;
   // Key errors and the add-on's own surface exclusively through FieldToolbar's
   // popovers (danger-colored trigger + inline message) — the card itself
   // doesn't show the key, so it shouldn't double-report the same problem in
@@ -235,16 +244,10 @@ export function FieldCard({
   const hadToolbarError = errors.some(isToolbarError);
   const addonIssueOpen = liveIssues.some(addon.ownsIssue);
   const effKey = effectiveFieldKey(field);
-  // A same-form collision is checked live against the other staged fields; an
-  // add-on-owned key can also collide with a *different* form's field, which
-  // only usedFieldKeys (the owner's other forms) would catch — a plain custom
-  // key relies on FieldKeyPopover's own blur-time check for that instead.
-  // Both halves self-correct as the TD edits: once the key changes, it just
-  // stops matching either check.
+  // Only a collision within this form; other forms may share the key.
   const duplicateKey =
     !!effKey &&
-    (allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey) ||
-      (!!extension.keyLockedReason && usedFieldKeys.includes(effKey)));
+    allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey);
   const hasToolbarCardError = hadToolbarError && (addonIssueOpen || duplicateKey);
   // Flagged without waiting for Save, so the card turns red as the reorder
   // that broke the branch lands.
@@ -333,7 +336,9 @@ export function FieldCard({
     // Per-option keys too — sanitizeConfigForType only knows config-level
     // ones, and a radio's branch keys on a checkbox option 422 the save.
     if (config.options)
-      config.options = config.options.map((option) => cleanOption(option, questionType));
+      config.options = config.options
+        .filter((option) => !option.is_other || OTHER_TYPES.includes(questionType))
+        .map((option) => cleanOption(option, questionType));
     const needsStarterOption =
       OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = (extension.newOption ?? newOption)();
@@ -511,7 +516,11 @@ export function FieldCard({
                 because the targets are rendered by shared components that
                 the respondent-facing form uses too. */}
             <div className="field-preview">
-              <QuestionRenderer field={field} interactive={false} optionLabel={optionLabel} />
+              <QuestionRenderer
+                field={previewField}
+                interactive={false}
+                optionLabel={optionLabel}
+              />
             </div>
           </Card>
         )}

@@ -161,34 +161,21 @@ export default function AdminUniversitiesPage() {
         </p>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          alignItems: "center",
-          marginBottom: "16px",
-          flexWrap: "wrap",
-        }}
-      >
-        <Input
-          placeholder="Search name, abbreviation or location"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          icon={<IconSearch size={16} />}
-          size="md"
-          font="sans"
-          variant="secondary"
-          style={{ width: "420px" }}
-        />
-        {/* Pushed to the right edge — the search sits with the table it
-            filters, the action belongs opposite it. */}
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => setShowNew(true)}
-          style={{ marginLeft: "auto" }}
-        >
+      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Input
+            placeholder="Search name, abbreviation or location"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            icon={<IconSearch size={16} />}
+            size="md"
+            font="sans"
+            variant="secondary"
+            fullWidth
+          />
+        </div>
+        <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
           <IconPlus />
           Add university
         </Button>

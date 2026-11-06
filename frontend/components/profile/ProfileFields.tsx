@@ -6,6 +6,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import type { SHIRT_SIZE, STUDENT_STATUS, University } from "@/lib/api";
+import { YEAR_LEVEL_OPTIONS } from "@/lib/personDisplay";
 
 // -------------------------------------------------------------------------
 // Pronouns
@@ -125,13 +126,7 @@ export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) 
     <Dropdown
       value={value !== undefined ? String(value) : ""}
       onChange={(v) => onChange(Number(v))}
-      options={[
-        { value: "1", label: "1st Year" },
-        { value: "2", label: "2nd Year" },
-        { value: "3", label: "3rd Year" },
-        { value: "4", label: "4th Year" },
-        { value: "5", label: "5th+ Year" },
-      ]}
+      options={YEAR_LEVEL_OPTIONS}
       error={error}
       variant="primary"
       fullWidth

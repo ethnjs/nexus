@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/components/ui/Icons";
@@ -24,10 +25,8 @@ function SignUpContent() {
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
-  const signInHref = redirect ? `/sign-in?redirect=${encodeURIComponent(redirect)}` : "/sign-in";
   const onboardingHref = redirect
     ? `/onboarding?redirect=${encodeURIComponent(redirect)}`
     : "/onboarding";
@@ -95,47 +94,19 @@ function SignUpContent() {
     <div style={{ width: "100%" }}>
       {showVerifyModal && <VerifyModal />}
 
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 30px",
-          textAlign: "center",
-        }}
-      >
-        Sign Up
-      </h2>
+      <AuthHeading
+        title="Create your account"
+        subtitle="Volunteer at tournaments, or run your own."
+      />
 
       <CredentialsForm
         email={email}
         onEmailChange={setEmail}
         onSubmit={handleRegister}
-        submitLabel="Sign Up"
+        submitLabel="Sign up"
         loading={loading}
         formError={formError}
       />
-
-      <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "13px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          Already have an account?{" "}
-        </span>
-        <button
-          type="button"
-          onClick={() => router.push(signInHref)}
-          className="link-subtle"
-          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}
-        >
-          Sign in
-        </button>
-      </div>
     </div>
   );
 }

@@ -22,6 +22,7 @@ import {
   type MemberFilterOptions,
   membersApi,
 } from "@/lib/api";
+import { YEAR_LEVEL_FILTER_OPTIONS } from "@/lib/personDisplay";
 
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
@@ -34,6 +35,9 @@ export const MEMBERS_FILTER_KEYS = [
   "age",
   "shift",
   "assigned",
+  "affiliation",
+  "year_level",
+  "onboarding",
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
@@ -175,6 +179,13 @@ export function defaultMemberFiltersForTab(
     track: new Set(scope.flatMap((id) => [`${id}:interested`, `${id}:confirmed`])),
   };
 }
+
+// Shared with the backend's ONBOARDING_* values.
+const ONBOARDING_OPTIONS: FilterOptionItem[] = [
+  { value: "not_started", label: "Not started" },
+  { value: "in_progress", label: "In progress" },
+  { value: "complete", label: "Complete" },
+];
 
 // Per track, like track status: "who's unassigned for Day 1".
 const ASSIGNMENT_STATUS_OPTIONS: FilterOptionItem[] = [
@@ -573,6 +584,13 @@ export function MembersFilterModal({
       addLabel: "Filter by track",
       emptyMessage: "No active tracks.",
     }),
+    {
+      key: "onboarding",
+      title: "Onboarding",
+      control: "buttons",
+      options: ONBOARDING_OPTIONS,
+      hidden: !options?.has_onboarding,
+    },
     // Two options at most, both fixed — a chip row with an add popover is
     // more machinery than picking between 18+ and 21+ deserves.
     {
@@ -613,6 +631,19 @@ export function MembersFilterModal({
       control: "chips",
       options: options?.volunteer_events ?? [],
       searchable: true,
+    },
+    {
+      key: "affiliation",
+      title: "Affiliation",
+      control: "chips",
+      options: options?.affiliations ?? [],
+      searchable: true,
+    },
+    {
+      key: "year_level",
+      title: "Year level",
+      control: "buttons",
+      options: YEAR_LEVEL_FILTER_OPTIONS,
     },
   ];
 
