@@ -30,7 +30,7 @@ export function TournamentCard({
     >
       <h3
         style={{
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-serif)",
           fontSize: "19px",
           fontWeight: 400,
           color: "var(--color-text-primary)",
@@ -100,7 +100,7 @@ export function TournamentCard({
         <div>
           <div
             style={{
-              fontFamily: "Georgia, serif",
+              fontFamily: "var(--font-serif)",
               fontSize: "22px",
               color: "var(--color-text-primary)",
               lineHeight: 1,
@@ -126,7 +126,7 @@ export function TournamentCard({
         <div>
           <div
             style={{
-              fontFamily: "Georgia, serif",
+              fontFamily: "var(--font-serif)",
               fontSize: "22px",
               color: "var(--color-text-primary)",
               lineHeight: 1,
