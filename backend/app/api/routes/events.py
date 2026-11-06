@@ -4,12 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
 from app.db.session import get_db
-from app.models.models import Event, EventCategory, User
+from app.models.models import Event, EventCategory, EventRelationship, User
 from app.schemas.event import (
     EventCategoryCreate,
     EventCategoryResponse,
     EventCategoryUpdate,
     EventCreate,
+    EventRelationshipCreate,
     EventResponse,
     EventUpdate,
 )
@@ -95,6 +96,70 @@ def delete_event(event_id: int, db: Session = Depends(get_db), _: User = Depends
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete event: it has associated competition or volunteer experience entries",
         ) from None
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/events/{id}/related/ — admin only, relate two events
+# ---------------------------------------------------------------------------
+@admin_router.post(
+    "/events/{event_id}/related/", response_model=EventResponse, status_code=status.HTTP_201_CREATED
+)
+def add_related_event(
+    event_id: int,
+    body: EventRelationshipCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Relates two catalog events. Relationships go both ways, so the related
+    event lists this one too."""
+    if body.related_event_id == event_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="An event can't be related to itself",
+        )
+    event = db.get(Event, event_id)
+    if not event or not db.get(Event, body.related_event_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    low, high = sorted((event_id, body.related_event_id))
+    db.add(EventRelationship(event_id=low, related_event_id=high))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="These events are already related"
+        ) from None
+    db.refresh(event)
+    return event
+
+
+# ---------------------------------------------------------------------------
+# DELETE /admin/events/{id}/related/{related_id}/ — admin only
+# ---------------------------------------------------------------------------
+@admin_router.delete("/events/{event_id}/related/{related_event_id}/", response_model=EventResponse)
+def remove_related_event(
+    event_id: int,
+    related_event_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Removes a relationship from both events."""
+    low, high = sorted((event_id, related_event_id))
+    relationship = (
+        db.query(EventRelationship)
+        .filter(EventRelationship.event_id == low, EventRelationship.related_event_id == high)
+        .first()
+    )
+    if not relationship:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="These events aren't related"
+        )
+    db.delete(relationship)
+    db.commit()
+    event = db.get(Event, event_id)
+    db.refresh(event)
+    return event
 
 
 # ---------------------------------------------------------------------------

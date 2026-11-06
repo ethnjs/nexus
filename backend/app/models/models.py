@@ -159,6 +159,52 @@ class Event(Base):
         foreign_keys="UserVolunteerExperience.event_id",
         passive_deletes=True,
     )
+    # The two halves of related_events, one per column of the stored pair.
+    # selectin so a list of events costs one query each, not one per event;
+    # join_depth=1 stops the related events loading their own relations.
+    _related_higher: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.event_id",
+        secondaryjoin="Event.id == EventRelationship.related_event_id",
+        viewonly=True,
+        lazy="selectin",
+        join_depth=1,
+    )
+    _related_lower: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.related_event_id",
+        secondaryjoin="Event.id == EventRelationship.event_id",
+        viewonly=True,
+        lazy="selectin",
+        join_depth=1,
+    )
+
+    @property
+    def related_events(self) -> list["Event"]:
+        return sorted(self._related_lower + self._related_higher, key=lambda e: e.name)
+
+
+# ---------------------------------------------------------------------------
+# EventRelationship — two catalog events that cover similar topics (Heredity
+# and Designer Genes, Solar System and Astronomy). Symmetric, so each pair is
+# stored once with the lower id first; see Event.related_events.
+# ---------------------------------------------------------------------------
+class EventRelationship(Base):
+    __tablename__ = "event_relationships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    related_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "related_event_id", name="uq_event_relationship"),
+        CheckConstraint("event_id < related_event_id", name="ck_event_relationship_order"),
+    )
 
 
 # ---------------------------------------------------------------------------
