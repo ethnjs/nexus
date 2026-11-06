@@ -1065,6 +1065,28 @@ def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournam
         assert response.status_code == 200, surface
 
 
+def test_event_surfaces_accept_format_impound_and_self_schedule(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    filters = {"format": ["build"], "impound": ["yes"], "self_schedule": ["no"]}
+    sorts = [
+        {"field": "format", "direction": "asc"},
+        {"field": "impound", "direction": "desc"},
+        {"field": "self_schedule", "direction": "asc"},
+    ]
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "events_table": {
+                "columns": ["format", "impound", "self_schedule"],
+                "filters": filters,
+                "sorts": sorts,
+            },
+            "assignments_events:all": {"hidden": [], "filters": filters, "sorts": sorts},
+        },
+    )
+    assert response.status_code == 200, response.text
+
+
 def test_events_table_saves_a_sort_chain(client, td_user, td_tournament):
     """The table sorts by the board's fields, as an ordered chain."""
     login(client, "td@test.com", "tdpass")

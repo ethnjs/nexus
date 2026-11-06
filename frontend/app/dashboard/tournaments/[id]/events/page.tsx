@@ -111,6 +111,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
@@ -611,6 +612,9 @@ export default function EventsPage() {
           name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
           division: e.division,
           event_type: e.event_type,
+          format: e.format,
+          has_impound: e.has_impound,
+          has_self_schedule: e.has_self_schedule,
           // Carries the copy's location and staffing needs across with it —
           // track_details is whole-set, so this is also what keeps the copy on
           // the same tracks.
@@ -1036,7 +1040,7 @@ export default function EventsPage() {
               // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
               onKeyDown={handleGridArrows}
             >
-              <div className={table.header}>
+              <div ref={stickyHeader} className={table.header}>
                 <span
                   className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                   style={{ display: "flex", justifyContent: "center" }}
@@ -1162,6 +1166,7 @@ export default function EventsPage() {
         <LoadDefaultEventsModal
           tournamentId={tournamentId}
           divisions={divisions}
+          seasonYear={selectedTournament?.season_year ?? null}
           existingEvents={events}
           onClose={() => setShowLoadModal(false)}
           onLoaded={(created) => setEvents((prev) => [...(prev ?? []), ...created])}

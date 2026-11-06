@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup, type ButtonGroupOption } from "@/components/ui/ButtonGroup";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
@@ -116,6 +117,7 @@ export function LockedCell({
         justifyContent: align === "start" ? "flex-start" : "center",
         minWidth: 0,
         minHeight: "28px",
+        cursor: "not-allowed",
       }}
     >
       {children}
@@ -256,6 +258,48 @@ function RestControl({
  * under the buttons and the popover stays open. Locked, it's the plain
  * display with the reason on hover.
  */
+/** A yes/no field, saved on click. Read-only without `onToggle`. */
+export function CheckboxCell({
+  checked,
+  lockReason,
+  onToggle,
+}: {
+  checked: boolean;
+  lockReason?: string;
+  onToggle?: (next: boolean) => Promise<void>;
+}) {
+  const toastError = useErrorToast();
+  const [saving, setSaving] = useState(false);
+  if (lockReason || !onToggle) {
+    return (
+      <LockedCell title={lockReason}>
+        {/* Inert, so a click reaches the row (Select mode toggles it). */}
+        <span style={{ display: "flex", pointerEvents: "none" }}>
+          <Checkbox checked={checked} locked onChange={() => {}} />
+        </span>
+      </LockedCell>
+    );
+  }
+  return (
+    <CellGuard>
+      <Checkbox
+        checked={checked}
+        locked={saving}
+        onChange={async (next) => {
+          setSaving(true);
+          try {
+            await onToggle(next);
+          } catch (err) {
+            toastError(err);
+          } finally {
+            setSaving(false);
+          }
+        }}
+      />
+    </CellGuard>
+  );
+}
+
 export function SelectCell({
   display,
   value,

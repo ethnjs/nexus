@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
 import {
+  seasonsOf,
   TOURNAMENTS_FILTER_KEYS,
   TournamentsFilterModal,
   type TournamentsFilterState,
@@ -28,6 +29,7 @@ import table from "@/components/ui/Table.module.css";
 import { type AdminTournament, ApiError, adminTournamentsApi, tournamentsApi } from "@/lib/api";
 import { rowActivation } from "@/lib/rowActivation";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { formatDuration } from "@/lib/timeFormat";
 import {
   formatDates,
@@ -531,6 +533,7 @@ export default function AdminTournamentsPage() {
       {showFilterModal && (
         <TournamentsFilterModal
           withStatus
+          seasons={seasonsOf(tournaments ?? [])}
           filters={filters}
           onApply={setFilters}
           onClose={() => setShowFilterModal(false)}
@@ -571,7 +574,7 @@ export default function AdminTournamentsPage() {
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>Name</span>
               <span>Owner</span>
               <span>Venue</span>

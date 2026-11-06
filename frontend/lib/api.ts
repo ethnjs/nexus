@@ -87,10 +87,17 @@ export interface EventCategory {
   name: string;
 }
 
+export interface RelatedEvent {
+  id: number;
+  name: string;
+}
+
 export interface CanonicalEvent {
   id: number;
   name: string;
   category: EventCategory;
+  // Events on similar topics (Heredity and Designer Genes). Both ways, by name.
+  related_events: RelatedEvent[];
 }
 
 // Writes are admin-only, under /admin/ — GET stays public/unauthenticated.
@@ -109,6 +116,13 @@ export const canonicalEventsApi = {
   update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
     api.patch<CanonicalEvent>(`/admin/events/${id}/`, body),
   delete: (id: number) => api.delete<void>(`/admin/events/${id}/`),
+  /** Relates two events both ways; returns `id`'s event with its new list. */
+  addRelated: (id: number, relatedEventId: number) =>
+    api.post<CanonicalEvent>(`/admin/events/${id}/related/`, {
+      related_event_id: relatedEventId,
+    }),
+  removeRelated: (id: number, relatedEventId: number) =>
+    api.delete<CanonicalEvent>(`/admin/events/${id}/related/${relatedEventId}/`),
 };
 
 // -------------------------------------------------------------------------
@@ -555,6 +569,8 @@ export interface TournamentPublic {
 
 export interface Tournament extends TournamentPublic {
   id: number;
+  // Named for the spring it ends in; null until a primary track has dates.
+  season_year: number | null;
   timezone: string;
   is_multi_day: boolean;
   is_public: boolean;
@@ -569,6 +585,7 @@ export interface Tournament extends TournamentPublic {
 // GET /tournaments/me/ — lightweight card view, no roles/owner
 export interface TournamentSummary extends TournamentPublic {
   id: number;
+  season_year: number | null;
   is_public: boolean;
   is_archived: boolean;
   event_count: number;
@@ -717,6 +734,10 @@ export interface TournamentEvent {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
+  // Copied from the season event on creation, then the TD's to change.
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event_id: number | null;
   // Joined canonical event — set only when event_id is set. Carries
   // category, since TournamentEvent has no category field of its own.
@@ -781,6 +802,10 @@ export interface TournamentEventInput {
   name?: string | null;
   division?: TournamentDivision | null;
   event_type?: "standard" | "trial";
+  // Left out on create, these are copied from the matching season event.
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
   event_id?: number | null;
   // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
   // rather than adding to them. Omit either to leave it alone. Setting
@@ -907,11 +932,22 @@ export const tournamentEventsApi = {
 // Season Events — admin-curated per-year/division active event list, drives
 // tournamentEventsApi.loadDefaults(). GET is public; writes are admin-only.
 // -------------------------------------------------------------------------
+export const EVENT_FORMATS = ["test", "hybrid", "build"] as const;
+export type EventFormat = (typeof EVENT_FORMATS)[number];
+export const EVENT_FORMAT_LABELS: Record<EventFormat, string> = {
+  test: "Test",
+  hybrid: "Hybrid",
+  build: "Build",
+};
+
 export interface SeasonEvent {
   id: number;
   year: number;
   division: TournamentDivision;
   is_active: boolean;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event: CanonicalEvent;
   created_at: string;
 }
@@ -921,6 +957,9 @@ export interface SeasonEventInput {
   year: number;
   division: TournamentDivision;
   is_active?: boolean;
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
 }
 
 export const seasonEventsApi = {
@@ -1980,6 +2019,9 @@ export interface TournamentEventMember {
   name: string | null;
   division: string | null;
   event_type: string;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   shifts: TournamentShiftBase[];
 }
 

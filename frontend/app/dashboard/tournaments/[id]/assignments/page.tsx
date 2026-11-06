@@ -1533,6 +1533,9 @@ export default function AssignmentsPage() {
       name: eventName(event),
       division: event.division,
       event_type: event.event_type,
+      format: event.format,
+      has_impound: event.has_impound,
+      has_self_schedule: event.has_self_schedule,
       shifts: event.shifts,
     };
     const shiftFor = (id: number | null) =>

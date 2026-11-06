@@ -159,12 +159,61 @@ class Event(Base):
         foreign_keys="UserVolunteerExperience.event_id",
         passive_deletes=True,
     )
+    # The two halves of related_events, one per column of the stored pair.
+    # selectin so a list of events costs one query each, not one per event;
+    # join_depth=1 stops the related events loading their own relations.
+    _related_higher: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.event_id",
+        secondaryjoin="Event.id == EventRelationship.related_event_id",
+        viewonly=True,
+        lazy="selectin",
+        join_depth=1,
+    )
+    _related_lower: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.related_event_id",
+        secondaryjoin="Event.id == EventRelationship.event_id",
+        viewonly=True,
+        lazy="selectin",
+        join_depth=1,
+    )
+
+    @property
+    def related_events(self) -> list["Event"]:
+        return sorted(self._related_lower + self._related_higher, key=lambda e: e.name)
+
+
+# ---------------------------------------------------------------------------
+# EventRelationship — two catalog events that cover similar topics (Heredity
+# and Designer Genes, Solar System and Astronomy). Symmetric, so each pair is
+# stored once with the lower id first; see Event.related_events.
+# ---------------------------------------------------------------------------
+class EventRelationship(Base):
+    __tablename__ = "event_relationships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    related_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "related_event_id", name="uq_event_relationship"),
+        CheckConstraint("event_id < related_event_id", name="ck_event_relationship_order"),
+    )
 
 
 # ---------------------------------------------------------------------------
 # SeasonEvent — admin-curated "this canonical event, in this division, is
 # active this year" list. Drives the tournament events bulk-load default
 # list (see TournamentEvent); independent of any single tournament.
+#
+# format/has_impound/has_self_schedule live here rather than on Event because
+# the rules change between seasons. TournamentEvent copies them on creation.
 # ---------------------------------------------------------------------------
 class SeasonEvent(Base):
     __tablename__ = "season_events"
@@ -174,6 +223,9 @@ class SeasonEvent(Base):
     year: Mapped[int] = mapped_column(Integer)
     division: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     event: Mapped["Event"] = relationship("Event")
@@ -541,6 +593,16 @@ class Tournament(Base):
     def last_day(self) -> date | None:
         days = self.dates
         return days[-1] if days else None
+
+    @property
+    def season_year(self) -> int | None:
+        """The Science Olympiad season this tournament runs in, named for the
+        spring it ends in: a tournament from August 2026 on is in 2027, the
+        same number SeasonEvent.year holds."""
+        day = self.first_day
+        if day is None:
+            return None
+        return day.year + 1 if day.month >= 8 else day.year
 
     @property
     def division(self) -> list[str]:
@@ -956,6 +1018,10 @@ class TournamentEvent(Base):
     name: Mapped[str | None] = mapped_column(String(255))
     division: Mapped[str | None] = mapped_column(String(4))  # "A" | "B" | "C"
     event_type: Mapped[str] = mapped_column(String(32), default="standard")  # "standard" | "trial"
+    # Copied from the matching SeasonEvent on creation, then the TD's to edit.
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Canonical event table link — SET NULL on delete so custom (event_id-less)
     # events are just the default, not a broken reference.

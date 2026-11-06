@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
+from app.schemas.tournament.event import validate_event_format
 
 
 class SeasonEventCreate(BaseModel):
@@ -13,6 +14,11 @@ class SeasonEventCreate(BaseModel):
     year: int
     division: str
     is_active: bool = False
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
+
+    _validate_format = field_validator("format")(validate_event_format)
 
     @field_validator("division")
     @classmethod
@@ -23,11 +29,14 @@ class SeasonEventCreate(BaseModel):
 
 
 class SeasonEventUpdate(BaseModel):
-    """Partial update — primarily used to toggle is_active."""
-
     year: int | None = None
     division: str | None = None
     is_active: bool | None = None
+    format: str | None = None
+    has_impound: bool | None = None
+    has_self_schedule: bool | None = None
+
+    _validate_format = field_validator("format")(validate_event_format)
 
     @field_validator("division")
     @classmethod
@@ -42,6 +51,9 @@ class SeasonEventRead(BaseModel):
     year: int
     division: str
     is_active: bool
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     event: EventResponse
     created_at: datetime
 

@@ -16,6 +16,7 @@ import {
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
+import { formatSeason } from "@/lib/tournamentDisplay";
 import { useToast } from "@/lib/useToast";
 
 const ALL_CATEGORIES = "__all__";
@@ -134,7 +135,7 @@ export function AddSeasonEventsModal({
     if (failed === 0) {
       // One toast for the batch — a toast per pair would stack a dozen deep.
       show(
-        `Added ${created.length} entr${created.length === 1 ? "y" : "ies"} to ${year}`,
+        `Added ${created.length} entr${created.length === 1 ? "y" : "ies"} to ${formatSeason(year)}`,
         "success",
       );
       onClose();
@@ -150,7 +151,7 @@ export function AddSeasonEventsModal({
   }
 
   return (
-    <Modal title={`Add events to ${year}`} onClose={onClose} width={660}>
+    <Modal title={`Add events to ${formatSeason(year)}`} onClose={onClose} width={660}>
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {/* Staged first — it's the thing being built, and pushing it below the
             catalog would put it off-screen once the list scrolls. */}
@@ -302,7 +303,7 @@ export function AddSeasonEventsModal({
                     disabled={full || alreadyStaged}
                     title={
                       full
-                        ? `Already in every division for ${year}`
+                        ? `Already in every division for ${formatSeason(year)}`
                         : alreadyStaged
                           ? "Already added below"
                           : "Add"

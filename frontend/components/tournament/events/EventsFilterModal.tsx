@@ -10,7 +10,12 @@ import {
   filterStateToStored,
   isFilterActive,
 } from "@/components/ui/FilterModal";
-import type { Assignment, TournamentEvent } from "@/lib/api";
+import {
+  type Assignment,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
+  type TournamentEvent,
+} from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
 
 // Shared by the events table and the assignments board — same keys, same
@@ -18,6 +23,9 @@ import { staffedCount } from "@/lib/assignments/staffing";
 export const EVENTS_FILTER_KEYS = [
   "division",
   "type",
+  "format",
+  "impound",
+  "self_schedule",
   "category",
   "track",
   "building",
@@ -59,6 +67,18 @@ export const EVENT_TYPE_OPTIONS: FilterOption[] = [
   { value: "standard", label: "Standard" },
   { value: "trial", label: "Trial" },
 ];
+
+const FORMAT_OPTIONS: FilterOption[] = [
+  ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+  { value: EVENT_FILTER_UNSET, label: "None" },
+];
+
+const YES_NO_OPTIONS: FilterOption[] = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+const yesNo = (v: boolean) => (v ? "yes" : "no");
 
 // Not a partition: an event passes if it matches *any* picked value, and
 // "Nobody assigned" is a sharper cut of "Short" worth picking on its own.
@@ -176,6 +196,9 @@ export function eventPassesFilters(
 ): boolean {
   if (!filterAllows(filters.division, event.division ?? EVENT_FILTER_UNSET)) return false;
   if (!filterAllows(filters.type, event.event_type)) return false;
+  if (!filterAllows(filters.format, event.format ?? EVENT_FILTER_UNSET)) return false;
+  if (!filterAllows(filters.impound, yesNo(event.has_impound))) return false;
+  if (!filterAllows(filters.self_schedule, yesNo(event.has_self_schedule))) return false;
   if (!filterAllows(filters.category, eventCategoryKey(event))) return false;
   if (
     !allowsAny(
@@ -273,6 +296,9 @@ export function EventsFilterModal({
   const sections: FilterSectionConfig<EventsFilterKey>[] = [
     { key: "division", title: "Division", options: divisionOptions, control: "divisions" },
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
+    { key: "format", title: "Format", options: FORMAT_OPTIONS, control: "buttons" },
+    { key: "impound", title: "Impound", options: YES_NO_OPTIONS, control: "buttons" },
+    { key: "self_schedule", title: "Self-schedule", options: YES_NO_OPTIONS, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
     {
       key: "track",

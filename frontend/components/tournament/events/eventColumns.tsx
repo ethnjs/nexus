@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
 import {
+  CheckboxCell,
   ChipsCell,
   type EventEditContext,
   LocationCell,
@@ -12,7 +13,15 @@ import {
 import { PENDING_TRACK_NOTE } from "@/components/tournament/PendingTrackBanner";
 import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
-import type { Assignment, TournamentDivision, TournamentEvent, TournamentTrack } from "@/lib/api";
+import {
+  type Assignment,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
+  type EventFormat,
+  type TournamentDivision,
+  type TournamentEvent,
+  type TournamentTrack,
+} from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
 import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import type { EventSortField } from "@/lib/eventSort";
@@ -21,7 +30,7 @@ import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
 // viewer saves their own, and what Reset returns to.
-export const DEFAULT_EVENT_COLUMNS = ["division", "type", "category", "tracks", "time"];
+export const DEFAULT_EVENT_COLUMNS = ["division", "type", "format", "category", "tracks", "time"];
 
 // Grid track per kind of data, not per individual column — same rule as the
 // roster's WIDTHS. Fixed px where the content has a known maximum (a badge, a
@@ -33,6 +42,10 @@ const WIDTHS = {
   name: "minmax(max-content, 1.3fr)",
   division: "90px",
   type: "100px",
+  format: "100px",
+  // A checkbox under a header that's wider than it.
+  impound: "90px",
+  self_schedule: "120px",
   // Never truncated, like name — the table scrolls sideways instead.
   category: "minmax(max-content, 1.1fr)",
   // Holds a chip per track, and an event on three tracks is normal.
@@ -454,6 +467,67 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
           );
         },
       };
+    case "format":
+      return {
+        key,
+        label: "Format",
+        width: WIDTHS.format,
+        sortField: "format",
+        render: (e, lockReason) => {
+          const display = e.format ? (
+            <Badge variant="default">{EVENT_FORMAT_LABELS[e.format]}</Badge>
+          ) : (
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              —
+            </span>
+          );
+          if (!ctx.edit)
+            return <span style={{ display: "flex", justifyContent: "center" }}>{display}</span>;
+          const { edit } = ctx;
+          return (
+            <span style={{ display: "flex", justifyContent: "center" }}>
+              <SelectCell
+                display={display}
+                value={e.format ?? ""}
+                options={[
+                  ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+                  { value: "", label: "None" },
+                ]}
+                lockReason={lockReason}
+                onPick={(format) =>
+                  edit.update(e, { format: (format || null) as EventFormat | null })
+                }
+              />
+            </span>
+          );
+        },
+      };
+    case "impound":
+    case "self_schedule": {
+      const field = key === "impound" ? "has_impound" : "has_self_schedule";
+      return {
+        key,
+        label: key === "impound" ? "Impound" : "Self-schedule",
+        width: WIDTHS[key],
+        sortField: key,
+        render: (e, lockReason) => {
+          const { edit } = ctx;
+          return (
+            <CheckboxCell
+              checked={e[field]}
+              lockReason={lockReason}
+              onToggle={edit && ((next) => edit.update(e, { [field]: next }))}
+            />
+          );
+        },
+      };
+    }
     case "time":
       return {
         key,

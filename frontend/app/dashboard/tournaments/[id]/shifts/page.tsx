@@ -77,6 +77,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import {
   formatDayLabel,
   formatSpan,
@@ -760,7 +761,7 @@ export default function ShiftsPage() {
             // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
             onKeyDown={handleGridArrows}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span
                 className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                 style={{ display: "flex", justifyContent: "center" }}

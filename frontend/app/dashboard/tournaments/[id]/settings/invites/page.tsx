@@ -24,6 +24,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { ApiError, type Invite, invitesApi } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { formatCountdown } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -163,7 +164,7 @@ function InviteTable({
       style={{ padding: "8px 12px", marginBottom: "16px" }}
     >
       <div className={table.table} style={{ gridTemplateColumns: INVITE_ROW_COLUMNS }}>
-        <div className={table.header}>
+        <div ref={stickyHeader} className={table.header}>
           <span>Invites — {invites.length}</span>
           <span style={{ textAlign: "center" }}>Code</span>
           <span style={{ textAlign: "center" }}>Creator</span>

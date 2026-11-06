@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AddTournamentModal } from "@/components/tournament/AddTournamentModal";
 import { TournamentCard } from "@/components/tournament/TournamentCard";
 import {
+  seasonsOf,
   TOURNAMENTS_FILTER_KEYS,
   TournamentsFilterModal,
   type TournamentsFilterState,
@@ -349,6 +350,7 @@ export default function DashboardPage() {
 
       {showFilterModal && (
         <TournamentsFilterModal
+          seasons={seasonsOf(tournaments)}
           filters={filters}
           onApply={setFilters}
           onClose={() => setShowFilterModal(false)}

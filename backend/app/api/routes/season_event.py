@@ -14,6 +14,30 @@ from app.schemas.season_event import SeasonEventCreate, SeasonEventRead, SeasonE
 router = APIRouter(prefix="/season-events", tags=["season-events"])
 admin_router = APIRouter(prefix="/admin/season-events", tags=["season-events"])
 
+SHARED_FIELDS = ("format", "has_impound", "has_self_schedule")
+
+
+def _sync_shared_fields(db: Session, season_event: SeasonEvent, sent: set[str]) -> None:
+    """Keeps every division of an event in a season agreeing on SHARED_FIELDS:
+    the ones this write sent are copied to the other divisions, and the rest
+    are taken from them. Flushes, so a duplicate surfaces as IntegrityError."""
+    db.flush()
+    siblings = (
+        db.query(SeasonEvent)
+        .filter(
+            SeasonEvent.event_id == season_event.event_id,
+            SeasonEvent.year == season_event.year,
+            SeasonEvent.id != season_event.id,
+        )
+        .all()
+    )
+    for field in SHARED_FIELDS:
+        if field in sent:
+            for sibling in siblings:
+                setattr(sibling, field, getattr(season_event, field))
+        elif siblings:
+            setattr(season_event, field, getattr(siblings[0], field))
+
 
 # ---------------------------------------------------------------------------
 # GET /season-events/ — filterable by year, and by one or more divisions
@@ -45,6 +69,7 @@ def create_season_event(
     season_event = SeasonEvent(**payload.model_dump())
     db.add(season_event)
     try:
+        _sync_shared_fields(db, season_event, payload.model_fields_set)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -57,7 +82,7 @@ def create_season_event(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /admin/season-events/{id}/ — admin only, primarily used to toggle is_active
+# PATCH /admin/season-events/{id}/ — admin only
 # ---------------------------------------------------------------------------
 @admin_router.patch("/{season_event_id}/", response_model=SeasonEventRead)
 def update_season_event(
@@ -70,10 +95,12 @@ def update_season_event(
     if not season_event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season event not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(season_event, field, value)
 
     try:
+        _sync_shared_fields(db, season_event, set(update_data))
         db.commit()
     except IntegrityError:
         db.rollback()
