@@ -7,9 +7,19 @@ import { AuthProvider } from "@/lib/useAuth";
 import { ToastProvider } from "@/lib/useToast";
 import "./globals.css";
 
+const DESCRIPTION = "Tournament Logistics Dashboard for Science Olympiad";
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://nexus.socalscioly.org"),
   title: "NEXUS",
-  description: "Tournament Logistics Dashboard for Science Olympiad",
+  description: DESCRIPTION,
+  openGraph: {
+    siteName: "NEXUS",
+    type: "website",
+    url: "/",
+    title: "NEXUS",
+    description: DESCRIPTION,
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
