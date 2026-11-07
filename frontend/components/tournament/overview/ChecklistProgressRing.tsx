@@ -17,7 +17,7 @@ export function ChecklistProgressRing({
     <ProgressRing completed={completed} total={total} size={size}>
       <span
         style={{
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-serif)",
           fontSize: `${38 * scale}px`,
           color: "var(--color-text-primary)",
           lineHeight: 1,

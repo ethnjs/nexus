@@ -214,7 +214,7 @@ export default function DashboardPage() {
           >
             <p
               style={{
-                fontFamily: "Georgia, serif",
+                fontFamily: "var(--font-serif)",
                 fontSize: "24px",
                 color: "var(--color-text-primary)",
               }}

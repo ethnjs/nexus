@@ -11,7 +11,7 @@ export function StatCard({ label, value, color = "var(--color-text-primary)" }: 
     <Card shadow={false} style={{ padding: "20px", textAlign: "center" }}>
       <div
         style={{
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-serif)",
           fontSize: "36px",
           color,
           lineHeight: 1,

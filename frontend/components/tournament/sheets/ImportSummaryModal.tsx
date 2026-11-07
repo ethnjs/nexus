@@ -409,7 +409,7 @@ export function ImportSummaryModal({ summary, onClose }: ImportSummaryModalProps
     >
       <h2
         style={{
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-serif)",
           fontSize: "22px",
           color: "var(--color-text-primary)",
           marginBottom: "4px",

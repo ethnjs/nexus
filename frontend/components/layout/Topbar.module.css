@@ -58,7 +58,7 @@
 }
 
 .wordmark {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif);
   font-size: 15px;
   letter-spacing: 0.18em;
   text-transform: uppercase;

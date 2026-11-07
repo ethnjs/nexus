@@ -24,7 +24,7 @@
 }
 
 .heading {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif);
   font-size: 28px;
   line-height: 1.2;
   overflow-wrap: break-word;
