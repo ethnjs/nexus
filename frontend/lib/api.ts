@@ -207,12 +207,15 @@ export interface AdminUserSlim extends UserSlim {
   email_verified: boolean;
   role: ROLE;
   status: USER_STATUS;
+  terms_version: string | null;
+  terms_accepted_at: string | null;
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends AdminUserSlim {
   is_profile_complete: boolean;
   is_onboarding_complete: boolean;
+  needs_terms_acceptance: boolean;
 }
 
 // Matches UserFullResponse — slim + profile fields. No account-internal
@@ -280,6 +283,7 @@ interface UserUpdate {
 export interface AuthRegister {
   email: string;
   password: string;
+  accepted_terms: boolean;
 }
 
 export interface EmailPendingChange {
@@ -337,6 +341,8 @@ export const usersApi = {
   meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
   // PATCH /users/me/ — matches UserMeFullResponse
   updateMe: (body: Partial<UserUpdate>) => api.patch<UserMeFull>("/users/me/", body),
+  // POST /users/me/accept-terms/ — matches UserMeSlimResponse
+  acceptTerms: () => api.post<UserMeSlim>("/users/me/accept-terms/", {}),
 
   addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
     api.post<CompetitionExperience>("/users/me/competition-experience/", body),

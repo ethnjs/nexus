@@ -75,11 +75,19 @@ class RegisterRequest(BaseModel):
     password: str
     # role is intentionally excluded — all publicly registered users are "user".
     # name and phone are collected later in the shared /onboarding step.
+    accepted_terms: bool
 
     @field_validator("password")
     @classmethod
     def check_password(cls, password: str) -> str:
         return validate_password_strength(password)
+
+    @field_validator("accepted_terms")
+    @classmethod
+    def check_accepted_terms(cls, accepted: bool) -> bool:
+        if not accepted:
+            raise ValueError("You must accept the Terms of Service and Privacy Policy")
+        return accepted
 
 
 class MessageResponse(BaseModel):

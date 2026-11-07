@@ -17,7 +17,7 @@ There are two kinds of people who handle your information on NEXUS:
 
 ### Information you give us
 
-- **Account information:** your name, email address, and password. We store your password only as a one-way hash and never see it in plain text.
+- **Account information:** your name, email address, and password. We store your password only as a one-way hash and never see it in plain text. We also record which version of our Terms of Service and Privacy Policy you accepted, and when.
 - **Profile information:** phone number, date of birth, pronouns, school, major, student status, year and graduation year, employer, T-shirt size, dietary restrictions, and your Science Olympiad competition and volunteering history. Some fields are optional.
 - **Tournament information:** the tournaments you join, your roles, your availability, event preferences, lunch choices, and the shifts and events you are assigned to.
 - **Form responses:** your answers to forms that Organizers create. Organizers choose the questions, so a form may ask for information not listed here. We do not review forms and are not responsible for what they ask. Never enter passwords, Social Security numbers, bank or credit card details, or other sensitive information into a form, even if it asks.

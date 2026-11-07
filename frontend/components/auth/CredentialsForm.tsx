@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -21,6 +21,8 @@ interface CredentialsFormProps {
   submitLabel: string;
   loading?: boolean;
   formError?: string;
+  /** Rendered just above the submit button. */
+  children?: ReactNode;
 }
 
 // Shared email+password credentials form — sign-up's phase-1 fields,
@@ -32,6 +34,7 @@ export function CredentialsForm({
   submitLabel,
   loading = false,
   formError,
+  children,
 }: CredentialsFormProps) {
   const showEmail = email !== undefined && !!onEmailChange;
 
@@ -114,6 +117,8 @@ export function CredentialsForm({
           <PasswordChecklist checks={checks} />
         </>
       )}
+
+      {children}
 
       <Button type="submit" loading={loading} fullWidth>
         {submitLabel}

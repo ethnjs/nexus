@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { TermsGate } from "@/components/auth/TermsGate";
 import { ApiError, authApi, type UserMeSlim, usersApi } from "@/lib/api";
 
 // -------------------------------------------------------------------------
@@ -43,6 +44,9 @@ const ONBOARDING_EXEMPT_ROUTES = [
   "/onboarding",
   "/join",
 ];
+
+// The terms gate stays out of the way of the documents it asks the user to accept.
+const TERMS_GATE_EXEMPT_ROUTES = ["/terms", "/privacy"];
 
 // -------------------------------------------------------------------------
 // Provider — wrap the dashboard layout with this
@@ -93,7 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ user, loading, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, logout }}>
+      {children}
+      {user?.needs_terms_acceptance && !TERMS_GATE_EXEMPT_ROUTES.includes(pathname) && (
+        <TermsGate onAccepted={setUser} onSignOut={logout} />
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 // -------------------------------------------------------------------------
