@@ -17,14 +17,20 @@ You must be at least 13 years old to use NEXUS. If you are between 13 and 17, yo
 - Tell us promptly at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) if you believe your account has been accessed without your permission.
 - One person per account. Do not share accounts or create accounts for others without their permission.
 
-## 3. Organizers
+## 3. Organizers and volunteer information
 
-Tournament directors and tournament staff ("Organizers") use NEXUS to run their own tournaments. If you are an Organizer, you also agree that:
+Tournament directors and tournament staff ("Organizers") use NEXUS to run their own tournaments. Organizers can view volunteers' information and export it from NEXUS (for example, by downloading or copying a spreadsheet). These rules apply to all volunteer information you access as an Organizer, including any copy you export. If you are an Organizer, you agree that you will:
 
-- you will collect and use volunteers' information only to run your tournament;
-- you will ask only for information you genuinely need, and you will never use forms to ask for passwords or for sensitive information such as Social Security or other government ID numbers, bank or credit card details, or health records beyond what is needed for an event (such as dietary restrictions);
-- you are responsible for information you export from NEXUS and for handling it in line with applicable law and any policies of your school, organization, or tournament; and
-- you will not use volunteers' information for marketing, or share it with others not involved in running your event.
+- use volunteers' information only to run your tournament;
+- comply with all privacy and data protection laws that apply to the information you view or export, and with any policies of your school, organization, or tournament;
+- ask only for information you genuinely need, and never use forms to ask for passwords or for sensitive information such as Social Security or other government ID numbers, bank or credit card details, or health records beyond what is needed for an event (such as dietary restrictions);
+- keep exported information secure, and share it only with people who are helping run your tournament and who need it for that purpose;
+- delete exported information when it is no longer needed to run your tournament;
+- delete a volunteer's information from your exported copies promptly when you receive a deletion request for that volunteer, whether from the volunteer or from us;
+- not sell volunteers' information, use it for marketing, or share it with anyone not involved in running your tournament; and
+- tell us promptly at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) if exported information is lost, stolen, or accessed by someone not authorized to see it.
+
+Exports are recorded in the tournament's audit log, including who exported and when. We may suspend or remove your Organizer access if you break these rules.
 
 We do not run tournaments and are not responsible for how Organizers conduct their events, their staffing decisions, or their communications with volunteers.
 
@@ -47,7 +53,11 @@ You agree not to:
 
 ## 6. Your content
 
-You keep ownership of the information and content you submit to NEXUS ("Your Content"). You give us permission to store, process, display, and share Your Content as needed to operate the Service, including sharing it with the Organizers of tournaments you join, as described in the Privacy Policy. This permission ends when Your Content is deleted from the Service, except for copies Organizers have already exported and backups that have not yet been overwritten.
+You keep ownership of the information and content you submit to NEXUS ("Your Content"). You give us permission to store, process, display, and share Your Content as needed to operate the Service, including sharing it with the Organizers of tournaments you join, as described in the Privacy Policy. This permission ends when Your Content is deleted from the Service. If we keep database backups, deleted content may remain in them until those backups expire.
+
+For security and compliance purposes, we keep tournament audit log entries after your account is deleted, and these entries may include your name and email address.
+
+Deleting your account removes Your Content from NEXUS, but not copies that Organizers exported before then. To have those copies deleted too, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will forward your request to the Organizers of the tournaments you were part of, who must delete your information under Section 3.
 
 ## 7. Feedback
 
