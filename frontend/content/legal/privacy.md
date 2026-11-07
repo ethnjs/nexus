@@ -25,7 +25,7 @@ There are two kinds of people who handle your information on NEXUS:
 ### Information collected automatically
 
 - **Session information:** when you sign in, we record the IP address and browser for that session, along with when it was created and last used. You can see and sign out of your active sessions from your account settings.
-- **Activity records:** NEXUS keeps an audit log of changes made within a tournament (for example, role changes or join code updates) and who made them.
+- **Activity records:** NEXUS keeps an audit log of changes made within a tournament (for example, role changes, join code updates, staff invitations, and data exports) and who made them. Some entries include names or email addresses.
 - **Usage analytics:** we use Vercel Web Analytics to count page views and understand how the Service is used. It does not use cookies and does not identify you personally.
 
 ### Cookies
@@ -47,7 +47,7 @@ We do not sell your information, and we do not use it for advertising.
 ## Who can see your information
 
 - **Only you** can see your date of birth and your session information (IP addresses and browsers). They are not shown to Organizers or to NEXUS administrators anywhere in the Service.
-- **Organizers of the tournaments you join** can see the rest of your profile, your responses to their forms, and your assignments. What each Organizer can see depends on the role they hold. Organizers can also export this information (for example, to a spreadsheet) to run their tournament.
+- **Organizers of the tournaments you join** can see the rest of your profile, your responses to their forms, and your assignments. What each Organizer can see depends on the role they hold. Organizers can also export this information (for example, to a spreadsheet) to run their tournament, and each export is recorded in the tournament's audit log.
 - **Other volunteers** in the same tournament may see limited information such as your name and assignments where needed for coordination.
 - **NEXUS administrators** can view and manage accounts through the Service's admin tools, apart from the information listed above as visible only to you.
 - **Service providers** that host or support NEXUS, under their own privacy and security terms:
@@ -58,7 +58,7 @@ We do not sell your information, and we do not use it for advertising.
 
 Because we operate the database, the maintainers may access stored data directly when needed to maintain the Service, fix problems, or respond to legal requests. We do not otherwise access it.
 
-Once an Organizer exports your information out of NEXUS, that copy is outside our control, and how it is handled is up to that Organizer.
+Organizers who export your information must follow the rules in our [Terms of Service](/terms). They may use it only to run their tournament, must keep it secure, may share it only with people helping run the tournament, and must delete it when it is no longer needed or when they receive a request to delete your information. Once a copy leaves NEXUS, we cannot technically control it, but we may suspend Organizers who break these rules.
 
 ## Age disclosure to tournaments
 
@@ -75,14 +75,16 @@ Users aged 13 to 17 may use NEXUS only with the permission of a parent or guardi
 We keep your information for as long as your account exists.
 
 - **Deactivating** your account (in account settings) signs you out and blocks sign-in, but keeps your information. Contact us to reactivate it.
-- **Deleting** your account (in account settings) permanently removes your profile, experience history, sessions, tournament memberships, and form responses. Things you created for others, such as tournaments, forms, and audit log entries, remain, but are no longer linked to you.
+- **Deleting** your account (in account settings) permanently removes your profile, experience history, sessions, tournament memberships, and form responses. Things you created for others, such as tournaments and forms, remain, but are no longer linked to your account. For security and compliance purposes, tournament audit log entries also remain, and may include your name and email address.
 
-Deleted data may persist in backups for a limited period before it is overwritten. Copies Organizers exported before you deleted your account are not affected.
+If we keep database backups, deleted data may remain in them until those backups expire.
+
+Deleting your account does not delete copies of your information that Organizers exported before then. To have those copies deleted, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org), and we will forward your request to the Organizers of the tournaments you were part of.
 
 ## Your choices
 
 - You can view and edit your profile at any time from your profile and settings pages.
-- You can leave a tournament at any time before it is archived. Leaving removes your membership and your responses to that tournament's forms, and its Organizers can no longer see your information. Copies they exported earlier are not affected.
+- You can leave a tournament at any time before it is archived. Leaving removes your membership and your responses to that tournament's forms, and its Organizers can no longer see your information in NEXUS. To have copies they exported earlier deleted, email us and we will forward your request.
 - You can delete your account at any time.
 - You can contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) to ask for a copy of your information or to ask us to correct or delete it.
 
