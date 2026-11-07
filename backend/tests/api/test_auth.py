@@ -12,6 +12,7 @@ import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
 import app.core.email_codes as email_codes
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
+from app.core.legal import TERMS_VERSION
 from app.models.models import (
     EmailCode,
     TournamentMembership,
@@ -547,7 +548,10 @@ class TestPasswordRules:
     """validate_password_strength, through every route that sets a password."""
 
     def _register(self, client, password):
-        return client.post("/auth/register/", json={"email": "new@test.com", "password": password})
+        return client.post(
+            "/auth/register/",
+            json={"email": "new@test.com", "password": password, "accepted_terms": True},
+        )
 
     def test_max_length_accepted(self, client):
         password = VALID_PASSWORD + "a" * (128 - len(VALID_PASSWORD))
@@ -612,7 +616,25 @@ class TestPasswordRules:
 
 class TestRegister:
     def _register(self, client, email="new@test.com", password=VALID_PASSWORD):
-        return client.post("/auth/register/", json={"email": email, "password": password})
+        return client.post(
+            "/auth/register/", json={"email": email, "password": password, "accepted_terms": True}
+        )
+
+    def test_rejects_unaccepted_terms(self, client, db):
+        for body in (
+            {"email": "new@test.com", "password": VALID_PASSWORD},
+            {"email": "new@test.com", "password": VALID_PASSWORD, "accepted_terms": False},
+        ):
+            assert client.post("/auth/register/", json=body).status_code == 422
+        assert db.query(EmailCode).count() == 0
+
+    def test_code_records_terms_acceptance(self, client, db):
+        token = self._register(client).json()["challenge_token"]
+        res = _verify(client, token, emailed_code())
+        assert res.json()["terms_version"] == TERMS_VERSION
+        user = db.query(User).filter_by(email="new@test.com").one()
+        assert user.terms_version == TERMS_VERSION
+        assert user.terms_accepted_at is not None
 
     def test_register_sends_code_and_creates_no_user(self, client, db, mock_send_email):
         res = self._register(client)
@@ -682,6 +704,7 @@ class TestRegister:
                 json={
                     "email": "td@test.com",
                     "password": VALID_PASSWORD,
+                    "accepted_terms": True,
                 },
             ).status_code
             == 409
@@ -694,6 +717,7 @@ class TestRegister:
                 json={
                     "email": "TD@TEST.COM",
                     "password": VALID_PASSWORD,
+                    "accepted_terms": True,
                 },
             ).status_code
             == 409
@@ -706,6 +730,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "Ab@1",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422
@@ -718,6 +743,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "secure@123",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422
@@ -730,6 +756,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "SECURE@123",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422
@@ -742,6 +769,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "Secure@abc",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422
@@ -754,6 +782,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "Secure1234",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422
@@ -767,6 +796,7 @@ class TestRegister:
                 json={
                     "email": "new@test.com",
                     "password": "Secure@1\x01",
+                    "accepted_terms": True,
                 },
             ).status_code
             == 422

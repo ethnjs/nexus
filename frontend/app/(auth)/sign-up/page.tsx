@@ -5,6 +5,7 @@ import { Suspense, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
+import { TermsAgreement } from "@/components/auth/TermsAgreement";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath } from "@/lib/auth";
@@ -19,6 +20,7 @@ export default function SignUpPage() {
 
 function SignUpContent() {
   const [email, setEmail] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
@@ -30,11 +32,15 @@ function SignUpContent() {
     : "/onboarding";
 
   async function handleRegister(password: string) {
+    if (!acceptedTerms) {
+      setFormError("Please accept the Terms of Service and Privacy Policy.");
+      return;
+    }
     setLoading(true);
     setFormError(undefined);
 
     try {
-      setChallenge(await authApi.register({ email, password }));
+      setChallenge(await authApi.register({ email, password, accepted_terms: true }));
     } catch (error: unknown) {
       setFormError(error instanceof ApiError ? error.message : "Something went wrong :(");
     } finally {
@@ -80,7 +86,15 @@ function SignUpContent() {
             submitLabel="Sign up"
             loading={loading}
             formError={formError}
-          />
+          >
+            <TermsAgreement
+              checked={acceptedTerms}
+              onChange={(checked) => {
+                setAcceptedTerms(checked);
+                setFormError(undefined);
+              }}
+            />
+          </CredentialsForm>
         </>
       )}
     </div>

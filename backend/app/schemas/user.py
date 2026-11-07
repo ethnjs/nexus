@@ -74,6 +74,8 @@ class AdminUserSlimResponse(UserSlimResponse):
     email_verified: bool
     role: ROLE
     status: USER_STATUS
+    terms_version: str | None = None
+    terms_accepted_at: datetime | None = None
 
 
 class AdminUserListResponse(AdminUserSlimResponse):
@@ -89,6 +91,7 @@ class AdminUserListResponse(AdminUserSlimResponse):
 class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
+    needs_terms_acceptance: bool = False
 
 
 class UserFullResponse(UserSlimResponse):

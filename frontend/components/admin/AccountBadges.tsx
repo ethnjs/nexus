@@ -15,7 +15,7 @@ export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "remo
   };
 
 /**
- * Role, status and email verification as one strip — the account state an
+ * Role, status, email verification and terms acceptance as one strip — the account state an
  * admin needs beside a name. Rendered into ProfileHeader's `badges` slot by
  * both the admin panel and /profile/[id].
  *
@@ -26,7 +26,13 @@ export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "remo
 export function AccountBadges({
   user,
 }: {
-  user: { role: ROLE; status: USER_STATUS; email_verified: boolean };
+  user: {
+    role: ROLE;
+    status: USER_STATUS;
+    email_verified: boolean;
+    terms_version: string | null;
+    terms_accepted_at: string | null;
+  };
 }) {
   return (
     <>
@@ -37,6 +43,16 @@ export function AccountBadges({
       <Badge variant={user.email_verified ? "confirmed" : "warning"}>
         {user.email_verified ? "Email verified" : "Email unverified"}
       </Badge>
+      {user.terms_version && user.terms_accepted_at ? (
+        <Badge
+          variant="confirmed"
+          title={`Accepted ${new Date(user.terms_accepted_at).toLocaleString("en-US")}`}
+        >
+          Terms {user.terms_version}
+        </Badge>
+      ) : (
+        <Badge variant="warning">Terms not accepted</Badge>
+      )}
     </>
   );
 }

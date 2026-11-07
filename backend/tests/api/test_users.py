@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
+from app.core.legal import TERMS_VERSION
 from app.models.models import (
     EmailCode,
     Event,
@@ -804,6 +805,38 @@ class TestGetMe:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.get("/users/me/").status_code == 401
+
+    def test_needs_terms_acceptance_until_current_version_accepted(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.get("/users/me/").json()["needs_terms_acceptance"] is True
+
+        td_user.terms_version = "2000-01-01"
+        db.commit()
+        assert client.get("/users/me/").json()["needs_terms_acceptance"] is True
+
+        td_user.terms_version = TERMS_VERSION
+        db.commit()
+        assert client.get("/users/me/").json()["needs_terms_acceptance"] is False
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/accept-terms/
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptTerms:
+    def test_records_current_version(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/users/me/accept-terms/")
+        assert res.status_code == 200
+        assert res.json()["needs_terms_acceptance"] is False
+        assert res.json()["terms_version"] == TERMS_VERSION
+        db.refresh(td_user)
+        assert td_user.terms_version == TERMS_VERSION
+        assert td_user.terms_accepted_at is not None
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/users/me/accept-terms/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
