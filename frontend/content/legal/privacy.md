@@ -27,10 +27,15 @@ There are two kinds of people who handle your information on NEXUS:
 - **Session information:** when you sign in, we record the IP address and browser for that session, along with when it was created and last used. You can see and sign out of your active sessions from your account settings.
 - **Activity records:** NEXUS keeps an audit log of changes made within a tournament (for example, role changes, join code updates, staff invitations, and data exports) and who made them. Some entries include names or email addresses.
 - **Usage analytics:** we use Vercel Web Analytics to count page views and understand how the Service is used. It does not use cookies and does not identify you personally.
+- **Server logs:** like most websites, our hosting providers automatically log requests to the Service, including your IP address, browser, and the pages you request. We use these logs only to operate, secure, and troubleshoot the Service.
 
-### Cookies
+### Cookies and local storage
 
-NEXUS uses one essential cookie, `access_token`, to keep you signed in. It expires after 7 days or when you sign out. We do not use advertising or tracking cookies.
+NEXUS uses one essential cookie, `access_token`, to keep you signed in. It expires after 7 days or when you sign out.
+
+NEXUS also saves a few display preferences in your browser's local storage. These stay on your device and are not sent to us.
+
+We do not use advertising or tracking cookies, and we do not use third-party tracking tools.
 
 ## How we use your information
 
