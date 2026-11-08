@@ -120,6 +120,16 @@ def test_a_floor_rule_matches_the_floor_derived_from_the_first_room(db, td_tourn
     assert resolve_track_zones(db, track)[derived.id] == south.id
 
 
+def test_a_room_not_named_by_number_has_no_derived_floor(db, td_tournament, track):
+    """A room named Lobby isn't on floor "L", so a floor rule for "L" doesn't claim it."""
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    lobby = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["Lobby"])
+    north = _zone(db, td_tournament.id, track, "North")
+    _rule(db, north, track, "floor", building=rowland, floor="L")
+
+    assert resolve_track_zones(db, track)[lobby.id] is None
+
+
 def test_a_typed_floor_overrides_the_derived_one(db, td_tournament, track):
     rowland = _building(db, td_tournament.id, track, "Rowland Hall")
     overridden = _event(db, td_tournament.id, track, "Anatomy", rowland, floor="3", rooms=["210"])

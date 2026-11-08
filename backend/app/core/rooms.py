@@ -11,6 +11,7 @@ def room_sort_key(name: str) -> tuple[tuple[int, int | str], ...]:
 
 
 def derived_floor(room_name: str) -> str | None:
-    """Room numbers lead with the floor almost everywhere ("210" -> "2")."""
+    """Room numbers lead with the floor almost everywhere ("210" -> "2"); a
+    name like "Lobby" or "A12" says nothing about the floor, so it has none."""
     name = room_name.strip()
-    return name[0] if name else None
+    return name[0] if name[:1].isdigit() else None

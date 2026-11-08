@@ -64,12 +64,12 @@ export function trackDetail(
   return event.track_details.find((d) => d.track_id === trackId);
 }
 
-/** A room's floor: its override, else the first character of its name
- *  ("210" → "2"). Mirrors TournamentRoom.effective_floor. */
+/** A room's floor: its override, else the leading digit of its name ("210" →
+ *  "2"; "Lobby" has none). Mirrors TournamentRoom.effective_floor. */
 export function roomFloor(room: Pick<TournamentRoom, "name" | "floor">): string | null {
   if (room.floor) return room.floor;
-  const name = room.name.trim();
-  return name ? name[0] : null;
+  const first = room.name.trim()[0];
+  return first && /\d/.test(first) ? first : null;
 }
 
 /** The floor the server derives for a placement with no override: its first
