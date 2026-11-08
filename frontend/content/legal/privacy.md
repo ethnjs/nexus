@@ -1,6 +1,6 @@
 # NEXUS Privacy Policy
 
-**Last updated:** November 1, 2026
+**Last updated:** November 7, 2026
 
 NEXUS is a volunteer management tool for Science Olympiad tournaments. It is run by its maintainers, listed on the open-source [NEXUS GitHub repository](https://github.com/ethnjs/nexus) ("we", "us"), and is available at nexus.socalscioly.org (the "Service"). This policy explains what information we collect, how it is used, who can see it, and the choices you have.
 
@@ -29,6 +29,10 @@ There are two kinds of people who handle your information on NEXUS:
 - **Usage analytics:** we use Vercel Web Analytics to count page views and understand how the Service is used. It does not use cookies and does not identify you personally.
 - **Server logs:** like most websites, our hosting providers automatically log requests to the Service, including your IP address, browser, and the pages you request. We use these logs only to operate, secure, and troubleshoot the Service.
 
+### Information about people who are not users
+
+When an Organizer invites someone to help run a tournament, we receive that person's email address to send the invitation, and the tournament's audit log keeps it.
+
 ### Cookies and local storage
 
 NEXUS uses one essential cookie, `access_token`, to keep you signed in. It expires after 7 days or when you sign out.
@@ -47,7 +51,13 @@ We use your information to:
 - keep the Service working, secure, and free of abuse; and
 - understand how the Service is used so we can improve it.
 
-We do not sell your information, and we do not use it for advertising.
+We do not sell your information, we do not use it for advertising, and we do not share it with third parties for their own marketing.
+
+Some information, such as dietary restrictions or pronouns, may reveal details about your health, religion, or gender identity. We use it only to run the tournaments you take part in, and we do not use it to infer anything about you.
+
+## How we respond to Do Not Track
+
+Some browsers can send a "Do Not Track" or Global Privacy Control signal. NEXUS does not track you across other websites, and we do not allow third parties to collect information about your activity over time and across different websites through the Service. Because there is no such tracking to turn off, NEXUS works the same way whether or not your browser sends these signals.
 
 ## Who can see your information
 
@@ -75,6 +85,8 @@ NEXUS is not intended for children under 13, and we do not knowingly collect inf
 
 Users aged 13 to 17 may use NEXUS only with the permission of a parent or guardian.
 
+If you are under 18, you can remove information you have posted on NEXUS by editing your profile, leaving a tournament, or deleting your account, or you can ask us to remove it by emailing [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). Removal does not guarantee that every copy is gone: for example, copies Organizers exported earlier and audit log entries may remain.
+
 ## Keeping and deleting your information
 
 We keep your information for as long as your account exists.
@@ -92,6 +104,38 @@ Deleting your account does not delete copies of your information that Organizers
 - You can leave a tournament at any time before it is archived. Leaving removes your membership and your responses to that tournament's forms, and its Organizers can no longer see your information in NEXUS. To have copies they exported earlier deleted, email us and we will forward your request.
 - You can delete your account at any time.
 - You can contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) to ask for a copy of your information or to ask us to correct or delete it.
+
+## Your California privacy rights
+
+California law gives California residents specific privacy rights. NEXUS is a free, non-commercial project and may not be required to follow every part of these laws, but we give these rights to all users, wherever they live.
+
+### Categories of personal information
+
+In the past 12 months, we have collected the following categories of personal information, from you, from the Organizers of tournaments you join, and automatically as you use the Service:
+
+- **Identifiers:** name, email address, phone number, IP address, and account ID.
+- **Personal characteristics:** date of birth, age indicators calculated from it, and pronouns.
+- **Education and employment information:** school, major, student status, year, graduation year, and employer.
+- **Internet activity:** session records, server logs, audit log entries, and page view analytics.
+- **Other information you provide:** T-shirt size, dietary restrictions, availability, event preferences, Science Olympiad experience, and form responses.
+
+We collect this information for the purposes in "How we use your information", disclose it only as described in "Who can see your information", and keep it as described in "Keeping and deleting your information".
+
+We do not sell your personal information or share it for cross-context behavioral advertising, and we have not done so in the past 12 months. We do not sell or share the personal information of anyone under 16.
+
+We do not disclose personal information to third parties for their direct marketing purposes.
+
+### Your rights
+
+You can ask us to:
+
+- tell you what personal information we have collected about you, where it came from, why we collected it, and who we disclosed it to, and give you a copy of it;
+- delete your personal information, subject to the exceptions described in "Keeping and deleting your information"; and
+- correct personal information that is inaccurate.
+
+You can do much of this yourself from your profile and account settings. For anything else, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will respond within 45 days. To verify your identity, we may ask you to send the request from the email address on your account. You may have an authorized agent make a request for you, and we may ask for proof that you authorized them.
+
+We will not treat you differently for exercising any of these rights.
 
 ## Security
 

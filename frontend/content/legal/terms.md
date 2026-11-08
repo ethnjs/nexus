@@ -1,6 +1,6 @@
 # NEXUS Terms of Service
 
-**Last updated:** November 1, 2026
+**Last updated:** November 7, 2026
 
 These Terms of Service ("Terms") govern your use of NEXUS, a volunteer management tool available at nexus.socalscioly.org (the "Service"). NEXUS is run by its maintainers, listed on the open-source [NEXUS GitHub repository](https://github.com/ethnjs/nexus) ("we", "us"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy). If you do not agree, do not use the Service.
 
@@ -83,20 +83,24 @@ THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KI
 
 TO THE FULLEST EXTENT PERMITTED BY LAW, WE WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATING TO THE SERVICE OR THESE TERMS. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED ONE HUNDRED U.S. DOLLARS (US $100).
 
-Some jurisdictions do not allow certain disclaimers or limitations of liability, so some of the above may not apply to you.
+Nothing in these Terms limits or excludes our liability for fraud, gross negligence, or willful misconduct, or any other liability that cannot be limited under applicable law. Some jurisdictions do not allow certain disclaimers or limitations of liability, so some of the above may not apply to you.
 
 ## 12. Indemnity
 
-You agree to defend and indemnify us against claims, losses, and expenses (including reasonable legal fees) arising from your violation of these Terms or your misuse of the Service, including, if you are an Organizer, your handling of volunteers' information.
+To the extent permitted by law, you agree to defend and indemnify us against claims, losses, and expenses (including reasonable legal fees) arising from your violation of these Terms or your misuse of the Service, including, if you are an Organizer, your handling of volunteers' information.
 
 ## 13. Changes to these Terms
 
 We may update these Terms from time to time. If we make significant changes, we will notify you by email or through the Service before they take effect. If you keep using the Service after changes take effect, you accept the updated Terms.
 
-## 14. General
+## 14. Notice for California users
+
+Under California Civil Code Section 1789.3, California users are entitled to the following notice. NEXUS is provided by its maintainers, who can be reached at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). The Service is free of charge. To resolve a complaint about the Service or to get more information about using it, contact us at that address. You may also contact the Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs in writing at 1625 North Market Blvd., Suite N 112, Sacramento, CA 95834, or by telephone at (916) 445-1254 or (800) 952-5210.
+
+## 15. General
 
 These Terms and the Privacy Policy are the entire agreement between you and us about the Service. If any part of these Terms is found unenforceable, the rest remains in effect. Our failure to enforce a provision is not a waiver of it. You may not transfer your rights under these Terms; we may transfer ours in connection with handing the Service over to new maintainers.
 
-## 15. Contact
+## 16. Contact
 
 Questions about these Terms can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
