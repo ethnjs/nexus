@@ -1351,6 +1351,8 @@ class TournamentBuilding(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(255))
+    # What event locations show when set ("RH 210"); the name otherwise.
+    short_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

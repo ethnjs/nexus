@@ -550,6 +550,16 @@ export default function BuildingsPage() {
     const trimmed = name.trim();
     if (!trimmed || trimmed === building.name) return;
     replaceBuilding(await buildingsApi.update(tournamentId, building.id, { name: trimmed }));
+    if (!building.short_name) void loadEvents();
+  }
+
+  async function setShortName(building: TournamentBuilding, shortName: string | null) {
+    if (shortName === building.short_name) return;
+    replaceBuilding(
+      await buildingsApi.update(tournamentId, building.id, { short_name: shortName }),
+    );
+    // Placed events carry the building's label, so they need the new one.
+    void loadEvents();
   }
 
   async function toggleDay(building: TournamentBuilding, trackId: number) {
@@ -808,12 +818,13 @@ export default function BuildingsPage() {
                   locked={isArchived || selectMode}
                   lockedReason={archivedReason}
                   onRename={(name) => renameBuilding(building, name)}
+                  onSetShortName={(shortName) => setShortName(building, shortName)}
                   onToggleDay={(trackId) => toggleDay(building, trackId)}
                   onDelete={() => setDeleteTarget(building)}
                 >
                   <RoomTable
                     buildingId={building.id}
-                    buildingName={building.name}
+                    buildingName={building.short_name || building.name}
                     pendingEvents={(() => {
                       if (pendingDrop?.buildingId !== building.id) return undefined;
                       const event = (events ?? []).find((e) => e.id === pendingDrop.eventId);

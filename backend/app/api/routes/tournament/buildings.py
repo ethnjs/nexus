@@ -142,7 +142,9 @@ def create_building(
             detail="A building with this name already exists",
         )
 
-    building = TournamentBuilding(tournament_id=tournament_id, name=payload.name)
+    building = TournamentBuilding(
+        tournament_id=tournament_id, name=payload.name, short_name=payload.short_name
+    )
     building.tracks = _resolve_tracks(db, tournament_id, payload.track_ids)
     try:
         db.add(building)
@@ -186,6 +188,8 @@ def update_building(
 
     if "name" in updates:
         building.name = updates["name"]
+    if "short_name" in updates:
+        building.short_name = updates["short_name"]
     if "track_ids" in updates:
         resolved = _resolve_tracks(db, tournament_id, updates["track_ids"])
         # Untagging a track is not a request to unplace events, so it is refused

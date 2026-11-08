@@ -1057,6 +1057,23 @@ def test_a_room_from_another_tournament_is_rejected(
     assert "Unknown room" in response.json()["detail"]
 
 
+def test_a_placement_reads_its_buildings_short_name(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    building = _building(client, td_tournament.id, [track_id])
+    client.patch(
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"short_name": "RH"}
+    )
+    room = _rooms(client, td_tournament.id, building, "210")["210"]
+    body = _make_event(
+        client, td_tournament.id, track_details=[{"track_id": track_id, "room_ids": [room]}]
+    ).json()
+
+    detail = _details(body)[track_id]
+    assert detail["building_name"] == "Rowland Hall"
+    assert detail["building_short_name"] == "RH"
+
+
 def test_a_floor_with_no_room_is_dropped(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)

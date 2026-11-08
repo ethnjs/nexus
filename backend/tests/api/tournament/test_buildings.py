@@ -89,6 +89,25 @@ def test_rename_building(client, td_user, td_tournament):
     assert response.json()["name"] == "Rowland"
 
 
+def test_short_name_is_optional_and_can_be_set_and_cleared(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    assert building["short_name"] is None
+    url = f"/tournaments/{td_tournament.id}/buildings/{building['id']}/"
+
+    assert client.patch(url, json={"short_name": "  RH "}).json()["short_name"] == "RH"
+    # Omitted leaves it; blank clears it.
+    assert client.patch(url, json={"name": "Rowland"}).json()["short_name"] == "RH"
+    assert client.patch(url, json={"short_name": " "}).json()["short_name"] is None
+
+
+def test_create_building_with_a_short_name(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_building(client, td_tournament.id, short_name="RH")
+    assert response.status_code == 201
+    assert response.json()["short_name"] == "RH"
+
+
 def test_rename_onto_an_existing_name_conflicts(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     _make_building(client, td_tournament.id, name="Aldrich")

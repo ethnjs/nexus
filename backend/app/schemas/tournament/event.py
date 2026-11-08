@@ -100,6 +100,7 @@ class EventTrackDetailRead(EventTrackDetail):
 
     building_id: int | None = None
     building_name: str | None = None
+    building_short_name: str | None = None
     rooms: list[TournamentRoomRead] = []
     needs: list[EventStaffingNeedRead] = []  # ty: ignore[invalid-attribute-override]
 
@@ -110,6 +111,7 @@ class EventTrackDetailRead(EventTrackDetail):
             track_id=detail.track_id,
             building_id=detail.building.id if detail.building else None,
             building_name=detail.building.name if detail.building else None,
+            building_short_name=detail.building.short_name if detail.building else None,
             floor=detail.floor,
             room_ids=[room.id for room in rooms],
             rooms=rooms,

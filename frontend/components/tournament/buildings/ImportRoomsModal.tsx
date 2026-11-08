@@ -38,8 +38,8 @@ function unwrapParens(room: string): string {
   return /[()]/.test(inner) ? room : inner.trim();
 }
 
-/** One building and room per line. Names match existing buildings and rooms
- *  case-insensitively. */
+/** One building and room per line. A building matches an existing one by
+ *  name or short name, and rooms by name, all case-insensitively. */
 function parseImport(text: string, buildings: TournamentBuilding[]): ParsedImport {
   const groups = new Map<string, ImportGroup>();
   const errors: string[] = [];
@@ -66,10 +66,15 @@ function parseImport(text: string, buildings: TournamentBuilding[]): ParsedImpor
       return;
     }
 
-    const key = building.toLowerCase();
+    const typed = building.toLowerCase();
+    const existing =
+      buildings.find((b) => b.name.toLowerCase() === typed) ??
+      buildings.find((b) => b.short_name?.toLowerCase() === typed) ??
+      null;
+    // By building, so "RH" and "Rowland Hall" lines land in the same group.
+    const key = existing ? `id:${existing.id}` : `new:${typed}`;
     let group = groups.get(key);
     if (!group) {
-      const existing = buildings.find((b) => b.name.toLowerCase() === key) ?? null;
       group = { name: existing?.name ?? building, existing, newRooms: [], existingRooms: 0 };
       groups.set(key, group);
     }

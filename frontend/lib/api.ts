@@ -840,6 +840,7 @@ export interface EventTrackDetail {
 export interface EventTrackDetailRead extends EventTrackDetail {
   building_id: number | null;
   building_name: string | null;
+  building_short_name: string | null;
   floor: string | null;
   room_ids: number[];
   /** Naturally sorted, like `room_ids`. */
@@ -2412,6 +2413,8 @@ export interface TournamentBuilding {
   id: number;
   tournament_id: number;
   name: string;
+  /** What event locations show when set ("RH 210"), else `name`. */
+  short_name: string | null;
   /** Which tracks this building is in use on; never empty. */
   track_ids: number[];
   /** Naturally sorted ("9" before "10"). Available on every track above. */
@@ -2422,6 +2425,8 @@ export interface TournamentBuilding {
 
 export interface TournamentBuildingInput {
   name: string;
+  /** null or blank clears it. */
+  short_name?: string | null;
   /** Whole-set, like an event's shift_ids: sending it replaces the tags. */
   track_ids?: number[];
 }
