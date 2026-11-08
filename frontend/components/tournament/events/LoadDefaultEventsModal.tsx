@@ -17,6 +17,8 @@ import { formatSeason } from "@/lib/tournamentDisplay";
 
 const PREVIEW_ROW_COLUMNS = "1fr 90px 90px 1fr";
 
+const NO_SEASON_EVENTS: SeasonEvent[] = [];
+
 interface LoadDefaultEventsModalProps {
   tournamentId: number;
   divisions: TournamentDivision[];
@@ -35,20 +37,18 @@ export function LoadDefaultEventsModal({
   onClose,
   onLoaded,
 }: LoadDefaultEventsModalProps) {
-  const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[] | null>(null);
+  const [fetchedSeasonEvents, setFetchedSeasonEvents] = useState<SeasonEvent[] | null>(null);
+  const seasonEvents = seasonYear === null ? NO_SEASON_EVENTS : fetchedSeasonEvents;
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     // The same season and divisions the backend loads from. is_active and
     // already-loaded are filtered below, so the preview is exactly what it creates.
-    if (seasonYear === null) {
-      setSeasonEvents([]);
-      return;
-    }
+    if (seasonYear === null) return;
     seasonEventsApi
       .list({ year: seasonYear, division: divisions })
-      .then(setSeasonEvents)
+      .then(setFetchedSeasonEvents)
       .catch((err) =>
         setLoadError(err instanceof ApiError ? err.message : "Failed to load season events."),
       );
