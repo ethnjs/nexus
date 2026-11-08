@@ -1,9 +1,18 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 
 const linkStyle = { textDecoration: "underline", textUnderlineOffset: "2px" };
+
+/** "3. Organizers and volunteer information" → "3-organizers-and-volunteer-information" */
+function headingId(children: ReactNode) {
+  return String(children)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 const components: Components = {
   h1: ({ children }) => (
@@ -12,12 +21,18 @@ const components: Components = {
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 style={{ fontSize: "22px", color: "var(--color-text-primary)", margin: "40px 0 12px" }}>
+    <h2
+      id={headingId(children)}
+      style={{ fontSize: "22px", color: "var(--color-text-primary)", margin: "40px 0 12px" }}
+    >
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 style={{ fontSize: "16px", color: "var(--color-text-primary)", margin: "24px 0 8px" }}>
+    <h3
+      id={headingId(children)}
+      style={{ fontSize: "16px", color: "var(--color-text-primary)", margin: "24px 0 8px" }}
+    >
       {children}
     </h3>
   ),
