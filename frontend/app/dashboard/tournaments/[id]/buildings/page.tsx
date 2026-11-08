@@ -211,6 +211,7 @@ export default function BuildingsPage() {
       ),
     [buildings, activeTrackId],
   );
+  const hasBuildings = (buildings?.length ?? 0) > 0;
 
   // ── the docked event list ─────────────────────────────────────────────
   // Each day tab keeps its own card fields and filters ("buildings_events:track:3").
@@ -602,7 +603,7 @@ export default function BuildingsPage() {
         </div>
       ) : (
         <>
-          {!isArchived && (
+          {!isArchived && hasBuildings && (
             <div
               style={{
                 display: "flex",
@@ -623,6 +624,48 @@ export default function BuildingsPage() {
                 <IconPlus size={14} /> Add building
               </Button>
             </div>
+          )}
+
+          {onTab.length === 0 && (
+            <Card radius="lg" style={{ padding: "8px" }}>
+              {hasBuildings ? (
+                <EmptyState
+                  icon={<IconBuilding size={28} />}
+                  title="No buildings on this day"
+                  description="Add one, or turn this day on for a building from another day."
+                />
+              ) : (
+                <EmptyState
+                  icon={<IconBuilding size={28} />}
+                  title="No buildings yet"
+                  description="Import a list of buildings and rooms, or add them one at a time."
+                  action={
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setImporting(true)}
+                        disabled={isArchived}
+                        title={archivedReason}
+                      >
+                        <IconUpload size={12} /> Import
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setAdding(true)}
+                        disabled={isArchived}
+                        title={archivedReason}
+                      >
+                        <IconPlus size={12} /> Add building
+                      </Button>
+                    </div>
+                  }
+                />
+              )}
+            </Card>
           )}
 
           {onTab.length > 0 && (
