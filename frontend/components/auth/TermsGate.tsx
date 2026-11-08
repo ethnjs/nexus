@@ -35,16 +35,17 @@ export function TermsGate({
       onClose={() => {}}
       closeOnOverlayClick={false}
       footer={
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="link-subtle"
-            style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}
-          >
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+          <Button type="button" variant="secondary" onClick={onSignOut} disabled={saving}>
             Sign out
-          </button>
-          <Button onClick={accept} disabled={!checked} loading={saving}>
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={accept}
+            disabled={!checked}
+            loading={saving}
+          >
             Continue
           </Button>
         </div>
