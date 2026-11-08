@@ -427,7 +427,16 @@ class TestFieldSelection:
             f"/tournaments/{td_tournament.id}/events/?public=true&fields=location"
         ).json()[0]
 
-        assert set(row) == {"id", "name", "division", "event_type", "shifts"}
+        assert set(row) == {
+            "id",
+            "name",
+            "division",
+            "event_type",
+            "format",
+            "has_impound",
+            "has_self_schedule",
+            "shifts",
+        }
 
 
 def test_list_events_public_readable_by_plain_member(client, td_user, other_tournament, db):

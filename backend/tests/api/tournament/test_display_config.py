@@ -1263,6 +1263,9 @@ def test_catalog_serves_event_columns(client, td_user, td_tournament):
     assert [c["key"] for c in body["event_columns"]] == [
         "division",
         "type",
+        "format",
+        "impound",
+        "self_schedule",
         "category",
         "tracks",
         "time",
