@@ -3,13 +3,17 @@
 import { useDroppable } from "@dnd-kit/core";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { EditableText } from "@/components/ui/EditableText";
 import { IconPlus, IconTrash } from "@/components/ui/Icons";
 import table from "@/components/ui/Table.module.css";
 import type { TournamentRoom } from "@/lib/api";
 import { roomFloor } from "@/lib/eventTrackDetails";
 
-const ROOM_COLUMNS = "minmax(72px, 1fr) 56px minmax(0, 3fr) 28px";
+// The select track animates to zero rather than going away; see Table.module.css.
+function roomColumns(selectMode: boolean): string {
+  return `${selectMode ? "28px" : "0px"} minmax(72px, 1fr) 56px minmax(0, 3fr) 28px`;
+}
 
 const CELL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500 } as const;
 
@@ -23,16 +27,21 @@ export function parseRoomDropId(id: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** A room's row, and where an event card dragged onto it lands. */
+/** A room's row, and where an event card dragged onto it lands. In Select
+ *  mode a click anywhere on it toggles its checkbox. */
 function RoomRow({
   room,
   dropLabel,
   locked,
+  selected,
+  onToggleSelect,
   children,
 }: {
   room: TournamentRoom;
   dropLabel: string;
   locked: boolean;
+  selected: boolean;
+  onToggleSelect?: () => void;
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -41,7 +50,13 @@ function RoomRow({
     data: { label: dropLabel },
   });
   return (
-    <div ref={setNodeRef} className={table.row} data-room-id={room.id} data-active={isOver}>
+    <div
+      ref={setNodeRef}
+      className={`${table.row} ${onToggleSelect ? table.clickable : ""}`}
+      data-room-id={room.id}
+      data-active={isOver || selected}
+      onClick={onToggleSelect}
+    >
       {children}
     </div>
   );
@@ -59,6 +74,11 @@ interface RoomTableProps {
   onDelete: (room: TournamentRoom) => void;
   /** The events cell for one room. */
   renderEvents?: (room: TournamentRoom) => ReactNode;
+  /** Shows the checkbox column; everything else in the table is read-only. */
+  selectMode?: boolean;
+  selectedIds?: ReadonlySet<number>;
+  onToggleSelect?: (roomId: number) => void;
+  onToggleSelectAll?: (roomIds: number[], checked: boolean) => void;
 }
 
 export function RoomTable({
@@ -70,7 +90,12 @@ export function RoomTable({
   onSetFloor,
   onDelete,
   renderEvents,
+  selectMode = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
 }: RoomTableProps) {
+  const editLocked = locked || selectMode;
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Rows keep the order they had when focus came in, so a room renamed or
@@ -138,7 +163,7 @@ export function RoomTable({
         if (!frozenOrder) setFrozenOrder(rooms.map((r) => r.id));
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && e.shiftKey && !locked && !adding) {
+        if (e.key === "Enter" && e.shiftKey && !editLocked && !adding) {
           e.preventDefault();
           setAdding(true);
         }
@@ -149,8 +174,29 @@ export function RoomTable({
       }}
     >
       {hasRows && (
-        <div className={table.table} style={{ gridTemplateColumns: ROOM_COLUMNS }}>
-          <div className={table.header}>
+        <div
+          className={`${table.table} ${table.animatedTracks}`}
+          style={{ gridTemplateColumns: roomColumns(selectMode) }}
+        >
+          {/* Not sticky: the tables stack in a grid, so a pinned header would ride over the next building. */}
+          <div className={table.header} style={{ position: "static" }}>
+            <span
+              className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+              style={{ display: "flex", justifyContent: "center" }}
+            >
+              {/* Unmounted, not just hidden, so Tab doesn't stop on it. */}
+              {selectMode && (
+                <Checkbox
+                  checked={shown.length > 0 && shown.every((r) => selectedIds?.has(r.id))}
+                  onChange={(checked) =>
+                    onToggleSelectAll?.(
+                      shown.map((r) => r.id),
+                      checked,
+                    )
+                  }
+                />
+              )}
+            </span>
             <span>Room</span>
             <span>Floor</span>
             <span>Events</span>
@@ -161,13 +207,27 @@ export function RoomTable({
               key={room.id}
               room={room}
               dropLabel={`${buildingName} ${room.name}`}
-              locked={locked}
+              locked={editLocked}
+              selected={selectMode && !!selectedIds?.has(room.id)}
+              onToggleSelect={selectMode ? () => onToggleSelect?.(room.id) : undefined}
             >
+              <span
+                className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                style={{ display: "flex", justifyContent: "center" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {selectMode && (
+                  <Checkbox
+                    checked={!!selectedIds?.has(room.id)}
+                    onChange={() => onToggleSelect?.(room.id)}
+                  />
+                )}
+              </span>
               <EditableText
                 value={room.name}
                 onSave={(name) => onRename(room, name)}
                 textStyle={CELL_TEXT}
-                locked={locked}
+                locked={editLocked}
                 title="Rename room"
                 errorToast
               />
@@ -177,14 +237,14 @@ export function RoomTable({
                 placeholder={roomFloor({ name: room.name, floor: null }) ?? "—"}
                 onSave={(floor) => onSetFloor(room, floor.trim() || null)}
                 textStyle={{ ...CELL_TEXT, fontWeight: 400 }}
-                locked={locked}
+                locked={editLocked}
                 title="Floor — clear it to use the room number's first digit"
                 allowEmpty
                 skipTab
                 errorToast
               />
               <div style={{ minWidth: 0 }}>{renderEvents?.(room)}</div>
-              {!locked && (
+              {!editLocked && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -200,7 +260,7 @@ export function RoomTable({
             </RoomRow>
           ))}
 
-          {adding && (
+          {adding && !selectMode && (
             <div
               className={table.row}
               onKeyDownCapture={(e) => {
@@ -217,6 +277,7 @@ export function RoomTable({
                 }
               }}
             >
+              <span />
               <EditableText
                 key={blankKey}
                 value=""
@@ -233,7 +294,7 @@ export function RoomTable({
         </div>
       )}
 
-      {!locked && !adding && (
+      {!editLocked && !adding && (
         <Button
           type="button"
           variant="ghost"

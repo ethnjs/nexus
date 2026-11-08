@@ -41,6 +41,7 @@ import { FilterButton } from "@/components/ui/FilterButton";
 import { IconBuilding, IconLock, IconPlus, IconSearch, IconUpload } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
+import { SelectionBar } from "@/components/ui/SelectionBar";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
@@ -100,7 +101,15 @@ export default function BuildingsPage() {
   // Memoised: CollapsibleHeader re-registers the Topbar's copy whenever this
   // identity changes.
   const headerTabs = useMemo(() => days.map((t) => ({ key: String(t.id), label: t.name })), [days]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<ReadonlySet<number>>(new Set());
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedRoomIds(new Set());
+  }, []);
   const pickTab = useCallback((key: string) => {
+    // A selection covers what's on screen, so it doesn't follow you to another day.
+    setSelectedRoomIds(new Set());
     setPickedTrackId(Number(key));
     const params = new URLSearchParams(window.location.search);
     params.set("track", key);
@@ -529,6 +538,50 @@ export default function BuildingsPage() {
     if (eventsByRoom.has(room.id)) void loadEvents();
   }
 
+  function toggleRoom(roomId: number) {
+    setSelectedRoomIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
+  }
+
+  function toggleRooms(roomIds: number[], checked: boolean) {
+    setSelectedRoomIds((cur) => {
+      const next = new Set(cur);
+      for (const id of roomIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  const selectedRooms = onTab.flatMap((building) =>
+    building.rooms.filter((r) => selectedRoomIds.has(r.id)).map((room) => ({ building, room })),
+  );
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  /** One request per room; the ones deleted before a failure stay deleted. */
+  async function deleteSelectedRooms() {
+    let unplaced = false;
+    try {
+      for (const { building, room } of selectedRooms) {
+        await buildingsApi.deleteRoom(tournamentId, building.id, room.id);
+        setRooms(building.id, (rooms) => rooms.filter((r) => r.id !== room.id));
+        setSelectedRoomIds((cur) => {
+          const next = new Set(cur);
+          next.delete(room.id);
+          return next;
+        });
+        unplaced ||= eventsByRoom.has(room.id);
+      }
+    } finally {
+      if (unplaced) void loadEvents();
+    }
+  }
+
   const [roomDeleteTarget, setRoomDeleteTarget] = useState<{
     building: TournamentBuilding;
     room: TournamentRoom;
@@ -614,6 +667,15 @@ export default function BuildingsPage() {
             >
               <Button
                 type="button"
+                variant={selectMode ? "primary" : "secondary"}
+                size="md"
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                disabled={onTab.length === 0}
+              >
+                Select
+              </Button>
+              <Button
+                type="button"
                 variant="secondary"
                 size="md"
                 onClick={() => setImporting(true)}
@@ -675,7 +737,7 @@ export default function BuildingsPage() {
                   key={building.id}
                   building={building}
                   days={days}
-                  locked={isArchived}
+                  locked={isArchived || selectMode}
                   lockedReason={archivedReason}
                   onRename={(name) => renameBuilding(building, name)}
                   onToggleDay={(trackId) => toggleDay(building, trackId)}
@@ -685,6 +747,10 @@ export default function BuildingsPage() {
                     buildingName={building.name}
                     rooms={building.rooms}
                     locked={isArchived}
+                    selectMode={selectMode}
+                    selectedIds={selectedRoomIds}
+                    onToggleSelect={toggleRoom}
+                    onToggleSelectAll={toggleRooms}
                     onAdd={(name) => addRoom(building, name)}
                     onRename={async (room, name) => {
                       const trimmed = name.trim();
@@ -710,7 +776,7 @@ export default function BuildingsPage() {
                       <RoomEventsCell
                         events={eventsByRoom.get(room.id) ?? []}
                         candidates={candidatesFor(room.id)}
-                        locked={isArchived}
+                        locked={isArchived || selectMode}
                         onAdd={(event) => placeEvent(event, building, room)}
                         onRemove={(event) => removeFromRoom(event, room)}
                       />
@@ -721,6 +787,34 @@ export default function BuildingsPage() {
             </MasonryGrid>
           )}
         </>
+      )}
+
+      <SelectionBar
+        visible={selectMode && !bulkDeleting}
+        count={selectedRooms.length}
+        editLabel="Delete"
+        onEdit={() => setBulkDeleting(true)}
+        onCancel={exitSelectMode}
+      />
+
+      {bulkDeleting && (
+        <ConfirmModal
+          title={`Delete ${selectedRooms.length} ${selectedRooms.length === 1 ? "room" : "rooms"}?`}
+          description={(() => {
+            const placed = new Set(
+              selectedRooms.flatMap(({ room }) =>
+                (eventsByRoom.get(room.id) ?? []).map((e) => e.id),
+              ),
+            ).size;
+            return placed > 0
+              ? `${placed} ${placed === 1 ? "event is" : "events are"} placed in them. They'll be taken out of these rooms, and unplaced if they have no other room left.`
+              : "None of them have events placed in them.";
+          })()}
+          confirmLabel="Delete"
+          onConfirm={deleteSelectedRooms}
+          onConfirmed={exitSelectMode}
+          onClose={() => setBulkDeleting(false)}
+        />
       )}
 
       {showDisplayModal && (
