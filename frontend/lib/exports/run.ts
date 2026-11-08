@@ -196,11 +196,14 @@ export function logExport(
   result: ExportResult,
   output: ExportOutput,
 ): Promise<void> {
-  const scope = scopeParts(choice, trackNamesOf(tournament));
+  const trackId = choice.kind === "email_list" ? null : choice.trackId;
+  const track = trackId === null ? undefined : trackNamesOf(tournament).get(trackId);
   return auditLogApi.logExport(tournament.id, {
-    preset: [presetName(choice), ...scope].join(", "),
+    preset: presetName(choice),
+    ...(track ? { track } : {}),
+    ...(choice.kind === "torus" ? { role: TORUS_ROLES[choice.role].label } : {}),
+    ...(choice.kind === "duosmium" ? { division: choice.division } : {}),
     output,
-    row_count: result.rows.length,
     fields: result.fields,
     ...(result.columns ? { columns: result.columns } : {}),
   });

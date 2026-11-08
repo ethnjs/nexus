@@ -440,14 +440,20 @@ def test_list_audit_log_actors_non_member_gets_404(client, td_user, other_tourna
 EXPORT_BODY = {
     "preset": "Email list",
     "output": "copy",
-    "row_count": 12,
     "fields": ["contact"],
 }
 
 
 def test_log_data_export_records_entry(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
-    body = {**EXPORT_BODY, "output": "csv", "columns": ["Name", "Phone"]}
+    body = {
+        **EXPORT_BODY,
+        "preset": "TORUS",
+        "track": "Day 1",
+        "role": "Test Writer",
+        "output": "csv",
+        "columns": ["Name", "Phone"],
+    }
     response = client.post(f"/tournaments/{td_tournament.id}/audit-log/exports/", json=body)
     assert response.status_code == 204
 
@@ -458,7 +464,7 @@ def test_log_data_export_records_entry(client, td_user, td_tournament, db):
     assert entry.extra_data == body
 
 
-def test_log_data_export_leaves_out_missing_columns(client, td_user, td_tournament, db):
+def test_log_data_export_leaves_out_missing_optional_fields(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
     client.post(f"/tournaments/{td_tournament.id}/audit-log/exports/", json=EXPORT_BODY)
 

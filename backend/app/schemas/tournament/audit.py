@@ -51,8 +51,11 @@ class DataExportLog(BaseModel):
     """An export the browser just copied or downloaded."""
 
     preset: str = Field(max_length=255)
+    track: str | None = Field(default=None, max_length=255)
+    # A TORUS export's role and a Duosmium export's division.
+    role: str | None = Field(default=None, max_length=255)
+    division: str | None = Field(default=None, max_length=4)
     output: str
-    row_count: int = Field(ge=0)
     fields: list[str]
     # Column labels, for a custom preset; built-ins have a fixed format.
     columns: list[str] | None = None

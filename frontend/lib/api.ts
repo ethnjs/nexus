@@ -1589,8 +1589,10 @@ export interface AuditLogParams {
 // Matches DataExportLog: an export the browser just copied or downloaded.
 export interface DataExportLog {
   preset: string;
+  track?: string;
+  role?: string;
+  division?: string;
   output: ExportOutput;
-  row_count: number;
   fields: MembershipField[];
   columns?: string[];
 }

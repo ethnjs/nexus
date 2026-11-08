@@ -56,11 +56,7 @@ const EXPORT_FIELD_LABELS: Record<MembershipField, string> = {
   onboarding: "Onboarding",
 };
 
-const EXPORT_OUTPUT_LABELS: Record<string, string> = {
-  copy: "copied",
-  csv: "downloaded as CSV",
-  txt: "downloaded as text",
-};
+const EXPORT_FILE_TYPES: Record<string, string> = { csv: "CSV", txt: "text" };
 
 export interface AuditLogDescription {
   summary: ReactNode;
@@ -501,14 +497,23 @@ const DESCRIBERS: Record<
   }),
 
   data_exported: (e) => {
-    const rows = e.row_count as number;
     const fields = (e.fields as MembershipField[]).map((f) => EXPORT_FIELD_LABELS[f] ?? f);
     const columns = e.columns as string[] | undefined;
+    const fileType = EXPORT_FILE_TYPES[e.output as string];
+    const preset = <RoleBadge label={e.preset as string} />;
     return {
-      summary: `Exported ${rows} row${rows === 1 ? "" : "s"} of ${e.preset as string}, ${EXPORT_OUTPUT_LABELS[e.output as string] ?? e.output}`,
+      summary: fileType ? (
+        <>
+          Downloaded {preset} as {fileType}
+        </>
+      ) : (
+        <>Copied {preset}</>
+      ),
       details: [
-        `Data: ${fields.join(", ")}`,
-        ...(columns ? [`Columns: ${columns.join(", ")}`] : []),
+        ...(e.track ? [`Track: "${e.track as string}"`] : []),
+        ...(e.role ? [`Role: ${e.role as string}`] : []),
+        ...(e.division ? [`Division: ${e.division as string}`] : []),
+        columns ? `Columns: ${columns.join(", ")}` : `Includes: ${fields.join(", ")}`,
       ],
     };
   },
