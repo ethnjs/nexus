@@ -1553,6 +1553,10 @@ export interface AuditLogEntry {
   // The actor's membership in this tournament — falls back to the bare user
   // when they have none (e.g. a site admin acting without ever joining).
   actor: PersonRef;
+  // Copied when the entry was written; the name is the fallback once the
+  // actor's account is deleted and `actor` carries no name.
+  actor_name: string | null;
+  actor_email: string | null;
   // Current role state — populated only when target_type === "role" and the
   // role still exists (null for role_deleted, and for role_updated's
   // bulk-reorder variant, which has no single target_id).
@@ -1582,6 +1586,15 @@ export interface AuditLogParams {
   until?: string;
 }
 
+// Matches DataExportLog: an export the browser just copied or downloaded.
+export interface DataExportLog {
+  preset: string;
+  output: ExportOutput;
+  row_count: number;
+  fields: MembershipField[];
+  columns?: string[];
+}
+
 export const auditLogApi = {
   list: (tournamentId: number, params: AuditLogParams = {}) => {
     const qs = new URLSearchParams();
@@ -1597,6 +1610,8 @@ export const auditLogApi = {
   },
   actors: (tournamentId: number) =>
     api.get<AuditLogActor[]>(`/tournaments/${tournamentId}/audit-log/actors/`),
+  logExport: (tournamentId: number, data: DataExportLog) =>
+    api.post<void>(`/tournaments/${tournamentId}/audit-log/exports/`, data),
 };
 
 // -------------------------------------------------------------------------

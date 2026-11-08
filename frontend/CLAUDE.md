@@ -23,6 +23,7 @@ There's no test suite. UI changes are verified by using them in a browser agains
 
 - Components mostly use inline `style={{}}` objects with CSS variable tokens (`var(--color-accent)`) defined in the `@theme` block of `app/globals.css`. Add a `.module.css` file only for what inline styles can't express: hover and focus states, keyframes, media queries. Tailwind utilities appear in a few layout spots; match the file you're editing and don't convert components between styles.
 - Use tokens, not hex values.
+- Never use a middle dot (`·`) as a separator in UI text. Separate items with spacing, a line break or punctuation instead.
 - `--color-accent` is near-black. Don't use it for hover, drag-over or highlight borders; use `--color-border-strong` with an `--color-accent-subtle` fill.
 - Fonts: serif (Georgia) for titles, sans (Geist) for UI, mono (Geist Mono) for data and inputs.
 

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
-import type { AuditLogEntry } from "@/lib/api";
+import type { AuditLogEntry, MembershipField } from "@/lib/api";
 import { externalRoleLabel, externalSystemFor } from "@/lib/exports/externalSystems";
+import { personName } from "@/lib/personDisplay";
 
 // Mirrors backend/app/core/tournament/audit.py's ALL_ACTIONS — kept in sync
 // by hand since there's no shared codegen between the two.
@@ -18,6 +19,7 @@ export const ALL_AUDIT_ACTIONS = [
   "tournament_unarchived",
   "ownership_transferred",
   "form_response_deleted",
+  "data_exported",
 ] as const;
 
 // "join_code_*" stays the backend/wire action name — display text says
@@ -35,6 +37,29 @@ export const ACTION_LABELS: Record<string, string> = {
   tournament_unarchived: "Tournament unarchived",
   ownership_transferred: "Ownership transferred",
   form_response_deleted: "Response deleted",
+  data_exported: "Data exported",
+};
+
+const EXPORT_FIELD_LABELS: Record<MembershipField, string> = {
+  contact: "Contact info",
+  profile: "Profile",
+  roles: "Roles",
+  membership: "Membership",
+  tracks: "Tracks",
+  availability: "Availability",
+  lunch: "Lunch",
+  event_prefs: "Event preferences",
+  custom: "Form answers",
+  notes: "Notes",
+  age: "Age",
+  assignments: "Assignments",
+  onboarding: "Onboarding",
+};
+
+const EXPORT_OUTPUT_LABELS: Record<string, string> = {
+  copy: "copied",
+  csv: "downloaded as CSV",
+  txt: "downloaded as text",
 };
 
 export interface AuditLogDescription {
@@ -474,7 +499,26 @@ const DESCRIBERS: Record<
   form_response_deleted: (e) => ({
     summary: `Deleted ${e.respondent_name as string}'s response to ${e.form_name as string}`,
   }),
+
+  data_exported: (e) => {
+    const rows = e.row_count as number;
+    const fields = (e.fields as MembershipField[]).map((f) => EXPORT_FIELD_LABELS[f] ?? f);
+    const columns = e.columns as string[] | undefined;
+    return {
+      summary: `Exported ${rows} row${rows === 1 ? "" : "s"} of ${e.preset as string}, ${EXPORT_OUTPUT_LABELS[e.output as string] ?? e.output}`,
+      details: [
+        `Data: ${fields.join(", ")}`,
+        ...(columns ? [`Columns: ${columns.join(", ")}`] : []),
+      ],
+    };
+  },
 };
+
+/** The live name, or the one saved on the entry once the account is deleted. */
+export function auditActorName(entry: AuditLogEntry): string {
+  if (entry.actor.user_id === null && entry.actor_name) return entry.actor_name;
+  return personName(entry.actor);
+}
 
 export function describeAuditLogEntry(entry: AuditLogEntry): AuditLogDescription {
   const describe = DESCRIBERS[entry.action];
