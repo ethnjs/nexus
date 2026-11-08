@@ -313,6 +313,43 @@ def test_put_assignments_events_rejects_non_track_hidden_items(client, td_user, 
     assert response.status_code == 422
 
 
+def test_put_buildings_events_saves_card_fields_and_filters(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "buildings_events:track:3": {
+                "hidden": ["event_field:format", "event_field:shifts"],
+                "filters": {"division": ["C"], "category": ["5"]},
+            }
+        },
+    )
+    assert response.status_code == 200
+    saved = response.json()["buildings_events:track:3"]
+    assert saved["hidden"] == ["event_field:format", "event_field:shifts"]
+    assert saved["filters"] == {"division": ["C"], "category": ["5"]}
+
+
+def test_put_buildings_events_rejects_unknown_card_fields(client, td_user, td_tournament):
+    """Name and division always show, so neither is hideable."""
+    login(client, "td@test.com", "tdpass")
+    for item in ("event_field:division", "track:3"):
+        response = client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={"buildings_events:track:3": {"hidden": [item]}},
+        )
+        assert response.status_code == 422, item
+
+
+def test_put_buildings_events_requires_a_tab(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"buildings_events": {"hidden": []}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_assignments_board_accepts_a_per_track_tab(client, td_user, td_tournament):
     """The board is tabbed per track, so its surfaces are a family of keys
     rather than one each. A track id isn't checked against the catalog — a

@@ -24,6 +24,9 @@ EVENT_PANEL = "event_panel"
 # The shifts table — its filters and sort, in its own vocabulary: a shift has
 # a time and a track, not a division. No columns: the table shows them all.
 SHIFTS_TABLE = "shifts_table"
+# The buildings page's docked event list: which details its cards show, and
+# its filters. Per track tab, like the assignments board.
+BUILDINGS_EVENTS = "buildings_events"
 # Whether this viewer keeps the page header folded into the Topbar. One
 # setting for every page of the tournament, so it is a surface of its own
 # that holds only `collapsed` rather than a field repeated on each table's.
@@ -59,7 +62,7 @@ FLAT_SURFACES = frozenset(
 # ---------------------------------------------------------------------------
 TAB_ALL = "all"
 TAB_TRACK_PREFIX = "track:"
-TAB_SCOPED_SURFACES = frozenset({ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD})
+TAB_SCOPED_SURFACES = frozenset({ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD, BUILDINGS_EVENTS})
 
 
 def surface_key(base: str, tab: str = TAB_ALL) -> str:
@@ -436,6 +439,17 @@ ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset(
 
 
 # ---------------------------------------------------------------------------
+# Buildings page — event list card
+#
+# Hidden-by-exception like the belt card. Name and division always show.
+# ---------------------------------------------------------------------------
+EVENT_FIELD_NAMESPACE = "event_field:"
+BUILDINGS_EVENT_FIELDS = frozenset(
+    {"type", "format", "category", "impound", "self_schedule", "shifts"}
+)
+
+
+# ---------------------------------------------------------------------------
 # Member panel sections
 #
 # Built-in sections keep a stable id: a TD reorders and hides them, but never
@@ -569,6 +583,11 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     # still runs on it, and its Tracks chips and shifts still show.
     if surface == EVENT_PANEL:
         return item.startswith(TRACK_NAMESPACE)
+    if surface == BUILDINGS_EVENTS:
+        return (
+            item.startswith(EVENT_FIELD_NAMESPACE)
+            and item[len(EVENT_FIELD_NAMESPACE) :] in BUILDINGS_EVENT_FIELDS
+        )
     return is_known_namespace(item)
 
 
@@ -631,6 +650,8 @@ def known_filter_keys(surface: str) -> frozenset[str]:
         return KNOWN_EVENT_FILTER_KEYS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS
+    if surface == BUILDINGS_EVENTS:
+        return KNOWN_EVENT_FILTER_KEYS
     if surface == SHIFTS_TABLE:
         return KNOWN_SHIFT_FILTER_KEYS
     # The belt is filtered by the roster's own modal, so it stores the roster's
