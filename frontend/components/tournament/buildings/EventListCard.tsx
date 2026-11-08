@@ -1,7 +1,8 @@
 "use client";
 
-import { useDraggable } from "@dnd-kit/core";
-import { memo } from "react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { memo, type ReactNode } from "react";
+import { parseRoomChipDragId } from "@/components/tournament/buildings/EventChip";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EVENT_FORMAT_LABELS, type TournamentEvent } from "@/lib/api";
@@ -119,3 +120,26 @@ export const EventListCard = memo(function EventListCard({
     </div>
   );
 });
+
+export const EVENT_LIST_DROP_ID = "building-event-list";
+
+/** The docked list, where a chip dragged out of a room is dropped to take it
+ *  out of that room. Only lights up for a room chip, since a list card
+ *  dropped back on its own list does nothing. */
+export function EventListDropZone({ children }: { children: ReactNode }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: EVENT_LIST_DROP_ID });
+  const fromRoom = isOver && !!active && parseRoomChipDragId(String(active.id)) !== null;
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        minHeight: "100%",
+        background: fromRoom ? "var(--color-accent-subtle)" : undefined,
+        boxShadow: fromRoom ? "inset 0 0 0 1px var(--color-border-strong)" : undefined,
+        transition: "background 100ms ease",
+      }}
+    >
+      {children}
+    </div>
+  );
+}

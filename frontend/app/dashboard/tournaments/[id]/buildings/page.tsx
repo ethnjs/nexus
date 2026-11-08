@@ -7,16 +7,23 @@ import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDn
 import { AddBuildingModal } from "@/components/tournament/buildings/AddBuildingModal";
 import { BuildingSection } from "@/components/tournament/buildings/BuildingSection";
 import { EventCardDisplayModal } from "@/components/tournament/buildings/EventCardDisplayModal";
+import { EventChip, parseRoomChipDragId } from "@/components/tournament/buildings/EventChip";
 import {
   EVENT_CARD_FIELDS,
   EVENT_FIELD_PREFIX,
+  EVENT_LIST_DROP_ID,
   type EventCardField,
   EventListCard,
+  EventListDropZone,
   parseEventDragId,
 } from "@/components/tournament/buildings/EventListCard";
 import { ImportRoomsModal } from "@/components/tournament/buildings/ImportRoomsModal";
 import { RoomEventsCell } from "@/components/tournament/buildings/RoomEventsCell";
-import { parseRoomDropId, RoomTable } from "@/components/tournament/buildings/RoomTable";
+import {
+  parseNewRoomDropId,
+  parseRoomDropId,
+  RoomTable,
+} from "@/components/tournament/buildings/RoomTable";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import {
   EVENT_TYPE_OPTIONS,
@@ -194,9 +201,27 @@ export default function BuildingsPage() {
   }
 
   /** Out of its last room, the event is unplaced. */
-  function removeFromRoom(event: TournamentEvent, room: TournamentRoom) {
+  /** A list card moves the event to this room alone; a chip dragged from
+   *  another room of the same building swaps that room for this one. */
+  function moveEvent(
+    event: TournamentEvent,
+    toBuildingId: number,
+    toRoomId: number,
+    fromRoomId: number | null,
+  ) {
     const detail = activeTrackId === null ? undefined : trackDetail(event, activeTrackId);
-    const remaining = (detail?.room_ids ?? []).filter((id) => id !== room.id);
+    const current = detail?.room_ids ?? [];
+    if (fromRoomId === toRoomId) return;
+    if (fromRoomId !== null && detail?.building_id === toBuildingId) {
+      const kept = current.filter((id) => id !== fromRoomId && id !== toRoomId);
+      return saveLocation(event, { room_ids: [...kept, toRoomId] });
+    }
+    if (current.length === 1 && current[0] === toRoomId) return;
+    return saveLocation(event, { floor: null, room_ids: [toRoomId] });
+  }
+  function removeFromRoom(event: TournamentEvent, roomId: number) {
+    const detail = activeTrackId === null ? undefined : trackDetail(event, activeTrackId);
+    const remaining = (detail?.room_ids ?? []).filter((id) => id !== roomId);
     return saveLocation(
       event,
       remaining.length > 0 ? { room_ids: remaining } : { floor: null, room_ids: [] },
@@ -338,55 +363,57 @@ export default function BuildingsPage() {
             </>
           }
         >
-          <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onClear={() => setQuery("")}
-              placeholder="Search events"
-              icon={<IconSearch />}
-              size="md"
-              variant="secondary"
-              font="sans"
-              fullWidth
-            />
-            <span className={table.headerLabel}>
-              Events — {listed.length}/{dayEvents.length}
-            </span>
-            {listed.length === 0 ? (
-              <EmptyState
-                icon={<IconBuilding size={24} />}
-                title={query || filterActive ? "No events match" : "No events on this day"}
-                description={query || filterActive ? "Try a wider filter." : undefined}
-                action={
-                  query || filterActive ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setQuery("");
-                        applyFilters(eventsFilterFromStored(null));
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  ) : undefined
-                }
+          <EventListDropZone>
+            <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onClear={() => setQuery("")}
+                placeholder="Search events"
+                icon={<IconSearch />}
+                size="md"
+                variant="secondary"
+                font="sans"
+                fullWidth
               />
-            ) : (
-              listed.map((event) => (
-                <EventListCard
-                  key={event.id}
-                  event={event}
-                  trackId={activeTrackId}
-                  hidden={hiddenFields}
-                  selected={event.id === focusedEventId}
-                  locked={isArchived}
-                  onOpen={openEvent}
+              <span className={table.headerLabel}>
+                Events — {listed.length}/{dayEvents.length}
+              </span>
+              {listed.length === 0 ? (
+                <EmptyState
+                  icon={<IconBuilding size={24} />}
+                  title={query || filterActive ? "No events match" : "No events on this day"}
+                  description={query || filterActive ? "Try a wider filter." : undefined}
+                  action={
+                    query || filterActive ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setQuery("");
+                          applyFilters(eventsFilterFromStored(null));
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    ) : undefined
+                  }
                 />
-              ))
-            )}
-          </div>
+              ) : (
+                listed.map((event) => (
+                  <EventListCard
+                    key={event.id}
+                    event={event}
+                    trackId={activeTrackId}
+                    hidden={hiddenFields}
+                    selected={event.id === focusedEventId}
+                    locked={isArchived}
+                    onOpen={openEvent}
+                  />
+                ))
+              )}
+            </div>
+          </EventListDropZone>
         </DockedPanel>
         {focusedEvent && (
           <EventPanel
@@ -446,22 +473,36 @@ export default function BuildingsPage() {
   ]);
 
   // ── drag and drop ────────────────────────────────────────────────────
-  // A card dropped on a room moves the event there, out of any other room
-  // on this day. The Events cell's + adds a room instead.
+  // Drops: on a room moves the event there (see moveEvent), on Add room
+  // waits for the new room's name, and a room chip on the list leaves its room.
   useRegisterBoardDnd("buildings", {
     onDragEnd: ({ active, over }) => {
       if (!over || activeTrackId === null) return;
-      const eventId = parseEventDragId(String(active.id));
-      const roomId = parseRoomDropId(String(over.id));
-      if (eventId === null || roomId === null) return;
-      const event = (events ?? []).find((e) => e.id === eventId);
+      const chip = parseRoomChipDragId(String(active.id));
+      const eventId = chip?.eventId ?? parseEventDragId(String(active.id));
+      const event = eventId === null ? undefined : (events ?? []).find((e) => e.id === eventId);
       if (!event) return;
-      const current = trackDetail(event, activeTrackId)?.room_ids ?? [];
-      if (current.length === 1 && current[0] === roomId) return;
-      void saveLocation(event, { floor: null, room_ids: [roomId] });
+      const overId = String(over.id);
+      if (overId === EVENT_LIST_DROP_ID) {
+        if (chip) void removeFromRoom(event, chip.roomId);
+        return;
+      }
+      const newRoomBuildingId = parseNewRoomDropId(overId);
+      if (newRoomBuildingId !== null) {
+        setPendingDrop({
+          buildingId: newRoomBuildingId,
+          eventId: event.id,
+          fromRoomId: chip?.roomId ?? null,
+        });
+        return;
+      }
+      const roomId = parseRoomDropId(overId);
+      const building = onTab.find((b) => b.rooms.some((r) => r.id === roomId));
+      if (roomId === null || !building) return;
+      void moveEvent(event, building.id, roomId, chip?.roomId ?? null);
     },
     renderOverlay: (activeId) => {
-      const eventId = parseEventDragId(activeId);
+      const eventId = parseRoomChipDragId(activeId)?.eventId ?? parseEventDragId(activeId);
       const event = eventId === null ? null : (events ?? []).find((e) => e.id === eventId);
       if (!event) return null;
       return (
@@ -487,6 +528,12 @@ export default function BuildingsPage() {
 
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  // An event dropped on a building's Add room, waiting for the room to be named.
+  const [pendingDrop, setPendingDrop] = useState<{
+    buildingId: number;
+    eventId: number;
+    fromRoomId: number | null;
+  } | null>(null);
 
   async function renameBuilding(building: TournamentBuilding, name: string) {
     const trimmed = name.trim();
@@ -516,6 +563,11 @@ export default function BuildingsPage() {
       setRooms(building.id, () => rooms);
       const room = rooms.find((r) => r.name === name.trim());
       if (!room) throw new Error("Failed to add room.");
+      const pending = pendingDrop?.buildingId === building.id ? pendingDrop : null;
+      const pendingEvent = pending && (events ?? []).find((e) => e.id === pending.eventId);
+      if (pending) setPendingDrop(null);
+      if (pending && pendingEvent)
+        void moveEvent(pendingEvent, building.id, room.id, pending.fromRoomId);
       return room;
     } catch (err) {
       throw new Error(err instanceof ApiError ? err.message : "Failed to add rooms.");
@@ -744,7 +796,22 @@ export default function BuildingsPage() {
                   onDelete={() => setDeleteTarget(building)}
                 >
                   <RoomTable
+                    buildingId={building.id}
                     buildingName={building.name}
+                    pendingEvents={(() => {
+                      if (pendingDrop?.buildingId !== building.id) return undefined;
+                      const event = (events ?? []).find((e) => e.id === pendingDrop.eventId);
+                      return event ? (
+                        <EventChip
+                          event={event}
+                          roomId={0}
+                          locked
+                          onOpen={openEvent}
+                          onRemove={() => {}}
+                        />
+                      ) : undefined;
+                    })()}
+                    onPendingCancel={() => setPendingDrop(null)}
                     rooms={building.rooms}
                     locked={isArchived}
                     selectMode={selectMode}
@@ -774,11 +841,13 @@ export default function BuildingsPage() {
                     }}
                     renderEvents={(room) => (
                       <RoomEventsCell
+                        roomId={room.id}
                         events={eventsByRoom.get(room.id) ?? []}
                         candidates={candidatesFor(room.id)}
                         locked={isArchived || selectMode}
                         onAdd={(event) => placeEvent(event, building, room)}
-                        onRemove={(event) => removeFromRoom(event, room)}
+                        onRemove={(event) => removeFromRoom(event, room.id)}
+                        onOpen={openEvent}
                       />
                     )}
                   />

@@ -27,6 +27,16 @@ export function parseRoomDropId(id: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function newRoomDropId(buildingId: number): string {
+  return `building-new-room:${buildingId}`;
+}
+
+export function parseNewRoomDropId(id: string): number | null {
+  if (!id.startsWith("building-new-room:")) return null;
+  const parsed = Number(id.slice("building-new-room:".length));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** A room's row, and where an event card dragged onto it lands. In Select
  *  mode a click anywhere on it toggles its checkbox. */
 function RoomRow({
@@ -63,6 +73,7 @@ function RoomRow({
 }
 
 interface RoomTableProps {
+  buildingId: number;
   /** Names the drop target while dragging: "Rowland 210". */
   buildingName: string;
   rooms: TournamentRoom[];
@@ -79,9 +90,15 @@ interface RoomTableProps {
   selectedIds?: ReadonlySet<number>;
   onToggleSelect?: (roomId: number) => void;
   onToggleSelectAll?: (roomIds: number[], checked: boolean) => void;
+  /** An event dropped on Add room: opens the blank row with it in the events
+   *  cell, and it's placed in the room once the room saves. */
+  pendingEvents?: ReactNode;
+  /** The blank row closed without a room, so the dropped event goes nowhere. */
+  onPendingCancel?: () => void;
 }
 
 export function RoomTable({
+  buildingId,
   buildingName,
   rooms,
   locked,
@@ -94,6 +111,8 @@ export function RoomTable({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
+  pendingEvents,
+  onPendingCancel,
 }: RoomTableProps) {
   const editLocked = locked || selectMode;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,7 +131,8 @@ export function RoomTable({
   // new room's name; Tab saves it and moves right to the room's events;
   // Shift+Enter saves it and opens another. Shift+Enter anywhere else in the
   // table opens one.
-  const [adding, setAdding] = useState(false);
+  const [addingState, setAdding] = useState(false);
+  const adding = addingState || !!pendingEvents;
   const [blankKey, setBlankKey] = useState(0);
   const lastKey = useRef<string | null>(null);
   const lastShift = useRef(false);
@@ -155,9 +175,40 @@ export function RoomTable({
 
   const hasRows = shown.length > 0 || adding;
 
+  // A drop opens the blank row while dnd-kit still clears the page's text
+  // selection (for 50ms after a drag). That wipes the caret but leaves the
+  // input focused, so focus() alone is a no-op; placing the caret brings it back.
+  const blankRowRef = useRef<HTMLDivElement>(null);
+  const hasPending = !!pendingEvents;
+  useEffect(() => {
+    if (!hasPending) return;
+    const timer = setTimeout(() => {
+      const input = blankRowRef.current?.querySelector("input");
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [hasPending]);
+
+  // Add room is the drop target, or the whole table area while there are no
+  // rooms, since then that button is all there is.
+  const {
+    setNodeRef: setNewRoomDropRef,
+    isOver: overNewRoom,
+    active: dragging,
+  } = useDroppable({
+    id: newRoomDropId(buildingId),
+    disabled: editLocked || adding,
+  });
+  const dropOnContainer = rooms.length === 0;
+
   return (
     <div
-      ref={containerRef}
+      ref={(node) => {
+        containerRef.current = node;
+        if (dropOnContainer) setNewRoomDropRef(node);
+      }}
       style={{ marginTop: "6px" }}
       onFocus={() => {
         if (!frozenOrder) setFrozenOrder(rooms.map((r) => r.id));
@@ -262,6 +313,7 @@ export function RoomTable({
 
           {adding && !selectMode && (
             <div
+              ref={blankRowRef}
               className={table.row}
               onKeyDownCapture={(e) => {
                 lastKey.current = e.key;
@@ -284,11 +336,16 @@ export function RoomTable({
                 placeholder="Room"
                 startEditing
                 onSave={add}
-                onCancel={() => setAdding(false)}
+                onCancel={() => {
+                  setAdding(false);
+                  onPendingCancel?.();
+                }}
                 textStyle={CELL_TEXT}
                 title="New room"
                 errorToast
               />
+              <span />
+              <div style={{ minWidth: 0 }}>{pendingEvents}</div>
             </div>
           )}
         </div>
@@ -296,6 +353,7 @@ export function RoomTable({
 
       {!editLocked && !adding && (
         <Button
+          ref={dropOnContainer ? undefined : setNewRoomDropRef}
           type="button"
           variant="ghost"
           size="xs"
@@ -303,11 +361,13 @@ export function RoomTable({
           style={{
             width: "100%",
             marginTop: "8px",
-            border: "1px dashed var(--color-border-strong)",
-            color: "var(--color-text-secondary)",
+            border: `1px ${overNewRoom ? "solid" : "dashed"} var(--color-border-strong)`,
+            background: overNewRoom ? "var(--color-accent-subtle)" : undefined,
+            color:
+              overNewRoom || dragging ? "var(--color-text-primary)" : "var(--color-text-secondary)",
           }}
         >
-          <IconPlus size={11} /> Add room
+          <IconPlus size={11} /> {dragging ? "Drop for a new room" : "Add room"}
         </Button>
       )}
     </div>

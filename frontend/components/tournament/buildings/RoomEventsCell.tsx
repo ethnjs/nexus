@@ -1,44 +1,49 @@
 "use client";
 
+import { EventChip, type EventChipFlag } from "@/components/tournament/buildings/EventChip";
 import { Button } from "@/components/ui/Button";
-import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
 import type { TournamentEvent } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 
 interface RoomEventsCellProps {
+  roomId: number;
   /** The events in this room, in display order. */
   events: TournamentEvent[];
+  flagsFor?: (event: TournamentEvent) => EventChipFlag[];
   /** Every other event on the day, with where it is now ("Rowland 210"), if anywhere. */
   candidates: { event: TournamentEvent; location: string | null }[];
   locked: boolean;
   onAdd: (event: TournamentEvent) => Promise<void>;
   onRemove: (event: TournamentEvent) => Promise<void>;
+  onOpen: (eventId: number) => void;
 }
 
 export function RoomEventsCell({
+  roomId,
   events,
+  flagsFor,
   candidates,
   locked,
   onAdd,
   onRemove,
+  onOpen,
 }: RoomEventsCellProps) {
-  const byLabel = new Map(events.map((e) => [eventNameWithDivision(e), e]));
-
   return (
-    <ChipInput
-      value={[...byLabel.keys()]}
-      onChange={(labels) => {
-        const removed = [...byLabel].find(([label]) => !labels.includes(label));
-        if (removed) void onRemove(removed[1]);
-      }}
-      disableInput
-      locked={locked}
-      variant="transparent"
-      size="sm"
-      fullWidth
-      addButton={
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+      {events.map((event) => (
+        <EventChip
+          key={event.id}
+          event={event}
+          roomId={roomId}
+          flags={flagsFor?.(event)}
+          locked={locked}
+          onOpen={onOpen}
+          onRemove={() => void onRemove(event)}
+        />
+      ))}
+      {!locked && (
         <Popover
           trigger={
             <Button
@@ -72,7 +77,7 @@ export function RoomEventsCell({
           align="left"
           width={220}
         />
-      }
-    />
+      )}
+    </div>
   );
 }
