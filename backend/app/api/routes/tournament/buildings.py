@@ -80,44 +80,19 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
     return rows
 
 
-def _placed_event_count(db: Session, building_id: int, track_ids: list[int]) -> int:
-    """How many event<->track links put an event in this building on one of
+def _placements_in(
+    db: Session, building_id: int, track_ids: list[int] | None = None
+) -> list[TournamentEventTrack]:
+    """Event<->track links with a room in this building, optionally only on
     `track_ids`."""
-    if not track_ids:
-        return 0
-    return (
+    query = (
         db.query(TournamentEventTrack)
-        .filter(
-            TournamentEventTrack.building_id == building_id,
-            TournamentEventTrack.track_id.in_(track_ids),
-        )
-        .count()
+        .join(TournamentEventTrack.rooms)
+        .filter(TournamentRoom.building_id == building_id)
     )
-
-
-def _clear_placements(db: Session, building_id: int) -> int:
-    """Blank every event location pointing at this building, returning how
-    many were cleared.
-
-    Required rather than tidy: the link's foreign key is RESTRICT, because
-    track_id is half that table's primary key and so the database cannot null
-    the pair itself. Without this the delete raises an IntegrityError instead
-    of doing what was asked.
-
-    The floor goes with it: "floor 2" attached to no building reads as a
-    location the event still has. Rooms go when the building's rooms are
-    deleted with it.
-    """
-    return (
-        db.query(TournamentEventTrack)
-        .filter(
-            TournamentEventTrack.building_id == building_id,
-        )
-        .update(
-            {"building_id": None, "floor": None},
-            synchronize_session=False,
-        )
-    )
+    if track_ids is not None:
+        query = query.filter(TournamentEventTrack.track_id.in_(track_ids))
+    return query.distinct().all()
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +161,7 @@ def create_building(
 # PATCH /tournaments/{tournament_id}/buildings/{building_id}/
 #
 # `track_ids` is whole-set: sending it replaces the tags. Untagging a track
-# will later have to clear the event locations pointing at this building on
-# that track — the composite FK added with those columns cannot be
-# ON DELETE SET NULL, because track_id is half the event-track link's primary
-# key and can't be nulled.
+# that events are placed on here is a 409.
 # ---------------------------------------------------------------------------
 @router.patch("/{building_id}/", response_model=TournamentBuildingRead)
 def update_building(
@@ -220,7 +192,7 @@ def update_building(
         # rather than obeyed destructively — unlike DELETE below, where
         # removing the building plainly is that request.
         removed = sorted({t.id for t in building.tracks} - {t.id for t in resolved})
-        placed = _placed_event_count(db, building.id, removed)
+        placed = len(_placements_in(db, building.id, removed)) if removed else 0
         if placed:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -246,8 +218,8 @@ def update_building(
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/buildings/{building_id}/
 #
-# Clears the event locations pointing here rather than refusing, because
-# deleting the building *is* that request — and reports how many it blanked,
+# Unplaces the events in its rooms rather than refusing, because deleting
+# the building *is* that request — and reports how many it unplaced,
 # the way a track delete reports the member rows it costs. A 200 with that
 # count, not a 204: the price of the delete should never be discovered after
 # the fact.
@@ -263,7 +235,12 @@ def delete_building(
     require_not_archived(tournament)
     building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
 
-    cleared = _clear_placements(db, building.id)
+    # Its rooms go with it, which unplaces their events; a floor override left
+    # behind would read as a location the event still has.
+    placements = _placements_in(db, building.id)
+    for placement in placements:
+        placement.floor = None
+    cleared = len(placements)
     db.delete(building)
     db.commit()
     return TournamentBuildingDeleteResult(locations_cleared=cleared)
@@ -371,9 +348,21 @@ def delete_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    """Delete a room. Events in it stay in the building, without this room."""
+    """Delete a room. An event whose only room this was is unplaced on that
+    day; one in other rooms too keeps them."""
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
-    db.delete(_get_room_or_404(db, building, room_id))
+    room = _get_room_or_404(db, building, room_id)
+
+    placements = (
+        db.query(TournamentEventTrack)
+        .join(TournamentEventTrack.rooms)
+        .filter(TournamentRoom.id == room.id)
+        .all()
+    )
+    for placement in placements:
+        if len(placement.rooms) == 1:
+            placement.floor = None
+    db.delete(room)
     db.commit()

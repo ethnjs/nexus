@@ -41,16 +41,17 @@ def _building(db, tournament_id, track_id, name):
 
 
 def _event(db, tournament_id, track_id, name, building=None, floor=None, rooms=None):
+    """Placed in `rooms` of `building`, or a room named after the event."""
     event = TournamentEvent(tournament_id=tournament_id, name=name, division="C")
+    room_names = rooms or ([name] if building else [])
     db.add(event)
     db.flush()
     db.add(
         TournamentEventTrack(
             tournament_event_id=event.id,
             track_id=track_id,
-            building_id=building.id if building else None,
             floor=floor,
-            rooms=[TournamentRoom(building=building, name=name) for name in rooms or []],
+            rooms=[TournamentRoom(building=building, name=room) for room in room_names],
         )
     )
     db.flush()
@@ -189,7 +190,7 @@ def test_moving_an_event_moves_it_between_zones_with_no_zone_edit(db, td_tournam
         )
         .one()
     )
-    link.building_id = steinhaus.id
+    link.rooms = [TournamentRoom(building=steinhaus, name="105")]
     db.flush()
 
     assert zone_for_event(db, track, anatomy.id) == south.id
@@ -209,7 +210,7 @@ def test_unplacing_an_event_makes_it_unzoned(db, td_tournament, track):
         )
         .one()
     )
-    link.building_id = None
+    link.rooms = []
     link.floor = None
     db.flush()
 

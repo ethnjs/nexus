@@ -160,6 +160,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
     from app.models.models import (
         TournamentEvent,
         TournamentEventTrack,
+        TournamentRoom,
         TournamentShift,
         TournamentTrack,
     )
@@ -170,13 +171,10 @@ def loader_options(requested: frozenset[str] | None) -> list:
     NESTED = {
         "shifts": (joinedload(TournamentShift.tournament_events),),
         "tracks": (joinedload(TournamentTrack.university),),
-        # The link row renders its building's *name* — an explicit join, since
-        # building_id's only FK is the composite one, so nothing loads it
-        # implicitly — and its staffing needs, whose roles ride along on the
-        # need's own lazy="joined".
+        # The link row renders its rooms and their building's name, and its
+        # staffing needs, whose roles ride along on the need's own lazy="joined".
         "track_details": (
-            joinedload(TournamentEventTrack.building),
-            selectinload(TournamentEventTrack.rooms),
+            selectinload(TournamentEventTrack.rooms).joinedload(TournamentRoom.building),
             selectinload(TournamentEventTrack.needs),
         ),
     }

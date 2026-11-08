@@ -1417,11 +1417,8 @@ class TournamentRoom(Base):
 # ---------------------------------------------------------------------------
 # TournamentBuildingTrack — bridge table: TournamentBuilding <-> TournamentTrack.
 #
-# Which days a building is in use on. Its (building_id, track_id) primary key
-# is also a foreign-key target: an event's location names both, so pointing a
-# composite FK here is what makes "you cannot put a Day 1 event in a
-# Day 2-only building" a fact the database enforces rather than a check a
-# route can forget — the same device as uq_tournament_shift_id_track.
+# Which days a building is in use on. An event can only be placed in its
+# rooms on these tracks; the event write route checks that.
 # ---------------------------------------------------------------------------
 class TournamentBuildingTrack(Base):
     __tablename__ = "tournament_building_tracks"
@@ -1473,32 +1470,18 @@ class TournamentEventTrack(Base):
         Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
     )
 
-    # -----------------------------------------------------------------------
-    # Where the event physically happens on this track.
-    #
-    # All nullable: most of planning has no answer yet, and an event can be on
-    # a track long before anyone decides which room it lands in.
-    #
-    # "One building and one floor per event per track" needs no constraint —
-    # these are plain columns on a table already keyed by (event, track), so
-    # the invariant is structural. Rooms are the exception that has to be a
-    # list: one event routinely spreads across 210, 212 and 214.
-    # -----------------------------------------------------------------------
-    #
-    # No inline ForeignKey on building_id. The composite constraint in
-    # __table_args__ is this column's FK, pairing it with track_id so the
-    # database — not each write path — is what stops a Day 1 event being put
-    # in a building only Day 2 uses. Same device as the assignment's
-    # shift/track pairing.
-    building_id: Mapped[int | None] = mapped_column(Integer, index=True)
-    # An override: null means "derive it from the rooms" (see effective_floor).
-    floor: Mapped[str | None] = mapped_column(String(64))
-
-    # Rooms must be in `building`; the event write route checks that, since
-    # the link table only knows the room.
+    # Where the event happens on this track: its rooms, which name the
+    # building. The event write route keeps them in one building that is on
+    # this track. No rooms means not placed yet.
     rooms: Mapped[list["TournamentRoom"]] = relationship(
         "TournamentRoom", secondary="tournament_event_track_rooms"
     )
+    # An override: null means "derive it from the rooms" (see effective_floor).
+    floor: Mapped[str | None] = mapped_column(String(64))
+
+    @property
+    def building(self) -> "TournamentBuilding | None":
+        return self.rooms[0].building if self.rooms else None
 
     @property
     def effective_floor(self) -> str | None:
@@ -1515,18 +1498,6 @@ class TournamentEventTrack(Base):
     # lazy="joined" like TournamentTrackAssignment.role: every
     # reader of a link row renders the track's name alongside it.
     track: Mapped["TournamentTrack"] = relationship("TournamentTrack", lazy="joined")
-    # Read-only, and explicitly joined: building_id's only foreign key is the
-    # composite one below, which points at the building<->track bridge rather
-    # than at tournament_buildings, so SQLAlchemy cannot infer this on its
-    # own. Writers set building_id directly — they deal in ids from the
-    # payload anyway.
-    building: Mapped["TournamentBuilding | None"] = relationship(
-        "TournamentBuilding",
-        primaryjoin="TournamentEventTrack.building_id == TournamentBuilding.id",
-        foreign_keys="TournamentEventTrack.building_id",
-        viewonly=True,
-    )
-
     # How many of each role this event wants on this track. Ordered by role
     # so a needs list renders the same way twice running.
     needs: Mapped[list["TournamentEventStaffingNeed"]] = relationship(
@@ -1534,19 +1505,6 @@ class TournamentEventTrack(Base):
         back_populates="track_detail",
         cascade="all, delete-orphan",
         order_by="TournamentEventStaffingNeed.role_id",
-    )
-
-    __table_args__ = (
-        # RESTRICT, not SET NULL: track_id is half this table's primary key
-        # and can't be nulled, so the pair can't be cleared by the database.
-        # Deleting a building, or untagging it from a track, therefore has to
-        # clear the locations pointing at it first — see the buildings routes.
-        ForeignKeyConstraint(
-            ["building_id", "track_id"],
-            ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
-            name="fk_event_track_building",
-            ondelete="RESTRICT",
-        ),
     )
 
 

@@ -21,7 +21,6 @@ from app.models.models import (
     Event,
     SeasonEvent,
     TournamentBuilding,
-    TournamentBuildingTrack,
     TournamentEvent,
     TournamentEventStaffingNeed,
     TournamentEventTrack,
@@ -150,8 +149,7 @@ def _apply_shifts_and_tracks(
                 detail="track_details must not name the same track twice",
             )
         _validate_tracks(db, event, tournament_id, list(wanted))
-        _validate_buildings(db, tournament_id, track_details)
-        rooms_by_id = _resolve_rooms(db, track_details)
+        rooms_by_id = _resolve_rooms(db, tournament_id, track_details)
         _validate_need_roles(db, tournament_id, track_details)
     else:
         wanted = {detail.track_id: None for detail in event.track_details}
@@ -182,9 +180,9 @@ def _apply_shifts_and_tracks(
             row = TournamentEventTrack(track_id=track_id)
             event.track_details.append(row)
         if detail is not None:
-            row.building_id = detail.building_id
-            row.floor = detail.floor
             row.rooms = [rooms_by_id[room_id] for room_id in detail.room_ids]
+            # A floor with no room to be on is not a location.
+            row.floor = detail.floor if row.rooms else None
             _set_needs(row, detail.needs)
 
 
@@ -228,67 +226,45 @@ def _validate_tracks(
         )
 
 
-def _validate_buildings(
+def _resolve_rooms(
     db: Session,
     tournament_id: int,
     details: list[EventTrackDetail],
-) -> None:
-    """Each named building belongs to this tournament and is tagged with the
-    track it is being used on.
-
-    The composite foreign key enforces this too, but an IntegrityError reaches
-    the caller as a 500 with nothing actionable in it. This turns the same
-    rule into a 422 that names the pair.
-    """
-    pairs = {
-        (detail.building_id, detail.track_id)
-        for detail in details
-        if detail.building_id is not None
-    }
-    if not pairs:
-        return
-
-    valid = set(
-        db.query(TournamentBuildingTrack.building_id, TournamentBuildingTrack.track_id)
-        .join(TournamentBuilding, TournamentBuilding.id == TournamentBuildingTrack.building_id)
-        .filter(
-            TournamentBuilding.tournament_id == tournament_id,
-            TournamentBuildingTrack.building_id.in_({b for b, _ in pairs}),
-        )
-        .all()
-    )
-
-    bad = sorted(pairs - valid)
-    if bad:
-        building_id, track_id = bad[0]
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"Building {building_id} is not available on track {track_id}; "
-                f"tag it with that track first"
-            ),
-        )
-
-
-def _resolve_rooms(db: Session, details: list[EventTrackDetail]) -> dict[int, TournamentRoom]:
-    """The named rooms by id, or 422 if one isn't in its entry's building.
-
-    Runs after _validate_buildings, so a room in the right building is also in
-    this tournament.
-    """
+) -> dict[int, TournamentRoom]:
+    """The named rooms by id, or a 422 naming what's wrong: a room that isn't
+    in this tournament, rooms in two buildings for one track, or a building
+    that isn't on the track."""
     wanted = {room_id for detail in details for room_id in detail.room_ids}
     if not wanted:
         return {}
     rooms = {
-        room.id: room for room in db.query(TournamentRoom).filter(TournamentRoom.id.in_(wanted))
+        room.id: room
+        for room in db.query(TournamentRoom)
+        .join(TournamentBuilding, TournamentBuilding.id == TournamentRoom.building_id)
+        .options(selectinload(TournamentRoom.building).selectinload(TournamentBuilding.tracks))
+        .filter(TournamentRoom.id.in_(wanted), TournamentBuilding.tournament_id == tournament_id)
     }
     for detail in details:
-        for room_id in detail.room_ids:
-            room = rooms.get(room_id)
-            if room is None or room.building_id != detail.building_id:
+        missing = [room_id for room_id in detail.room_ids if room_id not in rooms]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unknown room {missing[0]}",
+            )
+        buildings = {rooms[room_id].building for room_id in detail.room_ids}
+        if len(buildings) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"An event's rooms on track {detail.track_id} must be in one building",
+            )
+        for building in buildings:
+            if detail.track_id not in {track.id for track in building.tracks}:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail=f"Room {room_id} is not in the event's building on track {detail.track_id}",
+                    detail=(
+                        f"{building.name} is not available on track {detail.track_id}; "
+                        f"tag it with that track first"
+                    ),
                 )
     return rooms
 

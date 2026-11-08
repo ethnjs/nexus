@@ -60,31 +60,18 @@ class EventStaffingNeedRead(EventStaffingNeed):
 
 
 class EventTrackDetail(BaseModel):
-    """One track an event runs on, plus where it happens there.
-
-    Replaces the old `track_ids` outright rather than sitting beside it: a
-    list of ids and a list of ids-with-location are two ways to write the
-    same thing, and the pair would have to define which wins. A track with no
-    location is simply a detail whose fields are all None.
-
-    One building and one floor, but many rooms — an event routinely spreads
-    across 210, 212 and 214, while nothing sensible spreads across two
-    buildings on one day. The link table's primary key already enforces the
-    singular half; nothing needs to enforce it here.
-    """
+    """One track an event runs on, plus where it happens there: its rooms,
+    all in one building on that track, and an optional floor override. No
+    rooms means not placed yet."""
 
     model_config = ConfigDict(extra="forbid")
 
     track_id: int
-    building_id: int | None = None
     floor: str | None = None
-    # Rooms in `building_id`; sending any without a building is a 422.
     room_ids: list[int] = []
-    # Whole-set within the entry, like every other field here: an entry states
-    # what the event's arrangement on that track *is*. Sending an entry with
-    # no `needs` therefore clears them, exactly as sending one with no
-    # `building_id` unplaces it. Leave the track out of `track_details`
-    # entirely to keep what it already has.
+    # Whole-set within the entry: sending one with no `needs` clears them, and
+    # one with no `room_ids` unplaces it. Leave the track out of
+    # `track_details` entirely to keep what it already has.
     needs: list[EventStaffingNeed] = []
 
     @field_validator("needs")
@@ -109,10 +96,9 @@ class EventTrackDetail(BaseModel):
 
 
 class EventTrackDetailRead(EventTrackDetail):
-    """The read shape. Carries the building's name because nothing else in an
-    event response can supply it — unlike a track, which the `tracks` group
-    already spells out in full."""
+    """The read shape, with the building the rooms are in spelled out."""
 
+    building_id: int | None = None
     building_name: str | None = None
     rooms: list[TournamentRoomRead] = []
     needs: list[EventStaffingNeedRead] = []  # ty: ignore[invalid-attribute-override]
@@ -122,7 +108,7 @@ class EventTrackDetailRead(EventTrackDetail):
         rooms = sorted_rooms(detail.rooms)
         return cls(
             track_id=detail.track_id,
-            building_id=detail.building_id,
+            building_id=detail.building.id if detail.building else None,
             building_name=detail.building.name if detail.building else None,
             floor=detail.floor,
             room_ids=[room.id for room in rooms],

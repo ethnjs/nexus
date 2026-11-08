@@ -68,12 +68,13 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     resolved: dict[int, int | None] = {}
     for link in links:
         zone_id = by_event.get(link.tournament_event_id)
-        if zone_id is None and link.building_id is not None:
+        building_id = link.rooms[0].building_id if link.rooms else None
+        if zone_id is None and building_id is not None:
             floor = link.effective_floor
             if floor is not None:
-                zone_id = by_floor.get((link.building_id, floor))
+                zone_id = by_floor.get((building_id, floor))
             if zone_id is None:
-                zone_id = by_building.get(link.building_id)
+                zone_id = by_building.get(building_id)
         resolved[link.tournament_event_id] = zone_id
     return resolved
 
@@ -115,7 +116,7 @@ def unzoned_event_ids(db: Session, track_id: int) -> list[int]:
 
 
 def unplaced_event_ids(db: Session, track_id: int) -> list[int]:
-    """Events on this track with no building at all.
+    """Events on this track with no room at all.
 
     Overlaps unzoned_event_ids without containing or being contained by it:
     an unplaced event is usually unzoned too, but an explicit `event` member
@@ -128,7 +129,7 @@ def unplaced_event_ids(db: Session, track_id: int) -> list[int]:
         link.tournament_event_id
         for link in db.query(TournamentEventTrack).filter(
             TournamentEventTrack.track_id == track_id,
-            TournamentEventTrack.building_id.is_(None),
+            ~TournamentEventTrack.rooms.any(),
         )
     )
 

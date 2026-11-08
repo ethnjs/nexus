@@ -286,7 +286,7 @@ def _place(db, event_id, track_id, building_id, floor="2", rooms=("210",)):
     db.query(TournamentEventTrack).filter(
         TournamentEventTrack.tournament_event_id == event_id,
         TournamentEventTrack.track_id == track_id,
-    ).update({"building_id": building_id, "floor": floor})
+    ).update({"floor": floor})
     for name in rooms:
         room = TournamentRoom(building_id=building_id, name=name)
         db.add(room)
@@ -330,7 +330,6 @@ def test_delete_building_clears_placements_and_reports_the_cost(
 
     db.expire_all()
     link = _link(db, event["id"], track_id)
-    assert link.building_id is None
     assert link.floor is None and link.rooms == []
 
 
@@ -350,7 +349,7 @@ def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tourn
     )
     assert response.status_code == 409
     assert "move those events first" in response.json()["detail"]
-    assert _link(db, event["id"], track_id).building_id == building["id"]
+    assert [room.building_id for room in _link(db, event["id"], track_id).rooms] == [building["id"]]
 
 
 def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament):
@@ -371,30 +370,6 @@ def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament
     )
     assert response.status_code == 200
     assert response.json()["track_ids"] == [track_id]
-
-
-def test_placing_an_event_in_a_building_not_on_its_track_is_rejected_by_the_db(
-    client,
-    db,
-    td_user,
-    td_tournament,
-):
-    """The composite FK, not a route check: this is what makes a Day 1 event
-    in a Day 2-only building unrepresentable."""
-    from sqlalchemy.exc import IntegrityError
-
-    login(client, "td@test.com", "tdpass")
-    track_id = primary_track_id(db, td_tournament.id)
-    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
-    # Tagged with the cosmetic track only.
-    building = _make_building(client, td_tournament.id, track_ids=[cosmetic]).json()
-    event = _make_event(client, td_tournament.id, [track_id])
-
-    try:
-        _place(db, event["id"], track_id, building["id"])
-        raise AssertionError("expected the composite foreign key to reject this")
-    except IntegrityError:
-        db.rollback()
 
 
 # ---------------------------------------------------------------------------

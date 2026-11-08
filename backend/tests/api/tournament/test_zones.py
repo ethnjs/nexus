@@ -22,10 +22,19 @@ def _building(client, tournament_id, track_ids, name="Rowland Hall"):
     ).json()
 
 
+def _room(client, tournament_id, building_id, name):
+    rooms = client.post(
+        f"/tournaments/{tournament_id}/buildings/{building_id}/rooms/",
+        json={"names": [name]},
+    ).json()
+    return next(room["id"] for room in rooms if room["name"] == name)
+
+
 def _event(client, tournament_id, track_id, name="Anatomy", building_id=None, floor=None):
+    """Placed in a room of its own in `building_id`, named after the event."""
     detail = {"track_id": track_id}
     if building_id is not None:
-        detail["building_id"] = building_id
+        detail["room_ids"] = [_room(client, tournament_id, building_id, name)]
     if floor is not None:
         detail["floor"] = floor
     response = client.post(
@@ -179,7 +188,11 @@ def test_moving_an_event_changes_contents_with_no_zone_edit(
         f"/tournaments/{td_tournament.id}/events/{anatomy['id']}/",
         json={
             "track_details": [
-                {"track_id": track, "building_id": steinhaus["id"], "floor": "1"},
+                {
+                    "track_id": track,
+                    "room_ids": [_room(client, td_tournament.id, steinhaus["id"], "105")],
+                    "floor": "1",
+                },
             ]
         },
     )
