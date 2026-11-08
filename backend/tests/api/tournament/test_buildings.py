@@ -1,6 +1,11 @@
 """Tests for /tournaments/{tournament_id}/buildings/ (TournamentBuilding)."""
 
-from app.models.models import TournamentEventTrack, TournamentTrack
+from app.models.models import (
+    TournamentEventTrack,
+    TournamentEventTrackRoom,
+    TournamentRoom,
+    TournamentTrack,
+)
 from tests.conftest import grant_role, login, primary_track_id
 
 
@@ -281,7 +286,16 @@ def _place(db, event_id, track_id, building_id, floor="2", rooms=("210",)):
     db.query(TournamentEventTrack).filter(
         TournamentEventTrack.tournament_event_id == event_id,
         TournamentEventTrack.track_id == track_id,
-    ).update({"building_id": building_id, "floor": floor, "rooms": list(rooms)})
+    ).update({"building_id": building_id, "floor": floor})
+    for name in rooms:
+        room = TournamentRoom(building_id=building_id, name=name)
+        db.add(room)
+        db.flush()
+        db.add(
+            TournamentEventTrackRoom(
+                tournament_event_id=event_id, track_id=track_id, room_id=room.id
+            )
+        )
     db.commit()
 
 
@@ -317,13 +331,11 @@ def test_delete_building_clears_placements_and_reports_the_cost(
     db.expire_all()
     link = _link(db, event["id"], track_id)
     assert link.building_id is None
-    # floor and rooms go with it: a room inside a building that is gone reads
-    # as a location the event still has.
-    assert link.floor is None and link.rooms is None
+    assert link.floor is None and link.rooms == []
 
 
 def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tournament):
-    """Unlike a delete, untagging is not a request to wipe rooms."""
+    """Unlike a delete, untagging is not a request to unplace events."""
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
     cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
@@ -383,3 +395,103 @@ def test_placing_an_event_in_a_building_not_on_its_track_is_rejected_by_the_db(
         raise AssertionError("expected the composite foreign key to reject this")
     except IntegrityError:
         db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Rooms
+# ---------------------------------------------------------------------------
+
+
+def _rooms_url(tournament_id, building_id, room_id=None):
+    base = f"/tournaments/{tournament_id}/buildings/{building_id}/rooms/"
+    return f"{base}{room_id}/" if room_id is not None else base
+
+
+def test_add_rooms_returns_them_in_natural_order(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    response = client.post(
+        _rooms_url(td_tournament.id, building["id"]),
+        json={"names": ["210", " 9 ", "", "B12", "10"]},
+    )
+    assert response.status_code == 201
+    assert [room["name"] for room in response.json()] == ["9", "10", "210", "B12"]
+
+    listed = client.get(f"/tournaments/{td_tournament.id}/buildings/").json()[0]
+    assert [room["name"] for room in listed["rooms"]] == ["9", "10", "210", "B12"]
+
+
+def test_adding_rooms_skips_names_the_building_already_has(client, td_user, td_tournament):
+    """A pasted list can be pasted again."""
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    url = _rooms_url(td_tournament.id, building["id"])
+    client.post(url, json={"names": ["210", "212"]})
+    response = client.post(url, json={"names": ["212", "214", "214"]})
+    assert response.status_code == 201
+    assert [room["name"] for room in response.json()] == ["210", "212", "214"]
+
+
+def test_adding_no_rooms_is_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    response = client.post(_rooms_url(td_tournament.id, building["id"]), json={"names": [" "]})
+    assert response.status_code == 422
+
+
+def test_rename_room_and_set_its_floor(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    room = client.post(
+        _rooms_url(td_tournament.id, building["id"]), json={"names": ["A12"]}
+    ).json()[0]
+    url = _rooms_url(td_tournament.id, building["id"], room["id"])
+
+    response = client.patch(url, json={"name": "A14", "floor": "2"})
+    assert response.status_code == 200
+    assert response.json() == {"id": room["id"], "name": "A14", "floor": "2"}
+
+    cleared = client.patch(url, json={"floor": None})
+    assert cleared.json()["floor"] is None
+
+
+def test_rename_room_onto_an_existing_name_conflicts(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    rooms = client.post(
+        _rooms_url(td_tournament.id, building["id"]), json={"names": ["210", "212"]}
+    ).json()
+    response = client.patch(
+        _rooms_url(td_tournament.id, building["id"], rooms[1]["id"]), json={"name": "210"}
+    )
+    assert response.status_code == 409
+
+
+def test_room_routes_404_for_another_buildings_room(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    rowland = _make_building(client, td_tournament.id).json()
+    steinhaus = _make_building(client, td_tournament.id, name="Steinhaus").json()
+    room = client.post(
+        _rooms_url(td_tournament.id, steinhaus["id"]), json={"names": ["105"]}
+    ).json()[0]
+    url = _rooms_url(td_tournament.id, rowland["id"], room["id"])
+    assert client.patch(url, json={"name": "106"}).status_code == 404
+    assert client.delete(url).status_code == 404
+
+
+def test_room_routes_are_scoped_to_the_tournament(
+    client, db, td_user, td_tournament, other_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    grant_role(db, other_tournament, td_user, "Tournament Director")
+    response = client.post(_rooms_url(other_tournament.id, building["id"]), json={"names": ["1"]})
+    assert response.status_code == 404
+
+
+def test_deleting_a_building_deletes_its_rooms(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    client.post(_rooms_url(td_tournament.id, building["id"]), json={"names": ["210"]})
+    client.delete(f"/tournaments/{td_tournament.id}/buildings/{building['id']}/")
+    assert db.query(TournamentRoom).count() == 0

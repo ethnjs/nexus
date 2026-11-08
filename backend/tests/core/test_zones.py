@@ -19,6 +19,7 @@ from app.models.models import (
     TournamentBuildingTrack,
     TournamentEvent,
     TournamentEventTrack,
+    TournamentRoom,
     TournamentZone,
     TournamentZoneMember,
 )
@@ -49,7 +50,7 @@ def _event(db, tournament_id, track_id, name, building=None, floor=None, rooms=N
             track_id=track_id,
             building_id=building.id if building else None,
             floor=floor,
-            rooms=rooms,
+            rooms=[TournamentRoom(building=building, name=name) for name in rooms or []],
         )
     )
     db.flush()
@@ -125,6 +126,18 @@ def test_a_typed_floor_overrides_the_derived_one(db, td_tournament, track):
     _rule(db, south, track, "floor", building=rowland, floor="2")
 
     assert resolve_track_zones(db, track)[overridden.id] is None
+
+
+def test_a_room_floor_override_feeds_the_derived_floor(db, td_tournament, track):
+    """Room A12 is on floor 2 because the room says so, not its name."""
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    anatomy = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["A12"])
+    db.query(TournamentRoom).filter(TournamentRoom.name == "A12").update({"floor": "2"})
+    db.expire_all()
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, south, track, "floor", building=rowland, floor="2")
+
+    assert resolve_track_zones(db, track)[anatomy.id] == south.id
 
 
 def test_an_explicit_event_outranks_both_rules(db, td_tournament, track):

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
+from app.schemas.tournament.building import TournamentRoomRead, sorted_rooms
 from app.schemas.tournament.shift import TournamentShiftBase, TournamentShiftRead
 from app.schemas.tournament.track import TournamentTrackRead
 
@@ -24,22 +25,6 @@ def reject_null[T](v: T | None) -> T:
     if v is None:
         raise ValueError("can't be null")
     return v
-
-
-def _clean_rooms(value: list[str]) -> list[str]:
-    """Trimmed, blank-free, deduplicated, order preserved.
-
-    Order is the TD's: "210, 212, 214" is how they think of the space, and
-    sorting would renumber it for them. Blanks are dropped rather than
-    rejected — a room list is edited as a row of tags, and an empty one is a
-    tag the TD cleared, not an error worth a 422.
-    """
-    seen: list[str] = []
-    for room in value:
-        room = room.strip()
-        if room and room not in seen:
-            seen.append(room)
-    return seen
 
 
 class EventStaffingNeed(BaseModel):
@@ -93,7 +78,8 @@ class EventTrackDetail(BaseModel):
     track_id: int
     building_id: int | None = None
     floor: str | None = None
-    rooms: list[str] = []
+    # Rooms in `building_id`; sending any without a building is a 422.
+    room_ids: list[int] = []
     # Whole-set within the entry, like every other field here: an entry states
     # what the event's arrangement on that track *is*. Sending an entry with
     # no `needs` therefore clears them, exactly as sending one with no
@@ -116,10 +102,10 @@ class EventTrackDetail(BaseModel):
             return None
         return v.strip() or None
 
-    @field_validator("rooms")
+    @field_validator("room_ids")
     @classmethod
-    def _check_rooms(cls, v: list[str]) -> list[str]:
-        return _clean_rooms(v)
+    def _dedupe_room_ids(cls, v: list[int]) -> list[int]:
+        return list(dict.fromkeys(v))
 
 
 class EventTrackDetailRead(EventTrackDetail):
@@ -128,16 +114,19 @@ class EventTrackDetailRead(EventTrackDetail):
     already spells out in full."""
 
     building_name: str | None = None
+    rooms: list[TournamentRoomRead] = []
     needs: list[EventStaffingNeedRead] = []  # ty: ignore[invalid-attribute-override]
 
     @classmethod
     def from_row(cls, detail) -> EventTrackDetailRead:
+        rooms = sorted_rooms(detail.rooms)
         return cls(
             track_id=detail.track_id,
             building_id=detail.building_id,
             building_name=detail.building.name if detail.building else None,
             floor=detail.floor,
-            rooms=detail.rooms or [],
+            room_ids=[room.id for room in rooms],
+            rooms=rooms,
             needs=[EventStaffingNeedRead.from_row(need) for need in detail.needs],
         )
 

@@ -25,6 +25,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload, validates
 
 from app.core.age import meets_age_requirement
+from app.core.rooms import derived_floor, room_sort_key
 from app.db.session import Base
 
 
@@ -1339,11 +1340,6 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
 # its buildings once; one running Day 1 at UCI and Day 2 at Northwood tags
 # each building with the day it belongs to, and nothing can put a Day 1 event
 # in a Northwood-only building.
-#
-# There is deliberately no rooms table. A room is free text on the
-# event<->track link: rooms are typed once, read by humans, and carry no data
-# of their own, so a catalog would be a second thing to keep in sync for no
-# question it alone could answer.
 # ---------------------------------------------------------------------------
 class TournamentBuilding(Base):
     __tablename__ = "tournament_buildings"
@@ -1370,10 +1366,52 @@ class TournamentBuilding(Base):
         back_populates="buildings",
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
+    # Unordered here: SQL can't sort "9" before "10". Readers sort with
+    # room_sort_key.
+    rooms: Mapped[list["TournamentRoom"]] = relationship(
+        "TournamentRoom",
+        back_populates="building",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_building_name"),
     )
+
+
+# ---------------------------------------------------------------------------
+# TournamentRoom — a room inside a building.
+#
+# Belongs to the building, not to a track: a room is available on every track
+# its building is tagged with.
+# ---------------------------------------------------------------------------
+class TournamentRoom(Base):
+    __tablename__ = "tournament_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    building_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_buildings.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    # Null means derive it from the name; set for a room whose number doesn't
+    # start with its floor.
+    floor: Mapped[str | None] = mapped_column(String(64))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    building: Mapped["TournamentBuilding"] = relationship(
+        "TournamentBuilding", back_populates="rooms"
+    )
+
+    @property
+    def effective_floor(self) -> str | None:
+        return self.floor or derived_floor(self.name)
+
+    __table_args__ = (UniqueConstraint("building_id", "name", name="uq_tournament_room_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -1454,19 +1492,22 @@ class TournamentEventTrack(Base):
     # shift/track pairing.
     building_id: Mapped[int | None] = mapped_column(Integer, index=True)
     # An override: null means "derive it from the rooms" (see effective_floor).
-    # Kept as a column for the building whose numbering doesn't follow the rule.
     floor: Mapped[str | None] = mapped_column(String(64))
-    rooms: Mapped[list[str] | None] = mapped_column(JSON)  # list of str
+
+    # Rooms must be in `building`; the event write route checks that, since
+    # the link table only knows the room.
+    rooms: Mapped[list["TournamentRoom"]] = relationship(
+        "TournamentRoom", secondary="tournament_event_track_rooms"
+    )
 
     @property
     def effective_floor(self) -> str | None:
-        """The floor this event is on: the TD's override if set, otherwise the
-        first character of its first room ("210" -> "2") — room numbers lead
-        with the floor almost everywhere, so typing the room is enough."""
+        """The TD's override if set, otherwise the floor of the first room in
+        natural order."""
         if self.floor:
             return self.floor
-        first = next((room.strip() for room in (self.rooms or []) if room and room.strip()), None)
-        return first[0] if first else None
+        rooms = sorted(self.rooms, key=lambda room: room_sort_key(room.name))
+        return rooms[0].effective_floor if rooms else None
 
     tournament_event: Mapped["TournamentEvent"] = relationship(
         "TournamentEvent", back_populates="track_details"
@@ -1505,6 +1546,28 @@ class TournamentEventTrack(Base):
             ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
             name="fk_event_track_building",
             ondelete="RESTRICT",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventTrackRoom — bridge table: TournamentEventTrack <-> TournamentRoom.
+# ---------------------------------------------------------------------------
+class TournamentEventTrackRoom(Base):
+    __tablename__ = "tournament_event_track_rooms"
+
+    tournament_event_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    track_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_rooms.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_event_track_room_link",
+            ondelete="CASCADE",
         ),
     )
 

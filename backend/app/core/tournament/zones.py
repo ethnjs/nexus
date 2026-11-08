@@ -29,7 +29,7 @@ given building, floor, or event, so each lookup below has at most one answer.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.models import TournamentEventTrack, TournamentZone, TournamentZoneMember
 
@@ -58,7 +58,12 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     by_floor = {(m.building_id, m.floor): m.zone_id for m in members if m.kind == KIND_FLOOR}
     by_building = {m.building_id: m.zone_id for m in members if m.kind == KIND_BUILDING}
 
-    links = db.query(TournamentEventTrack).filter(TournamentEventTrack.track_id == track_id).all()
+    links = (
+        db.query(TournamentEventTrack)
+        .options(selectinload(TournamentEventTrack.rooms))
+        .filter(TournamentEventTrack.track_id == track_id)
+        .all()
+    )
 
     resolved: dict[int, int | None] = {}
     for link in links:

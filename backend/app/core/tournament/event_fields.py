@@ -176,6 +176,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
         # need's own lazy="joined".
         "track_details": (
             joinedload(TournamentEventTrack.building),
+            selectinload(TournamentEventTrack.rooms),
             selectinload(TournamentEventTrack.needs),
         ),
     }

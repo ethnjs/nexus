@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.models import (
     TournamentBuilding,
     TournamentEventTrack,
+    TournamentRoom,
     TournamentTrack,
     User,
 )
@@ -18,6 +19,10 @@ from app.schemas.tournament.building import (
     TournamentBuildingDeleteResult,
     TournamentBuildingRead,
     TournamentBuildingUpdate,
+    TournamentRoomRead,
+    TournamentRoomsCreate,
+    TournamentRoomUpdate,
+    sorted_rooms,
 )
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/buildings", tags=["tournaments"])
@@ -99,9 +104,9 @@ def _clear_placements(db: Session, building_id: int) -> int:
     the pair itself. Without this the delete raises an IntegrityError instead
     of doing what was asked.
 
-    floor and rooms go with it. They describe a place inside the building
-    being removed, and "floor 2, room 210" attached to no building reads as a
-    location the event still has.
+    The floor goes with it: "floor 2" attached to no building reads as a
+    location the event still has. Rooms go when the building's rooms are
+    deleted with it.
     """
     return (
         db.query(TournamentEventTrack)
@@ -109,7 +114,7 @@ def _clear_placements(db: Session, building_id: int) -> int:
             TournamentEventTrack.building_id == building_id,
         )
         .update(
-            {"building_id": None, "floor": None, "rooms": None},
+            {"building_id": None, "floor": None},
             synchronize_session=False,
         )
     )
@@ -132,9 +137,8 @@ def list_buildings(
     buildings = (
         db.query(TournamentBuilding)
         .options(
-            # Every row serializes its track ids; without this the listing is one
-            # extra query per building.
-            selectinload(TournamentBuilding.tracks)
+            selectinload(TournamentBuilding.tracks),
+            selectinload(TournamentBuilding.rooms),
         )
         .filter(TournamentBuilding.tournament_id == tournament_id)
         .order_by(TournamentBuilding.name)
@@ -212,7 +216,7 @@ def update_building(
         building.name = updates["name"]
     if "track_ids" in updates:
         resolved = _resolve_tracks(db, tournament_id, updates["track_ids"])
-        # Untagging a track is not a request to wipe rooms, so it is refused
+        # Untagging a track is not a request to unplace events, so it is refused
         # rather than obeyed destructively — unlike DELETE below, where
         # removing the building plainly is that request.
         removed = sorted({t.id for t in building.tracks} - {t.id for t in resolved})
@@ -263,3 +267,113 @@ def delete_building(
     db.delete(building)
     db.commit()
     return TournamentBuildingDeleteResult(locations_cleared=cleared)
+
+
+def _room_name_taken(
+    db: Session, building_id: int, name: str, *, excluding_id: int | None = None
+) -> bool:
+    query = db.query(TournamentRoom).filter(
+        TournamentRoom.building_id == building_id, TournamentRoom.name == name
+    )
+    if excluding_id is not None:
+        query = query.filter(TournamentRoom.id != excluding_id)
+    return query.first() is not None
+
+
+def _get_room_or_404(db: Session, building: TournamentBuilding, room_id: int) -> TournamentRoom:
+    room = db.get(TournamentRoom, room_id)
+    if room is None or room.building_id != building.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    return room
+
+
+@router.post(
+    "/{building_id}/rooms/",
+    response_model=list[TournamentRoomRead],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_rooms(
+    tournament_id: int,
+    building_id: int,
+    payload: TournamentRoomsCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Add rooms to a building. Names it already has are skipped, so a list can
+    be pasted again safely. Returns all of the building's rooms in natural
+    order."""
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
+
+    existing = {room.name for room in building.rooms}
+    for name in payload.names:
+        if name not in existing:
+            building.rooms.append(TournamentRoom(name=name))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A room with this name was added at the same time; try again",
+        ) from None
+    db.refresh(building)
+    return sorted_rooms(building.rooms)
+
+
+@router.patch("/{building_id}/rooms/{room_id}/", response_model=TournamentRoomRead)
+def update_room(
+    tournament_id: int,
+    building_id: int,
+    room_id: int,
+    payload: TournamentRoomUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Rename a room or set its floor. A null `floor` derives it from the name
+    again."""
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
+    room = _get_room_or_404(db, building, room_id)
+
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("name") is None:
+        updates.pop("name", None)
+    if "name" in updates and _room_name_taken(
+        db, building.id, updates["name"], excluding_id=room.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This building already has a room with this name",
+        )
+    for field, value in updates.items():
+        setattr(room, field, value)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This building already has a room with this name",
+        ) from None
+    db.refresh(room)
+    return TournamentRoomRead.model_validate(room)
+
+
+@router.delete("/{building_id}/rooms/{room_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_room(
+    tournament_id: int,
+    building_id: int,
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Delete a room. Events in it stay in the building, without this room."""
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
+    db.delete(_get_room_or_404(db, building, room_id))
+    db.commit()
