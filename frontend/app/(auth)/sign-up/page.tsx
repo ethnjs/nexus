@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
+import { TermsAgreement } from "@/components/auth/TermsAgreement";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
@@ -20,6 +21,7 @@ export default function SignUpPage() {
 
 function SignUpContent() {
   const [email, setEmail] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -33,11 +35,15 @@ function SignUpContent() {
     : "/onboarding";
 
   async function handleRegister(password: string) {
+    if (!acceptedTerms) {
+      setFormError("Please accept the Terms of Service and Privacy Policy.");
+      return;
+    }
     setLoading(true);
     setFormError(undefined);
 
     try {
-      await authApi.register({ email, password });
+      await authApi.register({ email, password, accepted_terms: true });
 
       authApi
         .sendEmailVerification()
@@ -115,7 +121,15 @@ function SignUpContent() {
         submitLabel="Sign Up"
         loading={loading}
         formError={formError}
-      />
+      >
+        <TermsAgreement
+          checked={acceptedTerms}
+          onChange={(checked) => {
+            setAcceptedTerms(checked);
+            setFormError(undefined);
+          }}
+        />
+      </CredentialsForm>
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
         <span

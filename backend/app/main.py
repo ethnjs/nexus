@@ -149,7 +149,9 @@ app.include_router(
 app.include_router(tournament_display_config.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_assignments.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_export_presets.router, prefix="", dependencies=[api_key_dependency])
-app.include_router(sheets.router, prefix="", dependencies=[api_key_dependency])
+# Sheets sync is outdated, and the privacy policy doesn't cover sending data to Google.
+if settings.app_env != "production":
+    app.include_router(sheets.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(universities.router, prefix="", dependencies=[api_key_dependency])

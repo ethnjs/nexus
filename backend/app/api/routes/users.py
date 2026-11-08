@@ -14,6 +14,7 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
+from app.core.legal import needs_terms_acceptance, record_terms_acceptance
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -249,10 +250,27 @@ def get_me(
         response.missing_profile_fields = compute_missing_profile_fields(user)
         return response
 
-    response = UserMeSlimResponse.model_validate(current_user)
-    response.is_profile_complete = is_profile_complete(current_user, db=db)
-    response.is_onboarding_complete = is_onboarding_complete(current_user, db=db)
+    return _me_slim(current_user, db)
+
+
+def _me_slim(user: User, db: Session) -> UserMeSlimResponse:
+    response = UserMeSlimResponse.model_validate(user)
+    response.is_profile_complete = is_profile_complete(user, db=db)
+    response.is_onboarding_complete = is_onboarding_complete(user, db=db)
+    response.needs_terms_acceptance = needs_terms_acceptance(user)
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/accept-terms/ — accept the current Terms and Privacy Policy
+# ---------------------------------------------------------------------------
+@router.post("/users/me/accept-terms/", response_model=UserMeSlimResponse)
+def accept_terms(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Records that the current user accepts the current Terms of Service and Privacy Policy."""
+    record_terms_acceptance(user)
+    db.commit()
+    db.refresh(user)
+    return _me_slim(user, db)
 
 
 # ---------------------------------------------------------------------------

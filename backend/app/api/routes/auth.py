@@ -22,6 +22,7 @@ from app.core.auth import (
     verify_and_update_password,
     verify_password,
 )
+from app.core.legal import record_terms_acceptance
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
@@ -139,6 +140,8 @@ def register(
     check_if_email_exists(db, body.email)
 
     user = create_user(db, body.email, password=body.password)
+    record_terms_acceptance(user)
+    db.commit()
 
     raw_token = create_session(
         db,
