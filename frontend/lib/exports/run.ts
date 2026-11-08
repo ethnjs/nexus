@@ -10,9 +10,11 @@ import {
 import {
   type Assignment,
   assignmentsApi,
+  auditLogApi,
   type DisplayConfigCatalog,
   type DuosmiumRole,
   displayConfigApi,
+  type ExportOutput,
   type ExportPresetInput,
   type MembershipField,
   type MembershipFull,
@@ -44,6 +46,9 @@ export interface ExportResult {
   rows: string[][];
   text: string;
   warnings: string[];
+  /** What the audit log records about this export. */
+  fields: MembershipField[];
+  columns: string[] | null;
 }
 
 const TORUS_ROLES = EXTERNAL_SYSTEMS.find((s) => s.field === "torus_role")!.roles;
@@ -97,14 +102,19 @@ export function computeExport(
   eventIds: Set<number> | null,
   ctx: ExportContext | null,
 ): ExportResult {
+  const fields = fieldsForChoice(choice, ctx);
   if (choice.kind === "torus")
     return {
       header: null,
+      fields,
+      columns: null,
       ...buildTorus(members, choice.role, { trackId: choice.trackId, eventIds }),
     };
   if (choice.kind === "duosmium") {
     return {
       header: null,
+      fields,
+      columns: null,
       ...buildDuosmium(members, choice.roles, {
         trackId: choice.trackId,
         eventIds,
@@ -112,7 +122,8 @@ export function computeExport(
       }),
     };
   }
-  if (choice.kind === "email_list") return { header: null, ...buildEmailList(members) };
+  if (choice.kind === "email_list")
+    return { header: null, fields, columns: null, ...buildEmailList(members) };
   if (!ctx) throw new Error("A custom export needs the column catalog");
 
   const { shape } = choice;
@@ -129,8 +140,11 @@ export function computeExport(
     },
     ctx,
   );
-  const stale = shape.columns.filter((c) => !resolveExportColumn(c.key, ctx)).length;
+  const resolved = shape.columns.map((c) => resolveExportColumn(c.key, ctx));
+  const stale = resolved.filter((c) => !c).length;
   return {
+    fields,
+    columns: resolved.flatMap((c) => (c ? [c.header] : [])),
     header: table.header,
     rows: table.rows,
     text: toCsv(table.header ? [table.header, ...table.rows] : table.rows),
@@ -173,6 +187,26 @@ export function exportFilenameFor(
     presetName(choice),
     ...scopeParts(choice, trackNames),
   ]);
+}
+
+/** Records a finished copy or download in the tournament's audit log. */
+export function logExport(
+  tournament: Tournament,
+  choice: ExportChoice,
+  result: ExportResult,
+  output: ExportOutput,
+): Promise<void> {
+  const trackId = choice.kind === "email_list" ? null : choice.trackId;
+  const track = trackId === null ? undefined : trackNamesOf(tournament).get(trackId);
+  return auditLogApi.logExport(tournament.id, {
+    preset: presetName(choice),
+    ...(track ? { track } : {}),
+    ...(choice.kind === "torus" ? { role: TORUS_ROLES[choice.role].label } : {}),
+    ...(choice.kind === "duosmium" ? { division: choice.division } : {}),
+    output,
+    fields: result.fields,
+    ...(result.columns ? { columns: result.columns } : {}),
+  });
 }
 
 export function trackNamesOf(tournament: Tournament): Map<number, string> {

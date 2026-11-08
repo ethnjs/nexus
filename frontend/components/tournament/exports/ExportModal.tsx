@@ -47,6 +47,7 @@ import {
   type DisplayConfigCatalog,
   type DuosmiumRole,
   displayConfigApi,
+  type ExportOutput,
   type ExportPreset,
   type ExportPresetInput,
   exportPresetsApi,
@@ -74,6 +75,7 @@ import {
   eventIdsFor,
   exportFilenameFor,
   fieldsForChoice,
+  logExport,
   trackNamesOf,
 } from "@/lib/exports/run";
 import type { SortRule } from "@/lib/sorting";
@@ -386,6 +388,7 @@ export function ExportModal({
     copyText(result.text)
       .then(() => {
         show(`Copied ${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`, "success");
+        record("copy");
       })
       .catch(() => show("Couldn't copy to the clipboard.", "error"));
   }
@@ -393,6 +396,14 @@ export function ExportModal({
   function download(kind: "csv" | "txt") {
     if (!result || !choice) return;
     downloadText(exportFilenameFor(choice, tournament, trackNames), result.text, kind);
+    record(kind);
+  }
+
+  function record(output: ExportOutput) {
+    if (!result || !choice) return;
+    logExport(tournament, choice, result, output).catch(() =>
+      show("Exported, but it couldn't be recorded in the audit log.", "error"),
+    );
   }
 
   // ---- Saving ------------------------------------------------------------

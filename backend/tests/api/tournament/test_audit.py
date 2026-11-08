@@ -10,13 +10,14 @@ case's fixture data visible instead of implied by a chain of other endpoints.
 from datetime import UTC, datetime, timedelta
 
 from app.core.tournament.audit import (
+    DATA_EXPORTED,
     JOIN_CODE_CREATED,
     ROLE_CREATED,
     ROLE_DELETED,
     ROLE_UPDATED,
     log_action,
 )
-from app.models.models import TournamentRole
+from app.models.models import AuditLogEntry, TournamentRole, User
 from tests.conftest import grant_role, login
 
 
@@ -299,6 +300,30 @@ def test_list_audit_log_actor_falls_back_to_user_without_membership(
     assert actor["roles"] is None
 
 
+def test_list_audit_log_returns_actor_snapshot(client, td_user, td_tournament, db):
+    _log(db, td_tournament.id, td_user.id)
+    login(client, "td@test.com", "tdpass")
+
+    entry = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]
+    assert entry["actor_name"] == "TD User"
+    assert entry["actor_email"] == "td@test.com"
+
+
+def test_list_audit_log_keeps_snapshot_after_actor_deleted(client, td_user, td_tournament, db):
+    gone = User(email="gone@test.com", first_name="Gone", last_name="Person")
+    db.add(gone)
+    db.commit()
+    _log(db, td_tournament.id, gone.id)
+    db.delete(gone)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    entry = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]
+    assert entry["actor"]["user_id"] is None
+    assert entry["actor_name"] == "Gone Person"
+    assert entry["actor_email"] == "gone@test.com"
+
+
 def test_list_audit_log_hydrates_role_target(client, td_user, td_tournament, db):
     role_id = _role_id(db, td_tournament.id, "Volunteer")
     _log(
@@ -406,3 +431,69 @@ def test_list_audit_log_actors_volunteer_member_forbidden(client, td_user, other
 def test_list_audit_log_actors_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/audit-log/actors/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /audit-log/exports/ — gated on manage_members, like the roster
+# ---------------------------------------------------------------------------
+
+EXPORT_BODY = {
+    "preset": "Email list",
+    "output": "copy",
+    "fields": ["contact"],
+}
+
+
+def test_log_data_export_records_entry(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    body = {
+        **EXPORT_BODY,
+        "preset": "TORUS",
+        "track": "Day 1",
+        "role": "Test Writer",
+        "output": "csv",
+        "columns": ["Name", "Phone"],
+    }
+    response = client.post(f"/tournaments/{td_tournament.id}/audit-log/exports/", json=body)
+    assert response.status_code == 204
+
+    entry = db.query(AuditLogEntry).filter(AuditLogEntry.action == DATA_EXPORTED).one()
+    assert entry.tournament_id == td_tournament.id
+    assert entry.actor_id == td_user.id
+    assert entry.actor_email == "td@test.com"
+    assert entry.extra_data == body
+
+
+def test_log_data_export_leaves_out_missing_optional_fields(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/audit-log/exports/", json=EXPORT_BODY)
+
+    entry = db.query(AuditLogEntry).filter(AuditLogEntry.action == DATA_EXPORTED).one()
+    assert entry.extra_data == EXPORT_BODY
+
+
+def test_log_data_export_allowed_with_manage_members(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer Coordinator")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/audit-log/exports/", json=EXPORT_BODY
+    )
+    assert response.status_code == 204
+
+
+def test_log_data_export_volunteer_forbidden(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/audit-log/exports/", json=EXPORT_BODY
+    )
+    assert response.status_code == 403
+
+
+def test_log_data_export_rejects_unknown_output(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/audit-log/exports/",
+        json={**EXPORT_BODY, "output": "pdf"},
+    )
+    assert response.status_code == 422

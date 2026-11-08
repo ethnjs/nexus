@@ -8,6 +8,7 @@ The tournament audit log records who did what, to what, and when. Actions are de
 - **`target_type`** is the singular snake_case name of the affected model (`"role"`, `"track"`, `"tournament"`).
 - **`target_id`** is the affected row's id. Leave it `None` when the action touches several rows, and list them in `extra_data` instead.
 - **`extra_data`** is a dict of whatever the action name and target don't already say, or `None` when there's nothing to add.
+- `log_action()` copies the actor's current name and email into `actor_name` and `actor_email`, so the entry still names them after their account is deleted and `actor_id` becomes null.
 - `log_action()` never commits. Call it before the route's own `db.commit()`, so the entry is written in the same transaction as the action.
 
 Adding an action means adding it to `ALL_ACTIONS` in `audit.py`, and to `ALL_AUDIT_ACTIONS`, `ACTION_LABELS` and `DESCRIBERS` in `frontend/lib/auditLog.tsx`. The two lists are kept in sync by hand.
@@ -33,4 +34,5 @@ Shapes differ between actions, and sometimes between variants of one action. Che
 | `track_delete_pending` | `{"name": str, "blocked_by": [str]}` when shifts, events or form fields still point at the track. A track with no blockers is deleted at once and logs `{"name": str, "blocked_by": [], "purged_immediately": true}`. |
 | `track_delete_cancelled` | `{"name": str}` |
 | `track_purged` | `{"name": str, "member_rows_deleted": int}`. Logged when the last blocker on a pending track is removed, as a side effect of that edit. |
+| `data_exported` | `{"preset": str, "track": str, "role": str, "division": str, "output": "copy" \| "csv" \| "txt", "fields": [str], "columns": [str]}`. Reported by the browser after a copy or download, since exports are built client-side. `fields` lists the roster field groups read, and is what the log shows for a built-in, which has no `columns`. `track` is present when the export is limited to one track, `role` for TORUS, `division` for Duosmium, and `columns` for a custom preset. |
 | `form_response_deleted` | `{"form_id": str, "form_name": str, "respondent_name": str}`, with `target_type="membership"`. Chapter forms aren't logged because chapters have no audit log. |

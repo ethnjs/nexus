@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.tournament.audit import DATA_EXPORTED, log_action
 from app.core.tournament.memberships import resolve_person_refs
-from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
+from app.core.tournament.permissions import MANAGE_MEMBERS, MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import AuditLogEntry, TournamentRole, User
-from app.schemas.tournament.audit import AuditLogActor, AuditLogEntryRead, AuditLogPage
+from app.schemas.tournament.audit import (
+    AuditLogActor,
+    AuditLogEntryRead,
+    AuditLogPage,
+    DataExportLog,
+)
 from app.schemas.tournament.role import RoleRead
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/audit-log", tags=["tournaments"])
@@ -113,9 +119,31 @@ def list_audit_log(
             extra_data=entry.extra_data,
             created_at=entry.created_at,
             actor=actors[entry.actor_id],
+            actor_name=entry.actor_name,
+            actor_email=entry.actor_email,
             role=roles_by_id.get(entry.target_id) if entry.target_type == "role" else None,
         )
         for entry in items
     ]
 
     return {"items": entries, "next_before_id": next_before_id}
+
+
+# Exports are built in the browser, which reports each one here after copying
+# or downloading it. Gated like the roster fetch an export reads from.
+@router.post("/exports/", status_code=status.HTTP_204_NO_CONTENT)
+def log_data_export(
+    tournament_id: int,
+    body: DataExportLog,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    """Records in the tournament's audit log that the current user exported member data."""
+    log_action(
+        db,
+        tournament_id,
+        current_user.id,
+        DATA_EXPORTED,
+        extra_data=body.model_dump(exclude_none=True),
+    )
+    db.commit()
