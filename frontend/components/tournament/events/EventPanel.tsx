@@ -23,6 +23,7 @@ import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconCalendar, IconEye, IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
 import { Switch } from "@/components/ui/Switch";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
   type CanonicalEvent,
@@ -43,6 +44,12 @@ import {
 import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import {
+  NO_SEASON_DEFAULTS,
+  SEASON_FIELDS,
+  seasonDefaultsFor,
+  useSeasonEvents,
+} from "@/lib/seasonDefaults";
 import { formatTime } from "@/lib/timeFormat";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { isSimpleMode, useTournament } from "@/lib/useTournament";
@@ -71,8 +78,6 @@ interface EventDraft {
   // see lib/eventTrackDetails.
   trackDetails: DraftTrackDetail[];
 }
-
-const SEASON_FIELDS = ["format", "has_impound", "has_self_schedule"] as const;
 
 const NO_FORMAT = "none";
 
@@ -331,6 +336,33 @@ export function EventPanel({
       setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Matched on the saved event, since the reset saves straight away. The rest
+  // of the draft is kept, so an unsaved edit elsewhere survives it.
+  const seasonEvents = useSeasonEvents(selectedTournament?.season_year ?? null);
+  const seasonDefaults = current && seasonEvents ? seasonDefaultsFor(current, seasonEvents) : null;
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | undefined>(undefined);
+  async function handleResetToDefaults() {
+    if (!current || !seasonDefaults) return;
+    setResetting(true);
+    setResetError(undefined);
+    try {
+      const updated = await tournamentEventsApi.update(tournamentId, current.id, seasonDefaults);
+      setCurrent(updated);
+      setDraft((d) => ({
+        ...d,
+        format: updated.format,
+        has_impound: updated.has_impound,
+        has_self_schedule: updated.has_self_schedule,
+      }));
+      onSaved(updated);
+    } catch (err) {
+      setResetError(err instanceof ApiError ? err.message : "Failed to reset to defaults.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -595,6 +627,31 @@ export function EventPanel({
               locked={locked}
             />
           </SettingsRow>
+
+          {!isNew && !locked && (
+            <SettingsRow
+              label="Season defaults"
+              helper="Saves this season's format, impound and self-schedule to the event."
+            >
+              <Tooltip
+                variant={resetError ? "error" : "info"}
+                message={resetError ?? (seasonEvents && !seasonDefaults ? NO_SEASON_DEFAULTS : "")}
+                showIcon={false}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={resetting}
+                  disabled={!seasonDefaults || resetting}
+                  onClick={handleResetToDefaults}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  Reset to defaults
+                </Button>
+              </Tooltip>
+            </SettingsRow>
+          )}
 
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no

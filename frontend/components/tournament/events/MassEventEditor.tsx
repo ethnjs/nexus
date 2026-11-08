@@ -16,6 +16,7 @@ import { IconMinus, IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { type MassNote, MassResultsCard } from "@/components/ui/MassResultsCard";
 import { Popover } from "@/components/ui/Popover";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
   EVENT_FORMAT_LABELS,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import { NO_SEASON_DEFAULTS, seasonDefaultsFor, useSeasonEvents } from "@/lib/seasonDefaults";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -409,6 +411,44 @@ export function MassEventEditor({
       }),
     );
 
+    collectResults(outcomes);
+    setDraft({});
+    setShiftsToAdd(new Set());
+    setShiftsToRemove(new Set());
+    setTracksToAdd(new Set());
+    setTracksToRemove(new Set());
+    setNeedsToSet(new Map());
+    setNeedsToRemove(new Map());
+    setSaving(false);
+  }
+
+  const seasonEvents = useSeasonEvents(selectedTournament?.season_year ?? null);
+  const anySeasonDefaults =
+    !!seasonEvents && events.some((e) => seasonDefaultsFor(e, seasonEvents) !== null);
+  const [resetting, setResetting] = useState(false);
+
+  // Saves straight away and leaves the pending changes above staged.
+  async function handleResetToDefaults() {
+    if (!seasonEvents) return;
+    setResetting(true);
+    setResults(null);
+    const outcomes = await Promise.allSettled(
+      events.map(async (event) => {
+        const defaults = seasonDefaultsFor(event, seasonEvents);
+        if (!defaults) {
+          const notes: MassNote[] = [{ text: "skipped — no season defaults", tone: "muted" }];
+          return { event, notes };
+        }
+        return { event: await tournamentEventsApi.update(tournamentId, event.id, defaults) };
+      }),
+    );
+    collectResults(outcomes);
+    setResetting(false);
+  }
+
+  function collectResults(
+    outcomes: PromiseSettledResult<{ event: TournamentEvent; notes?: MassNote[] }>[],
+  ) {
     const nextResults: EventResult[] = [];
     outcomes.forEach((outcome, i) => {
       const event = events[i];
@@ -429,14 +469,6 @@ export function MassEventEditor({
       }
     });
     setResults(nextResults);
-    setDraft({});
-    setShiftsToAdd(new Set());
-    setShiftsToRemove(new Set());
-    setTracksToAdd(new Set());
-    setTracksToRemove(new Set());
-    setNeedsToSet(new Map());
-    setNeedsToRemove(new Map());
-    setSaving(false);
   }
 
   return (
@@ -511,12 +543,36 @@ export function MassEventEditor({
             />
           </SettingsRow>
 
-          <SettingsRow label="Self-schedule" last>
+          <SettingsRow label="Self-schedule">
             <ButtonGroup
               options={ON_OFF}
               value={onOff(draft.has_self_schedule)}
               onChange={(v) => setDraft((d) => ({ ...d, has_self_schedule: v === "on" }))}
             />
+          </SettingsRow>
+
+          <SettingsRow
+            label="Season defaults"
+            helper="Saves this season's format, impound and self-schedule to each selected event."
+            last
+          >
+            <Tooltip
+              variant="info"
+              message={seasonEvents && !anySeasonDefaults ? NO_SEASON_DEFAULTS : ""}
+              showIcon={false}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={resetting}
+                disabled={!anySeasonDefaults || resetting || saving}
+                onClick={handleResetToDefaults}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                Reset to defaults
+              </Button>
+            </Tooltip>
           </SettingsRow>
         </SettingsSection>
 
