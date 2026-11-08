@@ -14,6 +14,7 @@ import {
   EventListCard,
   parseEventDragId,
 } from "@/components/tournament/buildings/EventListCard";
+import { ImportRoomsModal } from "@/components/tournament/buildings/ImportRoomsModal";
 import { RoomEventsCell } from "@/components/tournament/buildings/RoomEventsCell";
 import { parseRoomDropId, RoomTable } from "@/components/tournament/buildings/RoomTable";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
@@ -37,7 +38,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { IconBuilding, IconLock, IconPlus, IconSearch } from "@/components/ui/Icons";
+import { IconBuilding, IconLock, IconPlus, IconSearch, IconUpload } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
@@ -475,6 +476,7 @@ export default function BuildingsPage() {
     setBuildings((cur) => (cur ?? []).map((b) => (b.id === next.id ? next : b)));
 
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   async function renameBuilding(building: TournamentBuilding, name: string) {
     const trimmed = name.trim();
@@ -600,6 +602,29 @@ export default function BuildingsPage() {
         </div>
       ) : (
         <>
+          {!isArchived && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                marginBottom: "12px",
+              }}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => setImporting(true)}
+              >
+                <IconUpload size={14} /> Import
+              </Button>
+              <Button type="button" variant="primary" size="md" onClick={() => setAdding(true)}>
+                <IconPlus size={14} /> Add building
+              </Button>
+            </div>
+          )}
+
           {onTab.length > 0 && (
             <MasonryGrid minColumnWidth={460} gap={16}>
               {onTab.map((building) => (
@@ -652,22 +677,6 @@ export default function BuildingsPage() {
               ))}
             </MasonryGrid>
           )}
-
-          {!isArchived && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setAdding(true)}
-              style={{
-                width: "100%",
-                border: "1px dashed var(--color-border-strong)",
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              <IconPlus size={11} /> Add building
-            </Button>
-          )}
         </>
       )}
 
@@ -699,6 +708,22 @@ export default function BuildingsPage() {
           trackIds={days.map((t) => t.id)}
           onClose={() => setAdding(false)}
           onCreated={(created) => setBuildings((cur) => [...(cur ?? []), created])}
+        />
+      )}
+
+      {importing && (
+        <ImportRoomsModal
+          tournamentId={tournamentId}
+          trackIds={days.map((t) => t.id)}
+          buildings={buildings ?? []}
+          onClose={() => setImporting(false)}
+          onImported={(imported) =>
+            setBuildings((cur) => {
+              const kept = (cur ?? []).map((b) => imported.find((i) => i.id === b.id) ?? b);
+              const added = imported.filter((i) => !kept.some((b) => b.id === i.id));
+              return [...kept, ...added];
+            })
+          }
         />
       )}
 
