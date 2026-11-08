@@ -11,7 +11,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IconChevronRight, IconLock } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, type AuditLogActor, type AuditLogEntry, auditLogApi } from "@/lib/api";
-import { ACTION_LABELS, ALL_AUDIT_ACTIONS, describeAuditLogEntry } from "@/lib/auditLog";
+import {
+  ACTION_LABELS,
+  ALL_AUDIT_ACTIONS,
+  auditActorName,
+  describeAuditLogEntry,
+} from "@/lib/auditLog";
 import { personName } from "@/lib/personDisplay";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
@@ -78,7 +83,13 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
             summary
           ) : (
             <>
-              <strong>{personName(entry.actor)}</strong> — {summary}
+              <strong>{auditActorName(entry)}</strong>
+              {entry.actor_email && (
+                <span style={{ marginLeft: "6px", color: "var(--color-text-tertiary)" }}>
+                  {entry.actor_email}
+                </span>
+              )}{" "}
+              — {summary}
             </>
           )}
         </p>

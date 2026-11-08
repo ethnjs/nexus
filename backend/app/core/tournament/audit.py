@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.models import AuditLogEntry
+from app.models.models import AuditLogEntry, User
 
 # ---------------------------------------------------------------------------
 # Action constants
@@ -31,6 +31,7 @@ TRACK_DELETE_PENDING = "track_delete_pending"
 TRACK_DELETE_CANCELLED = "track_delete_cancelled"
 TRACK_PURGED = "track_purged"
 FORM_RESPONSE_DELETED = "form_response_deleted"
+DATA_EXPORTED = "data_exported"
 
 ALL_ACTIONS: list[str] = [
     ROLE_CREATED,
@@ -48,6 +49,7 @@ ALL_ACTIONS: list[str] = [
     TRACK_DELETE_CANCELLED,
     TRACK_PURGED,
     FORM_RESPONSE_DELETED,
+    DATA_EXPORTED,
 ]
 
 
@@ -60,14 +62,15 @@ def log_action(
     target_id: int | None = None,
     extra_data: dict | None = None,
 ) -> AuditLogEntry:
-    """
-    Record an audit log entry. Does not commit — call this before the
-    route's own db.commit() so the log entry lands in the same transaction
-    as the action it describes.
-    """
+    """Records an audit log entry, copying the actor's current name and email
+    onto it. Does not commit."""
+    actor = db.get(User, actor_id) if actor_id is not None else None
+    actor_name = f"{actor.first_name or ''} {actor.last_name or ''}".strip() if actor else ""
     entry = AuditLogEntry(
         tournament_id=tournament_id,
         actor_id=actor_id,
+        actor_name=actor_name or None,
+        actor_email=actor.email if actor else None,
         action=action,
         target_type=target_type,
         target_id=target_id,

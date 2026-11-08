@@ -17,7 +17,13 @@ import {
 } from "@/lib/api";
 import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { copyText, downloadText } from "@/lib/exports/output";
-import { type ExportChoice, exportFilenameFor, runExport, trackNamesOf } from "@/lib/exports/run";
+import {
+  type ExportChoice,
+  exportFilenameFor,
+  logExport,
+  runExport,
+  trackNamesOf,
+} from "@/lib/exports/run";
 import { useToast } from "@/lib/useToast";
 
 const TORUS_OPTIONS = Object.entries(
@@ -99,6 +105,9 @@ export function ExportButton({
       } else {
         downloadText(exportFilenameFor(choice, tournament, trackNames), result.text, output);
       }
+      logExport(tournament, choice, result, output).catch(() =>
+        show("Exported, but it couldn't be recorded in the audit log.", "error"),
+      );
       for (const warning of result.warnings) show(warning, "error");
     } catch {
       show("Couldn't export. Try again.", "error");

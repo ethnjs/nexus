@@ -929,6 +929,10 @@ class AuditLogEntry(Base):
     actor_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL")
     )
+    # Copied when the entry is written, so the log still names the actor after
+    # their account is deleted. The privacy policy promises this.
+    actor_name: Mapped[str | None] = mapped_column(String(255))
+    actor_email: Mapped[str | None] = mapped_column(String(255))
     action: Mapped[str] = mapped_column(String(64))
     target_type: Mapped[str | None] = mapped_column(
         String(64)
