@@ -826,30 +826,24 @@ export interface EventStaffingNeedRead extends EventStaffingNeed {
   role_label: string;
 }
 
-/** One track an event runs on, plus where it happens there.
- *
- *  One building and one floor, but many rooms: an event routinely spreads
- *  across 210, 212 and 214, while nothing sensible spreads across two
- *  buildings on one day. A track with no location is an entry whose fields
- *  are all null. */
+/** One track an event runs on, plus where it happens there: its rooms (all
+ *  in one building on that track) and an optional floor override. No rooms
+ *  means not placed yet. */
 export interface EventTrackDetail {
   track_id: number;
-  /** Must be a building tagged with this track — the database enforces it,
-   *  not just the route. */
-  building_id?: number | null;
   floor?: string | null;
-  rooms?: string[];
+  room_ids?: number[];
   needs?: EventStaffingNeed[];
 }
 
-/** The read shape. Carries the building's name because nothing else in an
- *  event response can supply it — unlike a track, which the `tracks` group
- *  already spells out in full. */
+/** The read shape, with the building the rooms are in spelled out. */
 export interface EventTrackDetailRead extends EventTrackDetail {
   building_id: number | null;
   building_name: string | null;
   floor: string | null;
-  rooms: string[];
+  room_ids: number[];
+  /** Naturally sorted, like `room_ids`. */
+  rooms: TournamentRoom[];
   needs: EventStaffingNeedRead[];
 }
 
@@ -870,7 +864,7 @@ export interface TournamentEventInput {
   // Replaces the old track_ids: a list of ids and a list of ids-with-location
   // are two ways to write the same thing, and the pair would have to define
   // which wins. Whole-set, and whole-set *within* each entry too — an entry
-  // with no `rooms` clears the rooms, an entry with no `needs` clears the
+  // with no `room_ids` clears the rooms, an entry with no `needs` clears the
   // needs, and a track left out is unlinked. Omit the field to leave every
   // track alone; to change one, resend all (see lib/eventTrackDetails).
   track_details?: EventTrackDetail[];
@@ -2401,9 +2395,15 @@ export const tournamentTracksApi = {
 // -------------------------------------------------------------------------
 // Tournament Buildings — nested under /tournaments/{id}/buildings/
 // -------------------------------------------------------------------------
-// A tournament's venue catalog. Floors and rooms stay free text — only the
-// building is a row, because it's the one part worth picking rather than
-// retyping per event. All four routes are gated on manage_events.
+// A tournament's venue catalog: buildings and the rooms inside them. Every
+// route is gated on manage_events.
+
+/** `floor` is an override; null means it comes from the name ("210" -> "2"). */
+export interface TournamentRoom {
+  id: number;
+  name: string;
+  floor: string | null;
+}
 
 /** Ids rather than embedded track rows, unlike TournamentEvent.tracks: every
  *  reader of a building already holds the track catalog, so embedding would
@@ -2412,9 +2412,10 @@ export interface TournamentBuilding {
   id: number;
   tournament_id: number;
   name: string;
-  /** Which tracks this building is in use on. Empty is legal — a building
-   *  entered before the schedule is settled isn't available anywhere yet. */
+  /** Which tracks this building is in use on; never empty. */
   track_ids: number[];
+  /** Naturally sorted ("9" before "10"). Available on every track above. */
+  rooms: TournamentRoom[];
   created_at: string;
   updated_at: string;
 }
@@ -2437,8 +2438,8 @@ export const buildingsApi = {
     api.get<TournamentBuilding[]>(`/tournaments/${tournamentId}/buildings/`),
   create: (tournamentId: number, body: TournamentBuildingInput) =>
     api.post<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/`, body),
-  // Partial: omit a field to leave it alone. `track_ids: []` clears the tags,
-  // which blanks the location of every event placed here on an untagged track.
+  // Partial: omit a field to leave it alone. Untagging a track an event is
+  // placed on in this building is a 409.
   update: (tournamentId: number, buildingId: number, body: Partial<TournamentBuildingInput>) =>
     api.patch<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/${buildingId}/`, body),
   // 200 with a body, not 204 — same as deleting a track.
@@ -2446,6 +2447,24 @@ export const buildingsApi = {
     api.delete<TournamentBuildingDeleteResult>(
       `/tournaments/${tournamentId}/buildings/${buildingId}/`,
     ),
+  /** Names the building already has are skipped. Returns all of its rooms. */
+  addRooms: (tournamentId: number, buildingId: number, names: string[]) =>
+    api.post<TournamentRoom[]>(`/tournaments/${tournamentId}/buildings/${buildingId}/rooms/`, {
+      names,
+    }),
+  /** `floor: null` goes back to deriving it from the name. */
+  updateRoom: (
+    tournamentId: number,
+    buildingId: number,
+    roomId: number,
+    body: { name?: string; floor?: string | null },
+  ) =>
+    api.patch<TournamentRoom>(
+      `/tournaments/${tournamentId}/buildings/${buildingId}/rooms/${roomId}/`,
+      body,
+    ),
+  deleteRoom: (tournamentId: number, buildingId: number, roomId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/buildings/${buildingId}/rooms/${roomId}/`),
 };
 
 // -------------------------------------------------------------------------

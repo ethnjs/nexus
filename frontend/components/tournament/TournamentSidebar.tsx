@@ -4,6 +4,7 @@ import { Sidebar, type SidebarItem } from "@/components/layout/Sidebar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import {
   IconAssignments,
+  IconBuilding,
   IconCalendar,
   IconEvents,
   IconForms,
@@ -52,6 +53,12 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
             href: `${base}/shifts`,
             icon: <IconCalendar size={17} />,
             label: "Shifts",
+          },
+          {
+            key: "buildings",
+            href: `${base}/buildings`,
+            icon: <IconBuilding size={17} />,
+            label: "Buildings",
           },
         ]
       : []),

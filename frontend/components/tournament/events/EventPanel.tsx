@@ -39,7 +39,7 @@ import {
   type TournamentTrack,
   tournamentEventsApi,
 } from "@/lib/api";
-import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { ensureBuildingOnTrack, ensureRooms } from "@/lib/buildings";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import {
@@ -94,7 +94,14 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     // the server has no guaranteed order for either list, and an unsorted
     // round trip would leave an untouched panel reading as dirty.
     trackDetails: (event?.track_details ?? [])
-      .map(toTrackDetailInput)
+      .map((read) => {
+        const { room_ids: _, ...detail } = toTrackDetailInput(read);
+        return {
+          ...detail,
+          building_id: read.building_id,
+          room_names: read.rooms.map((room) => room.name),
+        };
+      })
       .sort((a, b) => a.track_id - b.track_id)
       .map((d) => ({ ...d, needs: [...(d.needs ?? [])].sort((x, y) => x.role_id - y.role_id) })),
   };
@@ -285,40 +292,54 @@ export function EventPanel({
   }
 
   /**
-   * Turns every typed-but-uncreated building name into a real building, and
-   * returns track details that point at them by id.
+   * Creates every typed-but-uncreated building and room, and returns the
+   * drafts pointing at those buildings by id alongside the wire details.
    *
-   * See ensureBuildingOnTrack. The same new name on two tracks is created
-   * once and tagged for the second, because `known` grows as it goes.
+   * The same new name on two tracks is created once and reused for the
+   * second, because `known` grows as it goes.
    */
-  async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
+  async function resolveDraftLocations(
+    details: DraftTrackDetail[],
+  ): Promise<{ drafts: DraftTrackDetail[]; wire: EventTrackDetail[] }> {
     const known = [...buildings];
-    const resolved: EventTrackDetail[] = [];
-    for (const { new_building_name, ...detail } of details) {
-      const name = new_building_name?.trim();
-      if (!name) {
-        resolved.push(detail);
-        continue;
-      }
-      const building = await ensureBuildingOnTrack(tournamentId, name, detail.track_id, known);
+    const remember = (building: TournamentBuilding) => {
       const at = known.findIndex((b) => b.id === building.id);
       if (at >= 0) known[at] = building;
       else known.push(building);
       onBuildingSaved(building);
-      resolved.push({ ...detail, building_id: building.id });
+    };
+    const drafts: DraftTrackDetail[] = [];
+    const wire: EventTrackDetail[] = [];
+    for (const { new_building_name, room_names, ...detail } of details) {
+      let building = known.find((b) => b.id === detail.building_id);
+      const newName = new_building_name?.trim();
+      if (newName) {
+        building = await ensureBuildingOnTrack(tournamentId, newName, detail.track_id, known);
+        remember(building);
+      }
+      let roomIds: number[] = [];
+      if (building && room_names.length > 0) {
+        const ensured = await ensureRooms(tournamentId, building, room_names);
+        if (ensured.building.rooms !== building.rooms) remember(ensured.building);
+        roomIds = ensured.roomIds;
+      }
+      const buildingId = building?.id ?? null;
+      drafts.push({ ...detail, building_id: buildingId, new_building_name: null, room_names });
+      const { building_id: _, ...wireDetail } = detail;
+      wire.push({ ...wireDetail, room_ids: roomIds });
     }
-    return resolved;
+    return { drafts, wire };
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const trackDetails = await resolveNewBuildings(draft.trackDetails);
+      const { drafts, wire } = await resolveDraftLocations(draft.trackDetails);
       // Point the draft at the new rows before the event save, so if that
       // save fails a retry reuses them instead of creating them again.
-      setDraft((d) => ({ ...d, trackDetails }));
-      const payload = buildPayload(trackDetails);
+      setDraft((d) => ({ ...d, trackDetails: drafts }));
+      const payload = buildPayload(wire);
       const saved = isNew
         ? await tournamentEventsApi.create(tournamentId, {
             ...payload,
@@ -470,7 +491,7 @@ export function EventPanel({
         ? draft.trackDetails.filter((d) => d.track_id !== trackId)
         : [
             ...draft.trackDetails,
-            { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] },
+            { track_id: trackId, building_id: null, floor: null, room_names: [], needs: [] },
           ].sort((a, b) => a.track_id - b.track_id),
     });
   }

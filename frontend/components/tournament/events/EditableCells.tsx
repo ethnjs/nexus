@@ -25,6 +25,7 @@ import type {
   TournamentDivision,
   TournamentEvent,
   TournamentEventInput,
+  TournamentRoom,
   TournamentShift,
 } from "@/lib/api";
 import { focusAdjacentCell } from "@/lib/gridNav";
@@ -48,6 +49,8 @@ export interface EventEditContext {
   buildings: TournamentBuilding[];
   /** Finds or creates a building by name on a track, keeping the page's list current. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
+  /** The id of the named room in a building, created if it has none by that name. */
+  ensureRoom: (buildingId: number, name: string) => Promise<number>;
   /** Asks before a change that takes more with it (a track and its shifts). */
   confirm: (request: ConfirmRequest) => void;
 }
@@ -590,21 +593,19 @@ export function LocationCell({
   lockReason,
   onSave,
   ensureBuilding,
+  ensureRoom,
 }: {
   display: ReactNode;
   /** This event's entry for the track, if it has one. */
-  detail: { building_id: number | null; rooms: string[] } | undefined;
+  detail: { building_id: number | null; room_ids: number[]; rooms: TournamentRoom[] } | undefined;
   trackId: number;
   buildings: TournamentBuilding[];
   lockReason?: string;
   /** Saves this track's location fields; the caller resends every other track. */
-  onSave: (updates: {
-    building_id?: number | null;
-    floor?: null;
-    rooms?: string[];
-  }) => Promise<void>;
+  onSave: (updates: { floor?: null; room_ids?: number[] }) => Promise<void>;
   /** Finds or creates the named building on this track. */
   ensureBuilding: (name: string, trackId: number) => Promise<TournamentBuilding>;
+  ensureRoom: (buildingId: number, name: string) => Promise<number>;
 }) {
   const {
     editing,
@@ -618,6 +619,9 @@ export function LocationCell({
   // The saved building, pulled back into the box by Backspace. Not unset on
   // the server until Enter/Tab commits whatever the box then says.
   const [buildingInBox, setBuildingInBox] = useState(false);
+  // A building picked in this edit, held here until a room is added: a
+  // building with no room isn't a location, so there is nothing to save yet.
+  const [pickedBuildingId, setPickedBuildingId] = useState<number | null | undefined>(undefined);
   const [highlight, setHighlight] = useState(-1);
   const toastError = useErrorToast();
   // Turns the underline red until the next try; the message itself is a toast.
@@ -635,11 +639,15 @@ export function LocationCell({
     );
   }
 
-  const buildingId = detail?.building_id ?? null;
+  const savedBuildingId = detail?.building_id ?? null;
+  const buildingId = pickedBuildingId !== undefined ? pickedBuildingId : savedBuildingId;
   const buildingName = buildings.find((b) => b.id === buildingId)?.name ?? "";
   // Only buildings tagged with this track — the other pairing is a 422.
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
-  const rooms = detail?.rooms ?? [];
+  // The saved rooms belong to the saved building; a newly picked one has none yet.
+  const inSavedBuilding = buildingId === savedBuildingId;
+  const rooms = inSavedBuilding ? (detail?.rooms ?? []) : [];
+  const roomIds = inSavedBuilding ? (detail?.room_ids ?? []) : [];
   const typingBuilding = buildingId === null || buildingInBox;
   const rows =
     editing && typingBuilding
@@ -652,6 +660,7 @@ export function LocationCell({
   function open() {
     setText("");
     setBuildingInBox(false);
+    setPickedBuildingId(undefined);
     setHighlight(-1);
     setFailed(false);
     openEditor();
@@ -667,10 +676,11 @@ export function LocationCell({
     }
   }
 
-  // Enter/Tab: set the building (an existing name picks it, a new one creates
-  // it, an emptied box clears the location) or add a room. A new building
-  // clears the rooms and any floor override — they described a place inside
-  // the old one. Returns whether there was anything to commit.
+  // Enter/Tab: pick the building (an existing name picks it, a new one creates
+  // it, an emptied box clears the location) or add a room. Leaving the saved
+  // building unplaces the event until a room in the new one is added — the
+  // old rooms and floor described a place inside the old one. Returns whether
+  // there was anything to commit.
   function commit(picked?: string): boolean {
     if (typingBuilding) {
       const name = (picked ?? text).trim();
@@ -684,15 +694,21 @@ export function LocationCell({
           const match = onTrack.find((b) => b.name.toLowerCase() === name.toLowerCase());
           id = match ? match.id : (await ensureBuilding(name, trackId)).id;
         }
-        if (id !== buildingId) await onSave({ building_id: id, floor: null, rooms: [] });
+        if (id !== savedBuildingId && (detail?.room_ids.length ?? 0) > 0) {
+          await onSave({ floor: null, room_ids: [] });
+        }
+        setPickedBuildingId(id);
         setBuildingInBox(false);
       }).finally(() => setSavingBuilding(false));
       return true;
     }
     const room = text.trim();
-    if (!room) return false;
+    if (!room || buildingId === null) return false;
     setText("");
-    if (!rooms.includes(room)) void run(() => onSave({ rooms: [...rooms, room] }));
+    void run(async () => {
+      const id = await ensureRoom(buildingId, room);
+      if (!roomIds.includes(id)) await onSave({ room_ids: [...roomIds, id] });
+    });
     return true;
   }
 
@@ -740,7 +756,7 @@ export function LocationCell({
           {!typingBuilding &&
             rooms.map((room) => (
               <span
-                key={room}
+                key={room.id}
                 style={{
                   padding: "0 5px",
                   borderRadius: "var(--radius-sm)",
@@ -750,7 +766,7 @@ export function LocationCell({
                   fontSize: "12px",
                 }}
               >
-                {room}
+                {room.name}
               </span>
             ))}
           <input
@@ -786,7 +802,7 @@ export function LocationCell({
               }
               if (e.key === "Backspace" && text === "" && !typingBuilding) {
                 e.preventDefault();
-                if (rooms.length > 0) void run(() => onSave({ rooms: rooms.slice(0, -1) }));
+                if (roomIds.length > 0) void run(() => onSave({ room_ids: roomIds.slice(0, -1) }));
                 // No rooms left: the building comes back into the box, minus
                 // the character this Backspace was for.
                 else {

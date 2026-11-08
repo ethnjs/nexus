@@ -288,6 +288,7 @@ KNOWN_EVENT_FILTER_KEYS = frozenset(
         "category",
         "track",
         "building",
+        "placement",
         "shifts",
         "shift",
         "staffing",

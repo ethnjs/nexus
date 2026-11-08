@@ -353,9 +353,8 @@ export function MassEventEditor({
               .filter((id) => !keptIds.has(id))
               .map((id) => ({
                 track_id: id,
-                building_id: null,
                 floor: null,
-                rooms: [],
+                room_ids: [],
                 needs: [],
               })),
           ];

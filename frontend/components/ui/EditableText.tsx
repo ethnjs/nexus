@@ -35,6 +35,10 @@ interface EditableTextProps {
    *  table cells, where text under one row overlaps the next. The field still
    *  stays open with a red underline so the value can be fixed in place. */
   errorToast?: boolean;
+  /** Left out of the Tab order — for a rarely edited field Tab should jump past. */
+  skipTab?: boolean;
+  /** An edit ended without saving: Escape, or leaving it empty or unchanged. */
+  onCancel?: () => void;
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -67,6 +71,8 @@ export function EditableText({
   allowEmpty = false,
   suggestions,
   errorToast = false,
+  skipTab = false,
+  onCancel,
 }: EditableTextProps) {
   const { show } = useToast();
   const [editing, setEditing] = useState(startEditing);
@@ -123,6 +129,7 @@ export function EditableText({
     const trimmed = text.trim();
     if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false);
+      onCancel?.();
       return;
     }
     inFlight.current = true;
@@ -189,6 +196,7 @@ export function EditableText({
               e.preventDefault();
               refocus.current = true;
               setEditing(false);
+              onCancel?.();
             }
           }}
           disabled={saving}
@@ -246,7 +254,7 @@ export function EditableText({
       ref={restRef}
       onClick={locked ? undefined : startEdit}
       // Reachable by Tab, and Enter starts editing — same as a click.
-      tabIndex={locked ? undefined : 0}
+      tabIndex={locked ? undefined : skipTab ? -1 : 0}
       onKeyDown={
         locked
           ? undefined

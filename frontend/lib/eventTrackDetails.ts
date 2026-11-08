@@ -1,4 +1,9 @@
-import type { EventTrackDetail, EventTrackDetailRead, TournamentEvent } from "@/lib/api";
+import type {
+  EventTrackDetail,
+  EventTrackDetailRead,
+  TournamentEvent,
+  TournamentRoom,
+} from "@/lib/api";
 
 /**
  * Rebuilding an event's `track_details` for a write.
@@ -11,7 +16,7 @@ import type { EventTrackDetail, EventTrackDetailRead, TournamentEvent } from "@/
  *     staffing needs and its place on the board with it.
  *
  *  2. **Within an entry.** An entry states what the arrangement on that track
- *     *is*. Omitting `needs` clears the needs; omitting `rooms` clears the
+ *     *is*. Omitting `needs` clears the needs; omitting `room_ids` clears the
  *     rooms. Only leaving the track out entirely keeps what it had.
  *
  * So any edit to one track has to resend every track, in full. That is what
@@ -22,9 +27,8 @@ import type { EventTrackDetail, EventTrackDetailRead, TournamentEvent } from "@/
 export function toTrackDetailInput(detail: EventTrackDetailRead): EventTrackDetail {
   return {
     track_id: detail.track_id,
-    building_id: detail.building_id,
     floor: detail.floor,
-    rooms: detail.rooms,
+    room_ids: detail.room_ids,
     // Dropped here and the event silently loses its staffing needs on save.
     needs: detail.needs.map((need) => ({ role_id: need.role_id, count: need.count })),
   };
@@ -44,7 +48,7 @@ export function withTrackDetail(
   const existing = event.track_details.find((d) => d.track_id === trackId);
   const base: EventTrackDetail = existing
     ? toTrackDetailInput(existing)
-    : { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] };
+    : { track_id: trackId, floor: null, room_ids: [], needs: [] };
 
   return [
     ...event.track_details.filter((d) => d.track_id !== trackId).map(toTrackDetailInput),
@@ -60,9 +64,16 @@ export function trackDetail(
   return event.track_details.find((d) => d.track_id === trackId);
 }
 
-/** The floor the server derives when no override is set — the first character
- *  of the first room ("210" → "2"). Mirrors TournamentEventTrack.effective_floor. */
-export function derivedFloor(rooms: readonly string[] | null | undefined): string | null {
-  const first = (rooms ?? []).map((room) => room.trim()).find(Boolean);
-  return first ? first[0] : null;
+/** A room's floor: its override, else the first character of its name
+ *  ("210" → "2"). Mirrors TournamentRoom.effective_floor. */
+export function roomFloor(room: Pick<TournamentRoom, "name" | "floor">): string | null {
+  if (room.floor) return room.floor;
+  const name = room.name.trim();
+  return name ? name[0] : null;
+}
+
+/** The floor the server derives for a placement with no override: its first
+ *  room's floor. Mirrors TournamentEventTrack.effective_floor. */
+export function derivedFloor(rooms: readonly TournamentRoom[]): string | null {
+  return rooms.length > 0 ? roomFloor(rooms[0]) : null;
 }

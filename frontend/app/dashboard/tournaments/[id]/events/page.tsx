@@ -88,7 +88,7 @@ import {
   tournamentTracksApi,
 } from "@/lib/api";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
-import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { ensureBuildingOnTrack, ensureRooms } from "@/lib/buildings";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { eventName } from "@/lib/eventDisplay";
 import {
@@ -475,6 +475,13 @@ export default function EventsPage() {
               const building = await ensureBuildingOnTrack(tournamentId, name, trackId, buildings);
               handleBuildingSaved(building);
               return building;
+            },
+            ensureRoom: async (buildingId, name) => {
+              const building = buildings.find((b) => b.id === buildingId);
+              if (!building) throw new Error("That building no longer exists.");
+              const ensured = await ensureRooms(tournamentId, building, [name]);
+              handleBuildingSaved(ensured.building);
+              return ensured.roomIds[0];
             },
             confirm: setPendingConfirm,
           }

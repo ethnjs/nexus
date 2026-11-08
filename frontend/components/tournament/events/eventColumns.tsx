@@ -276,6 +276,7 @@ function renderTrackCell(
             edit.update(e, { track_details: withTrackDetail(e, track.id, updates) })
           }
           ensureBuilding={edit.ensureBuilding}
+          ensureRoom={edit.ensureRoom}
         />
       );
     }

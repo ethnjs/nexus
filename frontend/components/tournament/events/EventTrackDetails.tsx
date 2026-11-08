@@ -15,7 +15,7 @@ import type {
   TournamentBuilding,
   TournamentTrack,
 } from "@/lib/api";
-import { derivedFloor } from "@/lib/eventTrackDetails";
+import { roomFloor } from "@/lib/eventTrackDetails";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
@@ -30,9 +30,14 @@ import { placeOfTrack } from "@/lib/tournamentDisplay";
  * so a location change is saved by the same button as a name change rather
  * than committing under the TD's hands.
  */
-/** A track detail as the panel edits it: the wire shape, plus a building
- *  name typed but not yet created. Never sent — see resolveNewBuildings. */
-export type DraftTrackDetail = EventTrackDetail & { new_building_name?: string | null };
+/** A track detail as the panel edits it: a building (picked, or a name not
+ *  yet created) and room names, which become room ids on save — see
+ *  resolveDraftLocations. A building with no rooms saves as unplaced. */
+export type DraftTrackDetail = Omit<EventTrackDetail, "room_ids"> & {
+  building_id: number | null;
+  new_building_name?: string | null;
+  room_names: string[];
+};
 
 export function EventTrackDetails({
   details,
@@ -172,7 +177,7 @@ export function EventTrackDetails({
                       building_id: buildingId,
                       new_building_name: null,
                       floor: null,
-                      rooms: [],
+                      room_names: [],
                     });
                   }}
                   onPickNew={(name) =>
@@ -182,7 +187,7 @@ export function EventTrackDetails({
                       // Cleared only when leaving a real building — not on every
                       // keystroke of the new name, which would wipe a floor typed
                       // while the name was still pending.
-                      ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
+                      ...(detail.building_id != null ? { floor: null, room_names: [] } : {}),
                     })
                   }
                 />
@@ -197,9 +202,9 @@ export function EventTrackDetails({
               <StackedField label="Floor" basis="80px" grow={0.5}>
                 <Input
                   size="sm"
-                  font="mono"
+                  font="sans"
                   fullWidth
-                  placeholder={derivedFloor(detail.rooms) ?? "Auto"}
+                  placeholder={draftFloor(detail, buildings) ?? "Auto"}
                   title="Taken from the first room unless you type one"
                   locked={locked || !hasBuilding}
                   value={detail.floor ?? ""}
@@ -212,14 +217,15 @@ export function EventTrackDetails({
               <StackedField label="Rooms" basis="180px" grow={1.6}>
                 {/* The default filled variant, not transparent: an empty
                     transparent field gave no hint it could be typed in. */}
+                {/* A name the building doesn't have yet is created on save. */}
                 <ChipInput
-                  value={detail.rooms ?? []}
-                  onChange={(rooms) => patchTrack(track.id, { rooms })}
+                  value={detail.room_names}
+                  onChange={(room_names) => patchTrack(track.id, { room_names })}
                   disabled={!hasBuilding}
                   locked={locked}
                   size="sm"
                   fullWidth
-                  font="mono"
+                  font="sans"
                   placeholder={hasBuilding ? "e.g. 210" : undefined}
                 />
               </StackedField>
@@ -466,4 +472,15 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
       <div className={styles.rowControl}>{children}</div>
     </div>
   );
+}
+
+/** The floor the server will derive: the first room's, using the building's
+ *  override for a room it already has. */
+function draftFloor(detail: DraftTrackDetail, buildings: TournamentBuilding[]): string | null {
+  const first = detail.room_names[0]?.trim();
+  if (!first) return null;
+  const known = buildings
+    .find((b) => b.id === detail.building_id)
+    ?.rooms.find((r) => r.name.toLowerCase() === first.toLowerCase());
+  return roomFloor(known ?? { name: first, floor: null });
 }
