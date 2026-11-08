@@ -5,10 +5,11 @@ import { memo, type ReactNode } from "react";
 import { parseRoomChipDragId } from "@/components/tournament/buildings/EventChip";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { IconBuilding, IconCalendar, IconClock } from "@/components/ui/Icons";
 import { EVENT_FORMAT_LABELS, type TournamentEvent } from "@/lib/api";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import { trackDetail } from "@/lib/eventTrackDetails";
-import { formatTime } from "@/lib/timeFormat";
+import { formatDayLabel, formatTimeRange, toDateInput } from "@/lib/timeFormat";
 
 /** The details a card can show besides name and division, which always show. */
 export const EVENT_CARD_FIELDS = [
@@ -17,7 +18,7 @@ export const EVENT_CARD_FIELDS = [
   { id: "category", label: "Category" },
   { id: "impound", label: "Impound" },
   { id: "self_schedule", label: "Self-schedule" },
-  { id: "shifts", label: "Shifts on this day" },
+  { id: "shifts", label: "Date, time and shifts" },
 ] as const;
 export type EventCardField = (typeof EVENT_CARD_FIELDS)[number]["id"];
 
@@ -43,6 +44,9 @@ interface EventListCardProps {
 }
 
 const META_TEXT = {
+  display: "flex",
+  alignItems: "center",
+  gap: "5px",
   fontFamily: "var(--font-sans)",
   fontSize: "12px",
   color: "var(--color-text-secondary)",
@@ -62,7 +66,10 @@ export const EventListCard = memo(function EventListCard({
   });
   const shows = (field: EventCardField) => !hidden.has(field);
   const location = trackLocationLabel(trackDetail(event, trackId));
-  const shifts = (event.shifts ?? []).filter((s) => s.track_id === trackId);
+  const shifts = (event.shifts ?? [])
+    .filter((s) => s.track_id === trackId)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const days = [...new Set(shifts.map((s) => toDateInput(s.start)))];
   const badges = [
     shows("type") && event.event_type === "trial" && "Trial",
     shows("format") && event.format && EVENT_FORMAT_LABELS[event.format],
@@ -99,14 +106,29 @@ export const EventListCard = memo(function EventListCard({
             color: location ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
           }}
         >
+          <IconBuilding size={12} />
           {location ?? "Unplaced"}
         </span>
+        {shows("shifts") && shifts.length > 0 && (
+          <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+            <span style={META_TEXT}>
+              <IconCalendar size={12} />
+              {days.map(formatDayLabel).join(", ")}
+            </span>
+            <span style={META_TEXT}>
+              <IconClock size={12} />
+              {formatTimeRange(shifts)}
+            </span>
+          </span>
+        )}
         {shows("category") && event.event && (
           <span style={META_TEXT}>{event.event.category.name}</span>
         )}
         {shows("shifts") && shifts.length > 0 && (
-          <span style={META_TEXT}>
-            {shifts.map((s) => `${s.label} ${formatTime(s.start)}–${formatTime(s.end)}`).join(", ")}
+          <span style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {shifts.map((s) => (
+              <Badge key={s.id}>{s.label}</Badge>
+            ))}
           </span>
         )}
         {badges.length > 0 && (

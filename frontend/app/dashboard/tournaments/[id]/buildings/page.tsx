@@ -45,7 +45,15 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { IconBuilding, IconLock, IconPlus, IconSearch, IconUpload } from "@/components/ui/Icons";
+import {
+  IconBuilding,
+  IconCalendar,
+  IconLocation,
+  IconLock,
+  IconPlus,
+  IconSearch,
+  IconUpload,
+} from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { SelectionBar } from "@/components/ui/SelectionBar";
@@ -64,6 +72,7 @@ import {
   type TournamentEvent,
   type TournamentRoom,
   type TournamentShift,
+  type TournamentTrack,
   tabSurface,
   tournamentEventsApi,
   tournamentShiftsApi,
@@ -72,6 +81,7 @@ import { BUILDINGS_EVENTS } from "@/lib/displayConfigSurfaces";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import { trackDetail, withTrackDetail } from "@/lib/eventTrackDetails";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
+import { formatTrackDates, placeOfTrack } from "@/lib/tournamentDisplay";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -104,6 +114,7 @@ export default function BuildingsPage() {
     pickedTrackId !== null && days.some((t) => t.id === pickedTrackId)
       ? pickedTrackId
       : (days[0]?.id ?? null);
+  const activeTrack = days.find((t) => t.id === activeTrackId) ?? null;
 
   // Memoised: CollapsibleHeader re-registers the Topbar's copy whenever this
   // identity changes.
@@ -708,37 +719,42 @@ export default function BuildingsPage() {
         </div>
       ) : (
         <>
-          {!isArchived && hasBuildings && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "10px",
-                marginBottom: "12px",
-              }}
-            >
-              <Button
-                type="button"
-                variant={selectMode ? "primary" : "secondary"}
-                size="md"
-                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-                disabled={onTab.length === 0}
-              >
-                Select
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                onClick={() => setImporting(true)}
-              >
-                <IconUpload size={14} /> Import
-              </Button>
-              <Button type="button" variant="primary" size="md" onClick={() => setAdding(true)}>
-                <IconPlus size={14} /> Add building
-              </Button>
-            </div>
-          )}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "10px",
+              marginBottom: "12px",
+            }}
+          >
+            {activeTrack ? <TrackSummary track={activeTrack} /> : <span />}
+            {!isArchived && hasBuildings && (
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Button
+                  type="button"
+                  variant={selectMode ? "primary" : "secondary"}
+                  size="md"
+                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                  disabled={onTab.length === 0}
+                >
+                  Select
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setImporting(true)}
+                >
+                  <IconUpload size={14} /> Import
+                </Button>
+                <Button type="button" variant="primary" size="md" onClick={() => setAdding(true)}>
+                  <IconPlus size={14} /> Add building
+                </Button>
+              </div>
+            )}
+          </div>
 
           {onTab.length === 0 && (
             <Card radius="lg" style={{ padding: "8px" }}>
@@ -959,6 +975,52 @@ export default function BuildingsPage() {
           onConfirm={() => deleteRoom(roomDeleteTarget.building, roomDeleteTarget.room)}
           onClose={() => setRoomDeleteTarget(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/** The day's name, dates and venue, beside the page's buttons. */
+function TrackSummary({ track }: { track: TournamentTrack }) {
+  const dates = formatTrackDates(track, "weekday");
+  const place = placeOfTrack(track);
+  const fact = {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontFamily: "var(--font-sans)",
+    fontSize: "13px",
+    color: "var(--color-text-secondary)",
+  } as const;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "6px 16px",
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "14px",
+          fontWeight: 600,
+          color: "var(--color-text-primary)",
+        }}
+      >
+        {track.name}
+      </span>
+      {dates && (
+        <span style={fact}>
+          <IconCalendar /> {dates}
+        </span>
+      )}
+      {place && (
+        <span style={fact}>
+          <IconLocation /> {place}
+        </span>
       )}
     </div>
   );
