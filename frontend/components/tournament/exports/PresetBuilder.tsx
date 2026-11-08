@@ -50,8 +50,8 @@ const ROW_TYPE_OPTIONS = [
 ];
 
 // What identifies a row — added up front when the row type is picked.
-// A member row's are removable (an email list doesn't want names); an event
-// row is meaningless without its event and who's on it.
+// A member row's are removable (an email list doesn't want names), as is an
+// event row's Member column; the event itself is what the row is.
 const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
   member: ["first_name", "last_name"],
   event: ["event", "members"],
@@ -59,7 +59,7 @@ const DEFAULT_COLUMNS: Record<ExportRowType, string[]> = {
 // UI-only: the backend doesn't enforce it.
 const FIXED_COLUMNS: Record<ExportRowType, ReadonlySet<string>> = {
   member: new Set(),
-  event: new Set(["event", "members"]),
+  event: new Set(["event"]),
 };
 
 const OUTPUT_OPTIONS = [

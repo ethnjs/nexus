@@ -66,6 +66,19 @@ def test_create_preset_accepts_entity_columns_and_modes(client, td_user, td_tour
     assert body["columns"][0] == {"key": "track_shifts:3", "mode": "times"}
 
 
+def test_create_event_preset_with_event_detail_columns(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    keys = ["event", "division", "type", "format", "impound", "self_schedule", "category"]
+    body = _create(
+        client,
+        td_tournament.id,
+        row_type="event",
+        columns=[{"key": key} for key in keys],
+        sorts=[{"field": "format", "direction": "asc"}],
+    )
+    assert [c["key"] for c in body["columns"]] == keys
+
+
 def test_create_event_preset(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     body = _create(
