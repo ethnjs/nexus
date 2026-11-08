@@ -73,7 +73,7 @@ Some browsers can send a "Do Not Track" or Global Privacy Control signal. NEXUS 
 
 Because we operate the database, the maintainers may access stored data directly when needed to maintain the Service, fix problems, or respond to legal requests. We do not otherwise access it.
 
-Organizers who export your information must follow the rules in our [Terms of Service](/terms). They may use it only to run their tournament, must keep it secure, may share it only with people helping run the tournament, and must delete it when it is no longer needed or when they receive a request to delete your information. Once a copy leaves NEXUS, we cannot technically control it, but we may suspend Organizers who break these rules.
+Organizers who export your information must follow the rules in our [Terms of Service](/terms#3-organizers-and-volunteer-information). They may use it only to run their tournament, must keep it secure, may share it only with people helping run the tournament, and must delete it when it is no longer needed or when they receive a request to delete your information. Once a copy leaves NEXUS, we cannot technically control it, but we may suspend Organizers who break these rules.
 
 ## Age disclosure to tournaments
 
@@ -119,7 +119,7 @@ In the past 12 months, we have collected the following categories of personal in
 - **Internet activity:** session records, server logs, audit log entries, and page view analytics.
 - **Other information you provide:** T-shirt size, dietary restrictions, availability, event preferences, Science Olympiad experience, and form responses.
 
-We collect this information for the purposes in "How we use your information", disclose it only as described in "Who can see your information", and keep it as described in "Keeping and deleting your information".
+We collect this information for the purposes in "[How we use your information](#how-we-use-your-information)", disclose it only as described in "[Who can see your information](#who-can-see-your-information)", and keep it as described in "[Keeping and deleting your information](#keeping-and-deleting-your-information)".
 
 We do not sell your personal information or share it for cross-context behavioral advertising, and we have not done so in the past 12 months. We do not sell or share the personal information of anyone under 16.
 
@@ -130,7 +130,7 @@ We do not disclose personal information to third parties for their direct market
 You can ask us to:
 
 - tell you what personal information we have collected about you, where it came from, why we collected it, and who we disclosed it to, and give you a copy of it;
-- delete your personal information, subject to the exceptions described in "Keeping and deleting your information"; and
+- delete your personal information, subject to the exceptions described in "[Keeping and deleting your information](#keeping-and-deleting-your-information)"; and
 - correct personal information that is inaccurate.
 
 You can do much of this yourself from your profile and account settings. For anything else, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will respond within 45 days. To verify your identity, we may ask you to send the request from the email address on your account. You may have an authorized agent make a request for you, and we may ask for proof that you authorized them.

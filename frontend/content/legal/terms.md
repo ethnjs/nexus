@@ -53,11 +53,11 @@ You agree not to:
 
 ## 6. Your content
 
-You keep ownership of the information and content you submit to NEXUS ("Your Content"). You give us permission to store, process, display, and share Your Content as needed to operate the Service, including sharing it with the Organizers of tournaments you join, as described in the Privacy Policy. This permission ends when Your Content is deleted from the Service. If we keep database backups, deleted content may remain in them until those backups expire.
+You keep ownership of the information and content you submit to NEXUS ("Your Content"). You give us permission to store, process, display, and share Your Content as needed to operate the Service, including sharing it with the Organizers of tournaments you join, as described in the [Privacy Policy](/privacy#who-can-see-your-information). This permission ends when Your Content is deleted from the Service. If we keep database backups, deleted content may remain in them until those backups expire.
 
 For security and compliance purposes, we keep tournament audit log entries after your account is deleted, and these entries may include your name and email address.
 
-Deleting your account removes Your Content from NEXUS, but not copies that Organizers exported before then. To have those copies deleted too, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will forward your request to the Organizers of the tournaments you were part of, who must delete your information under Section 3.
+Deleting your account removes Your Content from NEXUS, but not copies that Organizers exported before then. To have those copies deleted too, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will forward your request to the Organizers of the tournaments you were part of, who must delete your information under [Section 3](#3-organizers-and-volunteer-information).
 
 ## 7. Feedback
 
@@ -73,7 +73,7 @@ You may stop using NEXUS and delete your account at any time from your account s
 
 We may suspend or close your account, or remove content, if you violate these Terms, if required by law, or if needed to protect the Service or its users. Organizers may also remove you from their tournaments at their discretion.
 
-Sections 6 (for content already exported), 10, 11, and 12 continue to apply after your account ends.
+Sections [6](#6-your-content) (for content already exported), [10](#10-disclaimers), [11](#11-limitation-of-liability), and [12](#12-indemnity) continue to apply after your account ends.
 
 ## 10. Disclaimers
 
