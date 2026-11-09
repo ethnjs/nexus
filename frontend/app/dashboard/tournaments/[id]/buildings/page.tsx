@@ -38,6 +38,7 @@ import {
   eventsFilterToStored,
   isEventsFilterActive,
 } from "@/components/tournament/events/EventsFilterModal";
+import { TrackSummary } from "@/components/tournament/TrackSummary";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
@@ -47,9 +48,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
 import {
   IconBuilding,
-  IconCalendar,
   IconEvents,
-  IconLocation,
   IconLock,
   IconPlus,
   IconSearch,
@@ -73,7 +72,6 @@ import {
   type TournamentEvent,
   type TournamentRoom,
   type TournamentShift,
-  type TournamentTrack,
   tabSurface,
   tournamentEventsApi,
   tournamentShiftsApi,
@@ -82,7 +80,6 @@ import { BUILDINGS_EVENTS } from "@/lib/displayConfigSurfaces";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import { trackDetail, withTrackDetail } from "@/lib/eventTrackDetails";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
-import { formatTrackDates, placeOfTrack } from "@/lib/tournamentDisplay";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -992,52 +989,6 @@ export default function BuildingsPage() {
           onConfirm={() => deleteRoom(roomDeleteTarget.building, roomDeleteTarget.room)}
           onClose={() => setRoomDeleteTarget(null)}
         />
-      )}
-    </div>
-  );
-}
-
-/** The day's name, dates and venue, beside the page's buttons. */
-function TrackSummary({ track }: { track: TournamentTrack }) {
-  const dates = formatTrackDates(track, "weekday");
-  const place = placeOfTrack(track);
-  const fact = {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontFamily: "var(--font-sans)",
-    fontSize: "13px",
-    color: "var(--color-text-secondary)",
-  } as const;
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "6px 16px",
-        minWidth: 0,
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "14px",
-          fontWeight: 600,
-          color: "var(--color-text-primary)",
-        }}
-      >
-        {track.name}
-      </span>
-      {dates && (
-        <span style={fact}>
-          <IconCalendar /> {dates}
-        </span>
-      )}
-      {place && (
-        <span style={fact}>
-          <IconLocation /> {place}
-        </span>
       )}
     </div>
   );

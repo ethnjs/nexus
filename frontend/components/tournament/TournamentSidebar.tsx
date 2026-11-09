@@ -9,6 +9,7 @@ import {
   IconEvents,
   IconForms,
   IconHome,
+  IconLocation,
   IconMembers,
   IconSettings,
 } from "@/components/ui/Icons";
@@ -60,6 +61,7 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
             icon: <IconBuilding size={17} />,
             label: "Buildings",
           },
+          { key: "zones", href: `${base}/zones`, icon: <IconLocation size={17} />, label: "Zones" },
         ]
       : []),
     // Matches the page's own view gate: staffing is part of reading the event

@@ -13,6 +13,7 @@ export interface TrackDraft {
   university_id: number | null;
   division: TournamentDivision[];
   default_role_id: number | null;
+  zone_default_role_id: number | null;
   // UI-only, never sent as fields of their own: the backend reads an absent
   // date or venue on a primary track as TBD. They exist because the form has
   // to tell "the TD hasn't filled this in yet" (a validation error) from "the
@@ -31,6 +32,7 @@ export const EMPTY_TRACK_DRAFT: TrackDraft = {
   university_id: null,
   division: [],
   default_role_id: null,
+  zone_default_role_id: null,
   dates_tbd: false,
   location_tbd: false,
 };
@@ -45,6 +47,7 @@ export function trackToDraft(track: TournamentTrack): TrackDraft {
     university_id: track.university?.id ?? null,
     division: track.division ?? [],
     default_role_id: track.default_role_id,
+    zone_default_role_id: track.zone_default_role_id,
     // On a track that has already been saved, absent *is* TBD — there is no
     // half-filled state to preserve. Cosmetic tracks are never TBD: they have
     // no dates or venue by definition, and the editor hides the fields.
@@ -69,6 +72,8 @@ export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
   if (!draft.is_primary) {
     return {
       ...base,
+      // Zones only exist on competition days.
+      zone_default_role_id: null,
       start_date: null,
       end_date: null,
       location: null,
@@ -78,6 +83,7 @@ export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
   }
   return {
     ...base,
+    zone_default_role_id: draft.zone_default_role_id,
     division: draft.division,
     // TBD is sent as absence, which is how the backend stores it. Both dates
     // go together — it rejects one without the other.

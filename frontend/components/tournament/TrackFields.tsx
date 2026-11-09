@@ -19,17 +19,15 @@ import { todayLocalDateString } from "@/lib/date";
 import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
 import type { TrackDraft } from "@/lib/trackDraft";
 
-// Dropdown's value is a string; a track's default_role_id is nullable, so
-// "no default" needs a sentinel rather than an empty string collapsing into
-// the placeholder for every unrelated reason a value could be blank.
+// Dropdown's value is a string and the default roles are nullable, so "None"
+// needs a sentinel rather than an empty string.
 const NO_DEFAULT_ROLE = "__none__";
 
 /**
- * The primary/cosmetic fields, shared by every row. The when/where/what only
- * renders for a competition day — that is what keeps the "only a primary
- * track can have..." 422 unreachable from this UI. Default role is the one
- * field every track carries regardless: a cosmetic track like Test Writing
- * wants its own default just as much as a competition day does.
+ * The primary/cosmetic fields, shared by every row. The when/where/what and
+ * the zone role only render for a competition day, which keeps the "only a
+ * primary track can have..." 422 unreachable from this UI. Default role shows
+ * on every track: Test Writing wants its own default too.
  */
 export function TrackFields({
   draft,
@@ -189,6 +187,31 @@ export function TrackFields({
           width={180}
         />
       </FieldRow>
+
+      {draft.is_primary && (
+        <FieldRow
+          label="Zone role"
+          helper="The role someone gets when they're added to a zone on this track."
+        >
+          <Dropdown
+            value={
+              draft.zone_default_role_id === null
+                ? NO_DEFAULT_ROLE
+                : String(draft.zone_default_role_id)
+            }
+            onChange={(v) =>
+              onChange({ zone_default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })
+            }
+            options={[
+              { value: NO_DEFAULT_ROLE, label: "None" },
+              ...roles.map((r) => ({ value: String(r.id), label: r.label })),
+            ]}
+            locked={locked}
+            size="sm"
+            width={180}
+          />
+        </FieldRow>
+      )}
     </div>
   );
 }
