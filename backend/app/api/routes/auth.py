@@ -32,15 +32,20 @@ from app.core.auth import (
     verify_and_update_password,
     verify_password,
 )
+from app.core.email_codes import resend_challenge, start_challenge, verify_challenge
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
 from app.schemas.auth import (
     AccountSetupConfirm,
+    CodeChallengeResponse,
+    CodeResendRequest,
+    CodeVerifyRequest,
     EmailChangeRequest,
     EmailChangeRevertConfirm,
     EmailPendingChangeResponse,
     LoginRequest,
+    LoginResponse,
     MessageResponse,
     PasswordChangeRequest,
     PasswordResetConfirm,
@@ -54,10 +59,15 @@ from app.services.email_service import (
     send_in_background,
     send_password_changed_notice,
     send_password_reset_email,
+    send_sign_in_code_email,
     send_verification_email,
 )
 
 router = APIRouter(tags=["auth"])
+
+CODE_SENDERS = {
+    "sign_in": send_sign_in_code_email,
+}
 
 # Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
 # (~50 ms per hash) and the DB calls would otherwise stall the event loop.
@@ -68,11 +78,15 @@ router = APIRouter(tags=["auth"])
 # ---------------------------------------------------------------------------
 
 
-@router.post("/auth/login/", response_model=AdminUserSlimResponse)
-def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+@router.post("/auth/login/", response_model=LoginResponse)
+def login(
+    body: LoginRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
-    Authenticate with email + password.
-    Sets an httpOnly session cookie on success.
+    Checks the email and password, then emails a 6-digit code to the account address and
+    returns a challenge. Finish signing in with POST /auth/code/verify/. No cookie is set here.
     """
     user = (
         db.query(User)
@@ -99,17 +113,74 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             detail="Invalid email or password",
         )
     if upgraded_hash:
-        # Legacy bcrypt hash: swap in Argon2. Committed by create_session below.
+        # Legacy bcrypt hash: swap in Argon2. Committed by start_challenge below.
         user.hashed_password = upgraded_hash
+
+    raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
+    send_in_background(background_tasks, send_sign_in_code_email, user.email, code)
+    return LoginResponse(
+        code_required=True,
+        challenge_token=raw_token,
+        expires_at=row.expires_at,
+        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
+    )
+
+
+@router.post(
+    "/auth/code/verify/",
+    response_model=AdminUserSlimResponse,
+    responses={400: {"description": "Incorrect or expired code"}},
+)
+def verify_code(
+    body: CodeVerifyRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """
+    Finishes signing in with the emailed code. Sets an httpOnly session cookie on success and
+    marks the email verified. Five wrong codes end the challenge.
+    """
+    row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in",))
+
+    user = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
+    if user is None:
+        raise HTTPException(400, "This code has expired. Start again to get a new one.")
+    user.email_verified = True
 
     raw_token = create_session(
         db,
         user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
+        code_verified=True,
     )
     set_auth_cookie(response, raw_token)
+    db.refresh(user)
     return user
+
+
+@router.post(
+    "/auth/code/resend/",
+    response_model=CodeChallengeResponse,
+    responses={
+        400: {"description": "Expired challenge"},
+        429: {"description": "Code sent too recently"},
+    },
+)
+def resend_code(
+    body: CodeResendRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Emails a new code for a challenge. The old code stops working; the expiry doesn't move."""
+    code, row = resend_challenge(db, body.challenge_token)
+    send_in_background(background_tasks, CODE_SENDERS[row.purpose], row.email, code)
+    return CodeChallengeResponse(
+        challenge_token=body.challenge_token,
+        expires_at=row.expires_at,
+        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
+    )
 
 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)

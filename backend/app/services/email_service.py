@@ -39,9 +39,10 @@ class _Email:
     subject: str
     heading: str
     paragraphs: list[_Paragraph]
-    cta_label: str
-    cta_url: str
     footnote: str
+    cta_label: str | None = None
+    cta_url: str | None = None
+    code: str | None = None
 
 
 _COLOR_BG = "#F7F7F5"
@@ -100,15 +101,34 @@ def _render_text(email: _Email) -> str:
         [
             email.heading,
             *(" ".join(_segments(paragraph)) for paragraph in email.paragraphs),
-            f"{email.cta_label}: {email.cta_url}",
+            *([f"Your code: {email.code}"] if email.code else []),
+            *([f"{email.cta_label}: {email.cta_url}"] if email.cta_url else []),
             email.footnote,
             f"{_SUPPORT_LINE}\n{_ORG_LINE}",
         ]
     )
 
 
-def _render_html(email: _Email) -> str:
+def _action_html(email: _Email) -> str:
+    """The code block for code emails, else the button and its fallback link."""
+    if email.code:
+        return f"""<p style="margin:24px 0 8px 0;padding:16px 0 16px 0.3em;font-size:32px;font-weight:600;letter-spacing:0.3em;color:{_COLOR_TEXT_PRIMARY};background-color:{_COLOR_BG};border:1px solid {_COLOR_BORDER};border-radius:6px;font-family:{_FONT_SANS};text-align:center;">{escape(email.code)}</p>"""
+    assert email.cta_label is not None and email.cta_url is not None
     url = escape(email.cta_url)
+    return f"""<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 8px auto;">
+                  <tr>
+                    <td style="border-radius:6px;background-color:{_COLOR_ACCENT};border:1px solid {_COLOR_ACCENT};">
+                      <a href="{url}" style="display:inline-block;padding:16px 20px;font-size:15px;font-weight:600;letter-spacing:0.01em;color:{_COLOR_TEXT_INVERSE};text-decoration:none;border-radius:6px;font-family:{_FONT_SANS};">{escape(email.cta_label)}</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};word-break:break-all;font-family:{_FONT_SANS};text-align:left;">
+                  If the button doesn't work, copy and paste this link:<br />
+                  <a href="{url}" style="color:{_COLOR_TEXT_SECONDARY};">{url}</a>
+                </p>"""
+
+
+def _render_html(email: _Email) -> str:
     paragraphs = "".join(
         f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{_paragraph_html(paragraph)}</p>'
         for paragraph in email.paragraphs
@@ -138,17 +158,7 @@ def _render_html(email: _Email) -> str:
               <td style="padding:16px 40px 24px 40px;text-align:center;">
                 <h1 style="margin:0 0 20px 0;font-size:22px;line-height:1.3;color:{_COLOR_TEXT_PRIMARY};font-weight:700;font-family:{_FONT_SANS};">{escape(email.heading)}</h1>
                 {paragraphs}
-                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 8px auto;">
-                  <tr>
-                    <td style="border-radius:6px;background-color:{_COLOR_ACCENT};border:1px solid {_COLOR_ACCENT};">
-                      <a href="{url}" style="display:inline-block;padding:16px 20px;font-size:15px;font-weight:600;letter-spacing:0.01em;color:{_COLOR_TEXT_INVERSE};text-decoration:none;border-radius:6px;font-family:{_FONT_SANS};">{escape(email.cta_label)}</a>
-                    </td>
-                  </tr>
-                </table>
-                <p style="margin:24px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};word-break:break-all;font-family:{_FONT_SANS};text-align:left;">
-                  If the button doesn't work, copy and paste this link:<br />
-                  <a href="{url}" style="color:{_COLOR_TEXT_SECONDARY};">{url}</a>
-                </p>
+                {_action_html(email)}
               </td>
             </tr>
             <tr>
@@ -275,6 +285,19 @@ async def send_verification_email(to: str, token: str) -> None:
             cta_label="Verify email",
             cta_url=_cta_url("/verify-email", token),
             footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
+        ),
+    )
+
+
+async def send_sign_in_code_email(to: str, code: str) -> None:
+    await _send_email(
+        to,
+        _Email(
+            subject="Your NEXUS sign-in code",
+            heading="Your sign-in code",
+            paragraphs=["Enter this code to finish signing in to NEXUS."],
+            code=code,
+            footnote="This code expires in 10 minutes. If you didn't try to sign in, someone may know your password, so change it.",
         ),
     )
 

@@ -17,6 +17,7 @@ Fixture hierarchy:
 """
 
 import os
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -424,9 +425,33 @@ def client(db, mock_sheets_service, mock_forms_service):
 # ---------------------------------------------------------------------------
 
 
+def emailed_code() -> str:
+    """The code in the last email sent through the autouse email mock."""
+    from app.services import email_service
+
+    text = email_service._send.call_args.args[2]  # ty: ignore[unresolved-attribute]
+    match = re.search(r"Your code: (\d{6})", text)
+    assert match is not None, text
+    return match.group(1)
+
+
 def login(client: TestClient, email: str, password: str):
-    """POST /auth/login and store the resulting cookie on the client."""
-    return client.post("/auth/login/", json={"email": email, "password": password})
+    """
+    Signs in through the password and code steps, storing the cookie on the client. Returns the
+    code verify response, or the login response when it didn't ask for a code (such as a 401).
+    """
+    from app.services import email_service
+
+    res = client.post("/auth/login/", json={"email": email, "password": password})
+    if res.status_code != 200 or not res.json()["code_required"]:
+        return res
+    verify = client.post(
+        "/auth/code/verify/",
+        json={"challenge_token": res.json()["challenge_token"], "code": emailed_code()},
+    )
+    # So tests that count sends see only their own.
+    email_service._send.reset_mock()  # ty: ignore[unresolved-attribute]
+    return verify
 
 
 # ---------------------------------------------------------------------------

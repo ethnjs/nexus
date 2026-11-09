@@ -106,6 +106,7 @@ def create_session(
     user_id: int,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    code_verified: bool = False,
 ) -> str:
     """
     Creates a new session and returns the raw token — this is the only
@@ -120,6 +121,7 @@ def create_session(
         user_agent=user_agent,
         ip_address=ip_address,
         expires_at=now + timedelta(days=SESSION_EXPIRE_DAYS),
+        code_verified_at=now if code_verified else None,
     )
     db.add(session_row)
     db.commit()

@@ -68,8 +68,42 @@ class UserSession(Base):
     last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Last time this session proved inbox access with a code. Null for sessions
+    # created before codes existed, so those need step-up for a sensitive action.
+    code_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship("User")
+
+
+# ---------------------------------------------------------------------------
+# EmailCode — a 6-digit code challenge (sign-in, sign-up, step-up, and
+# admin-issued sign-in). See app/core/email_codes.py for how codes are hashed.
+# A sign_up row holds the pending account (email, hashed_password) with no
+# user_id; the User is created only when its code is entered.
+# ---------------------------------------------------------------------------
+class EmailCode(Base):
+    __tablename__ = "email_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    purpose: Mapped[str] = mapped_column(String(16))  # sign_in, sign_up, step_up, admin_sign_in
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    session_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("sessions.id", ondelete="CASCADE")
+    )
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    hashed_password: Mapped[str | None] = mapped_column(String(255))
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    code_hash: Mapped[str] = mapped_column(String(255))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    issued_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ---------------------------------------------------------------------------
