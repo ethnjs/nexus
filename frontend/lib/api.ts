@@ -288,10 +288,17 @@ export interface EmailPendingChange {
 }
 
 // Matches CodeChallengeResponse: a code was emailed; send it back with challenge_token.
+// expires_at and can_resend_at are rebuilt on this browser's clock as the response arrives
+// (see onLocalClock), so countdowns can compare them with Date.now().
 export interface CodeChallenge {
   challenge_token: string;
   expires_at: string;
   can_resend_at: string;
+}
+
+interface SecondsLeft {
+  expires_in: number;
+  resend_in: number;
 }
 
 // Matches LoginResponse. When code_required, the challenge fields are set and user is null.
@@ -300,19 +307,39 @@ export interface LoginResponse {
   challenge_token: string | null;
   expires_at: string | null;
   can_resend_at: string | null;
+  expires_in: number | null;
+  resend_in: number | null;
   user: AdminUserSlim | null;
+}
+
+// The server's timestamps are on its clock, which this browser's may not match.
+function onLocalClock<T extends SecondsLeft>(challenge: T): T {
+  const now = Date.now();
+  return {
+    ...challenge,
+    expires_at: new Date(now + challenge.expires_in * 1000).toISOString(),
+    can_resend_at: new Date(now + challenge.resend_in * 1000).toISOString(),
+  };
 }
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<LoginResponse>("/auth/login/", { email, password }),
+    api.post<LoginResponse>("/auth/login/", { email, password }).then((res) => {
+      const { expires_in, resend_in } = res;
+      return expires_in === null || resend_in === null
+        ? res
+        : onLocalClock({ ...res, expires_in, resend_in });
+    }),
   logout: () => api.post<void>("/auth/logout/", {}),
-  register: (body: AuthRegister) => api.post<CodeChallenge>("/auth/register/", body),
+  register: (body: AuthRegister) =>
+    api.post<CodeChallenge & SecondsLeft>("/auth/register/", body).then(onLocalClock),
   verifyCode: (challengeToken: string, code: string) =>
     api.post<AdminUserSlim>("/auth/code/verify/", { challenge_token: challengeToken, code }),
   resendCode: (challengeToken: string) =>
-    api.post<CodeChallenge>("/auth/code/resend/", { challenge_token: challengeToken }),
-  startStepUp: () => api.post<CodeChallenge>("/auth/step-up/", {}),
+    api
+      .post<CodeChallenge & SecondsLeft>("/auth/code/resend/", { challenge_token: challengeToken })
+      .then(onLocalClock),
+  startStepUp: () => api.post<CodeChallenge & SecondsLeft>("/auth/step-up/", {}).then(onLocalClock),
   verifyStepUp: (challengeToken: string, code: string) =>
     api.post<void>("/auth/step-up/verify/", { challenge_token: challengeToken, code }),
 

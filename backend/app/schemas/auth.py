@@ -94,11 +94,16 @@ class MessageResponse(BaseModel):
 
 
 class CodeChallengeResponse(BaseModel):
-    """A code was emailed. Send it back with challenge_token to finish."""
+    """
+    A code was emailed. Send it back with challenge_token to finish. expires_in and resend_in
+    are seconds from this response, for clients whose clock may not match the server's.
+    """
 
     challenge_token: str
     expires_at: datetime
     can_resend_at: datetime
+    expires_in: int
+    resend_in: int
 
 
 class LoginResponse(BaseModel):
@@ -111,6 +116,8 @@ class LoginResponse(BaseModel):
     challenge_token: str | None = None
     expires_at: datetime | None = None
     can_resend_at: datetime | None = None
+    expires_in: int | None = None
+    resend_in: int | None = None
     user: AdminUserSlimResponse | None = None
 
 

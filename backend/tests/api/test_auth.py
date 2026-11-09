@@ -190,6 +190,8 @@ class TestSignInCode:
         assert data["code_required"] is True
         assert data["user"] is None
         assert data["challenge_token"]
+        assert 598 <= data["expires_in"] <= 600
+        assert 58 <= data["resend_in"] <= 60
         assert "access_token" not in res.cookies
         assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS sign-in code")]
         assert client.get("/users/me/").status_code == 401
@@ -302,6 +304,7 @@ class TestSignInCode:
         _age_codes(db, last_sent_at=timedelta(seconds=61))
         res = client.post("/auth/code/resend/", json={"challenge_token": token})
         assert datetime.fromisoformat(res.json()["expires_at"]) == expires_at
+        assert 58 <= res.json()["resend_in"] <= 60
 
     def test_deactivated_between_steps_rejected(self, client, db, td_user):
         token = _start_sign_in(client)

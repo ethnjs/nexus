@@ -41,7 +41,7 @@ from app.core.email_codes import (
 )
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
-from app.models.models import User, UserSession, VerificationToken
+from app.models.models import EmailCode, User, UserSession, VerificationToken
 from app.schemas.auth import (
     AccountSetupConfirm,
     CodeChallengeResponse,
@@ -77,6 +77,19 @@ CODE_SENDERS = {
     "sign_up": send_sign_up_code_email,
     "step_up": send_step_up_code_email,
 }
+
+
+def _challenge_response(raw_token: str, row: EmailCode) -> CodeChallengeResponse:
+    now = datetime.now(UTC)
+    can_resend_at = row.last_sent_at + RATE_LIMIT_WINDOW
+    return CodeChallengeResponse(
+        challenge_token=raw_token,
+        expires_at=row.expires_at,
+        can_resend_at=can_resend_at,
+        expires_in=max(0, int((row.expires_at - now).total_seconds())),
+        resend_in=max(0, int((can_resend_at - now).total_seconds())),
+    )
+
 
 # Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
 # (~50 ms per hash) and the DB calls would otherwise stall the event loop.
@@ -142,12 +155,7 @@ def login(
 
     raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
     send_in_background(background_tasks, send_sign_in_code_email, user.email, code)
-    return LoginResponse(
-        code_required=True,
-        challenge_token=raw_token,
-        expires_at=row.expires_at,
-        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
-    )
+    return LoginResponse(code_required=True, **_challenge_response(raw_token, row).model_dump())
 
 
 @router.post(
@@ -209,11 +217,7 @@ def resend_code(
     """Emails a new code for a challenge. The old code stops working; the expiry doesn't move."""
     code, row = resend_challenge(db, body.challenge_token)
     send_in_background(background_tasks, CODE_SENDERS[row.purpose], row.email, code)
-    return CodeChallengeResponse(
-        challenge_token=body.challenge_token,
-        expires_at=row.expires_at,
-        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
-    )
+    return _challenge_response(body.challenge_token, row)
 
 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
@@ -264,11 +268,7 @@ def register(
         db, "sign_up", email=email, hashed_password=hash_password(body.password)
     )
     send_in_background(background_tasks, send_sign_up_code_email, email, code)
-    return CodeChallengeResponse(
-        challenge_token=raw_token,
-        expires_at=row.expires_at,
-        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
-    )
+    return _challenge_response(raw_token, row)
 
 
 # ---------------------------------------------------------------------------
@@ -295,11 +295,7 @@ def start_step_up(
         db, "step_up", user=user, session=session, email=user.email
     )
     send_in_background(background_tasks, send_step_up_code_email, user.email, code)
-    return CodeChallengeResponse(
-        challenge_token=raw_token,
-        expires_at=row.expires_at,
-        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
-    )
+    return _challenge_response(raw_token, row)
 
 
 @router.post(
