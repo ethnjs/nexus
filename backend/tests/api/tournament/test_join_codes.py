@@ -244,7 +244,7 @@ def test_staff_invite_partial_failure_reported(client, td_user, td_tournament, d
 
     async def flaky_send(to, subject, text, html):
         if to == "bad@example.com":
-            raise RuntimeError("Resend rejected this address")
+            raise RuntimeError("SES rejected this address")
 
     mock_send_email.side_effect = flaky_send
 

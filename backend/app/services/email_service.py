@@ -1,24 +1,25 @@
 import asyncio
+import logging
+import time
+from functools import lru_cache
 
-import resend
+import boto3
+from botocore.client import BaseClient
+from botocore.config import Config
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
+
+
 # ---------------------------------------------------------------------------
 # Shared HTML template
 #
-# Mirrors app/globals.css: Georgia for the wordmark/heading (matches h1/h2
-# on every frontend page), Geist for UI text/CTA, Geist Mono for body copy.
-# Geist fonts are loaded from the same jsdelivr CDN the frontend uses via
-# @font-face in <head> — email clients that support web fonts (Apple Mail,
-# some webmail) will render them; everything else falls back cleanly to
-# system-ui / Courier New, same as the app's own font-family fallback chain.
-#
-# All layout styling stays inline — email clients strip <style> blocks
-# unpredictably, so only the @font-face declarations live in <head>.
+# Colors and fonts mirror frontend/app/globals.css. Styling stays inline because
+# email clients strip <style> blocks unpredictably; only @font-face lives there.
 # ---------------------------------------------------------------------------
 
 _COLOR_BG = "#F7F7F5"
@@ -34,6 +35,14 @@ _COLOR_ACCENT_HOVER = "#2A2A2A"
 _FONT_SERIF = "Georgia, serif"
 _FONT_SANS = "'Geist', system-ui, sans-serif"
 _FONT_MONO = "'Geist Mono', 'Courier New', monospace"
+
+_SUPPORT_EMAIL = "support@nexus.socalscioly.org"
+_SUPPORT_LINK = (
+    f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+)
+_ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
+_CONTACT_SUPPORT = "If this wasn't you, please contact support."
+
 
 _FONT_FACES = """\
   <style>
@@ -109,6 +118,8 @@ def _render_email_html(
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
                 <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{footnote}</p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">Questions? Email <a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a></p>
+                <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_ORG_LINE}</p>
               </td>
             </tr>
           </table>
@@ -126,22 +137,94 @@ def _cta_url(path: str, token: str | None = None) -> str:
     return f"{base}?token={token}" if token else base
 
 
-_CONTACT_SUPPORT = "If this wasn't you, please contact support."
+# ---------------------------------------------------------------------------
+# Sending (Amazon SES v2)
+# ---------------------------------------------------------------------------
+
+
+@lru_cache
+def _get_ses_client(
+    access_key_id: str, secret_access_key: str, region: str, max_attempts: int
+) -> BaseClient:
+    # A dedicated Session because the default one isn't thread-safe; the client is,
+    # and it's shared across asyncio.to_thread workers.
+    session = boto3.session.Session(
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
+    )
+    return session.client(
+        "sesv2",
+        # boto3's default "legacy" mode doesn't retry SES v2's TooManyRequestsException.
+        config=Config(retries={"mode": "standard", "total_max_attempts": max_attempts}),
+    )
+
+
+class _SendRateLimiter:
+    """Spaces sends `interval` seconds apart to stay under SES's per-second quota.
+
+    Pacing is per process: with N uvicorn workers or replicas, set SES_MAX_SEND_RATE to quota / N.
+    """
+
+    def __init__(self) -> None:
+        self._next_slot = 0.0
+
+    async def wait(self, interval: float) -> None:
+        # No lock needed: nothing is awaited between reading and advancing _next_slot.
+        now = time.monotonic()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+
+
+_rate_limiter = _SendRateLimiter()
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
+    """Sends through SES. Without AWS keys it logs and skips, except in production, where it raises."""
+    text = f"{text}\n\nQuestions? Email {_SUPPORT_EMAIL}\n{_ORG_LINE}"
     settings = get_settings()
-    resend.api_key = settings.resend_api_key
 
-    params: resend.Emails.SendParams = {
-        "from": "NEXUS <verify@nexus.socalscioly.org>",
-        "to": to,
-        "subject": subject,
-        "text": text,
-        "html": html,
-    }
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
+        if settings.app_env == "production":
+            raise RuntimeError(
+                "SES is not configured: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
+            )
+        if settings.app_env == "development":
+            logger.warning(
+                "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+                "-- Email not sent: SES not configured ".ljust(72, "-"),
+                to,
+                subject,
+                text,
+                "-" * 72,
+            )
+        else:
+            logger.warning("SES not configured, skipping email to %s: %s", to, subject)
+        return
 
-    await resend.Emails.send_async(params)
+    client = _get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+    await _rate_limiter.wait(1 / settings.ses_max_send_rate)
+    await asyncio.to_thread(
+        client.send_email,
+        FromEmailAddress=settings.email_from_address,
+        Destination={"ToAddresses": [to]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": text, "Charset": "UTF-8"},
+                    "Html": {"Data": html, "Charset": "UTF-8"},
+                },
+            },
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +241,7 @@ async def send_verification_email(to: str, token: str) -> None:
         ],
         cta_label="Verify email",
         cta_url=url,
-        footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
+        footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Verify your email on NEXUS", f"Please verify your email: {url}", html)
 
@@ -212,16 +295,10 @@ async def send_email_change_request_email(db: Session, user_id: int, new_email: 
 async def send_email_change_requested_notice(
     db: Session, user_id: int, old_email: str, new_email: str
 ) -> None:
-    """
-    Sent to the OLD email address the moment an email change is requested
-    (not once it's confirmed) — the account owner may not be the one who
-    requested it, so this needs to reach them while the change can still be
-    intercepted, not just after it's already applied.
+    """Warns the old address when a change is requested, while it can still be stopped.
 
-    Creates the email_change_revert token itself and embeds it in the CTA
-    link, so the recipient can undo the change directly instead of landing
-    on /forgot-password with no way to look themselves up (their email is
-    about to become the attacker's address).
+    Creates an email_change_revert token for the link, since after the change the owner can't
+    recover through /forgot-password with an address they no longer control.
     """
     try:
         revert_token = create_verification_token(
@@ -235,7 +312,8 @@ async def send_email_change_requested_notice(
         heading="Your email address is being changed",
         body_lines=[
             f"A request was made to change the email on your NEXUS account to {new_email}.",
-            "If you made this request, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
         cta_label="Secure your account",
         cta_url=url,
@@ -264,7 +342,7 @@ async def send_password_reset_email(to: str, token: str) -> None:
         ],
         cta_label="Reset password",
         cta_url=url,
-        footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
+        footnote=f"This link expires in 1 hour. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Reset your password on NEXUS", f"Reset your password: {url}", html)
 
@@ -282,19 +360,16 @@ async def send_password_reset_request_email(db: Session, user_id: int, to: str) 
 
 
 async def send_password_changed_notice(to: str) -> None:
-    """
-    Sent after an authenticated password change (settings page), not the
-    forgot-password flow. Confirms the change to the account owner and
-    gives them a way back in if it wasn't actually them.
-    """
+    """Sent after a password change from settings, not after a forgot-password reset."""
     url = _cta_url("/forgot-password")
     html = _render_email_html(
         heading="Your password was changed",
         body_lines=[
             "The password on your NEXUS account was just changed.",
-            "If you made this change, no action is needed.",
+            "<b>If you made this request, no action is needed.</b> You can safely ignore this email.",
+            "If this wasn't you, please secure your account below.",
         ],
-        cta_label="Reset password",
+        cta_label="Secure your account",
         cta_url=url,
         footnote=_CONTACT_SUPPORT,
     )
@@ -352,27 +427,19 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
         ],
         cta_label="Join tournament",
         cta_url=join_url,
-        footnote="If you weren't expecting this, you can ignore this email.",
+        footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_LINK} to stop receiving invites.",
     )
-    await _send(
-        to,
-        f"You're invited to help run {tournament_name}",
-        f"Join {tournament_name}: {join_url}",
-        html,
+    text = (
+        f"Join {tournament_name}: {join_url}\n\n"
+        f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites."
     )
+    await _send(to, f"You're invited to help run {tournament_name}", text, html)
 
 
 async def send_staff_invite_emails(
     to_emails: list[str], tournament_name: str, join_url: str
 ) -> list[str]:
-    """
-    Sends one personalized invite email per address, in parallel — not BCC,
-    which counts every recipient against quota anyway and has worse
-    deliverability for this use case. Each send is independent, so one bad
-    address doesn't block the rest.
-
-    Returns the subset of to_emails that failed to send.
-    """
+    """Sends one invite per address (not BCC) and returns the addresses that failed."""
     results = await asyncio.gather(
         *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
         return_exceptions=True,
