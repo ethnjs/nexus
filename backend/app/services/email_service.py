@@ -206,7 +206,7 @@ def _retry_delay(error: RateLimitError, attempt: int) -> float:
 
 def _log_email(reason: str, to: str, subject: str, text: str) -> None:
     logger.warning(
-        "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+        "\n%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
         f"-- Email not sent: {reason} ".ljust(72, "-"),
         to,
         subject,
