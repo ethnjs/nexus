@@ -96,3 +96,37 @@ async def test_unconfigured_in_production_raises(use_settings, resend_send):
         await email_service._send("v@example.com", "s", "t", "h")
 
     resend_send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def captured(monkeypatch):
+    mock = AsyncMock()
+    monkeypatch.setattr(email_service, "_send", mock)
+    return mock
+
+
+async def test_values_are_escaped_in_html(captured):
+    name = '<a href="https://evil.example">Verify here</a>'
+
+    await email_service.send_staff_invite_email("v@example.com", name, "https://nexus.example/j")
+
+    to, subject, text, html = captured.call_args.args
+    assert '<a href="https://evil.example">' not in html
+    assert "&lt;a href=&quot;https://evil.example&quot;&gt;" in html
+    assert name in subject
+    assert name in text
+
+
+async def test_plain_text_carries_the_whole_message(captured):
+    await email_service.send_password_reset_email("v@example.com", "tok123")
+
+    text = captured.call_args.args[2]
+    assert "Reset your password" in text
+    assert "Choose a new password to regain access." in text
+    assert "/reset-password?token=tok123" in text
+    assert "This link expires in 1 hour." in text
