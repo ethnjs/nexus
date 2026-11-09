@@ -15,6 +15,11 @@ from app.models.models import EmailCode, TournamentMembership, User, Verificatio
 from tests.conftest import emailed_code, login
 
 
+def _sent(mock_send_email) -> list[tuple[str, str]]:
+    """(recipient, subject) for each email sent."""
+    return [(call.args[0], call.args[1]) for call in mock_send_email.call_args_list]
+
+
 @pytest.fixture
 def inactive_user(db):
     user = User(
@@ -400,56 +405,62 @@ class TestPasswordRules:
 
 
 class TestRegister:
-    def test_register_success(self, client):
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
+    def _register(self, client, email="new@test.com", password=VALID_PASSWORD):
+        return client.post("/auth/register/", json={"email": email, "password": password})
+
+    def test_register_sends_code_and_creates_no_user(self, client, db, mock_send_email):
+        res = self._register(client)
         assert res.status_code == 201
+        assert res.json()["challenge_token"]
+        assert "access_token" not in res.cookies
+        assert _sent(mock_send_email) == [("new@test.com", "Verify your email on NEXUS")]
+        assert db.query(User).filter_by(email="new@test.com").count() == 0
+
+    def test_code_creates_verified_user_and_signs_in(self, client, db):
+        token = self._register(client, email="NEW@TEST.COM").json()["challenge_token"]
+        res = _verify(client, token, emailed_code())
+        assert res.status_code == 200
+        assert "access_token" in res.cookies
         data = res.json()
         assert data["email"] == "new@test.com"
-        assert data["role"] == "user"
-        assert data["status"] == "active"
+        assert data["email_verified"] is True
+        assert (data["role"], data["status"]) == ("user", "active")
         assert "hashed_password" not in data
+        assert client.get("/users/me/").json()["email"] == "new@test.com"
 
-    def test_register_sets_cookie(self, client):
-        # Registration should log the user in immediately
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 201
-        assert "access_token" in res.cookies
+    def test_new_account_signs_in_with_its_password(self, client):
+        token = self._register(client).json()["challenge_token"]
+        _verify(client, token, emailed_code())
+        client.post("/auth/logout/")
+        assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
-    def test_register_auto_login(self, client):
-        # Cookie from registration should allow immediate access to /me/
-        client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        res = client.get("/users/me/")
-        assert res.status_code == 200
-        assert res.json()["email"] == "new@test.com"
+    def test_wrong_code_creates_no_user(self, client, db):
+        token = self._register(client).json()["challenge_token"]
+        assert _verify(client, token, _wrong(emailed_code())).status_code == 400
+        assert db.query(User).filter_by(email="new@test.com").count() == 0
 
-    def test_register_email_stored_lowercase(self, client):
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "NEW@TEST.COM",
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 201
-        assert res.json()["email"] == "new@test.com"
+    def test_second_sign_up_replaces_pending_one(self, client, db):
+        first = self._register(client, password="First@123").json()["challenge_token"]
+        first_code = emailed_code()
+        assert self._register(client).status_code == 429
+
+        _age_codes(db, created_at=timedelta(seconds=61))
+        second = self._register(client, password="Second@123").json()["challenge_token"]
+        assert _verify(client, first, first_code).status_code == 400
+        assert _verify(client, second, emailed_code()).status_code == 200
+        client.post("/auth/logout/")
+        assert login(client, "new@test.com", "First@123").status_code == 401
+        assert login(client, "new@test.com", "Second@123").status_code == 200
+
+    def test_register_passwordless_account_email_rejected(self, client, volunteer_no_password):
+        assert self._register(client, email="vol@test.com").status_code == 409
+
+    def test_email_taken_before_code_entered(self, client, db):
+        token = self._register(client).json()["challenge_token"]
+        db.add(User(email="new@test.com", role="user", status="active"))
+        db.commit()
+        assert _verify(client, token, emailed_code()).status_code == 409
+        assert db.query(User).filter_by(email="new@test.com").count() == 1
 
     def test_register_duplicate_email_rejected(self, client, td_user):
         assert (
@@ -474,18 +485,6 @@ class TestRegister:
             ).status_code
             == 409
         )
-
-    def test_register_can_login_with_new_credentials(self, client):
-        # Confirms the password was hashed and stored correctly
-        client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        client.post("/auth/logout/")
-        assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
     def test_register_password_too_short(self, client):
         assert (
@@ -559,69 +558,6 @@ class TestRegister:
             ).status_code
             == 422
         )
-
-
-# ---------------------------------------------------------------------------
-# GET /auth/verify-email/
-# ---------------------------------------------------------------------------
-
-
-class TestVerifyEmail:
-    def test_valid_token_verifies_email(self, client, td_user, db):
-        assert td_user.email_verified is False
-        token = create_verification_token(db, td_user.id, "signup_verify")
-        res = client.get(f"/auth/verify-email/?token={token}")
-        assert res.status_code == 200
-        db.refresh(td_user)
-        assert td_user.email_verified is True
-
-    def test_invalid_token_rejected(self, client):
-        assert client.get("/auth/verify-email/?token=garbage").status_code == 400
-
-    def test_token_already_used_rejected(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "signup_verify")
-        assert client.get(f"/auth/verify-email/?token={token}").status_code == 200
-        assert client.get(f"/auth/verify-email/?token={token}").status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# POST /auth/send-email-verification/
-# ---------------------------------------------------------------------------
-
-
-def _sent(mock_send_email) -> list[tuple[str, str]]:
-    """(recipient, subject) for each email sent."""
-    return [(call.args[0], call.args[1]) for call in mock_send_email.call_args_list]
-
-
-class TestSendEmailVerification:
-    def test_unverified_user_can_request(self, client, td_user, mock_send_email):
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 200
-        assert _sent(mock_send_email) == [("td@test.com", "Verify your email on NEXUS")]
-
-    def test_rate_limited_on_repeat(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        client.post("/auth/send-email-verification/")
-        assert client.post("/auth/send-email-verification/").status_code == 429
-
-    def test_failed_send_still_succeeds_and_is_logged(
-        self, client, td_user, mock_send_email, caplog
-    ):
-        mock_send_email.side_effect = RuntimeError("provider down")
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 200
-        assert "Background email failed: send_verification_email to td@test.com" in caplog.text
-        assert "provider down" in caplog.text
-
-    def test_already_verified_rejected(self, client, td_user, db):
-        td_user.email_verified = True
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 400
-
-    def test_unauthenticated_forbidden(self, client):
-        assert client.post("/auth/send-email-verification/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -746,8 +682,8 @@ class TestConfirmEmailChange:
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
 
     def test_wrong_purpose_token_rejected(self, client, td_user, db):
-        # A signup_verify token shouldn't be usable here
-        token = create_verification_token(db, td_user.id, "signup_verify")
+        # A token for another purpose shouldn't be usable here
+        token = create_verification_token(db, td_user.id, "password_reset")
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
 
 
@@ -1004,6 +940,7 @@ class TestConfirmAccountSetup:
         db.refresh(invited_user)
         assert invited_user.status == "active"
         assert invited_user.hashed_password is not None
+        assert invited_user.email_verified
 
     def test_confirm_logs_user_in(self, client, invited_user, db):
         token = create_verification_token(db, invited_user.id, "account_setup")
@@ -1084,7 +1021,7 @@ class TestConsumeVerificationToken:
 
     def test_wrong_purpose_rejected_and_token_left_usable(self, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
-        assert consume_verification_token(db, token, "signup_verify") is None
+        assert consume_verification_token(db, token, "email_change") is None
         assert consume_verification_token(db, token, "account_setup") is None
         assert consume_verification_token(db, token, "password_reset") is not None
 

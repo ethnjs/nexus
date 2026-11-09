@@ -212,8 +212,6 @@ class AccountSetupConfirm(BaseModel):
     Dormant: nothing currently mints an 'account_setup' token, so no user can
     reach status="invited". Kept for the invite flow's eventual producer — see
     the note on User.status.
-
-    Does NOT set email_verified — that still requires the normal verification flow.
     """
 
     token: str

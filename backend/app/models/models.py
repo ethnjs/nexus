@@ -107,8 +107,8 @@ class EmailCode(Base):
 
 
 # ---------------------------------------------------------------------------
-# VerificationToken — backs signup verify, email change and revert, password
-# reset, and account setup. Only the SHA-256 hash is stored (see
+# VerificationToken — backs email change and revert, password reset, and
+# account setup. Only the SHA-256 hash is stored (see
 # app/core/auth.py _hash_token); raw token is emailed. new_email is set for
 # email_change* purposes only (for revert, it's the address to revert TO).
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ class VerificationToken(Base):
     token_hash: Mapped[str] = mapped_column(String(255), index=True, unique=True)
     purpose: Mapped[str] = mapped_column(
         String(32)
-    )  # "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
+    )  # "email_change", "password_reset", "account_setup", "email_change_revert"
     new_email: Mapped[str | None] = mapped_column(
         String(255)
     )  # "email_change": new address. "email_change_revert": address to revert TO (old address).

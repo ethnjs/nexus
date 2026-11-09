@@ -273,22 +273,6 @@ def send_in_background[**P](
 # ---------------------------------------------------------------------------
 
 
-async def send_verification_email(to: str, token: str) -> None:
-    await _send_email(
-        to,
-        _Email(
-            subject="Verify your email on NEXUS",
-            heading="Verify your email",
-            paragraphs=[
-                "Thanks for signing up for NEXUS. Confirm this is your email address to finish setting up your account.",
-            ],
-            cta_label="Verify email",
-            cta_url=_cta_url("/verify-email", token),
-            footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
-        ),
-    )
-
-
 async def send_sign_in_code_email(to: str, code: str) -> None:
     await _send_email(
         to,
@@ -298,6 +282,21 @@ async def send_sign_in_code_email(to: str, code: str) -> None:
             paragraphs=["Enter this code to finish signing in to NEXUS."],
             code=code,
             footnote="This code expires in 10 minutes. If you didn't try to sign in, someone may know your password, so change it.",
+        ),
+    )
+
+
+async def send_sign_up_code_email(to: str, code: str) -> None:
+    await _send_email(
+        to,
+        _Email(
+            subject="Verify your email on NEXUS",
+            heading="Verify your email",
+            paragraphs=[
+                "Thanks for signing up for NEXUS. Enter this code to confirm your email address and create your account.",
+            ],
+            code=code,
+            footnote="This code expires in 10 minutes. If you didn't sign up for NEXUS, you can ignore this email.",
         ),
     )
 

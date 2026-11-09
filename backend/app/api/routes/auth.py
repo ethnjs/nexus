@@ -60,13 +60,14 @@ from app.services.email_service import (
     send_password_changed_notice,
     send_password_reset_email,
     send_sign_in_code_email,
-    send_verification_email,
+    send_sign_up_code_email,
 )
 
 router = APIRouter(tags=["auth"])
 
 CODE_SENDERS = {
     "sign_in": send_sign_in_code_email,
+    "sign_up": send_sign_up_code_email,
 }
 
 # Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
@@ -129,7 +130,10 @@ def login(
 @router.post(
     "/auth/code/verify/",
     response_model=AdminUserSlimResponse,
-    responses={400: {"description": "Incorrect or expired code"}},
+    responses={
+        400: {"description": "Incorrect or expired code"},
+        409: {"description": "The sign-up's email was registered in the meantime"},
+    },
 )
 def verify_code(
     body: CodeVerifyRequest,
@@ -138,14 +142,20 @@ def verify_code(
     db: Session = Depends(get_db),
 ):
     """
-    Finishes signing in with the emailed code. Sets an httpOnly session cookie on success and
-    marks the email verified. Five wrong codes end the challenge.
+    Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here.
+    Sets an httpOnly session cookie on success and marks the email verified. Five wrong codes
+    end the challenge.
     """
-    row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in",))
+    row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in", "sign_up"))
 
-    user = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
-    if user is None:
-        raise HTTPException(400, "This code has expired. Start again to get a new one.")
+    if row.purpose == "sign_up":
+        check_if_email_exists(db, row.email)
+        user = create_user(db, row.email, hashed_password=row.hashed_password)
+    else:
+        found = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
+        if found is None:
+            raise HTTPException(400, "This code has expired. Start again to get a new one.")
+        user = found
     user.email_verified = True
 
     raw_token = create_session(
@@ -208,77 +218,34 @@ def logout(
 
 
 @router.post(
-    "/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED
+    "/auth/register/",
+    response_model=CodeChallengeResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        409: {"description": "Email already registered"},
+        429: {"description": "Sign-up code sent too recently"},
+    },
 )
 def register(
-    body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)
+    body: RegisterRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """
-    Public route to create a new user account.
-    All registered users get role="user".
+    Starts a sign-up: emails a 6-digit code to the address and returns a challenge. The account
+    is created, verified, and signed in by POST /auth/code/verify/. Until then nothing reserves
+    the email, and signing up again replaces the pending sign-up.
     """
     check_if_email_exists(db, body.email)
 
-    user = create_user(db, body.email, password=body.password)
-
-    raw_token = create_session(
-        db,
-        user.id,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=get_client_ip(request),
+    email = body.email.lower()
+    raw_token, code, row = start_challenge(
+        db, "sign_up", email=email, hashed_password=hash_password(body.password)
     )
-    set_auth_cookie(response, raw_token)
-
-    return user
-
-
-# ---------------------------------------------------------------------------
-# Signup email verification
-# ---------------------------------------------------------------------------
-
-
-@router.get(
-    "/auth/verify-email/",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
-    responses={
-        400: {"description": "Invalid or expired token"},
-    },
-)
-def verify_email(token: str, db: Session = Depends(get_db)):
-    """Consumes a signup_verify token and marks the user's email verified."""
-    token_row = consume_verification_token(db, token, "signup_verify")
-    if token_row is None:
-        raise HTTPException(400, "Invalid or expired token")
-
-    user = find_user_by_id(db, token_row.user_id)
-    user.email_verified = True
-    db.commit()
-    return {"detail": "User email successfully verified"}
-
-
-@router.post(
-    "/auth/send-email-verification/",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
-    responses={
-        400: {"description": "Email already verified"},
-        429: {"description": "Verification email requested too recently"},
-    },
-)
-def send_email_verification(
-    background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Resends the signup verification email for the current user."""
-    if user.email_verified:
-        raise HTTPException(400, "Email already verified")
-
-    token = create_verification_token(db, user.id, "signup_verify")
-    send_in_background(background_tasks, send_verification_email, user.email, token)
-
-    return {"detail": "Verification email successfully sent"}
+    send_in_background(background_tasks, send_sign_up_code_email, email, code)
+    return CodeChallengeResponse(
+        challenge_token=raw_token,
+        expires_at=row.expires_at,
+        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -563,9 +530,9 @@ def confirm_account_setup(
     db: Session = Depends(get_db),
 ):
     """
-    Completes an invited account: sets the initial password. Logs the user in
-    immediately, same as register(), since this mirrors sign-up's flow. Phone
-    and any name correction happen afterward in onboarding.
+    Completes an invited account: sets the initial password and signs the user in. The emailed
+    link proves the address, so this also marks the email verified. Phone and any name
+    correction happen afterward in onboarding.
     """
     token_row = consume_verification_token(db, body.token, "account_setup")
     if token_row is None:
@@ -575,6 +542,7 @@ def confirm_account_setup(
 
     user.hashed_password = hash_password(body.password)
     user.status = "active"
+    user.email_verified = True
     db.commit()
     db.refresh(user)
 
@@ -583,6 +551,7 @@ def confirm_account_setup(
         user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
+        code_verified=True,
     )
     set_auth_cookie(response, raw_token)
 
