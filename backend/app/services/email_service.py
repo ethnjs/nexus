@@ -1,10 +1,10 @@
 import asyncio
 import logging
 import random
-import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from html import escape
+from typing import Concatenate
 
 import resend
 from fastapi import BackgroundTasks
@@ -19,18 +19,26 @@ logger = logging.getLogger(__name__)
 # Content and rendering
 #
 # Each sender describes its email as an _Email, and both the HTML and the
-# plain-text version are built from it, with every value escaped. The only
-# markup is **bold**, and the support address becomes a mailto link. Colors and
+# plain-text version are built from it, with every value escaped. Colors and
 # fonts mirror frontend/app/globals.css. Styling stays inline because email
 # clients strip <style> blocks unpredictably; only @font-face lives there.
 # ---------------------------------------------------------------------------
+
+
+class _Bold(str):
+    """Template text rendered in bold. Markup is a type, not syntax inside the
+    string, so a value such as a tournament name can never trigger it."""
+
+
+# A paragraph is one string, or segments joined with spaces.
+type _Paragraph = str | tuple[str, ...]
 
 
 @dataclass
 class _Email:
     subject: str
     heading: str
-    paragraphs: list[str]
+    paragraphs: list[_Paragraph]
     cta_label: str
     cta_url: str
     footnote: str
@@ -69,26 +77,31 @@ _SUPPORT_LINE = f"Questions? Email {_SUPPORT_EMAIL}"
 _ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
 _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
-_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+def _segments(paragraph: _Paragraph) -> tuple[str, ...]:
+    return paragraph if isinstance(paragraph, tuple) else (paragraph,)
 
 
-def _text(content: str) -> str:
-    return _BOLD.sub(r"\1", content)
+def _paragraph_html(paragraph: _Paragraph) -> str:
+    return " ".join(
+        f"<b>{escape(segment)}</b>" if isinstance(segment, _Bold) else escape(segment)
+        for segment in _segments(paragraph)
+    )
 
 
-def _html(content: str) -> str:
-    html = _BOLD.sub(r"<b>\1</b>", escape(content))
+def _with_support_link(text: str) -> str:
+    """Escapes footer text and links the support address. Only for template text."""
     link = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
-    return html.replace(_SUPPORT_EMAIL, link)
+    return escape(text).replace(_SUPPORT_EMAIL, link)
 
 
 def _render_text(email: _Email) -> str:
     return "\n\n".join(
         [
             email.heading,
-            *(_text(paragraph) for paragraph in email.paragraphs),
+            *(" ".join(_segments(paragraph)) for paragraph in email.paragraphs),
             f"{email.cta_label}: {email.cta_url}",
-            _text(email.footnote),
+            email.footnote,
             f"{_SUPPORT_LINE}\n{_ORG_LINE}",
         ]
     )
@@ -97,11 +110,11 @@ def _render_text(email: _Email) -> str:
 def _render_html(email: _Email) -> str:
     url = escape(email.cta_url)
     paragraphs = "".join(
-        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{_html(paragraph)}</p>'
+        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{_paragraph_html(paragraph)}</p>'
         for paragraph in email.paragraphs
     )
     footer = "".join(
-        f'<p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_html(line)}</p>'
+        f'<p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_with_support_link(line)}</p>'
         for line in (_SUPPORT_LINE, _ORG_LINE)
     )
 
@@ -140,7 +153,7 @@ def _render_html(email: _Email) -> str:
             </tr>
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
-                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_html(email.footnote)}</p>
+                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_with_support_link(email.footnote)}</p>
                 {footer}
               </td>
             </tr>
@@ -182,13 +195,11 @@ def _retry_delay(error: RateLimitError, attempt: int) -> float:
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
-    """Sends through Resend, retrying rate-limited attempts. Without an API key it logs and
-    skips, except in production, where it raises."""
+    """Sends through Resend, retrying rate-limited attempts. Without an API key (never the
+    case in production, which Settings refuses to start) it logs instead of sending."""
     settings = get_settings()
 
     if not settings.resend_api_key:
-        if settings.app_env == "production":
-            raise RuntimeError("Email is not configured: RESEND_API_KEY must be set")
         if settings.app_env == "development":
             logger.warning(
                 "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
@@ -230,17 +241,19 @@ async def _send_email(to: str, email: _Email) -> None:
 
 def send_in_background[**P](
     background_tasks: BackgroundTasks,
-    send: Callable[P, Awaitable[None]],
+    send: Callable[Concatenate[str, P], Awaitable[None]],
+    to: str,
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> None:
-    """Runs `send` after the response goes out, logging any failure, since no caller is left to see it."""
+    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is left to see it."""
 
     async def send_and_log() -> None:
         try:
-            await send(*args, **kwargs)
+            await send(to, *args, **kwargs)
         except Exception:
-            logger.exception("Background email failed: %s", getattr(send, "__name__", send))
+            name = getattr(send, "__name__", send)
+            logger.exception("Background email failed: %s to %s", name, to)
 
     background_tasks.add_task(send_and_log)
 
@@ -293,12 +306,15 @@ async def send_email_change_requested_notice(
             heading="Your email address is being changed",
             paragraphs=[
                 f"A request was made to change the email on your NEXUS account to {new_email}.",
-                "**If you made this request, no action is needed.** You can safely ignore this email.",
+                (
+                    _Bold("If you made this request, no action is needed."),
+                    "You can safely ignore this email.",
+                ),
                 "If this wasn't you, please secure your account below.",
             ],
             cta_label="Secure your account",
             cta_url=_cta_url("/revert-email-change", revert_token),
-            footnote=_CONTACT_SUPPORT,
+            footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
         ),
     )
 
@@ -328,7 +344,10 @@ async def send_password_changed_notice(to: str) -> None:
             heading="Your password was changed",
             paragraphs=[
                 "The password on your NEXUS account was just changed.",
-                "**If you made this change, no action is needed.** You can safely ignore this email.",
+                (
+                    _Bold("If you made this change, no action is needed."),
+                    "You can safely ignore this email.",
+                ),
                 "If this wasn't you, please secure your account below.",
             ],
             cta_label="Secure your account",
@@ -339,6 +358,7 @@ async def send_password_changed_notice(to: str) -> None:
 
 
 async def send_account_setup_email(to: str, token: str) -> None:
+    """No caller yet: kept for the dormant /auth/account-setup/confirm/ flow's future invite producer."""
     await _send_email(
         to,
         _Email(

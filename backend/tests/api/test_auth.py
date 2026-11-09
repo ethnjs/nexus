@@ -474,7 +474,7 @@ class TestSendEmailVerification:
         mock_send_email.side_effect = RuntimeError("provider down")
         login(client, "td@test.com", "tdpass")
         assert client.post("/auth/send-email-verification/").status_code == 200
-        assert "Background email failed: send_verification_email" in caplog.text
+        assert "Background email failed: send_verification_email to td@test.com" in caplog.text
         assert "provider down" in caplog.text
 
     def test_already_verified_rejected(self, client, td_user, db):
@@ -767,7 +767,7 @@ class TestRequestPasswordReset:
         mock_send_email.side_effect = RuntimeError("provider down")
         res = client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
         assert res.status_code == 200
-        assert "Background email failed: send_password_reset_email" in caplog.text
+        assert "Background email failed: send_password_reset_email to td@test.com" in caplog.text
 
     def test_unknown_email_returns_generic_200_no_email_sent(self, client, mock_send_email):
         res = client.post("/auth/password/reset/request/", json={"email": "nobody@test.com"})

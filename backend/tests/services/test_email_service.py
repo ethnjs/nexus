@@ -144,15 +144,6 @@ async def test_unconfigured_in_preview_skips_without_body(use_settings, resend_s
     assert "token=abc" not in caplog.text
 
 
-async def test_unconfigured_in_production_raises(use_settings, resend_send):
-    use_settings(app_env="production", resend_api_key="")
-
-    with pytest.raises(RuntimeError):
-        await email_service._send("v@example.com", "s", "t", "h")
-
-    resend_send.assert_not_called()
-
-
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
@@ -197,5 +188,25 @@ async def test_bold_and_footer_render_in_both_versions(captured):
     assert "If you made this change, no action is needed." in text
     assert 'href="mailto:support@nexus.socalscioly.org"' in html
     assert "Questions? Email support@nexus.socalscioly.org" in text
+
+
+async def test_email_change_notice_says_when_the_undo_link_expires(captured):
+    await email_service.send_email_change_requested_notice(
+        "old@example.com", "new@example.com", "t"
+    )
+
+    assert "This link expires in 24 hours." in captured.call_args.args[2]
+
+
+async def test_asterisks_in_a_value_stay_literal(captured):
+    await email_service.send_staff_invite_email(
+        "v@example.com", "**Big** Invitational", "https://nexus.example/j"
+    )
+
+    _, subject, text, html = captured.call_args.args
+    assert "<b>" not in html
+    assert "**Big** Invitational" in html
+    assert "**Big** Invitational" in text
+    assert "**Big** Invitational" in subject
     assert "501(c)(3)" in html
     assert "501(c)(3)" in text
