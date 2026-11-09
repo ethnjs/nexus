@@ -204,21 +204,31 @@ def _retry_delay(error: RateLimitError, attempt: int) -> float:
     return min(base, 10) + random.uniform(0, 1)
 
 
+def _log_email(reason: str, to: str, subject: str, text: str) -> None:
+    logger.warning(
+        "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+        f"-- Email not sent: {reason} ".ljust(72, "-"),
+        to,
+        subject,
+        text,
+        "-" * 72,
+    )
+
+
 async def _send(to: str, subject: str, text: str, html: str) -> None:
-    """Sends through Resend, retrying rate-limited attempts. Without an API key (never the
-    case in production, which Settings refuses to start) it logs instead of sending."""
+    """Sends through Resend, retrying rate-limited attempts. Outside production, mail to
+    @nexus.dev is logged in full instead. Without an API key (never the case in production,
+    which Settings refuses to start) it logs instead of sending."""
     settings = get_settings()
+
+    # Seeded and scripted accounts use @nexus.dev, a real domain someone else owns.
+    if settings.app_env != "production" and to.lower().endswith("@nexus.dev"):
+        _log_email("@nexus.dev outside production", to, subject, text)
+        return
 
     if not settings.resend_api_key:
         if settings.app_env == "development":
-            logger.warning(
-                "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
-                "-- Email not sent: RESEND_API_KEY not set ".ljust(72, "-"),
-                to,
-                subject,
-                text,
-                "-" * 72,
-            )
+            _log_email("RESEND_API_KEY not set", to, subject, text)
         else:
             # Preview logs are shared, so the body (with its tokens) stays out of them.
             logger.warning("RESEND_API_KEY not set, skipping email to %s: %s", to, subject)
