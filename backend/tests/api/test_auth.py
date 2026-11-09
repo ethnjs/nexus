@@ -89,6 +89,21 @@ class TestLogin:
     def test_login_no_password_set(self, client, volunteer_no_password):
         assert login(client, "vol@test.com", "anything").status_code == 401
 
+    @pytest.mark.parametrize("email", ["nobody@test.com", "vol@test.com", "inactive@test.com"])
+    def test_login_without_matching_account_still_hashes(
+        self, client, volunteer_no_password, inactive_user, monkeypatch, email
+    ):
+        # Skipping the hash would make these 401s measurably faster than a wrong password.
+        calls = []
+        real = auth_routes.verify_password
+        monkeypatch.setattr(
+            auth_routes,
+            "verify_password",
+            lambda plain, hashed: calls.append(hashed) or real(plain, hashed),
+        )
+        assert login(client, email, "pass").status_code == 401
+        assert calls == [auth_core.DUMMY_PASSWORD_HASH]
+
     def test_login_case_insensitive_email(self, client, td_user):
         assert login(client, "TD@TEST.COM", "tdpass").status_code == 200
 

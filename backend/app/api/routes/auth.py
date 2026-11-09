@@ -13,6 +13,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
+    DUMMY_PASSWORD_HASH,
     RATE_LIMIT_WINDOW,
     clear_auth_cookie,
     consume_verification_token,
@@ -82,8 +83,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         .first()
     )
 
-    # Deliberate: same error whether email or password is wrong — prevents enumeration
+    # Same error and the same hashing work whether the email or the password is
+    # wrong, so neither the response nor its timing reveals which accounts exist.
     if not user or not user.hashed_password:
+        verify_password(body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",

@@ -48,6 +48,10 @@ class _LegacyBcryptHasher(BcryptHasher):
 # legacy hashes; login upgrades them to Argon2 via verify_and_update_password.
 pwd_context = PasswordHash((Argon2Hasher(), _LegacyBcryptHasher()))
 
+# Login verifies against this when no account matches, so an unknown email
+# takes as long as a wrong password.
+DUMMY_PASSWORD_HASH = pwd_context.hash(secrets.token_urlsafe(16))
+
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
