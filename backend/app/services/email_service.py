@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from html import escape
 
 import resend
 from fastapi import BackgroundTasks
+from resend.exceptions import RateLimitError
 
 from app.core.config import get_settings
 
@@ -161,9 +163,27 @@ def _cta_url(path: str, token: str | None = None) -> str:
 # Sending
 # ---------------------------------------------------------------------------
 
+# Resend's limit is per second and shared by the whole team, so a staff invite
+# batch or concurrent workers can briefly exceed it.
+_RATE_LIMIT_ATTEMPTS = 4
+
+
+def _retry_delay(error: RateLimitError, attempt: int) -> float:
+    """Seconds before the next attempt: Resend's retry-after when it sends one,
+    else exponential backoff. Jittered so a rejected batch doesn't retry in lockstep."""
+    retry_after = next(
+        (value for key, value in error.headers.items() if key.lower() == "retry-after"), None
+    )
+    try:
+        base = float(retry_after) if retry_after is not None else 2 ** (attempt - 1)
+    except ValueError:
+        base = 2 ** (attempt - 1)
+    return min(base, 10) + random.uniform(0, 1)
+
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
-    """Sends through Resend. Without an API key it logs and skips, except in production, where it raises."""
+    """Sends through Resend, retrying rate-limited attempts. Without an API key it logs and
+    skips, except in production, where it raises."""
     settings = get_settings()
 
     if not settings.resend_api_key:
@@ -193,7 +213,15 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
         "html": html,
     }
 
-    await resend.Emails.send_async(params)
+    for attempt in range(1, _RATE_LIMIT_ATTEMPTS + 1):
+        try:
+            await resend.Emails.send_async(params)
+            return
+        except RateLimitError as e:
+            # Quota errors share the 429 status but won't clear within seconds.
+            if e.error_type != "rate_limit_exceeded" or attempt == _RATE_LIMIT_ATTEMPTS:
+                raise
+            await asyncio.sleep(_retry_delay(e, attempt))
 
 
 async def _send_email(to: str, email: _Email) -> None:

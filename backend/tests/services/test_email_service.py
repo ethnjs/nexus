@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import resend
+from resend.exceptions import RateLimitError
 
 from app.core.config import Settings
 from app.services import email_service
@@ -55,6 +56,60 @@ async def test_send_with_key_calls_resend(use_settings, resend_send):
     assert params["subject"] == "Subject"
     assert params["text"] == "Text"
     assert params["html"] == "<p>Html</p>"
+
+
+def _rate_limited(error_type: str = "rate_limit_exceeded", headers=None):
+    return RateLimitError(
+        message="Too many requests", error_type=error_type, code=429, headers=headers
+    )
+
+
+@pytest.fixture
+def no_retry_delay(monkeypatch):
+    monkeypatch.setattr(email_service, "_retry_delay", lambda error, attempt: 0)
+
+
+async def test_rate_limited_send_is_retried_until_it_succeeds(
+    use_settings, resend_send, no_retry_delay
+):
+    use_settings()
+    resend_send.side_effect = [_rate_limited(), _rate_limited(), {"id": "sent"}]
+
+    await email_service._send("v@example.com", "s", "t", "h")
+
+    assert resend_send.call_count == 3
+
+
+async def test_persistent_rate_limit_fails_after_the_last_attempt(
+    use_settings, resend_send, no_retry_delay
+):
+    use_settings()
+    resend_send.side_effect = _rate_limited()
+
+    with pytest.raises(RateLimitError):
+        await email_service._send("v@example.com", "s", "t", "h")
+
+    assert resend_send.call_count == email_service._RATE_LIMIT_ATTEMPTS
+
+
+async def test_quota_exceeded_is_not_retried(use_settings, resend_send, no_retry_delay):
+    use_settings()
+    resend_send.side_effect = _rate_limited("daily_quota_exceeded")
+
+    with pytest.raises(RateLimitError):
+        await email_service._send("v@example.com", "s", "t", "h")
+
+    assert resend_send.call_count == 1
+
+
+def test_retry_delay_honors_retry_after():
+    delay = email_service._retry_delay(_rate_limited(headers={"Retry-After": "3"}), attempt=1)
+    assert 3 <= delay < 4
+
+
+def test_retry_delay_backs_off_without_retry_after():
+    assert 1 <= email_service._retry_delay(_rate_limited(), attempt=1) < 2
+    assert 4 <= email_service._retry_delay(_rate_limited(), attempt=3) < 5
 
 
 async def test_unconfigured_in_development_logs_body_and_skips(use_settings, resend_send, caplog):
