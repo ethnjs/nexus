@@ -130,3 +130,17 @@ async def test_plain_text_carries_the_whole_message(captured):
     assert "Choose a new password to regain access." in text
     assert "/reset-password?token=tok123" in text
     assert "This link expires in 1 hour." in text
+
+
+async def test_bold_and_footer_render_in_both_versions(captured):
+    await email_service.send_password_changed_notice("v@example.com")
+
+    _, _, text, html = captured.call_args.args
+    assert "<b>If you made this change, no action is needed.</b>" in html
+    assert "**" not in html
+    assert "**" not in text
+    assert "If you made this change, no action is needed." in text
+    assert 'href="mailto:support@nexus.socalscioly.org"' in html
+    assert "Questions? Email support@nexus.socalscioly.org" in text
+    assert "501(c)(3)" in html
+    assert "501(c)(3)" in text

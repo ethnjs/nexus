@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from html import escape
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 # Content and rendering
 #
 # Each sender describes its email as an _Email, and both the HTML and the
-# plain-text version are built from it, with every value escaped. Colors and
+# plain-text version are built from it, with every value escaped. The only
+# markup is **bold**, and the support address becomes a mailto link. Colors and
 # fonts mirror frontend/app/globals.css. Styling stays inline because email
 # clients strip <style> blocks unpredictably; only @font-face lives there.
 # ---------------------------------------------------------------------------
@@ -60,13 +62,32 @@ _FONT_FACES = """\
 """
 
 
+_SUPPORT_EMAIL = "support@nexus.socalscioly.org"
+_SUPPORT_LINE = f"Questions? Email {_SUPPORT_EMAIL}"
+_ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
+_CONTACT_SUPPORT = "If this wasn't you, please contact support."
+
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _text(content: str) -> str:
+    return _BOLD.sub(r"\1", content)
+
+
+def _html(content: str) -> str:
+    html = _BOLD.sub(r"<b>\1</b>", escape(content))
+    link = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+    return html.replace(_SUPPORT_EMAIL, link)
+
+
 def _render_text(email: _Email) -> str:
     return "\n\n".join(
         [
             email.heading,
-            *email.paragraphs,
+            *(_text(paragraph) for paragraph in email.paragraphs),
             f"{email.cta_label}: {email.cta_url}",
-            email.footnote,
+            _text(email.footnote),
+            f"{_SUPPORT_LINE}\n{_ORG_LINE}",
         ]
     )
 
@@ -74,8 +95,12 @@ def _render_text(email: _Email) -> str:
 def _render_html(email: _Email) -> str:
     url = escape(email.cta_url)
     paragraphs = "".join(
-        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{escape(paragraph)}</p>'
+        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{_html(paragraph)}</p>'
         for paragraph in email.paragraphs
+    )
+    footer = "".join(
+        f'<p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_html(line)}</p>'
+        for line in (_SUPPORT_LINE, _ORG_LINE)
     )
 
     return f"""\
@@ -113,7 +138,8 @@ def _render_html(email: _Email) -> str:
             </tr>
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
-                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{escape(email.footnote)}</p>
+                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_html(email.footnote)}</p>
+                {footer}
               </td>
             </tr>
           </table>
@@ -129,9 +155,6 @@ def _cta_url(path: str, token: str | None = None) -> str:
     settings = get_settings()
     base = f"{settings.frontend_url.rstrip('/')}{path}"
     return f"{base}?token={token}" if token else base
-
-
-_CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +233,7 @@ async def send_verification_email(to: str, token: str) -> None:
             ],
             cta_label="Verify email",
             cta_url=_cta_url("/verify-email", token),
-            footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
+            footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
         ),
     )
 
@@ -242,7 +265,8 @@ async def send_email_change_requested_notice(
             heading="Your email address is being changed",
             paragraphs=[
                 f"A request was made to change the email on your NEXUS account to {new_email}.",
-                "If you made this request, no action is needed.",
+                "**If you made this request, no action is needed.** You can safely ignore this email.",
+                "If this wasn't you, please secure your account below.",
             ],
             cta_label="Secure your account",
             cta_url=_cta_url("/revert-email-change", revert_token),
@@ -263,7 +287,7 @@ async def send_password_reset_email(to: str, token: str) -> None:
             ],
             cta_label="Reset password",
             cta_url=_cta_url("/reset-password", token),
-            footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
+            footnote=f"This link expires in 1 hour. {_CONTACT_SUPPORT}",
         ),
     )
 
@@ -276,9 +300,10 @@ async def send_password_changed_notice(to: str) -> None:
             heading="Your password was changed",
             paragraphs=[
                 "The password on your NEXUS account was just changed.",
-                "If you made this change, no action is needed.",
+                "**If you made this change, no action is needed.** You can safely ignore this email.",
+                "If this wasn't you, please secure your account below.",
             ],
-            cta_label="Reset password",
+            cta_label="Secure your account",
             cta_url=_cta_url("/forgot-password"),
             footnote=_CONTACT_SUPPORT,
         ),
@@ -319,7 +344,7 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
             ],
             cta_label="Join tournament",
             cta_url=join_url,
-            footnote="If you weren't expecting this, you can ignore this email.",
+            footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites.",
         ),
     )
 
