@@ -182,8 +182,8 @@ def update_join_code(
 
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
-# Deactivates the join code (one-way) — does not remove the row, so
-# use_count/history stay visible via GET.
+# Deactivates the join code (one-way). The row is kept, so its use_count and
+# audit history survive, but GET no longer lists it.
 # ---------------------------------------------------------------------------
 @router.delete("/{tournament_id}/join-codes/{code_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_tournament_join_code(

@@ -2,9 +2,9 @@
 Core auth utilities.
 
 - Password hashing via Argon2 (pwdlib), still verifying legacy bcrypt hashes
-- Sessions (opaque DB-backed tokens, replacing the previous JWT scheme)
-- Verification tokens (signup verify / email change / password reset)
-- FastAPI dependencies: get_current_user, require_admin
+- Sessions (opaque DB-backed tokens)
+- Verification tokens (the emailed links)
+- FastAPI dependencies: get_current_session, get_current_user, require_admin
 
 Tournament-level permission checking lives in app/core/tournament/permissions.py.
 """
@@ -65,14 +65,9 @@ def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, str | Non
 
 # ---------------------------------------------------------------------------
 # Sessions
-# Replaces the previous stateless JWT — the access_token cookie now holds
-# a random opaque session token (not a JWT). This trades a small amount of
-# stateless-JWT convenience for the ability to actually revoke access in
-# real time (a JWT stays valid until it naturally expires; nothing short
-# of a DB-backed check can kill it early).
-#
-# token_hash uses SHA-256 (_hash_token), not the password hasher — see
-# _hash_token for why that's safe. Lookup is a direct indexed equality match.
+# The access_token cookie holds a random opaque token, checked against the
+# database on every request so a session can be revoked immediately. Only its
+# SHA-256 hash is stored (see _hash_token).
 # ---------------------------------------------------------------------------
 
 SESSION_EXPIRE_DAYS = 7  # fixed from creation — no sliding renewal
@@ -92,7 +87,7 @@ def _hash_token(raw_token: str) -> str:
 
 def get_client_ip(request: Request) -> str | None:
     """
-    Prefers X-Forwarded-For (Render sits in front of the app), falls back
+    Prefers X-Forwarded-For (Railway's proxy sits in front of the app), falls back
     to the direct connection IP. Takes the first entry — the original
     client — since X-Forwarded-For can be a comma-separated chain of proxies.
     """
@@ -182,11 +177,7 @@ def revoke_all_other_sessions(db: Session, user_id: int, keep_session_id: int) -
 
 
 def revoke_all_sessions(db: Session, user_id: int) -> None:
-    """
-    Revokes EVERY session for the user, including whatever's currently
-    active — used for admin account-locking, where the point is immediate
-    total lockout, not preserving anyone's current session.
-    """
+    """Revokes every session for the user, including the one making the request."""
     now = datetime.now(UTC)
     db.query(UserSession).filter(
         UserSession.user_id == user_id,
@@ -339,9 +330,7 @@ def consume_verification_token(
 
     Lookup and consume are one UPDATE ... RETURNING, so of two concurrent
     requests with the same token only one gets the row back; the other's
-    WHERE no longer matches once used_at is set. Tokens issued before the
-    switch to SHA-256 stored Argon2/bcrypt hashes, which never match a digest,
-    so they're simply rejected and the user requests a new link.
+    WHERE no longer matches once used_at is set.
     """
     now = datetime.now(UTC)
 
@@ -423,8 +412,7 @@ def get_current_user(
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """
-    Dependency — restricts a route to admin users only.
-    Used for site-wide admin operations (e.g. GET /users/, POST /auth/register).
+    Dependency — restricts a route to site admins (e.g. GET /admin/users/).
 
     For tournament-level permission checks use require_permission() from
     app.core.tournament.permissions instead.

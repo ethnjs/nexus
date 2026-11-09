@@ -45,7 +45,7 @@ router = APIRouter(tags=["users"])
 
 
 # ---------------------------------------------------------------------------
-# GET /users/ — admin only (global unscoped list)
+# GET /admin/users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/", response_model=list[AdminUserSlimResponse])
 def list_users(
@@ -57,7 +57,7 @@ def list_users(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/{user_id}/ — admin only
+# GET /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/{user_id}/", response_model=AdminUserFullResponse)
 def get_user(
@@ -73,7 +73,7 @@ def get_user(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/by-email/{email}/ — admin only
+# GET /admin/users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/by-email/{email}/", response_model=AdminUserFullResponse)
 def get_user_by_email(
