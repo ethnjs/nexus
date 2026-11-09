@@ -37,6 +37,7 @@ export function CodeEntry({
   }, []);
 
   const resendIn = Math.ceil((new Date(challenge.can_resend_at).getTime() - now) / 1000);
+  const expiresIn = Math.ceil((new Date(challenge.expires_at).getTime() - now) / 60_000);
   const digits = code.replace(/\D/g, "");
 
   async function handleSubmit(e: React.SyntheticEvent) {
@@ -88,7 +89,10 @@ export function CodeEntry({
           margin: 0,
         }}
       >
-        We emailed a {CODE_LENGTH}-digit code to <strong>{email}</strong>. It expires in 10 minutes.
+        We emailed a {CODE_LENGTH}-digit code to <strong>{email}</strong>.{" "}
+        {expiresIn > 0
+          ? `It expires in ${expiresIn} minute${expiresIn === 1 ? "" : "s"}.`
+          : "It has expired, so start again for a new one."}
       </p>
 
       <Input
