@@ -78,17 +78,27 @@ export function enterIndex(options: readonly ListOption[], active: number): numb
 /**
  * A free-text combobox's rows: the names matching `text`, then "Use “text”"
  * when nothing matches exactly — the way to keep a new value Enter would
- * otherwise fill in as the first match.
+ * otherwise fill in as the first match. A name's `subtitle` ("Rowland Hall"
+ * under "RH") shows as a second line and is searched too.
  */
 export function suggestionRows(
   names: readonly string[],
   text: string,
   max = 8,
+  subtitle?: (name: string) => string | undefined,
 ): { names: string[]; options: ListOption[] } {
   const needle = text.trim().toLowerCase();
-  const matching = names.filter((n) => n.toLowerCase().includes(needle)).slice(0, max);
+  const matching = names
+    .filter(
+      (n) => n.toLowerCase().includes(needle) || !!subtitle?.(n)?.toLowerCase().includes(needle),
+    )
+    .slice(0, max);
   const exact = names.some((n) => n.toLowerCase() === needle);
-  const options: ListOption[] = matching.map((n) => ({ key: n, label: n }));
+  const options: ListOption[] = matching.map((n) => ({
+    key: n,
+    label: n,
+    subtitle: subtitle?.(n),
+  }));
   if (needle && !exact)
     options.push({ key: "__custom__", label: `Use “${text.trim()}”`, muted: true });
   return { names: matching, options };

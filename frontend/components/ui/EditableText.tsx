@@ -31,6 +31,8 @@ interface EditableTextProps {
   /** Offered in a list as you type — free text is still allowed. Use
    *  EditableCombobox, which requires it, rather than passing it here. */
   suggestions?: string[];
+  /** A second line under a suggestion, searched as well, e.g. a full name. */
+  suggestionSubtitle?: (suggestion: string) => string | undefined;
   /** A failed save's message goes to a toast instead of under the field — for
    *  table cells, where text under one row overlaps the next. The field still
    *  stays open with a red underline so the value can be fixed in place. */
@@ -70,6 +72,7 @@ export function EditableText({
   placeholder,
   allowEmpty = false,
   suggestions,
+  suggestionSubtitle,
   errorToast = false,
   skipTab = false,
   onCancel,
@@ -90,7 +93,9 @@ export function EditableText({
   // Combobox mode: which suggestion the arrow keys are on (-1 = none).
   const [highlight, setHighlight] = useState(-1);
   const rows =
-    editing && suggestions ? suggestionRows(suggestions, draft) : { names: [], options: [] };
+    editing && suggestions
+      ? suggestionRows(suggestions, draft, undefined, suggestionSubtitle)
+      : { names: [], options: [] };
   const listOpen = rows.options.length > 0;
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when

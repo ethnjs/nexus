@@ -28,6 +28,7 @@ import type {
   TournamentRoom,
   TournamentShift,
 } from "@/lib/api";
+import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
 import { focusAdjacentCell } from "@/lib/gridNav";
 import { useToast } from "@/lib/useToast";
 
@@ -174,7 +175,12 @@ function useCellEditor() {
       wrap.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])")?.focus();
     }
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current?.contains(e.target as Node)) return;
+      const target = e.target as Node;
+      // A press inside the editor that already re-rendered it away, like a
+      // suggestion whose pick closed its list. React handles the press first,
+      // on this same document, so the row is gone before this check runs.
+      if (!target.isConnected) return;
+      if (wrapRef.current?.contains(target)) return;
       // Blur first, so a value typed but not yet entered commits before its
       // field unmounts.
       const active = document.activeElement;
@@ -641,7 +647,8 @@ export function LocationCell({
 
   const savedBuildingId = detail?.building_id ?? null;
   const buildingId = pickedBuildingId !== undefined ? pickedBuildingId : savedBuildingId;
-  const buildingName = buildings.find((b) => b.id === buildingId)?.name ?? "";
+  const building = buildings.find((b) => b.id === buildingId);
+  const buildingName = building ? buildingLabel(building) : "";
   // Only buildings tagged with this track — the other pairing is a 422.
   const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
   // The saved rooms belong to the saved building; a newly picked one has none yet.
@@ -651,9 +658,8 @@ export function LocationCell({
   const typingBuilding = buildingId === null || buildingInBox;
   const rows =
     editing && typingBuilding
-      ? suggestionRows(
-          onTrack.map((b) => b.name),
-          text,
+      ? suggestionRows(onTrack.map(buildingLabel), text, undefined, (label) =>
+          buildingSubtitle(onTrack, label),
         )
       : { names: [], options: [] };
 
@@ -691,7 +697,10 @@ export function LocationCell({
       void run(async () => {
         let id: number | null = null;
         if (name) {
-          const match = onTrack.find((b) => b.name.toLowerCase() === name.toLowerCase());
+          const typed = name.toLowerCase();
+          const match = onTrack.find(
+            (b) => b.name.toLowerCase() === typed || b.short_name?.toLowerCase() === typed,
+          );
           id = match ? match.id : (await ensureBuilding(name, trackId)).id;
         }
         if (id !== savedBuildingId && (detail?.room_ids.length ?? 0) > 0) {

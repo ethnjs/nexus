@@ -1,8 +1,22 @@
 import { buildingsApi, type TournamentBuilding, type TournamentRoom } from "@/lib/api";
 
+/** What a building is called in event locations and pickers: "RH", else "Rowland Hall". */
+export function buildingLabel(building: Pick<TournamentBuilding, "name" | "short_name">): string {
+  return building.short_name || building.name;
+}
+
+/** The full name under a picker row that shows `label`, when the label is a short name. */
+export function buildingSubtitle(
+  buildings: readonly TournamentBuilding[],
+  label: string,
+): string | undefined {
+  return buildings.find((b) => b.short_name && b.short_name === label)?.name;
+}
+
 /**
- * The building called `name`, available on `trackId` — created if no building
- * has that name yet, tagged onto the track if one does but isn't on it.
+ * The building called `name` (or with that short name), available on
+ * `trackId` — created if no building matches, tagged onto the track if one
+ * does but isn't on it.
  *
  * Matched case-insensitively against `known`: names are unique per tournament,
  * so a second "Rowland Hall" would 409, and the TD plainly means the same one.
@@ -14,7 +28,10 @@ export async function ensureBuildingOnTrack(
   trackId: number,
   known: readonly TournamentBuilding[],
 ): Promise<TournamentBuilding> {
-  const existing = known.find((b) => b.name.toLowerCase() === name.toLowerCase());
+  const typed = name.toLowerCase();
+  const existing =
+    known.find((b) => b.name.toLowerCase() === typed) ??
+    known.find((b) => b.short_name?.toLowerCase() === typed);
   if (!existing) return buildingsApi.create(tournamentId, { name, track_ids: [trackId] });
   if (existing.track_ids.includes(trackId)) return existing;
   return buildingsApi.update(tournamentId, existing.id, {
