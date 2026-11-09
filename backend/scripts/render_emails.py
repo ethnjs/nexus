@@ -34,6 +34,7 @@ async def _render_all() -> list[Sent]:
     with patch.object(email_service, "_send", capture):
         await email_service.send_sign_in_code_email(TO, CODE)
         await email_service.send_sign_up_code_email(TO, CODE)
+        await email_service.send_step_up_code_email(TO, CODE)
         await email_service.send_email_change_email(NEW, TOKEN)
         await email_service.send_email_change_requested_notice(OLD, NEW, TOKEN)
         await email_service.send_password_reset_email(TO, TOKEN)

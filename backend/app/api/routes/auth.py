@@ -32,7 +32,12 @@ from app.core.auth import (
     verify_and_update_password,
     verify_password,
 )
-from app.core.email_codes import resend_challenge, start_challenge, verify_challenge
+from app.core.email_codes import (
+    require_recent_code,
+    resend_challenge,
+    start_challenge,
+    verify_challenge,
+)
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
@@ -61,6 +66,7 @@ from app.services.email_service import (
     send_password_reset_email,
     send_sign_in_code_email,
     send_sign_up_code_email,
+    send_step_up_code_email,
 )
 
 router = APIRouter(tags=["auth"])
@@ -68,6 +74,7 @@ router = APIRouter(tags=["auth"])
 CODE_SENDERS = {
     "sign_in": send_sign_in_code_email,
     "sign_up": send_sign_up_code_email,
+    "step_up": send_step_up_code_email,
 }
 
 # Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
@@ -249,6 +256,59 @@ def register(
 
 
 # ---------------------------------------------------------------------------
+# Step-up: a fresh code before a sensitive action
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/auth/step-up/",
+    response_model=CodeChallengeResponse,
+    responses={429: {"description": "Code sent too recently"}},
+)
+def start_step_up(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    session: UserSession = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """
+    Emails a code to the signed-in user. Call this when a request fails with a 403 whose
+    detail.code is "step_up_required", then send the code to POST /auth/step-up/verify/.
+    """
+    raw_token, code, row = start_challenge(
+        db, "step_up", user=user, session=session, email=user.email
+    )
+    send_in_background(background_tasks, send_step_up_code_email, user.email, code)
+    return CodeChallengeResponse(
+        challenge_token=raw_token,
+        expires_at=row.expires_at,
+        can_resend_at=row.last_sent_at + RATE_LIMIT_WINDOW,
+    )
+
+
+@router.post(
+    "/auth/step-up/verify/",
+    response_model=MessageResponse,
+    responses={400: {"description": "Incorrect or expired code"}},
+)
+def verify_step_up(
+    body: CodeVerifyRequest,
+    session: UserSession = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """
+    Checks a step-up code. On success, this session can make sensitive requests for the next
+    10 minutes. The challenge must have been started from this same session.
+    """
+    verify_challenge(
+        db, body.challenge_token, body.code, purposes=("step_up",), session_id=session.id
+    )
+    session.code_verified_at = datetime.now(UTC)
+    db.commit()
+    return {"detail": "Confirmed"}
+
+
+# ---------------------------------------------------------------------------
 # Email change
 # ---------------------------------------------------------------------------
 
@@ -278,6 +338,7 @@ def get_pending_email_change_route(
     status_code=status.HTTP_200_OK,
     response_model=EmailPendingChangeResponse,
     responses={
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
         409: {"description": "Email already registered to another account"},
         429: {"description": "Email change requested too recently"},
     },
@@ -286,6 +347,7 @@ def request_email_change(
     body: EmailChangeRequest,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
     db: Session = Depends(get_db),
 ):
     """

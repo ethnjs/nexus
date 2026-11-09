@@ -15,6 +15,7 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
+from app.core.email_codes import require_recent_code
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -91,15 +92,21 @@ def get_user_by_email(
 # ---------------------------------------------------------------------------
 # PATCH /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.patch("/admin/users/{user_id}/", response_model=AdminUserSlimResponse)
+@router.patch(
+    "/admin/users/{user_id}/",
+    response_model=AdminUserSlimResponse,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    session: UserSession = Depends(get_current_session),
 ):
     """
-    Admin can only update a user's role and status.
+    Admin can only update a user's role and status. Changing the role needs a code entered
+    in the last 10 minutes; see POST /auth/step-up/.
 
     Moving a user off status="active" revokes every session they hold. Losing
     access is meant to take effect now, not at their next sign-in — login
@@ -115,6 +122,9 @@ def admin_update_user(
     """
     user = find_user_by_id(db, user_id)
     updates = body.model_dump(exclude_unset=True)
+
+    if "role" in updates and updates["role"] != user.role:
+        require_recent_code(session)
 
     if user.id == current_user.id:
         if updates.get("role") == "user":

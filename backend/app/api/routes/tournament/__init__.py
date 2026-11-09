@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.email_codes import require_recent_code
 
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
@@ -19,7 +20,13 @@ from app.core.tournament.permissions import (
 )
 from app.core.tournament.tracks import sync_sole_track_name
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, TournamentTrack, User
+from app.models.models import (
+    Tournament,
+    TournamentMembership,
+    TournamentTrack,
+    User,
+    UserSession,
+)
 from app.schemas.tournament import (
     TournamentCreate,
     TournamentRead,
@@ -175,11 +182,16 @@ def update_tournament(
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id} — owner or admin only
 # ---------------------------------------------------------------------------
-@router.delete("/{tournament_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{tournament_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def delete_tournament(
     tournament_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
 ):
     """Only the tournament owner (creator) or an admin can delete a tournament."""
     tournament = fetch_tournament(tournament_id, db)
@@ -289,12 +301,17 @@ def unarchive_tournament(
 # Admins can transfer too: it's the only way to re-own a tournament whose
 # owner deleted their account (owner_id is then null).
 # ---------------------------------------------------------------------------
-@router.post("/{tournament_id}/transfer-ownership/", response_model=TournamentRead)
+@router.post(
+    "/{tournament_id}/transfer-ownership/",
+    response_model=TournamentRead,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def transfer_ownership(
     tournament_id: int,
     payload: TransferOwnershipRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
 ):
     tournament = fetch_tournament(tournament_id, db)
 

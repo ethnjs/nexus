@@ -11,11 +11,17 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.core.auth import RATE_LIMIT_WINDOW, _hash_token, hash_password, verify_password
+from app.core.auth import (
+    RATE_LIMIT_WINDOW,
+    _hash_token,
+    get_current_session,
+    hash_password,
+    verify_password,
+)
 from app.models.models import EmailCode, User, UserSession
 
 CodePurpose = Literal["sign_in", "sign_up", "step_up", "admin_sign_in"]
@@ -23,6 +29,7 @@ CodePurpose = Literal["sign_in", "sign_up", "step_up", "admin_sign_in"]
 CODE_TTL = timedelta(minutes=10)
 ADMIN_CODE_TTL = timedelta(minutes=30)
 MAX_ATTEMPTS = 5
+STEP_UP_WINDOW = timedelta(minutes=10)
 
 
 def _generate_code() -> str:
@@ -214,3 +221,19 @@ def resend_challenge(db: Session, raw_token: str) -> tuple[str, EmailCode]:
     row.last_sent_at = now
     db.commit()
     return code, row
+
+
+def require_recent_code(
+    session_row: UserSession = Depends(get_current_session),
+) -> UserSession:
+    """
+    Dependency for sensitive actions: the session must have entered a code (at sign-in or
+    step-up) within STEP_UP_WINDOW. Otherwise 403 with detail.code "step_up_required".
+    """
+    verified_at = session_row.code_verified_at
+    if verified_at is None or datetime.now(UTC) - verified_at > STEP_UP_WINDOW:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            {"code": "step_up_required", "message": "Enter the code we emailed you to continue."},
+        )
+    return session_row

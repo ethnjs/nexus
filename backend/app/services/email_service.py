@@ -301,6 +301,19 @@ async def send_sign_up_code_email(to: str, code: str) -> None:
     )
 
 
+async def send_step_up_code_email(to: str, code: str) -> None:
+    await _send_email(
+        to,
+        _Email(
+            subject="Confirm it's you on NEXUS",
+            heading="Confirm it's you",
+            paragraphs=["Enter this code in NEXUS to continue with the change you're making."],
+            code=code,
+            footnote="This code expires in 10 minutes. If you didn't request it, someone may be signed in to your account: change your password and contact support.",
+        ),
+    )
+
+
 async def send_email_change_email(to_new_email: str, token: str) -> None:
     await _send_email(
         to_new_email,

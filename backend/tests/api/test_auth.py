@@ -11,7 +11,13 @@ from sqlalchemy import event
 import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
-from app.models.models import EmailCode, TournamentMembership, User, VerificationToken
+from app.models.models import (
+    EmailCode,
+    TournamentMembership,
+    User,
+    UserSession,
+    VerificationToken,
+)
 from tests.conftest import emailed_code, login
 
 
@@ -283,6 +289,124 @@ class TestSignInCode:
         td_user.status = "deactivated"
         db.commit()
         assert _verify(client, token, emailed_code()).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Step-up: POST /auth/step-up/, /auth/step-up/verify/, and the routes that need it
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def step_up_setup(db, td_user, other_user, td_tournament):
+    """td_user owns td_tournament and is a site admin; other_user is a member to act on."""
+    td_user.role = "admin"
+    db.add(
+        TournamentMembership(user_id=other_user.id, tournament_id=td_tournament.id, source="manual")
+    )
+    db.commit()
+    return td_tournament.id, other_user.id
+
+
+GUARDED_ACTIONS = {
+    "request_email_change": lambda c, t, u: c.post(
+        "/auth/email/request-change/", json={"new_email": "fresh@test.com"}
+    ),
+    "delete_tournament": lambda c, t, u: c.delete(f"/tournaments/{t}/"),
+    "transfer_ownership": lambda c, t, u: c.post(
+        f"/tournaments/{t}/transfer-ownership/", json={"new_owner_id": u}
+    ),
+    "change_site_role": lambda c, t, u: c.patch(f"/admin/users/{u}/", json={"role": "admin"}),
+}
+
+
+def _age_sessions(db, delta=timedelta(minutes=11)) -> None:
+    for row in db.query(UserSession).all():
+        row.code_verified_at = row.code_verified_at - delta if row.code_verified_at else None
+    db.commit()
+
+
+def _step_up(client) -> None:
+    res = client.post("/auth/step-up/")
+    assert res.status_code == 200, res.text
+    verify = client.post(
+        "/auth/step-up/verify/",
+        json={"challenge_token": res.json()["challenge_token"], "code": emailed_code()},
+    )
+    assert verify.status_code == 200, verify.text
+
+
+@pytest.mark.parametrize("action", GUARDED_ACTIONS)
+class TestStepUpGuards:
+    def test_old_session_needs_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        res = GUARDED_ACTIONS[action](client, *step_up_setup)
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "step_up_required"
+
+    def test_session_from_before_codes_needs_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        db.query(UserSession).update({"code_verified_at": None})
+        db.commit()
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code == 403
+
+    def test_works_right_after_code_sign_in(self, client, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+    def test_works_after_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        _step_up(client)
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+
+class TestStepUp:
+    def test_sends_step_up_email(self, client, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/step-up/").status_code == 200
+        assert _sent(mock_send_email) == [("td@test.com", "Confirm it's you on NEXUS")]
+
+    def test_requires_sign_in(self, client):
+        assert client.post("/auth/step-up/").status_code == 401
+
+    def test_wrong_code_rejected(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        token = client.post("/auth/step-up/").json()["challenge_token"]
+        res = client.post(
+            "/auth/step-up/verify/",
+            json={"challenge_token": token, "code": _wrong(emailed_code())},
+        )
+        assert res.status_code == 400
+        db.expire_all()
+        assert db.query(UserSession).one().code_verified_at < datetime.now(UTC) - timedelta(
+            minutes=10
+        )
+
+    def test_challenge_cannot_be_verified_from_another_session(self, client, db, td_user):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        login(client, "td@test.com", "tdpass")
+        token = client.post("/auth/step-up/").json()["challenge_token"]
+        code = emailed_code()
+
+        with TestClient(app) as other:
+            login(other, "td@test.com", "tdpass")
+            res = other.post("/auth/step-up/verify/", json={"challenge_token": token, "code": code})
+            assert res.status_code == 400
+
+        res = client.post("/auth/step-up/verify/", json={"challenge_token": token, "code": code})
+        assert res.status_code == 200
+
+    def test_status_change_needs_no_step_up(self, client, db, step_up_setup):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        _, other_user_id = step_up_setup
+        res = client.patch(f"/admin/users/{other_user_id}/", json={"status": "locked"})
+        assert res.status_code == 200
 
 
 # ---------------------------------------------------------------------------
