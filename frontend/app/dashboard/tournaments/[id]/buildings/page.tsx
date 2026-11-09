@@ -48,6 +48,7 @@ import { FilterButton } from "@/components/ui/FilterButton";
 import {
   IconBuilding,
   IconCalendar,
+  IconEvents,
   IconLocation,
   IconLock,
   IconPlus,
@@ -391,25 +392,27 @@ export default function BuildingsPage() {
                 Events — {listed.length}/{dayEvents.length}
               </span>
               {listed.length === 0 ? (
-                <EmptyState
-                  icon={<IconBuilding size={24} />}
-                  title={query || filterActive ? "No events match" : "No events on this day"}
-                  description={query || filterActive ? "Try a wider filter." : undefined}
-                  action={
-                    query || filterActive ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setQuery("");
-                          applyFilters(eventsFilterFromStored(null));
-                        }}
-                      >
-                        Clear filters
-                      </Button>
-                    ) : undefined
-                  }
-                />
+                <Card radius="lg" style={{ padding: "8px" }}>
+                  <EmptyState
+                    icon={<IconEvents size={24} />}
+                    title={query || filterActive ? "No events match" : "No events on this day"}
+                    description={query || filterActive ? "Try a wider filter." : undefined}
+                    action={
+                      query || filterActive ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setQuery("");
+                            applyFilters(eventsFilterFromStored(null));
+                          }}
+                        >
+                          Clear filters
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </Card>
               ) : (
                 listed.map((event) => (
                   <EventListCard
