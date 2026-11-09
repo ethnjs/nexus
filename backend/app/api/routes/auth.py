@@ -257,12 +257,14 @@ def request_email_change(
     """
     check_if_email_exists(db, body.new_email, exclude_user_id=user.id)
 
-    token = create_verification_token(db, user.id, "email_change", new_email=body.new_email)
     # The undo link goes out now, not on confirm, so the owner can stop a change
-    # they didn't make; once it's applied, /forgot-password would reach the new address.
+    # they didn't make; once applied, /forgot-password would reach the new address.
+    # Created first because a just-confirmed change leaves its revert token unused,
+    # so a quick second request is rate-limited here, before anything is written.
     revert_token = create_verification_token(
         db, user.id, "email_change_revert", new_email=user.email
     )
+    token = create_verification_token(db, user.id, "email_change", new_email=body.new_email)
     send_in_background(background_tasks, send_email_change_email, body.new_email, token)
     send_in_background(
         background_tasks,
@@ -426,8 +428,10 @@ def request_password_reset(
     if user and user.hashed_password:
         try:
             token = create_verification_token(db, user.id, "password_reset")
-        except HTTPException:
-            pass  # A 429 instead of the generic 200 would reveal that the account exists.
+        except HTTPException as e:
+            # A 429 instead of the generic 200 would reveal that the account exists.
+            if e.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
+                raise
         else:
             send_in_background(background_tasks, send_password_reset_email, user.email, token)
 

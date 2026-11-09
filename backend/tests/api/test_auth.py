@@ -526,6 +526,19 @@ class TestRequestEmailChange:
         res = client.post("/auth/email/request-change/", json={"new_email": "tdnew2@test.com"})
         assert res.status_code == 429
 
+    def test_rate_limit_after_a_confirmed_change_leaves_nothing_pending(
+        self, client, td_user, db, mock_send_email
+    ):
+        # A change confirmed moments ago leaves its revert token unused.
+        create_verification_token(db, td_user.id, "email_change_revert", new_email="td@test.com")
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
+
+        assert res.status_code == 429
+        assert client.get("/auth/email/pending-change/").json()["new_email"] is None
+        assert not mock_send_email.called
+
     def test_unauthenticated_forbidden(self, client):
         assert (
             client.post("/auth/email/request-change/", json={"new_email": "x@test.com"}).status_code
