@@ -141,6 +141,20 @@ def _consume_admin_code(db: Session, user_id: int, code: str, now: datetime) -> 
     return False
 
 
+TOO_MANY_ATTEMPTS = "Too many incorrect codes. Start again to get a new one."
+EXPIRED = "This code has expired. Start again to get a new one."
+
+
+def _closed(message: str) -> HTTPException:
+    """The challenge takes no more codes or resends; detail.code tells clients to start over."""
+    return HTTPException(status.HTTP_400_BAD_REQUEST, {"code": "code_closed", "message": message})
+
+
+def _closed_reason(db: Session, token_hash: str) -> HTTPException:
+    row = db.query(EmailCode).filter(EmailCode.token_hash == token_hash).first()
+    return _closed(TOO_MANY_ATTEMPTS if row and row.attempts >= MAX_ATTEMPTS else EXPIRED)
+
+
 def verify_challenge(
     db: Session,
     raw_token: str,
@@ -152,12 +166,14 @@ def verify_challenge(
     """
     Checks `code` against the challenge and consumes it on success. Each check counts as an
     attempt; the fifth wrong one consumes the challenge. Raises 400 on any failure. A sign_in
-    challenge also accepts the user's open admin-issued code.
+    challenge also accepts the user's open admin-issued code. A closed challenge (expired,
+    used, or out of attempts) gets detail.code "code_closed".
     """
     now = datetime.now(UTC)
+    token_hash = _hash_token(raw_token)
 
     conditions = [
-        EmailCode.token_hash == _hash_token(raw_token),
+        EmailCode.token_hash == token_hash,
         EmailCode.purpose.in_(purposes),
         EmailCode.consumed_at.is_(None),
         EmailCode.expires_at > now,
@@ -176,9 +192,7 @@ def verify_challenge(
 
     if row is None:
         db.commit()
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "This code has expired. Start again to get a new one."
-        )
+        raise _closed_reason(db, token_hash)
 
     matched = secrets.compare_digest(row.code_hash, _code_hash(raw_token, code))
     if not matched and row.purpose == "sign_in":
@@ -189,6 +203,8 @@ def verify_challenge(
         row.consumed_at = now
     db.commit()
 
+    if not matched and row.attempts >= MAX_ATTEMPTS:
+        raise _closed(TOO_MANY_ATTEMPTS)
     if not matched:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That code is incorrect.")
     return row
@@ -197,19 +213,18 @@ def verify_challenge(
 def resend_challenge(db: Session, raw_token: str) -> tuple[str, EmailCode]:
     """Commits a new code for an open challenge and resets its attempts, not its expiry."""
     now = datetime.now(UTC)
+    token_hash = _hash_token(raw_token)
     row = (
         db.query(EmailCode)
         .filter(
-            EmailCode.token_hash == _hash_token(raw_token),
+            EmailCode.token_hash == token_hash,
             EmailCode.consumed_at.is_(None),
             EmailCode.expires_at > now,
         )
         .first()
     )
     if row is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "This code has expired. Start again to get a new one."
-        )
+        raise _closed_reason(db, token_hash)
     if now < row.last_sent_at + RATE_LIMIT_WINDOW:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,

@@ -30,6 +30,7 @@ export function CodeEntry({
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [closedByServer, setClosedByServer] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -39,6 +40,17 @@ export function CodeEntry({
   const resendIn = Math.ceil((new Date(challenge.can_resend_at).getTime() - now) / 1000);
   const expiresIn = Math.ceil((new Date(challenge.expires_at).getTime() - now) / 60_000);
   const digits = code.replace(/\D/g, "");
+  // Out of attempts or expired: no code or resend can work, so leave only the way back.
+  const closed = closedByServer || expiresIn <= 0;
+
+  function showError(err: unknown, fallback: string) {
+    if (
+      err instanceof ApiError &&
+      (err.detail as { code?: unknown } | null)?.code === "code_closed"
+    )
+      setClosedByServer(true);
+    setError(err instanceof ApiError ? err.message : fallback);
+  }
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -54,7 +66,7 @@ export function CodeEntry({
     try {
       await onSubmit(challenge.challenge_token, digits);
     } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      showError(err, "Something went wrong. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -69,7 +81,7 @@ export function CodeEntry({
       setCode("");
       setNotice("We sent a new code.");
     } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Couldn't send a new code.");
+      showError(err, "Couldn't send a new code.");
     } finally {
       setResending(false);
     }
@@ -109,37 +121,40 @@ export function CodeEntry({
           setError(undefined);
         }}
         error={error}
+        locked={closed}
         autoFocus
         fullWidth
       />
 
-      <Button type="submit" loading={submitting} fullWidth>
+      <Button type="submit" loading={submitting} disabled={closed} fullWidth>
         {submitLabel}
       </Button>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "8px",
-          fontFamily: "var(--font-sans)",
-          fontSize: "13px",
-          color: "var(--color-text-secondary)",
-        }}
-      >
-        {notice && <span>{notice}</span>}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={handleResend}
-          loading={resending}
-          disabled={resendIn > 0}
+      {!closed && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
         >
-          {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
-        </Button>
-      </div>
+          {notice && <span>{notice}</span>}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleResend}
+            loading={resending}
+            disabled={resendIn > 0}
+          >
+            {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

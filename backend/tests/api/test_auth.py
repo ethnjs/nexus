@@ -10,6 +10,7 @@ from sqlalchemy import event
 
 import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
+import app.core.email_codes as email_codes
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
     EmailCode,
@@ -228,15 +229,33 @@ class TestSignInCode:
     def test_sixth_attempt_fails_even_with_right_code(self, client, td_user):
         token = _start_sign_in(client)
         code = emailed_code()
+        for _ in range(4):
+            assert (
+                _verify(client, token, _wrong(code)).json()["detail"] == "That code is incorrect."
+            )
+        closed = {"code": "code_closed", "message": email_codes.TOO_MANY_ATTEMPTS}
+        res = _verify(client, token, _wrong(code))
+        assert (res.status_code, res.json()["detail"]) == (400, closed)
+        res = _verify(client, token, code)
+        assert (res.status_code, res.json()["detail"]) == (400, closed)
+
+    def test_resend_refused_once_out_of_attempts(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
         for _ in range(5):
-            assert _verify(client, token, _wrong(code)).status_code == 400
-        assert _verify(client, token, code).status_code == 400
+            _verify(client, token, _wrong(code))
+        _age_codes(db, last_sent_at=timedelta(seconds=61))
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.status_code == 400
+        assert res.json()["detail"]["code"] == "code_closed"
 
     def test_expired_code_rejected(self, client, db, td_user):
         token = _start_sign_in(client)
         code = emailed_code()
         _age_codes(db, expires_at=timedelta(minutes=11))
-        assert _verify(client, token, code).status_code == 400
+        res = _verify(client, token, code)
+        assert res.status_code == 400
+        assert res.json()["detail"] == {"code": "code_closed", "message": email_codes.EXPIRED}
 
     def test_used_challenge_cannot_be_reused(self, client, td_user):
         token = _start_sign_in(client)

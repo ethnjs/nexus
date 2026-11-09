@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -23,6 +23,7 @@ function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
+  const lastChallenge = useRef<{ email: string; challenge: CodeChallenge } | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,16 +47,28 @@ function SignInContent() {
     try {
       const res = await authApi.login(email, password);
       if (res.code_required && res.challenge_token && res.expires_at && res.can_resend_at) {
-        setChallenge({
+        const next = {
           challenge_token: res.challenge_token,
           expires_at: res.expires_at,
           can_resend_at: res.can_resend_at,
-        });
+        };
+        lastChallenge.current = { email: email.trim().toLowerCase(), challenge: next };
+        setChallenge(next);
         return;
       }
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
-      if (error instanceof ApiError) {
+      // A 429 comes only after a correct password, when this account's code went out under a
+      // minute ago. If that was from here, reopen it: the emailed code still works.
+      const last = lastChallenge.current;
+      if (
+        error instanceof ApiError &&
+        error.status === 429 &&
+        last?.email === email.trim().toLowerCase() &&
+        new Date(last.challenge.expires_at).getTime() > Date.now()
+      ) {
+        setChallenge(last.challenge);
+      } else if (error instanceof ApiError) {
         setErrors({ form: error.message });
       } else {
         setErrors({ form: "Something went wrong :(" });
