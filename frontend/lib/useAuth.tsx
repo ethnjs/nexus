@@ -27,14 +27,13 @@ const PROTECTED_PREFIXES = ["/dashboard"];
 // Routes reachable without a completed onboarding — public/pre-session pages
 // plus onboarding itself. '/' and '/sign-in' aren't here — proxy.ts's
 // AUTH_ROUTES already redirects an authenticated visit to those server-side.
-// '/sign-up' still needs it: registration logs the user in without
-// navigating away (the verify-email modal), which proxy.ts never sees.
+// '/sign-up' still needs it: the sign-up code step signs the user in before
+// the page navigates to onboarding, which proxy.ts never sees.
 // '/join' needs to show the invite (with a "finish onboarding first" prompt
 // in place of the join button) rather than bouncing straight to /onboarding
 // before the visitor ever sees it.
 const ONBOARDING_EXEMPT_ROUTES = [
   "/sign-up",
-  "/verify-email",
   "/forgot-password",
   "/reset-password",
   "/confirm-email-change",

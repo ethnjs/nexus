@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, tournamentsApi } from "@/lib/api";
+import { useStepUp } from "@/lib/useStepUp";
 
 const CONFIRM_PHRASE = "DELETE";
 
@@ -24,6 +25,7 @@ export function DeleteTournamentModal({
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const { withStepUp, stepUpModal } = useStepUp();
 
   const canSubmit = confirmText === CONFIRM_PHRASE;
 
@@ -34,7 +36,7 @@ export function DeleteTournamentModal({
     setError(undefined);
     setLoading(true);
     try {
-      await tournamentsApi.delete(tournamentId);
+      await withStepUp(() => tournamentsApi.delete(tournamentId));
       onDeleted();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
@@ -44,6 +46,7 @@ export function DeleteTournamentModal({
 
   return (
     <Modal title="Delete tournament" onClose={onClose} variant="danger">
+      {stepUpModal}
       <form
         onSubmit={handleSubmit}
         style={{ display: "flex", flexDirection: "column", gap: "14px" }}

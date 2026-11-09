@@ -23,6 +23,7 @@ import {
 } from "@/lib/auth";
 import { useAuth } from "@/lib/useAuth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
+import { useStepUp } from "@/lib/useStepUp";
 
 interface ProfileDraft {
   first_name: string;
@@ -57,15 +58,12 @@ export default function AccountSettingsPage() {
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const [resending, setResending] = useState(false);
-  const [resendError, setResendError] = useState<string | undefined>(undefined);
-  const [resendSuccess, setResendSuccess] = useState(false);
-
   const [emailChangeResendError, setEmailChangeResendError] = useState<string | undefined>(
     undefined,
   );
   const [emailChangeResending, setEmailChangeResending] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const { withStepUp, stepUpModal } = useStepUp();
 
   useEffect(() => {
     if (authLoading) return;
@@ -152,7 +150,8 @@ export default function AccountSettingsPage() {
     setEmailChangeResendError(undefined);
     setEmailChangeResending(true);
     try {
-      const result = await authApi.requestEmailChange(pendingEmailChange.new_email);
+      const newEmail = pendingEmailChange.new_email;
+      const result = await withStepUp(() => authApi.requestEmailChange(newEmail));
       setPendingEmailChange(result);
     } catch (error: unknown) {
       setEmailChangeResendError(
@@ -160,22 +159,6 @@ export default function AccountSettingsPage() {
       );
     } finally {
       setEmailChangeResending(false);
-    }
-  }
-
-  async function handleResendVerification() {
-    setResendError(undefined);
-    setResendSuccess(false);
-    setResending(true);
-    try {
-      await authApi.sendEmailVerification();
-      setResendSuccess(true);
-    } catch (error: unknown) {
-      setResendError(
-        error instanceof ApiError ? error.message : "Failed to send verification email.",
-      );
-    } finally {
-      setResending(false);
     }
   }
 
@@ -203,6 +186,7 @@ export default function AccountSettingsPage() {
 
   return (
     <div>
+      {stepUpModal}
       <PageHeader heading="Account" />
 
       <SettingsSection>
@@ -252,7 +236,7 @@ export default function AccountSettingsPage() {
               </Button>
             </div>
 
-            {pendingEmailChange?.new_email ? (
+            {pendingEmailChange?.new_email && (
               <Banner
                 variant="info"
                 message={`Email change pending confirmation for ${pendingEmailChange.new_email}.`}
@@ -277,35 +261,6 @@ export default function AccountSettingsPage() {
                   </Tooltip>
                 }
               />
-            ) : (
-              !original.email_verified && (
-                <Banner
-                  variant="warning"
-                  message={
-                    resendSuccess
-                      ? "Verification email sent — check your inbox."
-                      : "Your email isn't verified yet."
-                  }
-                  action={
-                    !resendSuccess && (
-                      <Tooltip
-                        status={resendError ? "error" : "idle"}
-                        message={{ error: resendError }}
-                      >
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleResendVerification}
-                          loading={resending}
-                        >
-                          Resend
-                        </Button>
-                      </Tooltip>
-                    )
-                  }
-                />
-              )
             )}
           </div>
         </SettingsRow>

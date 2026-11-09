@@ -2,10 +2,11 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, authApi } from "@/lib/api";
+import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
 
 export default function SignInPage() {
@@ -21,6 +22,7 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,8 +44,15 @@ function SignInContent() {
     }
 
     try {
-      await authApi.login(email, password);
-
+      const res = await authApi.login(email, password);
+      if (res.code_required && res.challenge_token && res.expires_at && res.can_resend_at) {
+        setChallenge({
+          challenge_token: res.challenge_token,
+          expires_at: res.expires_at,
+          can_resend_at: res.can_resend_at,
+        });
+        return;
+      }
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
       if (error instanceof ApiError) {
@@ -56,20 +65,54 @@ function SignInContent() {
     }
   }
 
+  const heading = (
+    <h2
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "28px",
+        fontWeight: "700",
+        color: "var(--color-text-primary)",
+        margin: "0 0 30px",
+        textAlign: "center",
+      }}
+    >
+      {challenge ? "Check your email" : "Sign In"}
+    </h2>
+  );
+
+  if (challenge) {
+    return (
+      <div style={{ width: "100%" }}>
+        {heading}
+        <CodeEntry
+          challenge={challenge}
+          email={email}
+          submitLabel="Sign In"
+          onSubmit={async (challengeToken, code) => {
+            await authApi.verifyCode(challengeToken, code);
+            window.location.href = redirect ?? "/dashboard";
+          }}
+        />
+        <div style={{ marginTop: "20px", textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setChallenge(null);
+              setPassword("");
+            }}
+            className="link-subtle"
+            style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 30px",
-          textAlign: "center",
-        }}
-      >
-        Sign In
-      </h2>
+      {heading}
 
       <form
         onSubmit={handleSubmit}

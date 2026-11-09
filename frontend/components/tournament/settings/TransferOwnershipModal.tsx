@@ -6,6 +6,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, type MembershipFull, membersApi, tournamentsApi } from "@/lib/api";
+import { useStepUp } from "@/lib/useStepUp";
 
 const CONFIRM_PHRASE = "TRANSFER OWNERSHIP";
 
@@ -32,6 +33,7 @@ export function TransferOwnershipModal({
   const [selected, setSelected] = useState<MembershipFull | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
+  const { withStepUp, stepUpModal } = useStepUp();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function TransferOwnershipModal({
     setError(undefined);
     setLoading(true);
     try {
-      await tournamentsApi.transferOwnership(tournamentId, selected.user.id);
+      await withStepUp(() => tournamentsApi.transferOwnership(tournamentId, selected.user.id));
       onTransferred();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
@@ -60,6 +62,7 @@ export function TransferOwnershipModal({
 
   return (
     <Modal title="Transfer ownership" onClose={onClose} variant="danger">
+      {stepUpModal}
       <form
         onSubmit={handleSubmit}
         style={{ display: "flex", flexDirection: "column", gap: "14px" }}
