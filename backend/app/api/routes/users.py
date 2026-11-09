@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
     clear_auth_cookie,
+    create_verification_token,
     get_current_session,
     get_current_user,
     require_admin,
@@ -38,13 +39,13 @@ from app.schemas.user import (
     UserMeSlimResponse,
     UserUpdate,
 )
-from app.services.email_service import send_password_reset_request_email
+from app.services.email_service import send_in_background, send_password_reset_email
 
 router = APIRouter(tags=["users"])
 
 
 # ---------------------------------------------------------------------------
-# GET /users/ — admin only (global unscoped list)
+# GET /admin/users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/", response_model=list[AdminUserSlimResponse])
 def list_users(
@@ -56,7 +57,7 @@ def list_users(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/{user_id}/ — admin only
+# GET /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/{user_id}/", response_model=AdminUserFullResponse)
 def get_user(
@@ -72,7 +73,7 @@ def get_user(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/by-email/{email}/ — admin only
+# GET /admin/users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/by-email/{email}/", response_model=AdminUserFullResponse)
 def get_user_by_email(
@@ -183,23 +184,18 @@ def admin_delete_user(
     responses={
         400: {"description": "User has no password to reset"},
         429: {"description": "Reset requested too recently"},
-        500: {"description": "Failed to send reset email"},
     },
 )
-async def admin_send_password_reset(
+def admin_send_password_reset(
     user_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     """
     Sends the same reset email the public forgot-password flow sends, on an
-    admin's behalf.
-
-    Unlike that route, this one reports real errors instead of a uniform 200.
-    The generic response there exists to prevent account enumeration, which
-    doesn't apply to an admin acting on a user they picked off the admin
-    list — and swallowing the 429 would just leave them unable to tell a
-    rate-limit from a send failure.
+    admin's behalf. Unlike that route, it reports a 429 instead of a uniform
+    200, since an admin already knows the account exists.
 
     Status isn't checked: a deactivated or locked user still can't log in, so
     resetting their password is harmless, and blocking it would get in the way
@@ -215,7 +211,8 @@ async def admin_send_password_reset(
             detail="User has no password set",
         )
 
-    await send_password_reset_request_email(db, user.id, user.email)
+    token = create_verification_token(db, user.id, "password_reset")
+    send_in_background(background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "Password reset email sent"}
 

@@ -1,25 +1,48 @@
 import asyncio
+import logging
+import random
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from html import escape
+from typing import Concatenate
 
 import resend
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from fastapi import BackgroundTasks
+from resend.exceptions import RateLimitError
 
-from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
+
+
 # ---------------------------------------------------------------------------
-# Shared HTML template
+# Content and rendering
 #
-# Mirrors app/globals.css: Georgia for the wordmark/heading (matches h1/h2
-# on every frontend page), Geist for UI text/CTA, Geist Mono for body copy.
-# Geist fonts are loaded from the same jsdelivr CDN the frontend uses via
-# @font-face in <head> — email clients that support web fonts (Apple Mail,
-# some webmail) will render them; everything else falls back cleanly to
-# system-ui / Courier New, same as the app's own font-family fallback chain.
-#
-# All layout styling stays inline — email clients strip <style> blocks
-# unpredictably, so only the @font-face declarations live in <head>.
+# Each sender describes its email as an _Email, and both the HTML and the
+# plain-text version are built from it, with every value escaped. Colors and
+# fonts mirror frontend/app/globals.css. Styling stays inline because email
+# clients strip <style> blocks unpredictably; only @font-face lives there.
 # ---------------------------------------------------------------------------
+
+
+class _Bold(str):
+    """Template text rendered in bold. Markup is a type, not syntax inside the
+    string, so a value such as a tournament name can never trigger it."""
+
+
+# A paragraph is one string, or segments joined with spaces.
+type _Paragraph = str | tuple[str, ...]
+
+
+@dataclass
+class _Email:
+    subject: str
+    heading: str
+    paragraphs: list[_Paragraph]
+    cta_label: str
+    cta_url: str
+    footnote: str
+
 
 _COLOR_BG = "#F7F7F5"
 _COLOR_SURFACE = "#FFFFFF"
@@ -29,11 +52,9 @@ _COLOR_TEXT_SECONDARY = "#6B6B65"
 _COLOR_TEXT_TERTIARY = "#9B9B93"
 _COLOR_TEXT_INVERSE = "#FFFFFF"
 _COLOR_ACCENT = "#0A0A0A"
-_COLOR_ACCENT_HOVER = "#2A2A2A"
 
 _FONT_SERIF = "Georgia, serif"
 _FONT_SANS = "'Geist', system-ui, sans-serif"
-_FONT_MONO = "'Geist Mono', 'Courier New', monospace"
 
 _FONT_FACES = """\
   <style>
@@ -47,42 +68,55 @@ _FONT_FACES = """\
       src: url('https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/Geist-SemiBold.woff2') format('woff2');
       font-weight: 600;
     }
-    @font-face {
-      font-family: 'Geist Mono';
-      src: url('https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Regular.woff2') format('woff2');
-      font-weight: 400;
-    }
   </style>
 """
 
 
-def _render_email_html(
-    heading: str,
-    body_lines: list[str],
-    footnote: str,
-    cta_label: str | None = None,
-    cta_url: str | None = None,
-) -> str:
-    body_html = "".join(
-        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{line}</p>'
-        for line in body_lines
+_SUPPORT_EMAIL = "support@nexus.socalscioly.org"
+_SUPPORT_LINE = f"Questions? Email {_SUPPORT_EMAIL}"
+_ORG_LINE = "Southern California Science Olympiad, a California 501(c)(3) non-profit"
+_CONTACT_SUPPORT = "If this wasn't you, please contact support."
+
+
+def _segments(paragraph: _Paragraph) -> tuple[str, ...]:
+    return paragraph if isinstance(paragraph, tuple) else (paragraph,)
+
+
+def _paragraph_html(paragraph: _Paragraph) -> str:
+    return " ".join(
+        f"<b>{escape(segment)}</b>" if isinstance(segment, _Bold) else escape(segment)
+        for segment in _segments(paragraph)
     )
 
-    cta_block = ""
-    if cta_url and cta_label:
-        cta_block = f"""\
-                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 8px auto;">
-                  <tr>
-                    <td style="border-radius:6px;background-color:#0A0A0A;border:1px solid #0A0A0A;">
-                      <a href="{cta_url}" style="display:inline-block;padding:16px 20px;font-size:15px;font-weight:600;letter-spacing:0.01em;color:#FFFFFF;text-decoration:none;border-radius:6px;font-family:{_FONT_SANS};">{cta_label}</a>
-                    </td>
-                  </tr>
-                </table>
-                <p style="margin:24px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};word-break:break-all;font-family:{_FONT_SANS};text-align:left;">
-                  If the button doesn't work, copy and paste this link:<br />
-                  <a href="{cta_url}" style="color:{_COLOR_TEXT_SECONDARY};">{cta_url}</a>
-                </p>
-"""
+
+def _with_support_link(text: str) -> str:
+    """Escapes footer text and links the support address. Only for template text."""
+    link = f'<a href="mailto:{_SUPPORT_EMAIL}" style="color:{_COLOR_TEXT_SECONDARY};">{_SUPPORT_EMAIL}</a>'
+    return escape(text).replace(_SUPPORT_EMAIL, link)
+
+
+def _render_text(email: _Email) -> str:
+    return "\n\n".join(
+        [
+            email.heading,
+            *(" ".join(_segments(paragraph)) for paragraph in email.paragraphs),
+            f"{email.cta_label}: {email.cta_url}",
+            email.footnote,
+            f"{_SUPPORT_LINE}\n{_ORG_LINE}",
+        ]
+    )
+
+
+def _render_html(email: _Email) -> str:
+    url = escape(email.cta_url)
+    paragraphs = "".join(
+        f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:{_COLOR_TEXT_SECONDARY};font-family:{_FONT_SANS};text-align:center;">{_paragraph_html(paragraph)}</p>'
+        for paragraph in email.paragraphs
+    )
+    footer = "".join(
+        f'<p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_with_support_link(line)}</p>'
+        for line in (_SUPPORT_LINE, _ORG_LINE)
+    )
 
     return f"""\
 <!DOCTYPE html>
@@ -102,13 +136,25 @@ def _render_email_html(
             </tr>
             <tr>
               <td style="padding:16px 40px 24px 40px;text-align:center;">
-                <h1 style="margin:0 0 20px 0;font-size:22px;line-height:1.3;color:{_COLOR_TEXT_PRIMARY};font-weight:700;font-family:{_FONT_SANS};">{heading}</h1>
-                {body_html}
-{cta_block}              </td>
+                <h1 style="margin:0 0 20px 0;font-size:22px;line-height:1.3;color:{_COLOR_TEXT_PRIMARY};font-weight:700;font-family:{_FONT_SANS};">{escape(email.heading)}</h1>
+                {paragraphs}
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 8px auto;">
+                  <tr>
+                    <td style="border-radius:6px;background-color:{_COLOR_ACCENT};border:1px solid {_COLOR_ACCENT};">
+                      <a href="{url}" style="display:inline-block;padding:16px 20px;font-size:15px;font-weight:600;letter-spacing:0.01em;color:{_COLOR_TEXT_INVERSE};text-decoration:none;border-radius:6px;font-family:{_FONT_SANS};">{escape(email.cta_label)}</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0 0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};word-break:break-all;font-family:{_FONT_SANS};text-align:left;">
+                  If the button doesn't work, copy and paste this link:<br />
+                  <a href="{url}" style="color:{_COLOR_TEXT_SECONDARY};">{url}</a>
+                </p>
+              </td>
             </tr>
             <tr>
               <td style="padding:20px 40px 32px 40px;border-top:1px solid {_COLOR_BORDER};text-align:left;">
-                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{footnote}</p>
+                <p style="margin:0;font-size:12px;line-height:1.5;color:{_COLOR_TEXT_TERTIARY};font-family:{_FONT_SANS};">{_with_support_link(email.footnote)}</p>
+                {footer}
               </td>
             </tr>
           </table>
@@ -126,11 +172,48 @@ def _cta_url(path: str, token: str | None = None) -> str:
     return f"{base}?token={token}" if token else base
 
 
-_CONTACT_SUPPORT = "If this wasn't you, please contact support."
+# ---------------------------------------------------------------------------
+# Sending
+# ---------------------------------------------------------------------------
+
+# Resend's limit is per second and shared by the whole team, so a staff invite
+# batch or concurrent workers can briefly exceed it.
+_RATE_LIMIT_ATTEMPTS = 4
+
+
+def _retry_delay(error: RateLimitError, attempt: int) -> float:
+    """Seconds before the next attempt: Resend's retry-after when it sends one,
+    else exponential backoff. Jittered so a rejected batch doesn't retry in lockstep."""
+    retry_after = next(
+        (value for key, value in error.headers.items() if key.lower() == "retry-after"), None
+    )
+    try:
+        base = float(retry_after) if retry_after is not None else 2 ** (attempt - 1)
+    except ValueError:
+        base = 2 ** (attempt - 1)
+    return min(base, 10) + random.uniform(0, 1)
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
+    """Sends through Resend, retrying rate-limited attempts. Without an API key (never the
+    case in production, which Settings refuses to start) it logs instead of sending."""
     settings = get_settings()
+
+    if not settings.resend_api_key:
+        if settings.app_env == "development":
+            logger.warning(
+                "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+                "-- Email not sent: RESEND_API_KEY not set ".ljust(72, "-"),
+                to,
+                subject,
+                text,
+                "-" * 72,
+            )
+        else:
+            # Preview logs are shared, so the body (with its tokens) stays out of them.
+            logger.warning("RESEND_API_KEY not set, skipping email to %s: %s", to, subject)
+        return
+
     resend.api_key = settings.resend_api_key
 
     params: resend.Emails.SendParams = {
@@ -141,201 +224,155 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
         "html": html,
     }
 
-    await resend.Emails.send_async(params)
+    for attempt in range(1, _RATE_LIMIT_ATTEMPTS + 1):
+        try:
+            await resend.Emails.send_async(params)
+            return
+        except RateLimitError as e:
+            # Quota errors share the 429 status but won't clear within seconds.
+            if e.error_type != "rate_limit_exceeded" or attempt == _RATE_LIMIT_ATTEMPTS:
+                raise
+            await asyncio.sleep(_retry_delay(e, attempt))
+
+
+async def _send_email(to: str, email: _Email) -> None:
+    await _send(to, email.subject, _render_text(email), _render_html(email))
+
+
+def send_in_background[**P](
+    background_tasks: BackgroundTasks,
+    send: Callable[Concatenate[str, P], Awaitable[None]],
+    to: str,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> None:
+    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is left to see it."""
+
+    async def send_and_log() -> None:
+        try:
+            await send(to, *args, **kwargs)
+        except Exception:
+            name = getattr(send, "__name__", send)
+            logger.exception("Background email failed: %s to %s", name, to)
+
+    background_tasks.add_task(send_and_log)
 
 
 # ---------------------------------------------------------------------------
-# Signup verification
+# Account emails
 # ---------------------------------------------------------------------------
 
 
 async def send_verification_email(to: str, token: str) -> None:
-    url = _cta_url("/verify-email", token)
-    html = _render_email_html(
-        heading="Verify your email",
-        body_lines=[
-            "Thanks for signing up for NEXUS. Confirm this is your email address to finish setting up your account.",
-        ],
-        cta_label="Verify email",
-        cta_url=url,
-        footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
+    await _send_email(
+        to,
+        _Email(
+            subject="Verify your email on NEXUS",
+            heading="Verify your email",
+            paragraphs=[
+                "Thanks for signing up for NEXUS. Confirm this is your email address to finish setting up your account.",
+            ],
+            cta_label="Verify email",
+            cta_url=_cta_url("/verify-email", token),
+            footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
+        ),
     )
-    await _send(to, "Verify your email on NEXUS", f"Please verify your email: {url}", html)
-
-
-async def send_signup_verification_email(db: Session, to: str, user_id: int) -> None:
-    try:
-        token = create_verification_token(db, user_id, "signup_verify")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_verification_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send verification email") from e
-
-
-# ---------------------------------------------------------------------------
-# Email change
-# ---------------------------------------------------------------------------
 
 
 async def send_email_change_email(to_new_email: str, token: str) -> None:
-    url = _cta_url("/confirm-email-change", token)
-    html = _render_email_html(
-        heading="Confirm your new email",
-        body_lines=[
-            "You requested to change the email address on your NEXUS account to this address.",
-            "Confirm the change below. Your current email stays active until you do.",
-        ],
-        cta_label="Confirm new email",
-        cta_url=url,
-        footnote="This link expires in 24 hours. If you didn't request this change, please contact support.",
+    await _send_email(
+        to_new_email,
+        _Email(
+            subject="Confirm your new email on NEXUS",
+            heading="Confirm your new email",
+            paragraphs=[
+                "You requested to change the email address on your NEXUS account to this address.",
+                "Confirm the change below. Your current email stays active until you do.",
+            ],
+            cta_label="Confirm new email",
+            cta_url=_cta_url("/confirm-email-change", token),
+            footnote="This link expires in 24 hours. If you didn't request this change, please contact support.",
+        ),
     )
-    await _send(
-        to_new_email, "Confirm your new email on NEXUS", f"Confirm your new email: {url}", html
-    )
-
-
-async def send_email_change_request_email(db: Session, user_id: int, new_email: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "email_change", new_email=new_email)
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_email_change_email(new_email, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send email change confirmation") from e
 
 
 async def send_email_change_requested_notice(
-    db: Session, user_id: int, old_email: str, new_email: str
+    old_email: str, new_email: str, revert_token: str
 ) -> None:
-    """
-    Sent to the OLD email address the moment an email change is requested
-    (not once it's confirmed) — the account owner may not be the one who
-    requested it, so this needs to reach them while the change can still be
-    intercepted, not just after it's already applied.
-
-    Creates the email_change_revert token itself and embeds it in the CTA
-    link, so the recipient can undo the change directly instead of landing
-    on /forgot-password with no way to look themselves up (their email is
-    about to become the attacker's address).
-    """
-    try:
-        revert_token = create_verification_token(
-            db, user_id, "email_change_revert", new_email=old_email
-        )
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    url = _cta_url("/revert-email-change", revert_token)
-    html = _render_email_html(
-        heading="Your email address is being changed",
-        body_lines=[
-            f"A request was made to change the email on your NEXUS account to {new_email}.",
-            "If you made this request, no action is needed.",
-        ],
-        cta_label="Secure your account",
-        cta_url=url,
-        footnote=_CONTACT_SUPPORT,
-    )
-    await _send(
+    await _send_email(
         old_email,
-        "Your NEXUS account email is being changed",
-        f"A request was made to change your account email to {new_email}. If this wasn't you, secure your account: {url}",
-        html,
+        _Email(
+            subject="Your NEXUS account email is being changed",
+            heading="Your email address is being changed",
+            paragraphs=[
+                f"A request was made to change the email on your NEXUS account to {new_email}.",
+                (
+                    _Bold("If you made this request, no action is needed."),
+                    "You can safely ignore this email.",
+                ),
+                "If this wasn't you, please secure your account below.",
+            ],
+            cta_label="Secure your account",
+            cta_url=_cta_url("/revert-email-change", revert_token),
+            footnote=f"This link expires in 24 hours. {_CONTACT_SUPPORT}",
+        ),
     )
-
-
-# ---------------------------------------------------------------------------
-# Password reset
-# ---------------------------------------------------------------------------
 
 
 async def send_password_reset_email(to: str, token: str) -> None:
-    url = _cta_url("/reset-password", token)
-    html = _render_email_html(
-        heading="Reset your password",
-        body_lines=[
-            "We received a request to reset the password on your NEXUS account.",
-            "Choose a new password to regain access.",
-        ],
-        cta_label="Reset password",
-        cta_url=url,
-        footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
+    await _send_email(
+        to,
+        _Email(
+            subject="Reset your password on NEXUS",
+            heading="Reset your password",
+            paragraphs=[
+                "We received a request to reset the password on your NEXUS account.",
+                "Choose a new password to regain access.",
+            ],
+            cta_label="Reset password",
+            cta_url=_cta_url("/reset-password", token),
+            footnote=f"This link expires in 1 hour. {_CONTACT_SUPPORT}",
+        ),
     )
-    await _send(to, "Reset your password on NEXUS", f"Reset your password: {url}", html)
-
-
-async def send_password_reset_request_email(db: Session, user_id: int, to: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "password_reset")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_password_reset_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send password reset email") from e
 
 
 async def send_password_changed_notice(to: str) -> None:
-    """
-    Sent after an authenticated password change (settings page), not the
-    forgot-password flow. Confirms the change to the account owner and
-    gives them a way back in if it wasn't actually them.
-    """
-    url = _cta_url("/forgot-password")
-    html = _render_email_html(
-        heading="Your password was changed",
-        body_lines=[
-            "The password on your NEXUS account was just changed.",
-            "If you made this change, no action is needed.",
-        ],
-        cta_label="Reset password",
-        cta_url=url,
-        footnote=_CONTACT_SUPPORT,
-    )
-    await _send(
+    await _send_email(
         to,
-        "Your NEXUS password was changed",
-        f"Your password was just changed. If this wasn't you, reset it here: {url}",
-        html,
+        _Email(
+            subject="Your NEXUS password was changed",
+            heading="Your password was changed",
+            paragraphs=[
+                "The password on your NEXUS account was just changed.",
+                (
+                    _Bold("If you made this change, no action is needed."),
+                    "You can safely ignore this email.",
+                ),
+                "If this wasn't you, please secure your account below.",
+            ],
+            cta_label="Secure your account",
+            cta_url=_cta_url("/forgot-password"),
+            footnote=_CONTACT_SUPPORT,
+        ),
     )
-
-
-# ---------------------------------------------------------------------------
-# Account setup (admin-created invite)
-# ---------------------------------------------------------------------------
 
 
 async def send_account_setup_email(to: str, token: str) -> None:
-    url = _cta_url("/account-setup", token)
-    html = _render_email_html(
-        heading="You've been added to NEXUS",
-        body_lines=[
-            "An administrator created an account for you on NEXUS.",
-            "Set up your account to get started.",
-        ],
-        cta_label="Set up account",
-        cta_url=url,
-        footnote="This link expires in 7 days. If you weren't expecting this, contact support.",
+    """No caller yet: kept for the dormant /auth/account-setup/confirm/ flow's future invite producer."""
+    await _send_email(
+        to,
+        _Email(
+            subject="You've been added to NEXUS",
+            heading="You've been added to NEXUS",
+            paragraphs=[
+                "An administrator created an account for you on NEXUS.",
+                "Set up your account to get started.",
+            ],
+            cta_label="Set up account",
+            cta_url=_cta_url("/account-setup", token),
+            footnote="This link expires in 7 days. If you weren't expecting this, contact support.",
+        ),
     )
-    await _send(to, "You've been added to NEXUS", f"Set up your account: {url}", html)
-
-
-async def send_account_setup_invite_email(db: Session, user_id: int, to: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "account_setup")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_account_setup_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send account setup email") from e
 
 
 # ---------------------------------------------------------------------------
@@ -344,35 +381,26 @@ async def send_account_setup_invite_email(db: Session, user_id: int, to: str) ->
 
 
 async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) -> None:
-    html = _render_email_html(
-        heading=f"You're invited to help run {tournament_name}",
-        body_lines=[
-            f"You've been invited to join the staff for {tournament_name} on NEXUS.",
-            "Use the link below to join.",
-        ],
-        cta_label="Join tournament",
-        cta_url=join_url,
-        footnote="If you weren't expecting this, you can ignore this email.",
-    )
-    await _send(
+    await _send_email(
         to,
-        f"You're invited to help run {tournament_name}",
-        f"Join {tournament_name}: {join_url}",
-        html,
+        _Email(
+            subject=f"You're invited to help run {tournament_name}",
+            heading=f"You're invited to help run {tournament_name}",
+            paragraphs=[
+                f"You've been invited to join the staff for {tournament_name} on NEXUS.",
+                "Use the link below to join.",
+            ],
+            cta_label="Join tournament",
+            cta_url=join_url,
+            footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites.",
+        ),
     )
 
 
 async def send_staff_invite_emails(
     to_emails: list[str], tournament_name: str, join_url: str
 ) -> list[str]:
-    """
-    Sends one personalized invite email per address, in parallel — not BCC,
-    which counts every recipient against quota anyway and has worse
-    deliverability for this use case. Each send is independent, so one bad
-    address doesn't block the rest.
-
-    Returns the subset of to_emails that failed to send.
-    """
+    """Sends one invite per address in parallel (not BCC) and returns the addresses that failed."""
     results = await asyncio.gather(
         *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
         return_exceptions=True,

@@ -127,26 +127,28 @@ def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
     starting early (Impound, 7-8am, attached after Morning) has to sort into
     its place rather than print the day as 8am, 12pm, 4pm, 8am."""
     login(client, "td@test.com", "tdpass")
+    # Track bounds are checked in the tournament's Pacific time, so these stay
+    # well inside EVENT_DATE there in both standard and daylight time.
     morning = _make_shift(
         client,
         td_tournament.id,
         label="Morning",
-        start=EVENT_DATE + "T08:00:00Z",
-        end=EVENT_DATE + "T12:00:00Z",
+        start=EVENT_DATE + "T16:00:00Z",
+        end=EVENT_DATE + "T20:00:00Z",
     ).json()["id"]
     afternoon = _make_shift(
         client,
         td_tournament.id,
         label="Afternoon",
-        start=EVENT_DATE + "T12:00:00Z",
-        end=EVENT_DATE + "T16:00:00Z",
+        start=EVENT_DATE + "T20:00:00Z",
+        end=EVENT_DATE + "T23:00:00Z",
     ).json()["id"]
     impound = _make_shift(
         client,
         td_tournament.id,
         label="Impound",
-        start=EVENT_DATE + "T07:00:00Z",
-        end=EVENT_DATE + "T08:00:00Z",
+        start=EVENT_DATE + "T15:00:00Z",
+        end=EVENT_DATE + "T16:00:00Z",
     ).json()["id"]
 
     body = _make_event(

@@ -1,14 +1,24 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
+    DUMMY_PASSWORD_HASH,
     RATE_LIMIT_WINDOW,
     clear_auth_cookie,
     consume_verification_token,
     create_session,
+    create_verification_token,
     get_active_session,
     get_client_ip,
     get_current_session,
@@ -39,20 +49,18 @@ from app.schemas.auth import (
 )
 from app.schemas.user import AdminUserSlimResponse
 from app.services.email_service import (
-    send_email_change_request_email,
+    send_email_change_email,
     send_email_change_requested_notice,
+    send_in_background,
     send_password_changed_notice,
-    send_password_reset_request_email,
-    send_signup_verification_email,
+    send_password_reset_email,
+    send_verification_email,
 )
 
 router = APIRouter(tags=["auth"])
 
-# Argon2 is CPU-bound (~50 ms per hash or verify), so it must never run on the
-# event loop, where it stalls every other request on the worker. Routes that
-# hash and await nothing are plain `def`, which FastAPI runs in its threadpool;
-# the async ones (they await an email send) wrap hash_password/verify_password
-# in run_in_threadpool.
+# Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
+# (~50 ms per hash) and the DB calls would otherwise stall the event loop.
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +83,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         .first()
     )
 
-    # Deliberate: same error whether email or password is wrong — prevents enumeration
+    # Same error and the same hashing work whether the email or the password is
+    # wrong, so neither the response nor its timing reveals which accounts exist.
     if not user or not user.hashed_password:
+        verify_password(body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -183,10 +193,10 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     responses={
         400: {"description": "Email already verified"},
         429: {"description": "Verification email requested too recently"},
-        500: {"description": "Failed to send verification email"},
     },
 )
-async def send_email_verification(
+def send_email_verification(
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -194,7 +204,8 @@ async def send_email_verification(
     if user.email_verified:
         raise HTTPException(400, "Email already verified")
 
-    await send_signup_verification_email(db, user.email, user.id)
+    token = create_verification_token(db, user.id, "signup_verify")
+    send_in_background(background_tasks, send_verification_email, user.email, token)
 
     return {"detail": "Verification email successfully sent"}
 
@@ -231,29 +242,37 @@ def get_pending_email_change_route(
     responses={
         409: {"description": "Email already registered to another account"},
         429: {"description": "Email change requested too recently"},
-        500: {"description": "Failed to send confirmation email"},
     },
 )
-async def request_email_change(
+def request_email_change(
     body: EmailChangeRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Sends a confirmation link to the NEW address. user.email is untouched
-    until that link is clicked — see confirm_email_change(). Also doubles
-    as the resend route: the frontend calls this again with the same
-    new_email to resend, rather than a separate no-arg resend endpoint.
-
-    Also notifies the OLD address immediately (not on confirm) — user.email
-    is still the original address here, so it's captured before anything
-    is mutated. This is the only notice the account owner will see if they
-    weren't the one who made the request.
+    Emails a confirmation link to the new address, and a notice with an undo
+    link to the current one. The account email changes only once the link is
+    confirmed. Call again with the same new_email to resend.
     """
     check_if_email_exists(db, body.new_email, exclude_user_id=user.id)
 
-    await send_email_change_request_email(db, user.id, body.new_email)
-    await send_email_change_requested_notice(db, user.id, user.email, body.new_email)
+    # The undo link goes out now, not on confirm, so the owner can stop a change
+    # they didn't make; once applied, /forgot-password would reach the new address.
+    # Created first because a just-confirmed change leaves its revert token unused,
+    # so a quick second request is rate-limited here, before anything is written.
+    revert_token = create_verification_token(
+        db, user.id, "email_change_revert", new_email=user.email
+    )
+    token = create_verification_token(db, user.id, "email_change", new_email=body.new_email)
+    send_in_background(background_tasks, send_email_change_email, body.new_email, token)
+    send_in_background(
+        background_tasks,
+        send_email_change_requested_notice,
+        user.email,
+        body.new_email,
+        revert_token,
+    )
 
     token_row = get_pending_email_change(db, user.id)
     assert token_row is not None
@@ -363,24 +382,21 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
         401: {"description": "Current password is incorrect"},
     },
 )
-async def change_password(
+def change_password(
     body: PasswordChangeRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     session: UserSession = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     """Authenticated password change — requires current_password to match before setting new_password."""
-    if not user.hashed_password or not await run_in_threadpool(
-        verify_password,
-        body.current_password,
-        user.hashed_password,
-    ):
+    if not user.hashed_password or not verify_password(body.current_password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
-    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
+    user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    await send_password_changed_notice(user.email)
+    send_in_background(background_tasks, send_password_changed_notice, user.email)
     revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
@@ -389,7 +405,11 @@ async def change_password(
 @router.post(
     "/auth/password/reset/request/", status_code=status.HTTP_200_OK, response_model=MessageResponse
 )
-async def request_password_reset(body: PasswordResetRequest, db: Session = Depends(get_db)):
+def request_password_reset(
+    body: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
     Always returns the same generic response regardless of whether the
     email matches an account — avoids account enumeration. Pending
@@ -407,12 +427,13 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
 
     if user and user.hashed_password:
         try:
-            await send_password_reset_request_email(db, user.id, user.email)
+            token = create_verification_token(db, user.id, "password_reset")
         except HTTPException as e:
-            if e.status_code != 429:
+            # A 429 instead of the generic 200 would reveal that the account exists.
+            if e.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
                 raise
-            # Swallow rate-limit responses here too — surfacing a 429 vs.
-            # the generic 200 would itself leak whether the email exists.
+        else:
+            send_in_background(background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "If an account exists for this email, a reset link has been sent."}
 
@@ -425,17 +446,21 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
         400: {"description": "Invalid or expired token"},
     },
 )
-async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depends(get_db)):
+def confirm_password_reset(
+    body: PasswordResetConfirm,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Logged-out password reset — consumes a password_reset token and sets new_password."""
     token_row = consume_verification_token(db, body.token, "password_reset")
     if token_row is None:
         raise HTTPException(400, "Invalid or expired token")
 
     user = find_user_by_id(db, token_row.user_id)
-    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
+    user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    await send_password_changed_notice(user.email)
+    send_in_background(background_tasks, send_password_changed_notice, user.email)
     revoke_all_sessions(db, user.id)
 
     return {"detail": "Password successfully reset"}
