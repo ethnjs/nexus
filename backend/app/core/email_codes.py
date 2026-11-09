@@ -22,6 +22,7 @@ from app.core.auth import (
     hash_password,
     verify_password,
 )
+from app.core.config import get_settings
 from app.models.models import EmailCode, User, UserSession
 
 CodePurpose = Literal["sign_in", "sign_up", "step_up", "admin_sign_in"]
@@ -230,6 +231,8 @@ def require_recent_code(
     Dependency for sensitive actions: the session must have entered a code (at sign-in or
     step-up) within STEP_UP_WINDOW. Otherwise 403 with detail.code "step_up_required".
     """
+    if not get_settings().login_codes_required:
+        return session_row
     verified_at = session_row.code_verified_at
     if verified_at is None or datetime.now(UTC) - verified_at > STEP_UP_WINDOW:
         raise HTTPException(

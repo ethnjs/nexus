@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,6 +57,11 @@ def _read_app_version() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
+
+    if not get_settings().login_codes_required:
+        logging.getLogger(__name__).warning(
+            "LOGIN_CODES_REQUIRED is false: sign-in and sensitive actions skip email codes"
+        )
 
     scheduler = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:

@@ -32,6 +32,7 @@ from app.core.auth import (
     verify_and_update_password,
     verify_password,
 )
+from app.core.config import get_settings
 from app.core.email_codes import (
     require_recent_code,
     resend_challenge,
@@ -89,12 +90,17 @@ CODE_SENDERS = {
 @router.post("/auth/login/", response_model=LoginResponse)
 def login(
     body: LoginRequest,
+    request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
     Checks the email and password, then emails a 6-digit code to the account address and
     returns a challenge. Finish signing in with POST /auth/code/verify/. No cookie is set here.
+
+    While codes are switched off for an email outage, code_required is false and this sets the
+    session cookie and returns the user directly.
     """
     user = (
         db.query(User)
@@ -123,6 +129,16 @@ def login(
     if upgraded_hash:
         # Legacy bcrypt hash: swap in Argon2. Committed by start_challenge below.
         user.hashed_password = upgraded_hash
+
+    if not get_settings().login_codes_required:
+        raw_token = create_session(
+            db,
+            user.id,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=get_client_ip(request),
+        )
+        set_auth_cookie(response, raw_token)
+        return LoginResponse(code_required=False, user=AdminUserSlimResponse.model_validate(user))
 
     raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
     send_in_background(background_tasks, send_sign_in_code_email, user.email, code)

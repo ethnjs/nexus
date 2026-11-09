@@ -410,6 +410,50 @@ class TestStepUp:
 
 
 # ---------------------------------------------------------------------------
+# LOGIN_CODES_REQUIRED=false
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def codes_off(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "login_codes_required", False)
+
+
+class TestCodesSwitchedOff:
+    def test_login_signs_in_directly(self, client, td_user, codes_off, mock_send_email):
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["code_required"] is False
+        assert data["challenge_token"] is None
+        assert data["user"]["email"] == "td@test.com"
+        assert "access_token" in res.cookies
+        assert not mock_send_email.called
+        assert client.get("/users/me/").status_code == 200
+
+    def test_wrong_password_still_rejected(self, client, td_user, codes_off):
+        assert login(client, "td@test.com", "wrong").status_code == 401
+
+    @pytest.mark.parametrize("action", GUARDED_ACTIONS)
+    def test_guarded_actions_skip_step_up(self, client, db, step_up_setup, codes_off, action):
+        login(client, "td@test.com", "tdpass")
+        db.query(UserSession).update({"code_verified_at": None})
+        db.commit()
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+    def test_startup_warns(self, codes_off, caplog):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        with TestClient(app):
+            pass
+        assert "LOGIN_CODES_REQUIRED is false" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/logout/
 # ---------------------------------------------------------------------------
 
