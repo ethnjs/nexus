@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import resend
 from fastapi import HTTPException
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Shared HTML template
@@ -130,7 +133,26 @@ _CONTACT_SUPPORT = "If this wasn't you, please contact support."
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
+    """Sends through Resend. Without an API key it logs and skips, except in production, where it raises."""
     settings = get_settings()
+
+    if not settings.resend_api_key:
+        if settings.app_env == "production":
+            raise RuntimeError("Email is not configured: RESEND_API_KEY must be set")
+        if settings.app_env == "development":
+            logger.warning(
+                "%s\nTo:      %s\nSubject: %s\n\n%s\n%s",
+                "-- Email not sent: RESEND_API_KEY not set ".ljust(72, "-"),
+                to,
+                subject,
+                text,
+                "-" * 72,
+            )
+        else:
+            # Preview logs are shared, so the body (with its tokens) stays out of them.
+            logger.warning("RESEND_API_KEY not set, skipping email to %s: %s", to, subject)
+        return
+
     resend.api_key = settings.resend_api_key
 
     params: resend.Emails.SendParams = {
