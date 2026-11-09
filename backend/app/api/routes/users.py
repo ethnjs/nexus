@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
@@ -15,13 +16,13 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
-from app.core.email_codes import require_recent_code
+from app.core.email_codes import require_recent_code, start_admin_sign_in_code
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
     is_profile_complete,
 )
-from app.core.users import find_user_by_id, require_not_last_admin
+from app.core.users import check_if_email_exists, find_user_by_id, require_not_last_admin
 from app.db.session import get_db
 from app.models.models import (
     Event,
@@ -30,7 +31,12 @@ from app.models.models import (
     UserSession,
     UserVolunteerExperience,
 )
-from app.schemas.auth import AccountDeactivateRequest, AccountDeleteRequest, MessageResponse
+from app.schemas.auth import (
+    AccountDeactivateRequest,
+    AccountDeleteRequest,
+    AdminSignInCodeResponse,
+    MessageResponse,
+)
 from app.schemas.session import SessionResponse
 from app.schemas.user import (
     AdminUserFullResponse,
@@ -41,6 +47,8 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.services.email_service import send_in_background, send_password_reset_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["users"])
 
@@ -105,8 +113,9 @@ def admin_update_user(
     session: UserSession = Depends(get_current_session),
 ):
     """
-    Admin can only update a user's role and status. Changing the role needs a code entered
-    in the last 10 minutes; see POST /auth/step-up/.
+    Admin can update a user's role, status, and email. Changing the role needs a code entered
+    in the last 10 minutes; see POST /auth/step-up/. A new email is unverified until the user
+    next signs in with a code sent to it.
 
     Moving a user off status="active" revokes every session they hold. Losing
     access is meant to take effect now, not at their next sign-in — login
@@ -125,6 +134,12 @@ def admin_update_user(
 
     if "role" in updates and updates["role"] != user.role:
         require_recent_code(session)
+
+    email = updates.pop("email", None)
+    if email is not None and email.lower() != user.email:
+        check_if_email_exists(db, email, exclude_user_id=user.id)
+        user.email = email.lower()
+        user.email_verified = False
 
     if user.id == current_user.id:
         if updates.get("role") == "user":
@@ -225,6 +240,37 @@ def admin_send_password_reset(
     send_in_background(background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "Password reset email sent"}
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/users/{user_id}/sign-in-code/ — admin only
+# ---------------------------------------------------------------------------
+@router.post(
+    "/admin/users/{user_id}/sign-in-code/",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AdminSignInCodeResponse,
+    responses={400: {"description": "User has no password set"}},
+)
+def admin_create_sign_in_code(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Issues a one-time sign-in code for a user whose emails aren't arriving. They still enter
+    their password, then type this code where the emailed one would go. It works once and
+    expires in 30 minutes. The code appears only in this response.
+    """
+    user = find_user_by_id(db, user_id)
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no password set",
+        )
+
+    code, row = start_admin_sign_in_code(db, user, admin)
+    logger.warning("Admin %s issued a one-time sign-in code for user %s", admin.id, user.id)
+    return AdminSignInCodeResponse(code=code, expires_at=row.expires_at)
 
 
 # ---------------------------------------------------------------------------

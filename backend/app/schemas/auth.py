@@ -123,6 +123,13 @@ class CodeResendRequest(BaseModel):
     challenge_token: str
 
 
+class AdminSignInCodeResponse(BaseModel):
+    """POST /admin/users/{id}/sign-in-code. The code is shown only in this response."""
+
+    code: str
+    expires_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Account settings — email change, password change, password reset
 # ---------------------------------------------------------------------------
