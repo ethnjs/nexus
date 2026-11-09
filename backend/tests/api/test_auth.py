@@ -437,10 +437,30 @@ class TestVerifyEmail:
 # ---------------------------------------------------------------------------
 
 
+def _sent(mock_send_email) -> list[tuple[str, str]]:
+    """(recipient, subject) for each email sent."""
+    return [(call.args[0], call.args[1]) for call in mock_send_email.call_args_list]
+
+
 class TestSendEmailVerification:
-    def test_unverified_user_can_request(self, client, td_user):
+    def test_unverified_user_can_request(self, client, td_user, mock_send_email):
         login(client, "td@test.com", "tdpass")
         assert client.post("/auth/send-email-verification/").status_code == 200
+        assert _sent(mock_send_email) == [("td@test.com", "Verify your email on NEXUS")]
+
+    def test_rate_limited_on_repeat(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.post("/auth/send-email-verification/")
+        assert client.post("/auth/send-email-verification/").status_code == 429
+
+    def test_failed_send_still_succeeds_and_is_logged(
+        self, client, td_user, mock_send_email, caplog
+    ):
+        mock_send_email.side_effect = RuntimeError("provider down")
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/send-email-verification/").status_code == 200
+        assert "Background email failed: send_verification_email" in caplog.text
+        assert "provider down" in caplog.text
 
     def test_already_verified_rejected(self, client, td_user, db):
         td_user.email_verified = True
@@ -462,7 +482,10 @@ class TestRequestEmailChange:
         login(client, "td@test.com", "tdpass")
         res = client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
         assert res.status_code == 200
-        assert mock_send_email.called
+        assert _sent(mock_send_email) == [
+            ("tdnew@test.com", "Confirm your new email on NEXUS"),
+            ("td@test.com", "Your NEXUS account email is being changed"),
+        ]
 
     def test_request_change_returns_pending_state(self, client, td_user, mock_send_email):
         login(client, "td@test.com", "tdpass")
@@ -640,7 +663,7 @@ class TestRevertEmailChange:
 
 
 class TestChangePassword:
-    def test_change_password_success(self, client, td_user):
+    def test_change_password_success(self, client, td_user, mock_send_email):
         login(client, "td@test.com", "tdpass")
         res = client.post(
             "/auth/password/change/",
@@ -650,6 +673,7 @@ class TestChangePassword:
             },
         )
         assert res.status_code == 200
+        assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS password was changed")]
         client.post("/auth/logout/")
         assert login(client, "td@test.com", "tdpass").status_code == 401
         assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
@@ -707,7 +731,15 @@ class TestRequestPasswordReset:
     def test_active_user_with_password_sends_email(self, client, td_user, mock_send_email):
         res = client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
         assert res.status_code == 200
-        assert mock_send_email.called
+        assert _sent(mock_send_email) == [("td@test.com", "Reset your password on NEXUS")]
+
+    def test_failed_send_returns_generic_200_and_is_logged(
+        self, client, td_user, mock_send_email, caplog
+    ):
+        mock_send_email.side_effect = RuntimeError("provider down")
+        res = client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
+        assert res.status_code == 200
+        assert "Background email failed: send_password_reset_email" in caplog.text
 
     def test_unknown_email_returns_generic_200_no_email_sent(self, client, mock_send_email):
         res = client.post("/auth/password/reset/request/", json={"email": "nobody@test.com"})
@@ -745,7 +777,7 @@ class TestRequestPasswordReset:
 
 
 class TestConfirmPasswordReset:
-    def test_valid_token_resets_password(self, client, td_user, db):
+    def test_valid_token_resets_password(self, client, td_user, db, mock_send_email):
         token = create_verification_token(db, td_user.id, "password_reset")
         res = client.post(
             "/auth/password/reset/confirm/",
@@ -755,6 +787,7 @@ class TestConfirmPasswordReset:
             },
         )
         assert res.status_code == 200
+        assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS password was changed")]
         assert login(client, "td@test.com", "tdpass").status_code == 401
         assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
 

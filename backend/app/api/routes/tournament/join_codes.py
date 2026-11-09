@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -211,25 +212,17 @@ def deactivate_tournament_join_code(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — owner only, no admin
-# bypass. Ownership sits above the role/permission system entirely here —
-# unlike require_permission(), this doesn't grant site admins access.
-# Sends one personalized invite email per address via send_staff_invite_emails
-# (parallel, per-recipient — not BCC). join_code_id must already exist; if the
-# TD chose "create new code" in the invite modal, the frontend calls
-# POST .../join-codes/ first and passes the resulting id here.
-#
-# Always logs one staff_invite_sent entry, even on partial failure — the join
-# code action (an invite attempt) happened regardless of how many sends
-# succeeded, so the log entry isn't conditioned on full success. failed is
-# included in extra_data only when non-empty.
+# POST /tournaments/{tournament_id}/staff-invites/ — owner only, with no admin
+# bypass, unlike require_permission(). Unlike other email routes, it waits for
+# its sends, because the response and the audit entry list the failed addresses.
+# The audit entry is logged even when some sends fail.
 # ---------------------------------------------------------------------------
 @router.post(
     "/{tournament_id}/staff-invites/",
     response_model=StaffInviteResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def send_staff_invites(
+def send_staff_invites(
     tournament_id: int,
     payload: StaffInviteCreate,
     db: Session = Depends(get_db),
@@ -251,8 +244,8 @@ async def send_staff_invites(
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code={join_code.code}"
-    failed = await send_staff_invite_emails(
-        payload.emails, tournament_display_name(tournament), join_url
+    failed = anyio.from_thread.run(
+        send_staff_invite_emails, payload.emails, tournament_display_name(tournament), join_url
     )
     sent = [e for e in payload.emails if e not in failed]
 

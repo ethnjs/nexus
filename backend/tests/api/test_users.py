@@ -405,7 +405,9 @@ class TestAdminSendPasswordReset:
         login(client, "admin@test.com", "adminpass")
         res = client.post(f"/admin/users/{alice.id}/password-reset/")
         assert res.status_code == 200
-        assert mock_send_email.called
+        to, subject = mock_send_email.call_args.args[:2]
+        assert to == alice.email
+        assert subject == "Reset your password on NEXUS"
 
     def test_user_without_password_rejected(self, client, admin_user, db, mock_send_email):
         """No password means the account was never set up — that needs the

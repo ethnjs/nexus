@@ -1,11 +1,10 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 import resend
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from fastapi import BackgroundTasks
 
-from app.core.auth import RateLimitedError, create_verification_token
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -166,6 +165,23 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
     await resend.Emails.send_async(params)
 
 
+def send_in_background[**P](
+    background_tasks: BackgroundTasks,
+    send: Callable[P, Awaitable[None]],
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> None:
+    """Runs `send` after the response goes out, logging any failure, since no caller is left to see it."""
+
+    async def send_and_log() -> None:
+        try:
+            await send(*args, **kwargs)
+        except Exception:
+            logger.exception("Background email failed: %s", getattr(send, "__name__", send))
+
+    background_tasks.add_task(send_and_log)
+
+
 # ---------------------------------------------------------------------------
 # Signup verification
 # ---------------------------------------------------------------------------
@@ -183,18 +199,6 @@ async def send_verification_email(to: str, token: str) -> None:
         footnote="This link expires in 24 hours. If you didn't create this account, please contact support right away.",
     )
     await _send(to, "Verify your email on NEXUS", f"Please verify your email: {url}", html)
-
-
-async def send_signup_verification_email(db: Session, to: str, user_id: int) -> None:
-    try:
-        token = create_verification_token(db, user_id, "signup_verify")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_verification_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send verification email") from e
 
 
 # ---------------------------------------------------------------------------
@@ -219,39 +223,9 @@ async def send_email_change_email(to_new_email: str, token: str) -> None:
     )
 
 
-async def send_email_change_request_email(db: Session, user_id: int, new_email: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "email_change", new_email=new_email)
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_email_change_email(new_email, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send email change confirmation") from e
-
-
 async def send_email_change_requested_notice(
-    db: Session, user_id: int, old_email: str, new_email: str
+    old_email: str, new_email: str, revert_token: str
 ) -> None:
-    """
-    Sent to the OLD email address the moment an email change is requested
-    (not once it's confirmed) — the account owner may not be the one who
-    requested it, so this needs to reach them while the change can still be
-    intercepted, not just after it's already applied.
-
-    Creates the email_change_revert token itself and embeds it in the CTA
-    link, so the recipient can undo the change directly instead of landing
-    on /forgot-password with no way to look themselves up (their email is
-    about to become the attacker's address).
-    """
-    try:
-        revert_token = create_verification_token(
-            db, user_id, "email_change_revert", new_email=old_email
-        )
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
     url = _cta_url("/revert-email-change", revert_token)
     html = _render_email_html(
         heading="Your email address is being changed",
@@ -289,18 +263,6 @@ async def send_password_reset_email(to: str, token: str) -> None:
         footnote=f"This link expires in 1 hour. If you didn't request this, someone may be trying to access your account. {_CONTACT_SUPPORT}",
     )
     await _send(to, "Reset your password on NEXUS", f"Reset your password: {url}", html)
-
-
-async def send_password_reset_request_email(db: Session, user_id: int, to: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "password_reset")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_password_reset_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send password reset email") from e
 
 
 async def send_password_changed_notice(to: str) -> None:
@@ -346,18 +308,6 @@ async def send_account_setup_email(to: str, token: str) -> None:
         footnote="This link expires in 7 days. If you weren't expecting this, contact support.",
     )
     await _send(to, "You've been added to NEXUS", f"Set up your account: {url}", html)
-
-
-async def send_account_setup_invite_email(db: Session, user_id: int, to: str) -> None:
-    try:
-        token = create_verification_token(db, user_id, "account_setup")
-    except RateLimitedError as e:
-        raise HTTPException(429, str(e)) from e
-
-    try:
-        await send_account_setup_email(to, token)
-    except Exception as e:
-        raise HTTPException(500, "Failed to send account setup email") from e
 
 
 # ---------------------------------------------------------------------------

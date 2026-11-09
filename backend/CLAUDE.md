@@ -25,6 +25,7 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 
 - Every path ends in `/`. With `redirect_slashes=False`, a request without the trailing slash gets a 404.
 - Routes are sync `def` with a sync `Session` from `Depends(get_db)`. Queries use `db.query(...)` throughout; match that rather than mixing in `select()`.
+- Routes send email with `email_service.send_in_background()`, which runs after the response goes out, so create any token first and pass the sender only plain values, never `db`. Only when the response needs the send's result (staff invites) does a route wait for it, with `anyio.from_thread.run()`.
 - Declare `response_model`. Schemas exist per *audience* (who may see the data), not per screen or caller.
 - Prefer fewer, query-shaped routes over one route per screen. Before adding a route, check whether a query parameter on an existing one covers it. When callers want different amounts of the same data, add a `fields` query: omitting it returns everything, and an unrequested group is absent from the JSON, while `null` always means "no value".
 - Gate access on the route with permission dependencies. Don't build a full response and redact it afterwards.

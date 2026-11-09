@@ -254,12 +254,6 @@ TOKEN_TTL: dict[Purpose, timedelta] = {
 RATE_LIMIT_WINDOW = timedelta(seconds=60)
 
 
-class RateLimitedError(Exception):
-    """Raised when a new token is requested too soon after a prior one."""
-
-    pass
-
-
 def create_verification_token(
     db: Session,
     user_id: int,
@@ -267,15 +261,10 @@ def create_verification_token(
     new_email: str | None = None,
 ) -> str:
     """
-    Creates a new verification token for the given user + purpose.
-
-    - Rate limits: raises RateLimitedError if an unconsumed, unexpired token
-      for this (user_id, purpose) was created within RATE_LIMIT_WINDOW.
-    - Stale-token guarding: invalidates (marks used_at) any other unconsumed
-      tokens for this (user_id, purpose) before issuing the new one, so only
-      the most recently issued link is ever valid.
-
-    Returns the raw token — this is the only time it exists in plaintext.
+    Commits a new token for (user_id, purpose) and returns it raw, the only
+    time it exists in plaintext. Invalidates that pair's older unused tokens,
+    so only the newest link works. Raises 429 if one was issued within
+    RATE_LIMIT_WINDOW.
     """
     now = datetime.now(UTC)
 
@@ -292,11 +281,11 @@ def create_verification_token(
 
     for row in existing:
         if row.created_at is not None and (now - row.created_at) < RATE_LIMIT_WINDOW:
-            raise RateLimitedError(
-                f"A {purpose} request was already made recently. Please wait before retrying."
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"A {purpose} request was already made recently. Please wait before retrying.",
             )
 
-    # Stale-token guarding — invalidate any other pending tokens for this purpose
     for row in existing:
         row.used_at = now
 
