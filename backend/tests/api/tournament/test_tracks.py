@@ -732,3 +732,36 @@ def test_reassign_needs_a_new_default_role(client, db, td_user, td_tournament):
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Zone default role
+# ---------------------------------------------------------------------------
+
+
+def test_zone_role_is_set_and_cleared_separately_from_the_default_role(
+    client, db, td_user, td_tournament
+):
+    track = _track_with_default(db, td_tournament)
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/tracks/{track.id}/"
+    runner = _role(db, td_tournament, "Runner").id
+
+    body = client.patch(url, json={"zone_default_role_id": runner}).json()
+    assert body["zone_default_role_id"] == runner
+    assert body["default_role_id"] == _role(db, td_tournament, "Volunteer").id
+
+    assert (
+        client.patch(url, json={"zone_default_role_id": None}).json()["zone_default_role_id"]
+        is None
+    )
+
+
+def test_zone_role_must_be_a_role_of_this_tournament(client, db, td_user, td_tournament):
+    track = _sole_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track.id}/",
+        json={"zone_default_role_id": 999999},
+    )
+    assert response.status_code == 404

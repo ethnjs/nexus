@@ -135,6 +135,7 @@ def create_track(
             status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
         )
     _check_default_role(db, tournament_id, payload.default_role_id)
+    _check_default_role(db, tournament_id, payload.zone_default_role_id)
 
     track = TournamentTrack(tournament_id=tournament_id, **payload.model_dump())
     try:
@@ -154,7 +155,7 @@ def create_track(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/tracks/{track_id}/ — edit a track's name,
-# schedule, venue, divisions, default role or self-confirm flag.
+# schedule, venue, divisions, default roles or self-confirm flag.
 #
 # `reassign_assignments` also moves the bars whose only role is the old
 # default to the new one, in the same commit.
@@ -179,8 +180,9 @@ def update_track(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists"
         )
-    if "default_role_id" in updates:
-        _check_default_role(db, tournament_id, updates["default_role_id"])
+    for field in ("default_role_id", "zone_default_role_id"):
+        if field in updates:
+            _check_default_role(db, tournament_id, updates[field])
 
     # Clearing dates back to TBD with shifts still on the track would leave
     # them bounded by nothing, and re-dating it later re-checks nothing. The

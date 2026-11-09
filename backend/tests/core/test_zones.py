@@ -1,7 +1,7 @@
 """Tests for app/core/tournament/zones.py — the derivation of an event's zone.
 
 A zone stores rules, not events. These cover the precedence that turns those
-rules into an answer (event > floor > building), and the behaviour that
+rules into an answer (event > room > floor > building), and the behaviour that
 precedence exists for: an event that moves between buildings moves between
 zones with nothing edited on either zone.
 """
@@ -65,7 +65,9 @@ def _zone(db, tournament_id, track_id, name):
     return zone
 
 
-def _rule(db, zone, track_id, kind, building=None, floor=None, event=None):
+def _rule(db, zone, track_id, kind, building=None, floor=None, event=None, room=None):
+    if room is not None:
+        building = room.building
     db.add(
         TournamentZoneMember(
             zone_id=zone.id,
@@ -73,10 +75,15 @@ def _rule(db, zone, track_id, kind, building=None, floor=None, event=None):
             kind=kind,
             building_id=building.id if building else None,
             floor=floor,
+            room_id=room.id if room else None,
             tournament_event_id=event.id if event else None,
         )
     )
     db.flush()
+
+
+def _room(db, building, name):
+    return db.query(TournamentRoom).filter_by(building_id=building.id, name=name).one()
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +156,43 @@ def test_a_room_floor_override_feeds_the_derived_floor(db, td_tournament, track)
     _rule(db, south, track, "floor", building=rowland, floor="2")
 
     assert resolve_track_zones(db, track)[anatomy.id] == south.id
+
+
+def test_a_room_rule_outranks_a_floor_rule(db, td_tournament, track):
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    anatomy = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["210"])
+    chem = _event(db, td_tournament.id, track, "Chemistry", rowland, rooms=["212"])
+    north = _zone(db, td_tournament.id, track, "North")
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, north, track, "floor", building=rowland, floor="2")
+    _rule(db, south, track, "room", room=_room(db, rowland, "210"))
+
+    resolved = resolve_track_zones(db, track)
+    assert resolved[anatomy.id] == south.id
+    assert resolved[chem.id] == north.id
+
+
+def test_an_event_in_several_rooms_takes_its_first_ruled_room(db, td_tournament, track):
+    """First in natural order, so 9 comes before 10."""
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    anatomy = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["10", "9"])
+    north = _zone(db, td_tournament.id, track, "North")
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, north, track, "room", room=_room(db, rowland, "10"))
+    _rule(db, south, track, "room", room=_room(db, rowland, "9"))
+
+    assert resolve_track_zones(db, track)[anatomy.id] == south.id
+
+
+def test_an_explicit_event_outranks_a_room_rule(db, td_tournament, track):
+    rowland = _building(db, td_tournament.id, track, "Rowland Hall")
+    anatomy = _event(db, td_tournament.id, track, "Anatomy", rowland, rooms=["210"])
+    north = _zone(db, td_tournament.id, track, "North")
+    south = _zone(db, td_tournament.id, track, "South")
+    _rule(db, north, track, "room", room=_room(db, rowland, "210"))
+    _rule(db, south, track, "event", event=anatomy)
+
+    assert zone_for_event(db, track, anatomy.id) == south.id
 
 
 def test_an_explicit_event_outranks_both_rules(db, td_tournament, track):

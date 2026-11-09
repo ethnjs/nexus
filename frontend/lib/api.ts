@@ -560,6 +560,8 @@ export interface TournamentTrack {
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
   default_role_id: number | null;
+  // What a zone assignment grants when it names no role.
+  zone_default_role_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -576,6 +578,7 @@ export interface TournamentTrackCreate {
   location?: string | null;
   division?: TournamentDivision[] | null;
   default_role_id?: number | null;
+  zone_default_role_id?: number | null;
 }
 
 export type TournamentTrackUpdate = Partial<TournamentTrackCreate> & {
@@ -2475,40 +2478,37 @@ export const buildingsApi = {
 // -------------------------------------------------------------------------
 // Tournament Zones — nested under /tournaments/{id}/zones/
 // -------------------------------------------------------------------------
-// A named area of one track that members can be staffed to, primarily for
-// runners. A zone stores *rules*, never an event list: its contents are
-// resolved on read, which is what makes moving an event to a building in
-// another zone move it between zones with no write to either.
+// A named area of one competition day that members can be staffed to,
+// primarily for runners. A zone stores rules, not events: its event list is
+// resolved on read, so an event that moves rooms moves zones.
 
-export type ZoneMemberKind = "building" | "floor" | "event";
+export type ZoneMemberKind = "building" | "floor" | "room" | "event";
 
-/** One rule saying what a zone contains. Which fields are legal depends on
- *  the kind:
+/** One rule saying what a zone contains:
  *
- *      building   building_id only
+ *      building   building_id
  *      floor      building_id and floor
- *      event      tournament_event_id only
- *
- *  Sending the wrong combination is a 422, not a silent correction. */
+ *      room       room_id (the server fills in building_id)
+ *      event      tournament_event_id
+ */
 export interface ZoneMember {
   kind: ZoneMemberKind;
   building_id?: number | null;
   floor?: string | null;
+  room_id?: number | null;
   tournament_event_id?: number | null;
 }
 
 export interface ZoneMemberRead extends ZoneMember {
   id: number;
   building_name: string | null;
+  room_name: string | null;
   event_name: string | null;
 }
 
 export interface ZoneInput {
   track_id: number;
   name: string;
-  /** The role a drag onto this zone staffs someone in. Distinct from the
-   *  track's default role — a zone is usually one job. */
-  default_role_id?: number | null;
   /** Whole-set: sending it replaces the zone's rules. */
   members?: ZoneMember[];
 }
@@ -2518,12 +2518,8 @@ export interface Zone {
   tournament_id: number;
   track_id: number;
   name: string;
-  default_role_id: number | null;
-  default_role_label: string | null;
   members: ZoneMemberRead[];
-  /** Resolved, not stored. Precedence is event > floor > building, so an
-   *  event added explicitly to this zone stays here even when another zone's
-   *  building rule also covers it. */
+  /** Resolved, not stored. Precedence is event > room > floor > building. */
   event_ids: number[];
   created_at: string;
   updated_at: string;
@@ -2545,8 +2541,7 @@ export interface ZoneCoverage {
 export interface ZoneAssignmentInput {
   zone_id: number;
   membership_id: number;
-  /** Omit to use the zone's default_role_id. A role is always required in the
-   *  end — if the zone has no default, this must name one. */
+  /** Omit to use the track's zone_default_role_id; with neither, it's a 422. */
   role_id?: number | null;
 }
 

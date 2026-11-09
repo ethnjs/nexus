@@ -12,6 +12,22 @@ def _track(db, tournament):
     return primary_track_id(db, tournament.id)
 
 
+def _day(client, tournament_id, name="Day 2"):
+    """Another competition day."""
+    return client.post(
+        f"/tournaments/{tournament_id}/tracks/",
+        json={"name": name, "is_primary": True, "division": ["C"]},
+    ).json()["id"]
+
+
+def _set_zone_role(client, tournament_id, track_id, role_id):
+    response = client.patch(
+        f"/tournaments/{tournament_id}/tracks/{track_id}/",
+        json={"zone_default_role_id": role_id},
+    )
+    assert response.status_code == 200, response.text
+
+
 def _building(client, tournament_id, track_ids, name="Rowland Hall"):
     return client.post(
         f"/tournaments/{tournament_id}/buildings/",
@@ -90,30 +106,34 @@ def test_zone_names_are_unique_per_track(client, db, td_user, td_tournament):
 
 
 def test_the_same_zone_name_is_fine_on_another_track(client, db, td_user, td_tournament):
-    """ "The north wing on Day 1" and the same corridor on Day 2 are separate
-    zones, staffed separately."""
     login(client, "td@test.com", "tdpass")
     day1 = _track(db, td_tournament)
-    day2 = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/",
-        json={"name": "Day 2"},
-    ).json()["id"]
+    day2 = _day(client, td_tournament.id)
     assert _zone(client, td_tournament.id, day1).status_code == 201
     assert _zone(client, td_tournament.id, day2).status_code == 201
 
 
-def test_rename_and_set_default_role(client, db, td_user, td_tournament):
+def test_a_zone_needs_a_competition_day(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    writing = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/",
+        json={"name": "Test Writing"},
+    ).json()["id"]
+    response = _zone(client, td_tournament.id, writing)
+    assert response.status_code == 422
+    assert "competition day" in response.json()["detail"]
+
+
+def test_rename_zone(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
-    runner = _role(client, td_tournament.id, "Runner")
     zone = _zone(client, td_tournament.id, track).json()
 
     body = client.patch(
         f"/tournaments/{td_tournament.id}/zones/{zone['id']}/",
-        json={"name": "North Wing", "default_role_id": runner},
+        json={"name": "North Wing"},
     ).json()
     assert body["name"] == "North Wing"
-    assert body["default_role_label"] == "Runner"
 
 
 def test_delete_zone(client, db, td_user, td_tournament):
@@ -327,10 +347,7 @@ def test_a_floor_rule_needs_a_floor(client, db, td_user, td_tournament):
 def test_a_building_not_on_this_track_is_rejected(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
-    other = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/",
-        json={"name": "Test Writing"},
-    ).json()["id"]
+    other = _day(client, td_tournament.id)
     building = _building(client, td_tournament.id, [other])
 
     response = _zone(
@@ -364,6 +381,68 @@ def test_an_event_not_on_this_track_is_rejected(client, db, td_user, td_tourname
     )
     assert response.status_code == 422
     assert "does not run on this track" in response.json()["detail"]
+
+
+def test_a_room_rule_fills_in_its_building_and_claims_its_events(
+    client, db, td_user, td_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [track])
+    anatomy = _event(client, td_tournament.id, track, "Anatomy", building["id"])
+    _event(client, td_tournament.id, track, "Chemistry", building["id"])
+    room = anatomy["track_details"][0]["room_ids"][0]
+
+    body = _zone(
+        client,
+        td_tournament.id,
+        track,
+        members=[{"kind": "room", "room_id": room}],
+    ).json()
+
+    assert body["members"][0]["building_id"] == building["id"]
+    assert body["members"][0]["room_name"] == "Anatomy"
+    assert body["event_ids"] == [anatomy["id"]]
+
+
+def test_an_unknown_room_is_rejected(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    response = _zone(
+        client,
+        td_tournament.id,
+        track,
+        members=[{"kind": "room", "room_id": 999999}],
+    )
+    assert response.status_code == 422
+    assert "not found" in response.json()["detail"]
+
+
+def test_a_room_in_a_building_not_on_this_track_is_rejected(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [_day(client, td_tournament.id)])
+    room = _room(client, td_tournament.id, building["id"], "210")
+
+    response = _zone(
+        client,
+        td_tournament.id,
+        track,
+        members=[{"kind": "room", "room_id": room}],
+    )
+    assert response.status_code == 422
+    assert "not available on this track" in response.json()["detail"]
+
+
+def test_two_zones_cannot_claim_the_same_room(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [track])
+    room = _room(client, td_tournament.id, building["id"], "210")
+    rule = [{"kind": "room", "room_id": room}]
+
+    assert _zone(client, td_tournament.id, track, "North", members=rule).status_code == 201
+    assert _zone(client, td_tournament.id, track, "South", members=rule).status_code == 409
 
 
 def test_repeating_a_rule_in_one_payload_is_rejected(client, db, td_user, td_tournament):
@@ -459,19 +538,24 @@ def test_omitting_members_on_patch_leaves_them_alone(client, db, td_user, td_tou
 # ---------------------------------------------------------------------------
 
 
-def test_assigning_a_member_uses_the_zones_default_role(
+def test_assigning_a_member_uses_the_tracks_zone_role(
     client,
     db,
     td_user,
     other_user,
     td_tournament,
 ):
-    """What a drag sends: the TD picked the role once, when they made the
-    zone."""
+    """Not the track's default_role_id, which is for placing someone on the
+    track itself."""
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
     runner = _role(client, td_tournament.id, "Runner")
-    zone = _zone(client, td_tournament.id, track, default_role_id=runner).json()
+    client.patch(
+        f"/tournaments/{td_tournament.id}/tracks/{track}/",
+        json={"default_role_id": _role(client, td_tournament.id, "Volunteer")},
+    )
+    _set_zone_role(client, td_tournament.id, track, runner)
+    zone = _zone(client, td_tournament.id, track).json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
 
     response = client.post(
@@ -500,7 +584,8 @@ def test_assigning_grants_a_role_the_member_lacks(
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
     runner = _role(client, td_tournament.id, "Runner")
-    zone = _zone(client, td_tournament.id, track, default_role_id=runner).json()
+    _set_zone_role(client, td_tournament.id, track, runner)
+    zone = _zone(client, td_tournament.id, track).json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
 
     client.post(
@@ -520,7 +605,7 @@ def test_assigning_grants_a_role_the_member_lacks(
     assert runner in held
 
 
-def test_a_zone_with_no_default_role_needs_one_named(
+def test_a_day_with_no_zone_role_needs_one_named(
     client,
     db,
     td_user,
@@ -531,16 +616,17 @@ def test_a_zone_with_no_default_role_needs_one_named(
     track = _track(db, td_tournament)
     zone = _zone(client, td_tournament.id, track).json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    url = f"/tournaments/{td_tournament.id}/zone-assignments/"
+    body = {"zone_id": zone["id"], "membership_id": membership.id}
 
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/zone-assignments/",
-        json={
-            "zone_id": zone["id"],
-            "membership_id": membership.id,
-        },
-    )
+    response = client.post(url, json=body)
     assert response.status_code == 422
-    assert "no default role" in response.json()["detail"]
+    assert "no zone role" in response.json()["detail"]
+
+    runner = _role(client, td_tournament.id, "Runner")
+    response = client.post(url, json={**body, "role_id": runner})
+    assert response.status_code == 201
+    assert response.json()["role"]["label"] == "Runner"
 
 
 def test_the_same_member_and_role_cannot_be_added_twice(
@@ -552,8 +638,8 @@ def test_the_same_member_and_role_cannot_be_added_twice(
 ):
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
-    runner = _role(client, td_tournament.id, "Runner")
-    zone = _zone(client, td_tournament.id, track, default_role_id=runner).json()
+    _set_zone_role(client, td_tournament.id, track, _role(client, td_tournament.id, "Runner"))
+    zone = _zone(client, td_tournament.id, track).json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     body = {"zone_id": zone["id"], "membership_id": membership.id}
 
@@ -576,13 +662,12 @@ def test_the_same_member_and_role_cannot_be_added_twice(
 def test_zone_assignments_filter_by_track(client, db, td_user, other_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     day1 = _track(db, td_tournament)
-    day2 = client.post(
-        f"/tournaments/{td_tournament.id}/tracks/",
-        json={"name": "Day 2"},
-    ).json()["id"]
+    day2 = _day(client, td_tournament.id)
     runner = _role(client, td_tournament.id, "Runner")
-    zone1 = _zone(client, td_tournament.id, day1, "North", default_role_id=runner).json()
-    zone2 = _zone(client, td_tournament.id, day2, "North", default_role_id=runner).json()
+    for day in (day1, day2):
+        _set_zone_role(client, td_tournament.id, day, runner)
+    zone1 = _zone(client, td_tournament.id, day1, "North").json()
+    zone2 = _zone(client, td_tournament.id, day2, "North").json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
 
     for zone in (zone1, zone2):
@@ -608,8 +693,8 @@ def test_deleting_a_zone_removes_its_assignments(
 ):
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
-    runner = _role(client, td_tournament.id, "Runner")
-    zone = _zone(client, td_tournament.id, track, default_role_id=runner).json()
+    _set_zone_role(client, td_tournament.id, track, _role(client, td_tournament.id, "Runner"))
+    zone = _zone(client, td_tournament.id, track).json()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     client.post(
         f"/tournaments/{td_tournament.id}/zone-assignments/",

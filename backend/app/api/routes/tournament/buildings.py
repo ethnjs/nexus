@@ -41,14 +41,8 @@ def _name_taken(
 
 
 def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> list[TournamentTrack]:
-    """The track rows for `track_ids`, or 422 naming the ones that don't
-    resolve.
-
-    A pending-delete track is rejected rather than silently dropped: tagging a
-    building onto a track a TD is trying to remove is a mistake worth saying
-    out loud, and the tag would be one more reference keeping that track
-    alive.
-    """
+    """The track rows for `track_ids`, or 422 naming any that are unknown,
+    pending deletion or not a competition day."""
     if not track_ids:
         return []
 
@@ -75,6 +69,16 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Track(s) pending deletion cannot be tagged: {', '.join(str(i) for i in archived)}"
+            ),
+        )
+
+    not_days = sorted(track.id for track in rows if not track.is_primary)
+    if not_days:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"Buildings can only be on competition days, not track(s): "
+                f"{', '.join(str(i) for i in not_days)}"
             ),
         )
     return rows

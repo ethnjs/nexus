@@ -26,6 +26,14 @@ def _cosmetic_track(client, tournament_id, name="Test Writing"):
     ).json()
 
 
+def _day(client, tournament_id, name="Day 2"):
+    """Another competition day."""
+    return client.post(
+        f"/tournaments/{tournament_id}/tracks/",
+        json={"name": name, "is_primary": True, "division": ["C"]},
+    ).json()
+
+
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
@@ -138,15 +146,30 @@ def test_track_ids_are_whole_set(client, db, td_user, td_tournament):
     contract an event's shift_ids already has."""
     login(client, "td@test.com", "tdpass")
     primary = primary_track_id(db, td_tournament.id)
-    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
-    building = _make_building(client, td_tournament.id, track_ids=[primary, cosmetic]).json()
-    assert building["track_ids"] == sorted([primary, cosmetic])
+    day2 = _day(client, td_tournament.id)["id"]
+    building = _make_building(client, td_tournament.id, track_ids=[primary, day2]).json()
+    assert building["track_ids"] == sorted([primary, day2])
 
     response = client.patch(
         f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
-        json={"track_ids": [cosmetic]},
+        json={"track_ids": [day2]},
     )
-    assert response.json()["track_ids"] == [cosmetic]
+    assert response.json()["track_ids"] == [day2]
+
+
+def test_a_building_can_only_be_tagged_on_competition_days(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    response = _make_building(client, td_tournament.id, track_ids=[cosmetic])
+    assert response.status_code == 422
+    assert "competition days" in response.json()["detail"]
+
+    building = _make_building(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"track_ids": [*building["track_ids"], cosmetic]},
+    )
+    assert response.status_code == 422
 
 
 def test_a_building_must_be_on_at_least_one_track(client, db, td_user, td_tournament):
@@ -356,15 +379,15 @@ def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tourn
     """Unlike a delete, untagging is not a request to unplace events."""
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
-    building = _make_building(client, td_tournament.id, track_ids=[track_id, cosmetic]).json()
+    day2 = _day(client, td_tournament.id)["id"]
+    building = _make_building(client, td_tournament.id, track_ids=[track_id, day2]).json()
     event = _make_event(client, td_tournament.id, [track_id])
     _place(db, event["id"], track_id, building["id"])
 
     # Keep only the other track, dropping the one the event is placed on.
     response = client.patch(
         f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
-        json={"track_ids": [cosmetic]},
+        json={"track_ids": [day2]},
     )
     assert response.status_code == 409
     assert "move those events first" in response.json()["detail"]
@@ -374,11 +397,11 @@ def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tourn
 def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     track_id = primary_track_id(db, td_tournament.id)
-    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    day2 = _day(client, td_tournament.id)["id"]
     building = _make_building(
         client,
         td_tournament.id,
-        track_ids=[track_id, cosmetic],
+        track_ids=[track_id, day2],
     ).json()
     event = _make_event(client, td_tournament.id, [track_id])
     _place(db, event["id"], track_id, building["id"])

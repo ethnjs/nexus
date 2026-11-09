@@ -968,7 +968,7 @@ def test_one_event_holds_a_different_room_on_each_track(client, db, td_user, td_
     day1 = primary_track_id(db, td_tournament.id)
     day2 = client.post(
         f"/tournaments/{td_tournament.id}/tracks/",
-        json={"name": "Day 2"},
+        json={"name": "Day 2", "is_primary": True, "division": ["C"]},
     ).json()["id"]
     rowland = _building(client, td_tournament.id, [day1])
     steinhaus = _building(client, td_tournament.id, [day2], name="Steinhaus")
@@ -1150,7 +1150,7 @@ def test_a_building_not_on_that_track_is_rejected_with_a_useful_message(
     day1 = primary_track_id(db, td_tournament.id)
     other = client.post(
         f"/tournaments/{td_tournament.id}/tracks/",
-        json={"name": "Test Writing"},
+        json={"name": "Day 2", "is_primary": True, "division": ["C"]},
     ).json()["id"]
     building = _building(client, td_tournament.id, [other])
     rooms = _rooms(client, td_tournament.id, building, "210")

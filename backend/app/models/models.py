@@ -1280,6 +1280,11 @@ class TournamentTrack(Base):
     default_role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
     )
+    # The role a zone assignment grants when none is named. Separate from
+    # default_role_id, which is for placing someone on the track itself.
+    zone_default_role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -1287,7 +1292,12 @@ class TournamentTrack(Base):
 
     tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="tracks")
     university: Mapped["University | None"] = relationship("University", back_populates="tracks")
-    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
+    default_role: Mapped["TournamentRole | None"] = relationship(
+        "TournamentRole", foreign_keys=[default_role_id]
+    )
+    zone_default_role: Mapped["TournamentRole | None"] = relationship(
+        "TournamentRole", foreign_keys=[zone_default_role_id]
+    )
     shifts: Mapped[list["TournamentShift"]] = relationship(
         "TournamentShift", back_populates="track", cascade="all, delete-orphan"
     )
@@ -1597,8 +1607,9 @@ class TournamentEventStaffingNeed(Base):
 # TournamentZone — a named area of one track that members can be staffed to.
 #
 # Built for runners, who cover a wing of a venue rather than an event. Scoped
-# to a track because "the north wing on Day 1" and "the north wing on Day 2"
-# are staffed separately even when they describe the same corridor.
+# to one competition-day track: "the north wing" on Day 1 and on Day 2 are
+# staffed separately. A zone assignment with no role named takes the track's
+# zone_default_role_id.
 #
 # A zone carries no shifts and no staffing targets: a zone assignment covers
 # the track's whole day, and how many runners an area wants is a judgement
@@ -1620,21 +1631,12 @@ class TournamentZone(Base):
     track_id: Mapped[int] = mapped_column(Integer, index=True)
     name: Mapped[str] = mapped_column(String(255))
 
-    # The role a drag onto this zone grants, distinct from the track's
-    # default: a competition day defaults to a general volunteer role, while
-    # a zone on that same day almost always wants Runner. SET NULL rather
-    # than a blocking FK, matching TournamentTrack.default_role_id.
-    default_role_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
-    )
-
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
     track: Mapped["TournamentTrack"] = relationship("TournamentTrack")
-    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
     members: Mapped[list["TournamentZoneMember"]] = relationship(
         "TournamentZoneMember",
         back_populates="zone",
@@ -1667,38 +1669,35 @@ class TournamentZone(Base):
 # ---------------------------------------------------------------------------
 # TournamentZoneMember — one rule saying what a zone contains.
 #
-# A zone is *not* a stored list of events. It holds rules — a whole building,
-# or one floor of one — plus events added by hand, and its event list is
-# computed on read (see core/tournament/zones.py). That is what makes moving
-# an event to a building in another zone move it between zones with no edit
-# to either: the rules still describe the space, and the space is where the
-# event now is.
-#
-# Three kinds, and the shape check below is what keeps each honest:
+# A zone stores rules, not events; its event list is resolved on read (see
+# core/tournament/zones.py), so an event that moves rooms moves zones with no
+# edit to either zone.
 #
 #   building   every room of a building
 #   floor      one (building, floor) pair
-#   event      one event, wherever it happens to be
+#   room       one room; building_id is copied from it
+#   event      one event, wherever it is
 #
-# An explicit `event` member outranks both rules, which is why no "exclude"
-# kind exists: pulling one event out of a building-wide zone means adding it
-# to the zone it should be in instead. The cost, accepted when this was
-# designed: an event inside a rule'd building cannot be made zone-less.
+# Precedence is event > room > floor > building, which is why there is no
+# "exclude" kind: an event inside a rule'd building cannot be made zone-less.
 # ---------------------------------------------------------------------------
 class TournamentZoneMember(Base):
     __tablename__ = "tournament_zone_members"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     zone_id: Mapped[int] = mapped_column(Integer, index=True)
-    # Copied from the zone so the three partial unique indexes below can be
-    # expressed at all — they are what makes "one zone per event per track" a
-    # database guarantee rather than a route check two writers can race past.
+    # Copied from the zone so the partial unique indexes below can exist.
     track_id: Mapped[int] = mapped_column(Integer, index=True)
 
-    kind: Mapped[str] = mapped_column(String(16))  # building | floor | event
+    kind: Mapped[str] = mapped_column(String(16))  # building | floor | room | event
 
+    # Set on a room rule too, so untagging the building from the track
+    # cascades the rule away through fk_zone_member_building.
     building_id: Mapped[int | None] = mapped_column(Integer, index=True)
     floor: Mapped[str | None] = mapped_column(String(64))
+    room_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_rooms.id", ondelete="CASCADE"), index=True
+    )
     tournament_event_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1710,6 +1709,7 @@ class TournamentZoneMember(Base):
         foreign_keys="TournamentZoneMember.building_id",
         viewonly=True,
     )
+    room: Mapped["TournamentRoom | None"] = relationship("TournamentRoom", viewonly=True)
     tournament_event: Mapped["TournamentEvent | None"] = relationship(
         "TournamentEvent",
         primaryjoin="TournamentZoneMember.tournament_event_id == TournamentEvent.id",
@@ -1724,11 +1724,8 @@ class TournamentZoneMember(Base):
             name="fk_zone_member_zone",
             ondelete="CASCADE",
         ),
-        # A building rule names a building available on this track; an event
-        # rule names an event that runs on it. Both CASCADE: untagging the
-        # building or taking the event off the track removes a rule that has
-        # stopped describing anything. Unlike an event's own location, a rule
-        # is not something a TD typed in and would mourn.
+        # Untagging the building or taking the event off the track removes
+        # the rules that named it.
         ForeignKeyConstraint(
             ["building_id", "track_id"],
             ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
@@ -1743,16 +1740,17 @@ class TournamentZoneMember(Base):
         ),
         CheckConstraint(
             "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
-            "  AND tournament_event_id IS NULL) OR "
+            "  AND room_id IS NULL AND tournament_event_id IS NULL) OR "
             "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
-            "  AND tournament_event_id IS NULL) OR "
+            "  AND room_id IS NULL AND tournament_event_id IS NULL) OR "
+            "(kind = 'room' AND building_id IS NOT NULL AND room_id IS NOT NULL "
+            "  AND floor IS NULL AND tournament_event_id IS NULL) OR "
             "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
-            "  AND floor IS NULL)",
+            "  AND floor IS NULL AND room_id IS NULL)",
             name="ck_zone_member_shape",
         ),
-        # One zone per thing per track — the constraint the whole precedence
-        # rule rests on. Partial, because each kind uses different columns and
-        # a NULL in a plain unique index would let duplicates through.
+        # One zone per thing per track; partial because each kind keys on
+        # different columns.
         Index(
             "uq_zone_member_building",
             "track_id",
@@ -1767,6 +1765,13 @@ class TournamentZoneMember(Base):
             "floor",
             unique=True,
             postgresql_where=text("kind = 'floor'"),
+        ),
+        Index(
+            "uq_zone_member_room",
+            "track_id",
+            "room_id",
+            unique=True,
+            postgresql_where=text("kind = 'room'"),
         ),
         Index(
             "uq_zone_member_event",

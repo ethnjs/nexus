@@ -1,60 +1,40 @@
 """Working out which zone each event falls in.
 
-A zone does not store its events. It stores rules — a whole building, or one
-floor of one — plus events added by hand, and the event list is derived from
-those every time it is read. This module is that derivation.
+A zone stores rules (a building, a floor, a room) plus events added by hand,
+and its event list is derived from them on every read, so an event that moves
+rooms moves zones with no edit to either zone.
 
-Deriving rather than storing is the whole point. Move an event from Rowland to
-Steinhaus and it leaves the zone covering Rowland and joins the one covering
-Steinhaus, with no edit to either zone: the rules still describe the space, and
-the space is where the event now is. A materialised list would have gone stale
-the moment the event moved, and nothing would have said so.
-
-Precedence, most specific first:
-
-    event   an explicit member for this event
-    floor   a member matching its (building, floor)
-    building a member matching its building
-    -       otherwise it is unzoned
-
-`event` outranking the rules is also what removes the need for an "exclude"
-kind: pulling one event out of a building-wide zone means naming it in the
-zone it belongs to instead. An event inside a rule'd building therefore cannot
-be made zone-*less* — the accepted cost of not having excludes.
-
-Ambiguity is impossible rather than merely unlikely: the three partial unique
-indexes on tournament_zone_members mean at most one zone per track can claim a
-given building, floor, or event, so each lookup below has at most one answer.
+Precedence, most specific first: event, room, floor, building. The partial
+unique indexes on tournament_zone_members allow at most one zone per track to
+claim a given building, floor, room or event, so each lookup has at most one
+answer.
 """
 
 from __future__ import annotations
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.rooms import room_sort_key
 from app.models.models import TournamentEventTrack, TournamentZone, TournamentZoneMember
 
 KIND_BUILDING = "building"
 KIND_FLOOR = "floor"
+KIND_ROOM = "room"
 KIND_EVENT = "event"
 
-VALID_KINDS = frozenset({KIND_BUILDING, KIND_FLOOR, KIND_EVENT})
+VALID_KINDS = frozenset({KIND_BUILDING, KIND_FLOOR, KIND_ROOM, KIND_EVENT})
 
 
 def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     """`{event_id: zone_id or None}` for every event running on `track_id`.
 
-    One query for the rules and one for the events, then the matching happens
-    in memory — the alternative is a correlated lookup per event, and a track
-    has few enough zones that the whole rule set is smaller than one page of
-    results.
-
-    An event with no building can only be matched by an explicit `event`
-    member; the rules have nothing to compare against. Those are the rows the
-    zones page shows as unplaced rather than merely unzoned.
+    An event in several rooms takes the zone of its first ruled room in
+    natural order, the same room its effective floor comes from.
     """
     members = db.query(TournamentZoneMember).filter(TournamentZoneMember.track_id == track_id).all()
 
     by_event = {m.tournament_event_id: m.zone_id for m in members if m.kind == KIND_EVENT}
+    by_room = {m.room_id: m.zone_id for m in members if m.kind == KIND_ROOM}
     by_floor = {(m.building_id, m.floor): m.zone_id for m in members if m.kind == KIND_FLOOR}
     by_building = {m.building_id: m.zone_id for m in members if m.kind == KIND_BUILDING}
 
@@ -68,7 +48,10 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     resolved: dict[int, int | None] = {}
     for link in links:
         zone_id = by_event.get(link.tournament_event_id)
-        building_id = link.rooms[0].building_id if link.rooms else None
+        rooms = sorted(link.rooms, key=lambda room: room_sort_key(room.name))
+        if zone_id is None:
+            zone_id = next((by_room[r.id] for r in rooms if r.id in by_room), None)
+        building_id = rooms[0].building_id if rooms else None
         if zone_id is None and building_id is not None:
             floor = link.effective_floor
             if floor is not None:
@@ -80,11 +63,7 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
 
 
 def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
-    """The same answer the other way round: `{zone_id: [event_id, ...]}`.
-
-    Zones with nothing in them are present at zero rather than absent — a zone
-    a TD built and has not filled is exactly the thing they need to see.
-    """
+    """`{zone_id: [event_id, ...]}`, with empty zones present as empty lists."""
     zone_ids = [
         row_id
         for (row_id,) in db.query(TournamentZone.id).filter(
@@ -102,12 +81,7 @@ def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
 
 
 def unzoned_event_ids(db: Session, track_id: int) -> list[int]:
-    """Events on this track that no zone claims.
-
-    Surfaced rather than ignored: an uncovered event is the failure mode the
-    zones page exists to catch, so it gets a bucket and a count in the header
-    instead of quietly not appearing anywhere.
-    """
+    """Events on this track that no zone claims."""
     return sorted(
         event_id
         for event_id, zone_id in resolve_track_zones(db, track_id).items()
@@ -116,15 +90,8 @@ def unzoned_event_ids(db: Session, track_id: int) -> list[int]:
 
 
 def unplaced_event_ids(db: Session, track_id: int) -> list[int]:
-    """Events on this track with no room at all.
-
-    Overlaps unzoned_event_ids without containing or being contained by it:
-    an unplaced event is usually unzoned too, but an explicit `event` member
-    zones one regardless of where it is. Worth reporting separately because
-    the fix differs — an unzoned event wants a rule that covers it, an
-    unplaced one wants a location — and one combined bucket would send a TD
-    to the wrong page.
-    """
+    """Events on this track with no room at all. Not a subset of
+    unzoned_event_ids: an explicit event rule zones an unplaced event."""
     return sorted(
         link.tournament_event_id
         for link in db.query(TournamentEventTrack).filter(
@@ -135,7 +102,6 @@ def unplaced_event_ids(db: Session, track_id: int) -> list[int]:
 
 
 def zone_for_event(db: Session, track_id: int, event_id: int) -> int | None:
-    """One event's zone on one track. Convenience over resolve_track_zones for
-    callers holding a single event; not cheaper, so prefer the bulk form in a
-    loop."""
+    """One event's zone on one track. Not cheaper than resolve_track_zones,
+    so prefer that in a loop."""
     return resolve_track_zones(db, track_id).get(event_id)
