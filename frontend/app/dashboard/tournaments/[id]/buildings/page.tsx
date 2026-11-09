@@ -6,6 +6,7 @@ import { DockedPanel } from "@/components/layout/DockedPanel";
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { AddBuildingModal } from "@/components/tournament/buildings/AddBuildingModal";
 import { BuildingSection } from "@/components/tournament/buildings/BuildingSection";
+import { BuildingsImportModal } from "@/components/tournament/buildings/BuildingsImportModal";
 import { EventCardDisplayModal } from "@/components/tournament/buildings/EventCardDisplayModal";
 import { EventChip, parseRoomChipDragId } from "@/components/tournament/buildings/EventChip";
 import {
@@ -17,7 +18,6 @@ import {
   EventListDropZone,
   parseEventDragId,
 } from "@/components/tournament/buildings/EventListCard";
-import { ImportRoomsModal } from "@/components/tournament/buildings/ImportRoomsModal";
 import { RoomEventsCell } from "@/components/tournament/buildings/RoomEventsCell";
 import {
   parseNewRoomDropId,
@@ -947,19 +947,22 @@ export default function BuildingsPage() {
         />
       )}
 
-      {importing && (
-        <ImportRoomsModal
+      {importing && activeTrack && (
+        <BuildingsImportModal
           tournamentId={tournamentId}
+          track={activeTrack}
           trackIds={days.map((t) => t.id)}
           buildings={buildings ?? []}
+          events={dayEvents}
           onClose={() => setImporting(false)}
-          onImported={(imported) =>
+          onImported={(imported, assigned) => {
             setBuildings((cur) => {
               const kept = (cur ?? []).map((b) => imported.find((i) => i.id === b.id) ?? b);
               const added = imported.filter((i) => !kept.some((b) => b.id === i.id));
               return [...kept, ...added];
-            })
-          }
+            });
+            for (const event of assigned) replaceEvent(event);
+          }}
         />
       )}
 
