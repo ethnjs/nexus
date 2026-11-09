@@ -279,6 +279,8 @@ const MemberRow = memo(function MemberRow({
           locked={locked}
           lockedReason={lockedReason}
           readOnly={rolesReadOnly || panelOpen}
+          emptyLabel="None"
+          addButtonOnHover
           onUpdated={onUpdated}
         />
       </div>

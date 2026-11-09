@@ -4,6 +4,7 @@ import { EventChip, type EventChipFlag } from "@/components/tournament/buildings
 import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
+import table from "@/components/ui/Table.module.css";
 import type { TournamentEvent } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 
@@ -32,6 +33,17 @@ export function RoomEventsCell({
 }: RoomEventsCellProps) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+      {events.length === 0 && (
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
+          None
+        </span>
+      )}
       {events.map((event) => (
         <EventChip
           key={event.id}
@@ -44,39 +56,42 @@ export function RoomEventsCell({
         />
       ))}
       {!locked && (
-        <Popover
-          trigger={
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              iconOnly
-              title="Add event"
-              data-add-event
-              style={{ flexShrink: 0 }}
-            >
-              <IconPlus size={12} />
-            </Button>
-          }
-          items={candidates}
-          getKey={({ event }) => event.id}
-          renderLabel={({ event, location }) => (
-            <span style={{ display: "flex", flexDirection: "column" }}>
-              <span>{eventNameWithDivision(event)}</span>
-              {location && (
-                <span style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-                  {location}
-                </span>
-              )}
-            </span>
-          )}
-          searchable
-          getSearchText={({ event }) => eventNameWithDivision(event)}
-          onSelect={({ event }) => onAdd(event)}
-          emptyMessage="No other events on this day"
-          align="left"
-          width={220}
-        />
+        <span className={table.revealOnHover}>
+          <Popover
+            trigger={
+              // Same as the roster's Roles cell add button.
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                iconOnly
+                title="Add event"
+                data-add-event
+                style={{ padding: 0, flexShrink: 0 }}
+              >
+                <IconPlus size={14} />
+              </Button>
+            }
+            items={candidates}
+            getKey={({ event }) => event.id}
+            renderLabel={({ event, location }) => (
+              <span style={{ display: "flex", flexDirection: "column" }}>
+                <span>{eventNameWithDivision(event)}</span>
+                {location && (
+                  <span style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+                    {location}
+                  </span>
+                )}
+              </span>
+            )}
+            searchable
+            getSearchText={({ event }) => eventNameWithDivision(event)}
+            onSelect={({ event }) => onAdd(event)}
+            emptyMessage="No other events on this day"
+            align="left"
+            width={220}
+          />
+        </span>
       )}
     </div>
   );

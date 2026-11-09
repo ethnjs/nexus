@@ -1064,34 +1064,49 @@ function RelatedCell({
   return (
     <SelectLock lockReason={lockReason}>
       <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px" }}>
+        {event.related_events.length === 0 && (
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            None
+          </span>
+        )}
         {event.related_events.map((r) => (
           <Badge key={r.id} variant="default">
             {r.name}
           </Badge>
         ))}
-        <Popover
-          trigger={
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              iconOnly
-              title={`Relate ${event.name} to other events`}
-            >
-              <IconPlus size={12} />
-            </Button>
-          }
-          items={items}
-          getKey={(r) => r.id}
-          renderLabel={(r) => r.name}
-          checklist
-          isSelected={(r) => relatedIds.has(r.id)}
-          onSelect={(r) => onChange(event, r, !relatedIds.has(r.id))}
-          searchable
-          getSearchText={(r) => r.name}
-          width={260}
-          align="left"
-        />
+        <span className={table.revealOnHover}>
+          <Popover
+            trigger={
+              // Same as the roster's Roles cell add button.
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                iconOnly
+                title={`Relate ${event.name} to other events`}
+                style={{ padding: 0, flexShrink: 0 }}
+              >
+                <IconPlus size={14} />
+              </Button>
+            }
+            items={items}
+            getKey={(r) => r.id}
+            renderLabel={(r) => r.name}
+            checklist
+            isSelected={(r) => relatedIds.has(r.id)}
+            onSelect={(r) => onChange(event, r, !relatedIds.has(r.id))}
+            searchable
+            getSearchText={(r) => r.name}
+            width={260}
+            align="left"
+          />
+        </span>
       </span>
     </SelectLock>
   );

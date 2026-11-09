@@ -913,6 +913,7 @@ export function StaffingCell({
         {editor.editing ? (
           <ChipInput
             value={needs.map((n) => n.role_label)}
+            emptyLabel="No staffing"
             // Only removal reaches here (disableInput): keep the needs whose chip is left.
             onChange={(labels) =>
               void save(

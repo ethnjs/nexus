@@ -431,7 +431,8 @@ function PairedChipBody({
       size="sm"
       disableInput
       fullWidth
-      placeholder="Any"
+      emptyLabel="None"
+      addButtonOnHover
       renderChipTrailing={(label) => {
         const group = groupByLabel.get(label);
         // A free-text lunch question has no options, but answered/not

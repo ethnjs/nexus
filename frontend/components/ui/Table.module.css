@@ -147,3 +147,29 @@
 .scroll::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * A control that shows only while its row (or, outside a table, its
+ * .revealHost) is hovered, e.g. a chip cell's add button. It stays visible
+ * while focused (Tab reaches it at opacity 0) and while its popover is open,
+ * since that panel renders inside it and would fade out with it. Touch
+ * screens have no hover, so it always shows.
+ */
+.revealOnHover {
+  display: flex;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.row:hover .revealOnHover,
+.revealHost:hover .revealOnHover,
+.revealOnHover:focus-within,
+.revealOnHover:has([data-popover-panel]) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .revealOnHover {
+    opacity: 1;
+  }
+}

@@ -268,7 +268,8 @@ function ChipFilterBody({ title, options, selected, onChange, searchable }: Filt
       size="sm"
       disableInput
       fullWidth
-      placeholder="Any"
+      emptyLabel="None"
+      addButtonOnHover
       addButton={
         <ChecklistPopover
           trigger={
