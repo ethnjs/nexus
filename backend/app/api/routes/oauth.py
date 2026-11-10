@@ -6,7 +6,7 @@ import asyncio
 import secrets
 
 from authlib.integrations.base_client import OAuthError
-from fastapi import APIRouter, Cookie, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -36,7 +36,7 @@ from app.core.profile_status import is_onboarding_complete
 from app.db.session import get_db
 from app.models.models import OAuthIdentity, OAuthProvider
 from app.services.discord import oauth as discord_oauth
-from app.services.email_service import send_identity_linked_notice
+from app.services.email_service import send_identity_linked_notice, send_in_background
 
 router = APIRouter(tags=["auth"])
 
@@ -92,6 +92,7 @@ async def google_start(
 @router.get("/auth/oauth/google/callback/")
 async def google_callback(
     request: Request,
+    background_tasks: BackgroundTasks,
     access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
@@ -114,7 +115,7 @@ async def google_callback(
     if intent == "link":
         path, notice = await asyncio.to_thread(_link_google, db, access_token, link_user_id, claims)
         if notice is not None:
-            await send_identity_linked_notice(*notice)
+            send_in_background(background_tasks, send_identity_linked_notice, notice[0], notice[1])
         return _bounce(request, path)
 
     path, raw_token = await asyncio.to_thread(
