@@ -155,7 +155,7 @@ def resolve_google_login(db: Session, claims: dict) -> tuple[User, bool]:
         first_name=_name(claims.get("given_name")),
         last_name=_name(claims.get("family_name")),
         hashed_password=None,
-        email_verified=True,
+        email_verified=False,
         role="user",
         status="active",
     )
