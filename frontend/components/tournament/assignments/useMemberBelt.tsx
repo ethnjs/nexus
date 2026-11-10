@@ -73,6 +73,8 @@ interface MemberBeltOptions {
   tracks: TournamentTrack[];
   /** The track tab showing; null is All. */
   activeTrackId: number | null;
+  /** Whether a tab with nothing saved starts filtered to its track. Off, it starts unfiltered. */
+  filterToTab?: boolean;
   members: MembershipFull[];
   /** Changes whenever assignments are written, so the server-side filters re-run. */
   refetchKey: unknown;
@@ -91,6 +93,7 @@ export function useMemberBelt({
   surface: surfaceBase,
   tracks,
   activeTrackId,
+  filterToTab = true,
   members,
   refetchKey,
   roleCatalog,
@@ -118,8 +121,11 @@ export function useMemberBelt({
     [trackIds, activeTrackId],
   );
   const filterDefaults = useMemo(
-    () => defaultMemberFiltersForTab(trackIds, activeTrackId),
-    [trackIds, activeTrackId],
+    () =>
+      filterToTab
+        ? defaultMemberFiltersForTab(trackIds, activeTrackId)
+        : emptyFilterState(MEMBERS_FILTER_KEYS),
+    [filterToTab, trackIds, activeTrackId],
   );
   const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null);
 

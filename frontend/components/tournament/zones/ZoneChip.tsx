@@ -1,9 +1,12 @@
 "use client";
 
+import { useDraggable } from "@dnd-kit/core";
 import { type ReactNode, useState } from "react";
 import { IconX } from "@/components/ui/Icons";
 
 interface ZoneChipProps {
+  /** Drags the chip to another zone, or back to the side panel to remove it. */
+  dragId: string;
   label: string;
   /** Shown on hover over the chip. */
   title?: string;
@@ -16,12 +19,27 @@ interface ZoneChipProps {
 }
 
 /** A location or member in a zone. Styled like the buildings page's EventChip. */
-export function ZoneChip({ label, title, icon, trailing, locked, onRemove }: ZoneChipProps) {
+export function ZoneChip({
+  dragId,
+  label,
+  title,
+  icon,
+  trailing,
+  locked,
+  onRemove,
+}: ZoneChipProps) {
   const [removeHovered, setRemoveHovered] = useState(false);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: dragId,
+    disabled: locked,
+  });
 
   return (
     // Stops a click reaching the tag field, which would focus its search.
     <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       onClick={(e) => e.stopPropagation()}
       title={title ?? label}
       style={{
@@ -38,6 +56,9 @@ export function ZoneChip({ label, title, icon, trailing, locked, onRemove }: Zon
         fontSize: "12px",
         fontWeight: 500,
         color: "var(--color-text-primary)",
+        cursor: locked ? "default" : "grab",
+        opacity: isDragging ? 0.4 : 1,
+        outline: "none",
       }}
     >
       {icon}
@@ -48,6 +69,9 @@ export function ZoneChip({ label, title, icon, trailing, locked, onRemove }: Zon
       {!locked && (
         <button
           type="button"
+          tabIndex={-1}
+          // Keeps a press on the x from starting a drag.
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={onRemove}
           title="Remove from this zone"
           aria-label={`Remove ${label} from this zone`}

@@ -41,6 +41,8 @@ interface EventListCardProps {
   selected: boolean;
   locked: boolean;
   onOpen: (eventId: number) => void;
+  /** Beside the name, e.g. the zone the event is in. */
+  aside?: ReactNode;
 }
 
 const META_TEXT = {
@@ -59,6 +61,7 @@ export const EventListCard = memo(function EventListCard({
   selected,
   locked,
   onOpen,
+  aside,
 }: EventListCardProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: eventDragId(event.id),
@@ -90,15 +93,20 @@ export const EventListCard = memo(function EventListCard({
         borderColor={selected ? "var(--color-border-strong)" : undefined}
         style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "4px" }}
       >
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-            fontWeight: 500,
-            color: "var(--color-text-primary)",
-          }}
-        >
-          {eventNameWithDivision(event)}
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "var(--color-text-primary)",
+            }}
+          >
+            {eventNameWithDivision(event)}
+          </span>
+          {aside}
         </span>
         <span
           style={{

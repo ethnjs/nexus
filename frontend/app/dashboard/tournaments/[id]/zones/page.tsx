@@ -2,13 +2,25 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DockedPanel } from "@/components/layout/DockedPanel";
+import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
+import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
+import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
 import { TrackSummary } from "@/components/tournament/TrackSummary";
 import { AddZoneModal } from "@/components/tournament/zones/AddZoneModal";
 import { DayStatusDot } from "@/components/tournament/zones/DayStatusDot";
 import { ZoneCard } from "@/components/tournament/zones/ZoneCard";
 import { ZoneContentsTable } from "@/components/tournament/zones/ZoneContentsTable";
+import { ZoneLocationsList, ZonePanelDropZone } from "@/components/tournament/zones/ZonesSidePanel";
+import {
+  parseZoneDragId,
+  parseZoneDropId,
+  ruleFromKey,
+  ZONE_PANEL_DROP_ID,
+  zoneDragId,
+} from "@/components/tournament/zones/zoneDnd";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
@@ -18,6 +30,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IconLocation, IconLock, IconPlus } from "@/components/ui/Icons";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
+import { TabStrip } from "@/components/ui/TabStrip";
 import {
   ApiError,
   buildingsApi,
@@ -42,9 +55,11 @@ import {
   zonesApi,
 } from "@/lib/api";
 import { type AssignmentRole, roleSummary, sameRole } from "@/lib/assignments/lanes";
+import { ZONES_MEMBERS } from "@/lib/displayConfigSurfaces";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { trackDetail } from "@/lib/eventTrackDetails";
 import { personName, userName } from "@/lib/personDisplay";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -63,6 +78,8 @@ import {
 } from "@/lib/zones";
 
 const NO_ZONE_ROLE = "__none__";
+// The assignments board's belt width, so its member cards wrap the same way.
+const LIST_PANEL_WIDTH = 340;
 
 export default function ZonesPage() {
   const params = useParams();
@@ -171,7 +188,7 @@ export default function ZonesPage() {
   useEffect(() => {
     if (!canManageMembers) return;
     membersApi
-      .list(tournamentId, { fields: ["tracks"] })
+      .list(tournamentId)
       .then(setMembers)
       .catch(() => setMembers([]));
   }, [tournamentId, canManageMembers]);
@@ -308,6 +325,22 @@ export default function ZonesPage() {
     }
   }
 
+  /** Moves a member to another zone in the same roles. */
+  async function moveMember(from: Zone, to: Zone, membershipId: number) {
+    const rows = rowsFor(from.id, membershipId);
+    const there = rowsFor(to.id, membershipId);
+    try {
+      for (const row of rows) {
+        if (!there.some((r) => sameRole(r.role, row.role))) {
+          await addRole(to, membershipId, row.role);
+        }
+      }
+      for (const row of rows) await deleteRow(row.id);
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to move.", "error");
+    }
+  }
+
   async function toggleRole(zone: Zone, membershipId: number, role: AssignmentRole) {
     const row = rowsFor(zone.id, membershipId).find((r) => sameRole(r.role, role));
     try {
@@ -325,7 +358,10 @@ export default function ZonesPage() {
   const dayCoverage = coverage?.track_id === activeTrackId ? coverage : null;
   const zones = dayCoverage?.zones ?? [];
   const owners = useMemo(() => ruleOwners(dayCoverage?.zones ?? []), [dayCoverage]);
-  const dayAssignments = assignments.filter((a) => a.track_id === activeTrackId);
+  const dayAssignments = useMemo(
+    () => assignments.filter((a) => a.track_id === activeTrackId),
+    [assignments, activeTrackId],
+  );
 
   // ── the event panel ───────────────────────────────────────────────────
   const [focusedEventId, setFocusedEventId] = useState<number | null>(useInitialPanelId("event"));
@@ -357,57 +393,178 @@ export default function ZonesPage() {
       .sort((a, b) => eventNameWithDivision(a).localeCompare(eventNameWithDivision(b)));
   }, [dayCoverage, dayEvents, focusedEventId]);
 
+  // ── the side panel ────────────────────────────────────────────────────
+  const [sideTab, setSideTab] = useState<"locations" | "members">("locations");
+  const {
+    belt,
+    headerActions: beltHeaderActions,
+    renderList: renderBelt,
+    modals: beltModals,
+  } = useMemberBelt({
+    tournamentId,
+    enabled: canManageMembers,
+    surface: ZONES_MEMBERS,
+    tracks,
+    activeTrackId,
+    filterToTab: false,
+    members,
+    refetchKey: assignments,
+    roleCatalog: roles,
+  });
+
+  // One detail panel at a time beside the list: a member's or an event's.
+  const [focusedMemberId, setFocusedMemberId] = useState<number | null>(
+    useInitialPanelId("member"),
+  );
+  usePanelUrlSync("member", focusedMemberId);
+  const focusedMember =
+    focusedMemberId === null ? null : (membersById.get(focusedMemberId) ?? null);
+  const openMember = useCallback((id: number) => {
+    setFocusedEventId(null);
+    setFocusedMemberId(id);
+  }, []);
+  const openEvent = useCallback((id: number) => {
+    setFocusedMemberId(null);
+    setFocusedEventId(id);
+  }, []);
+  const { canTouchRole, canEditMember } = useMemberRoleLock();
+
   const { setPanel, clearPanel } = useSetLayoutPanel();
   useEffect(() => clearPanel, [clearPanel]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the panel's handlers are recreated each render
   useEffect(() => {
-    if (!focusedEvent) {
-      clearPanel();
-      return;
-    }
-    const index = panelList.findIndex((e) => e.id === focusedEvent.id);
+    if (!canManageEvents || !activeTrack) return;
+    const tab = canManageMembers ? sideTab : "locations";
+    const index = focusedEvent ? panelList.findIndex((e) => e.id === focusedEvent.id) : -1;
+    const memberIndex = focusedMember ? belt.findIndex((m) => m.id === focusedMember.id) : -1;
+    const detailWidth = focusedMember ? MEMBER_PANEL_WIDTH : focusedEvent ? EVENT_PANEL_WIDTH : 0;
     setPanel(
-      <EventPanel
-        key={focusedEvent.id}
-        tournamentId={tournamentId}
-        event={focusedEvent}
-        locked={isArchived}
-        canonicalEvents={canonicalEvents}
-        allShifts={allShifts}
-        tracks={tracks}
-        buildings={buildings}
-        roles={roles}
-        onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
-        onBuildingSaved={(building) =>
-          setBuildings((cur) =>
-            cur.some((b) => b.id === building.id)
-              ? cur.map((b) => (b.id === building.id ? building : b))
-              : [...cur, building],
-          )
-        }
-        onClose={() => setFocusedEventId(null)}
-        onSaved={(next) => {
-          setEvents((cur) => cur.map((e) => (e.id === next.id ? { ...e, ...next } : e)));
-          // A new location can move the event between zones.
-          void reloadCoverage().catch(() => {});
-        }}
-        onDeleted={(id) => {
-          setEvents((cur) => cur.filter((e) => e.id !== id));
-          setFocusedEventId(null);
-          void reloadCoverage().catch(() => {});
-        }}
-        onPrev={() => index > 0 && setFocusedEventId(panelList[index - 1].id)}
-        onNext={() =>
-          index >= 0 && index < panelList.length - 1 && setFocusedEventId(panelList[index + 1].id)
-        }
-        hasPrev={index > 0}
-        hasNext={index >= 0 && index < panelList.length - 1}
-      />,
-      EVENT_PANEL_WIDTH,
+      <div style={{ display: "flex", height: "100%" }}>
+        <DockedPanel
+          width={LIST_PANEL_WIDTH}
+          headerActions={tab === "members" ? beltHeaderActions : undefined}
+        >
+          <ZonePanelDropZone>
+            {canManageMembers && (
+              <div style={{ padding: "12px 12px 0" }}>
+                <TabStrip
+                  tabs={[
+                    { key: "locations", label: "Locations" },
+                    { key: "members", label: "Members" },
+                  ]}
+                  activeKey={tab}
+                  onChange={setSideTab}
+                />
+              </div>
+            )}
+            {tab === "members" ? (
+              renderBelt({ focusedId: focusedMemberId, allShifts, onOpen: openMember })
+            ) : (
+              <ZoneLocationsList
+                trackId={activeTrack.id}
+                buildings={dayBuildings}
+                events={dayEvents}
+                targets={targets}
+                zones={dayCoverage?.zones ?? []}
+                owners={owners}
+                focusedEventId={focusedEventId}
+                locked={isArchived}
+                onOpenEvent={openEvent}
+              />
+            )}
+          </ZonePanelDropZone>
+        </DockedPanel>
+        {focusedMember && (
+          <MemberPanel
+            key={focusedMember.id}
+            tournamentId={tournamentId}
+            membershipId={focusedMember.id}
+            allRoles={roles}
+            shifts={allShifts}
+            tracks={tracks}
+            canTouchRole={canTouchRole}
+            canEditMember={canEditMember}
+            collectIsOver18={!!selectedTournament?.collect_is_over_18}
+            collectIsOver21={!!selectedTournament?.collect_is_over_21}
+            isArchived={isArchived}
+            isSelf={currentUser?.id === focusedMember.user.id}
+            onClose={() => setFocusedMemberId(null)}
+            // Roles only: the roles PATCH returns none of the built groups.
+            onUpdated={(updated) =>
+              setMembers((cur) =>
+                cur.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)),
+              )
+            }
+            onAssignmentsChanged={() => {}}
+            onPrev={() => memberIndex > 0 && openMember(belt[memberIndex - 1].id)}
+            onNext={() =>
+              memberIndex >= 0 &&
+              memberIndex < belt.length - 1 &&
+              openMember(belt[memberIndex + 1].id)
+            }
+            hasPrev={memberIndex > 0}
+            hasNext={memberIndex >= 0 && memberIndex < belt.length - 1}
+          />
+        )}
+        {focusedEvent && !focusedMember && (
+          <EventPanel
+            key={focusedEvent.id}
+            tournamentId={tournamentId}
+            event={focusedEvent}
+            locked={isArchived}
+            canonicalEvents={canonicalEvents}
+            allShifts={allShifts}
+            tracks={tracks}
+            buildings={buildings}
+            roles={roles}
+            onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+            onBuildingSaved={(building) =>
+              setBuildings((cur) =>
+                cur.some((b) => b.id === building.id)
+                  ? cur.map((b) => (b.id === building.id ? building : b))
+                  : [...cur, building],
+              )
+            }
+            onClose={() => setFocusedEventId(null)}
+            onSaved={(next) => {
+              setEvents((cur) => cur.map((e) => (e.id === next.id ? { ...e, ...next } : e)));
+              // A new location can move the event between zones.
+              void reloadCoverage().catch(() => {});
+            }}
+            onDeleted={(id) => {
+              setEvents((cur) => cur.filter((e) => e.id !== id));
+              setFocusedEventId(null);
+              void reloadCoverage().catch(() => {});
+            }}
+            onPrev={() => index > 0 && openEvent(panelList[index - 1].id)}
+            onNext={() =>
+              index >= 0 && index < panelList.length - 1 && openEvent(panelList[index + 1].id)
+            }
+            hasPrev={index > 0}
+            hasNext={index >= 0 && index < panelList.length - 1}
+          />
+        )}
+      </div>,
+      LIST_PANEL_WIDTH + detailWidth,
     );
   }, [
+    canManageEvents,
+    canManageMembers,
+    activeTrack,
+    sideTab,
+    belt,
+    beltHeaderActions,
+    renderBelt,
+    dayBuildings,
+    dayEvents,
+    targets,
+    dayCoverage,
+    owners,
     focusedEvent,
+    focusedEventId,
+    focusedMember,
+    focusedMemberId,
     panelList,
     isArchived,
     canonicalEvents,
@@ -416,8 +573,71 @@ export default function ZonesPage() {
     buildings,
     roles,
     setPanel,
-    clearPanel,
   ]);
+
+  // ── drag and drop ────────────────────────────────────────────────────
+  // Onto a zone card: a location becomes a rule there (moved from any zone
+  // that had it), a member is added in the day's zone role, and a member chip
+  // moves with its roles. Onto the side panel: a chip leaves its zone.
+  useRegisterBoardDnd("zones", {
+    onDragEnd: ({ active, over }) => {
+      const drag = parseZoneDragId(String(active.id));
+      if (!drag || !over) return;
+      const overId = String(over.id);
+      const fromZone =
+        drag.kind === "rule-chip" || drag.kind === "member-chip"
+          ? zones.find((z) => z.id === drag.zoneId)
+          : undefined;
+
+      if (overId === ZONE_PANEL_DROP_ID) {
+        if (drag.kind === "rule-chip" && fromZone) void removeRule(fromZone, drag.ruleKey);
+        if (drag.kind === "member-chip" && fromZone) void removeMember(fromZone, drag.membershipId);
+        return;
+      }
+
+      const zone = zones.find((z) => z.id === parseZoneDropId(overId));
+      if (!zone || zone.id === fromZone?.id) return;
+      const fail = (err: unknown) =>
+        show(err instanceof ApiError ? err.message : "Failed to add.", "error");
+
+      if (drag.kind === "target" || drag.kind === "rule-chip") {
+        const rule = ruleFromKey(drag.ruleKey);
+        if (rule) addRule(zone, rule).catch(fail);
+      } else if (drag.kind === "member") {
+        const member = membersById.get(drag.membershipId);
+        if (member && rowsFor(zone.id, member.id).length === 0) addMember(zone, member).catch(fail);
+      } else if (fromZone) {
+        void moveMember(fromZone, zone, drag.membershipId);
+      }
+    },
+    renderOverlay: (activeId) => {
+      const drag = parseZoneDragId(activeId);
+      if (!drag) return null;
+      let label: string | undefined;
+      if (drag.kind === "target" || drag.kind === "rule-chip") {
+        label = targets.find((t) => ruleKey(t.rule) === drag.ruleKey)?.label;
+      } else {
+        const member = membersById.get(drag.membershipId);
+        label = member ? userName(member.user) : undefined;
+      }
+      if (!label) return null;
+      return (
+        <div
+          style={{
+            padding: "4px 10px",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border-strong)",
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </div>
+      );
+    },
+  });
 
   if (membershipLoading) {
     return (
@@ -552,7 +772,7 @@ export default function ZonesPage() {
           />
         </Card>
       ) : (
-        <MasonryGrid minColumnWidth={360} gap={16}>
+        <MasonryGrid minColumnWidth={360} maxColumns={2} gap={16}>
           {zones.map((zone) => {
             const own = new Set(zone.members.map(ruleKey));
             const zoneAssignments = dayAssignments.filter((a) => a.zone_id === zone.id);
@@ -565,6 +785,11 @@ export default function ZonesPage() {
                 lockedReason={archivedReason}
                 locations={zone.members.map((rule) => ({
                   key: ruleKey(rule),
+                  dragId: zoneDragId({
+                    kind: "rule-chip",
+                    zoneId: zone.id,
+                    ruleKey: ruleKey(rule),
+                  }),
                   label: ruleLabel(rule, dayBuildings, dayEvents),
                 }))}
                 locationOptions={targets
@@ -584,7 +809,7 @@ export default function ZonesPage() {
                   activeTrackId !== null && (
                     <ZoneContentsTable
                       contents={zoneContents(zone, owners, dayBuildings, dayEvents, activeTrackId)}
-                      onOpenEvent={setFocusedEventId}
+                      onOpenEvent={openEvent}
                     />
                   )
                 }
@@ -594,6 +819,11 @@ export default function ZonesPage() {
                         const member = membersById.get(membershipId);
                         return {
                           key: membershipId,
+                          dragId: zoneDragId({
+                            kind: "member-chip",
+                            zoneId: zone.id,
+                            membershipId,
+                          }),
                           label: personName(ref),
                           icon: member ? (
                             <DayStatusDot
@@ -667,6 +897,8 @@ export default function ZonesPage() {
           onClose={() => setDeleteTarget(null)}
         />
       )}
+
+      {beltModals}
 
       {adding && activeTrackId !== null && (
         <AddZoneModal

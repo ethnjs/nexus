@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api";
 
 export interface ZoneTagChip {
   key: string | number;
+  dragId: string;
   label: string;
   title?: string;
   icon?: ReactNode;
@@ -137,6 +138,7 @@ export function ZoneTagField<T>({
         {chips.map((chip) => (
           <ZoneChip
             key={chip.key}
+            dragId={chip.dragId}
             label={chip.label}
             title={chip.title}
             icon={chip.icon}
