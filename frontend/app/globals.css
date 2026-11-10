@@ -68,6 +68,11 @@
   --color-danger-hover: #c53030;
   /* Discord's brand guidelines allow its symbol only in blurple, black or white. */
   --color-discord-blurple: #5865f2;
+  /* Google's "G" keeps its four colors on any background. */
+  --color-google-blue: #4285f4;
+  --color-google-green: #34a853;
+  --color-google-yellow: #fbbc05;
+  --color-google-red: #ea4335;
 
   --color-text-primary: #0a0a0a;
   --color-text-secondary: #6b6b65;

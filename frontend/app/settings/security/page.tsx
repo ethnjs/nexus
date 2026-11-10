@@ -7,7 +7,7 @@ import { SessionList } from "@/components/settings/SessionList";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { IconDiscord } from "@/components/ui/Icons";
+import { IconDiscord, IconGoogle } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, authApi, type OAuthIdentity, usersApi } from "@/lib/api";
@@ -313,7 +313,12 @@ function ConnectedAccounts({ hasPassword }: { hasPassword: boolean }) {
   return (
     <>
       <SettingsRow
-        label="Google"
+        label={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <IconGoogle />
+            Google
+          </span>
+        }
         helper={
           google && !hasPassword
             ? "Set a password before disconnecting Google, or you won't be able to sign in."
