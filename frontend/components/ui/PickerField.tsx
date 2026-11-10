@@ -215,7 +215,6 @@ export function PickerField({
             padding: `0 ${showClear ? `calc(${sizing.paddingX} * 2 + 12px)` : sizing.paddingX} 0 ${sizing.paddingX}`,
             fontFamily: "var(--font-sans)",
             fontSize: sizing.fontSize,
-            fontWeight: 500,
             textAlign: "left",
             color:
               display !== null && !locked
