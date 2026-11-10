@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from app.core.tournament.form_prerequisites import meets_prerequisites
 from app.models.models import (
@@ -50,6 +50,7 @@ def onboarding_paths(
     steps = (
         db.query(TournamentForm)
         .join(Form, TournamentForm.form_id == Form.id)
+        .options(contains_eager(TournamentForm.form))
         .filter(
             TournamentForm.tournament_id == tournament_id,
             TournamentForm.is_onboarding == True,
