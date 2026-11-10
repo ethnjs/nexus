@@ -57,6 +57,7 @@ from app.schemas.auth import (
     PasswordChangeRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    PasswordSetRequest,
     RegisterRequest,
 )
 from app.schemas.user import AdminUserSlimResponse
@@ -518,6 +519,35 @@ def change_password(
     revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
+
+
+@router.post(
+    "/auth/password/set/",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={
+        400: {"description": "A password is already set"},
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
+    },
+)
+def set_password(
+    body: PasswordSetRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
+    db: Session = Depends(get_db),
+):
+    """
+    Sets the first password on an account that signed up with Google. There's no current
+    password to confirm, so the session must have entered an emailed code in the last 10 minutes.
+    """
+    if user.hashed_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A password is already set")
+
+    user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    send_in_background(background_tasks, send_password_changed_notice, user.email)
+    return {"detail": "Password successfully set"}
 
 
 @router.post(

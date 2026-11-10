@@ -4,11 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge, onLocalClock } from "@/lib/api";
-import { safeRedirectPath, validateEmail } from "@/lib/auth";
+import { googleAuthErrorMessage, safeRedirectPath, validateEmail } from "@/lib/auth";
 import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 import { useIsClient } from "@/lib/useIsClient";
 
@@ -57,6 +58,7 @@ function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
+  const googleError = googleAuthErrorMessage(searchParams.get("error"));
   const storageKey = challengeKey(email);
 
   useEffect(() => {
@@ -139,6 +141,37 @@ function SignInContent() {
   return (
     <div style={{ width: "100%" }}>
       <AuthHeading title="Welcome back" subtitle="Sign in to your account." />
+
+      {googleError && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-danger)",
+            margin: "0 0 20px",
+            textAlign: "center",
+          }}
+        >
+          {googleError}
+        </p>
+      )}
+
+      <GoogleSignInButton href={authApi.googleStartUrl("login", redirect)} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          margin: "20px 0",
+          color: "var(--color-text-tertiary)",
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+        }}
+      >
+        <span style={{ flex: 1, height: "1px", background: "var(--color-border)" }} />
+        or
+        <span style={{ flex: 1, height: "1px", background: "var(--color-border)" }} />
+      </div>
 
       <form
         onSubmit={handleSubmit}

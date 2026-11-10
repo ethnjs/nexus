@@ -232,6 +232,7 @@ export interface AdminUserListItem
 export interface UserMeSlim extends AdminUserSlim {
   is_profile_complete: boolean;
   is_onboarding_complete: boolean;
+  has_password: boolean;
 }
 
 // Matches UserFullResponse — slim + profile fields. No account-internal
@@ -376,6 +377,16 @@ export const authApi = {
   confirmAccountSetup: (token: string, password: string) =>
     api.post<AdminUserSlim>("/auth/account-setup/confirm/", { token, password }),
 
+  setPassword: (newPassword: string) =>
+    api.post<void>("/auth/password/set/", { new_password: newPassword }),
+
+  // Full navigation, not fetch — the backend answers with a redirect to Google.
+  googleStartUrl: (intent: "login" | "link", redirect?: string | null) => {
+    const params = new URLSearchParams({ intent });
+    if (redirect) params.set("redirect", redirect);
+    return `${API_BASE}/auth/oauth/google/start/?${params.toString()}`;
+  },
+
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>("/auth/email/revert/", { token, new_password: newPassword }),
 
@@ -407,6 +418,7 @@ export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
   me: () => api.get<UserMeSlim>("/users/me/"),
   identities: () => api.get<OAuthIdentity[]>("/users/me/identities/"),
+  unlinkGoogle: () => api.delete<void>("/users/me/identities/google/"),
   unlinkDiscord: () => api.delete<void>("/users/me/identities/discord/"),
   // GET /users/me/?full=true — matches UserMeFullResponse
   meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
