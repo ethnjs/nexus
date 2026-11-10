@@ -118,16 +118,21 @@ class TestGoogleStart:
         ]
         assert "oauth_state" in res.cookies
 
-    def test_unconfigured_redirects(self, client, monkeypatch):
+    @pytest.mark.parametrize(
+        ("intent", "page"), [("login", "/sign-in"), ("link", "/settings/security")]
+    )
+    def test_unconfigured_redirects_back_to_the_starting_page(
+        self, client, monkeypatch, intent, page
+    ):
         from app.core.config import get_settings
 
         settings = get_settings()
         monkeypatch.setattr(settings, "google_oauth_client_id", "")
         monkeypatch.setattr(settings, "google_oauth_client_secret", "")
         monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000/")
-        res = _start(client)
+        res = _start(client, intent=intent)
         assert res.status_code == 302
-        assert _location(res).endswith("/sign-in?error=google_unavailable")
+        assert _location(res).endswith(f"{page}?error=google_unavailable")
 
     def test_link_without_session_goes_to_sign_in(self, client, google_settings):
         res = _start(client, intent="link")

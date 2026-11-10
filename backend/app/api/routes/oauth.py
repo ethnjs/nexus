@@ -74,7 +74,7 @@ async def google_start(
         intent = "login"
     if not is_google_configured():
         return RedirectResponse(
-            frontend_redirect("/sign-in?error=google_unavailable"), status_code=302
+            frontend_redirect(_error_path(intent, "google_unavailable")), status_code=302
         )
 
     if intent == "link":
