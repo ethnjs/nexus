@@ -426,13 +426,15 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
 
 def filter_onboarding(db, tournament_id: int, memberships: list, states: list[str]) -> list:
     """Keeps members whose onboarding is in one of `states`: "not_started",
-    "in_progress" or "complete".
+    "in_progress" or "complete". Unknown states are dropped, like any
+    malformed filter value (see _split_pairs).
 
     In Python, like filter_age_flags: a member's path depends on which steps
     their roles qualify them for, so there's no stored progress to query. A
     member with no steps owes nothing, so counts as complete.
     """
-    if not states:
+    wanted = set(states) & {ONBOARDING_NOT_STARTED, ONBOARDING_IN_PROGRESS, ONBOARDING_COMPLETE}
+    if not wanted:
         return memberships
     from app.core.tournament.onboarding import onboarding_paths
 
@@ -444,7 +446,7 @@ def filter_onboarding(db, tournament_id: int, memberships: list, states: list[st
             return ONBOARDING_COMPLETE
         return ONBOARDING_IN_PROGRESS if done else ONBOARDING_NOT_STARTED
 
-    return [m for m in memberships if state(paths[m.user_id]) in states]
+    return [m for m in memberships if state(paths[m.user_id]) in wanted]
 
 
 def build_filter_options(db, tournament) -> dict:

@@ -1360,6 +1360,15 @@ class TestRosterFilters:
         body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         assert body["has_onboarding"] is False
 
+    def test_onboarding_filter_ignores_unknown_states(self, client, db, td_user, td_tournament):
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?onboarding=completed") == {
+            "alice@example.com",
+            "td@test.com",
+        }
+
 
 def test_list_memberships_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
