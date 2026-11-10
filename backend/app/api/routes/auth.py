@@ -525,15 +525,22 @@ def change_password(
     "/auth/password/set/",
     status_code=status.HTTP_200_OK,
     response_model=MessageResponse,
-    responses={400: {"description": "A password is already set"}},
+    responses={
+        400: {"description": "A password is already set"},
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
+    },
 )
 def set_password(
     body: PasswordSetRequest,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
     db: Session = Depends(get_db),
 ):
-    """For accounts that signed up with Google and have no password yet."""
+    """
+    Sets the first password on an account that signed up with Google. There's no current
+    password to confirm, so the session must have entered an emailed code in the last 10 minutes.
+    """
     if user.hashed_password:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A password is already set")
 

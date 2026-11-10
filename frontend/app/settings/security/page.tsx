@@ -21,9 +21,11 @@ import {
 } from "@/lib/auth";
 import { DISCORD_VOLUNTEER_GUIDE_URL } from "@/lib/docs";
 import { useAuth } from "@/lib/useAuth";
+import { useStepUp } from "@/lib/useStepUp";
 
 export default function SecuritySettingsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
+  const { withStepUp, stepUpModal } = useStepUp();
   const router = useRouter();
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -57,7 +59,7 @@ export default function SecuritySettingsPage() {
     }
     setSubmitting(true);
     try {
-      await authApi.setPassword(newPassword);
+      await withStepUp(() => authApi.setPassword(newPassword));
       setNewPassword("");
       setConfirmPassword("");
       setChecks(EMPTY_PASSWORD_CHECKS);
@@ -115,6 +117,7 @@ export default function SecuritySettingsPage() {
   return (
     <div>
       <PageHeader heading="Security" />
+      {stepUpModal}
 
       <SettingsSection title="Connected accounts">
         <Suspense>
