@@ -10,11 +10,14 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge, onLocalClock } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
 import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
+import { useIsClient } from "@/lib/useIsClient";
 
 export default function SignInPage() {
+  // The content's first render reads the URL fragment, which the server never sees.
+  const isClient = useIsClient();
   return (
     <Suspense fallback={<LoadingState context="section" />}>
-      <SignInContent />
+      {isClient ? <SignInContent /> : <LoadingState context="section" />}
     </Suspense>
   );
 }
@@ -24,7 +27,6 @@ const challengeKey = (email: string) => `signInChallenge:${email.trim().toLowerC
 // The Google callback is a redirect, so it hands over the code step in the URL fragment, which
 // never reaches a server. With no challenge_token, a code went out under a minute ago.
 function readGoogleHandoff(): { email: string; challenge: CodeChallenge | null } | null {
-  if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.hash.slice(1));
   const email = params.get("email");
   if (!email) return null;
