@@ -24,6 +24,8 @@ import pytest
 
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("API_KEY", "")
+# Overrides .env, where a developer may have switched codes off; the codes_off fixture tests that.
+os.environ["LOGIN_CODES_REQUIRED"] = "true"
 
 from unittest.mock import AsyncMock, MagicMock
 
