@@ -324,6 +324,16 @@ def get_me(
                 selectinload(User.volunteer_experience)
                 .selectinload(UserVolunteerExperience.event)
                 .selectinload(Event.category),
+                *Event.load_related_events(
+                    selectinload(User.competition_experience).selectinload(
+                        UserCompetitionExperience.event
+                    )
+                ),
+                *Event.load_related_events(
+                    selectinload(User.volunteer_experience).selectinload(
+                        UserVolunteerExperience.event
+                    )
+                ),
             )
             .filter(User.id == current_user.id)
             .first()

@@ -22,7 +22,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload, validates
 
 from app.core.age import meets_age_requirement
 from app.db.session import Base
@@ -194,16 +194,12 @@ class Event(Base):
         passive_deletes=True,
     )
     # The two halves of related_events, one per column of the stored pair.
-    # selectin so a list of events costs one query each, not one per event;
-    # join_depth=1 stops the related events loading their own relations.
     _related_higher: Mapped[list["Event"]] = relationship(
         "Event",
         secondary="event_relationships",
         primaryjoin="Event.id == EventRelationship.event_id",
         secondaryjoin="Event.id == EventRelationship.related_event_id",
         viewonly=True,
-        lazy="selectin",
-        join_depth=1,
     )
     _related_lower: Mapped[list["Event"]] = relationship(
         "Event",
@@ -211,13 +207,18 @@ class Event(Base):
         primaryjoin="Event.id == EventRelationship.related_event_id",
         secondaryjoin="Event.id == EventRelationship.event_id",
         viewonly=True,
-        lazy="selectin",
-        join_depth=1,
     )
 
     @property
     def related_events(self) -> list["Event"]:
         return sorted(self._related_lower + self._related_higher, key=lambda e: e.name)
+
+    @classmethod
+    def load_related_events(cls, base: Any = None) -> list:
+        """Loader options for related_events, which is lazy, chained off `base` when given.
+        A query that serializes many events needs them to avoid two queries per event."""
+        halves = [selectinload(cls._related_lower), selectinload(cls._related_higher)]
+        return halves if base is None else [base.options(*halves)]
 
 
 # ---------------------------------------------------------------------------

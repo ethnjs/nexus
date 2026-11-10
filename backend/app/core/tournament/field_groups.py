@@ -301,11 +301,14 @@ def loader_options(requested: frozenset[str] | None) -> list:
     varies with `fields`.
     """
     from app.models.models import (
+        Event,
         TournamentEvent,
         TournamentMembership,
         TournamentMembershipAvailability,
         TournamentTrackAssignment,
         User,
+        UserCompetitionExperience,
+        UserVolunteerExperience,
     )
 
     # Relationships needing further hops to be usable: the role behind a
@@ -327,6 +330,14 @@ def loader_options(requested: frozenset[str] | None) -> list:
             joinedload(TournamentTrackAssignment.membership).joinedload(TournamentMembership.user),
         ),
     }
+    USER_NESTED = {
+        "competition_experience": (
+            *Event.load_related_events(selectinload(UserCompetitionExperience.event)),
+        ),
+        "volunteer_experience": (
+            *Event.load_related_events(selectinload(UserVolunteerExperience.event)),
+        ),
+    }
 
     options = []
     for name, group in GROUPS.items():
@@ -346,7 +357,12 @@ def loader_options(requested: frozenset[str] | None) -> list:
             # applies: two strategies for one path is an InvalidRequestError,
             # so the chain has to agree with the bare option above it.
             base = joinedload(TournamentMembership.user)
-            options.append(base.selectinload(attr) if included else base.noload(attr))
+            if not included:
+                options.append(base.noload(attr))
+                continue
+            option = base.selectinload(attr)
+            nested = USER_NESTED.get(rel)
+            options.append(option.options(*nested) if nested else option)
 
     return options
 

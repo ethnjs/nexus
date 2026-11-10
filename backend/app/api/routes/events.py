@@ -28,7 +28,7 @@ admin_router = APIRouter(prefix="/admin", tags=["events"])
 # ---------------------------------------------------------------------------
 @router.get("/events/", response_model=list[EventResponse])
 def list_events(db: Session = Depends(get_db)):
-    return db.query(Event).all()
+    return db.query(Event).options(*Event.load_related_events()).all()
 
 
 # ---------------------------------------------------------------------------

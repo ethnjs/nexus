@@ -17,6 +17,7 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import (
+    Event,
     SeasonEvent,
     TournamentBuilding,
     TournamentBuildingTrack,
@@ -362,14 +363,18 @@ def list_events(
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)
 
-    query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
+    query = db.query(TournamentEvent)
     if public:
+        query = query.options(joinedload(TournamentEvent.event))
         # The member shape carries shifts now (see EventMemberRead), but not
         # their event_count — so a plain load, without the extra hop the staff
         # shape needs to compute it.
         query = query.options(selectinload(TournamentEvent.shifts))
     else:
-        query = query.options(*loader_options(requested))
+        query = query.options(
+            *Event.load_related_events(joinedload(TournamentEvent.event)),
+            *loader_options(requested),
+        )
     events = (
         query.filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
@@ -545,7 +550,7 @@ def load_default_events(
 
     active_season_events = (
         db.query(SeasonEvent)
-        .options(joinedload(SeasonEvent.event))
+        .options(*Event.load_related_events(joinedload(SeasonEvent.event)))
         .filter(
             SeasonEvent.year == tournament.season_year,
             SeasonEvent.is_active.is_(True),

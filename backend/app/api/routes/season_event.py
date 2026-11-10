@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth import require_admin
 from app.db.session import get_db
-from app.models.models import SeasonEvent, User
+from app.models.models import Event, SeasonEvent, User
 from app.schemas.season_event import SeasonEventCreate, SeasonEventRead, SeasonEventUpdate
 
 # GET is public/unauthenticated, matching the canonical Event/EventCategory
@@ -49,7 +49,7 @@ def list_season_events(
     division: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(SeasonEvent).options(joinedload(SeasonEvent.event))
+    query = db.query(SeasonEvent).options(*Event.load_related_events(joinedload(SeasonEvent.event)))
     if year is not None:
         query = query.filter(SeasonEvent.year == year)
     if division:
