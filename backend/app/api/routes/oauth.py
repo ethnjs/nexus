@@ -4,17 +4,20 @@ tokens are used once and never stored."""
 
 import asyncio
 import secrets
+from urllib.parse import urlencode
 
 from authlib.integrations.base_client import OAuthError
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.routes.auth import _challenge_response
 from app.core.auth import create_session, get_active_session, get_client_ip, set_auth_cookie
 from app.core.config import get_settings
 from app.core.discord.deps import discord_is_enabled, require_discord_enabled
 from app.core.discord.marks import mark_account_everywhere
+from app.core.email_codes import start_challenge
 from app.core.oauth import (
     AccountExists,
     AccountInactive,
@@ -36,7 +39,11 @@ from app.core.profile_status import is_onboarding_complete
 from app.db.session import get_db
 from app.models.models import OAuthIdentity, OAuthProvider
 from app.services.discord import oauth as discord_oauth
-from app.services.email_service import send_identity_linked_notice, send_in_background
+from app.services.email_service import (
+    send_identity_linked_notice,
+    send_in_background,
+    send_sign_in_code_email,
+)
 
 router = APIRouter(tags=["auth"])
 
@@ -118,7 +125,7 @@ async def google_callback(
             send_in_background(background_tasks, send_identity_linked_notice, notice[0], notice[1])
         return _bounce(request, path)
 
-    path, raw_token = await asyncio.to_thread(
+    path, raw_token, sign_in_code = await asyncio.to_thread(
         _sign_in_with_google,
         db,
         claims,
@@ -126,6 +133,10 @@ async def google_callback(
         request.headers.get("user-agent"),
         get_client_ip(request),
     )
+    if sign_in_code is not None:
+        send_in_background(
+            background_tasks, send_sign_in_code_email, sign_in_code[0], sign_in_code[1]
+        )
     return _bounce(request, path, raw_token=raw_token)
 
 
@@ -155,23 +166,47 @@ def _sign_in_with_google(
     saved_redirect: str | None,
     user_agent: str | None,
     ip_address: str | None,
-) -> tuple[str, str | None]:
-    """The redirect path, and the new session's raw token if it signed in."""
+) -> tuple[str, str | None, tuple[str, str] | None]:
+    """
+    The redirect path, plus either the new session's raw token (only while codes are off) or the
+    (account email, code) to send. The path hands the challenge to the sign-in page's code step
+    in its fragment, which never reaches a server log.
+    """
     try:
         user, _created = resolve_google_login(db, claims)
     except AccountExists:
-        return _error_path("login", "google_account_exists"), None
+        return _error_path("login", "google_account_exists"), None, None
     except AccountInactive:
-        return _error_path("login", "google_account_inactive"), None
+        return _error_path("login", "google_account_inactive"), None, None
     except EmailUnverified:
-        return _error_path("login", "google_email_unverified"), None
+        return _error_path("login", "google_email_unverified"), None, None
     except (ValueError, IntegrityError):
-        return _error_path("login", "google_failed"), None
+        return _error_path("login", "google_failed"), None, None
 
-    raw_token = create_session(db, user.id, user_agent=user_agent, ip_address=ip_address)
-    if is_onboarding_complete(user, db=db):
-        return saved_redirect or "/dashboard", raw_token
-    return with_redirect("/onboarding", saved_redirect), raw_token
+    if not get_settings().login_codes_required:
+        raw_token = create_session(db, user.id, user_agent=user_agent, ip_address=ip_address)
+        if is_onboarding_complete(user, db=db):
+            return saved_redirect or "/dashboard", raw_token, None
+        return with_redirect("/onboarding", saved_redirect), raw_token, None
+
+    sign_in = with_redirect("/sign-in", saved_redirect)
+    try:
+        challenge_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
+            raise
+        # A code went out under a minute ago; the page reopens it if this tab saved it.
+        return f"{sign_in}#{urlencode({'email': user.email})}", None, None
+    challenge = _challenge_response(challenge_token, row)
+    fragment = urlencode(
+        {
+            "email": user.email,
+            "challenge_token": challenge_token,
+            "expires_in": challenge.expires_in,
+            "resend_in": challenge.resend_in,
+        }
+    )
+    return f"{sign_in}#{fragment}", None, (user.email, code)
 
 
 # No require_discord_enabled: the Connect button links here whether or not Discord is on, so

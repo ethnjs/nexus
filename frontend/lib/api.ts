@@ -328,7 +328,9 @@ export interface LoginResponse {
 }
 
 // The server's timestamps are on its clock, which this browser's may not match.
-function onLocalClock<T extends SecondsLeft>(challenge: T): T {
+export function onLocalClock<T extends SecondsLeft>(
+  challenge: T,
+): T & Pick<CodeChallenge, "expires_at" | "can_resend_at"> {
   const now = Date.now();
   return {
     ...challenge,

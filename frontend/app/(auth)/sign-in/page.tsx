@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
+import { ApiError, authApi, type CodeChallenge, onLocalClock } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
 import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 
@@ -19,17 +19,49 @@ export default function SignInPage() {
   );
 }
 
+const challengeKey = (email: string) => `signInChallenge:${email.trim().toLowerCase()}`;
+
+// The Google callback is a redirect, so it hands over the code step in the URL fragment, which
+// never reaches a server. With no challenge_token, a code went out under a minute ago.
+function readGoogleHandoff(): { email: string; challenge: CodeChallenge | null } | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const email = params.get("email");
+  if (!email) return null;
+  const token = params.get("challenge_token");
+  if (!token) return { email, challenge: loadOpenChallenge(challengeKey(email)) };
+  return {
+    email,
+    challenge: onLocalClock({
+      challenge_token: token,
+      expires_in: Number(params.get("expires_in")),
+      resend_in: Number(params.get("resend_in")),
+    }),
+  };
+}
+
 function SignInContent() {
-  const [email, setEmail] = useState("");
+  const [handoff] = useState(readGoogleHandoff);
+  const [email, setEmail] = useState(handoff?.email ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
-  const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>(
+    handoff && !handoff.challenge
+      ? { form: "We sent you a code less than a minute ago. Wait a minute, then try again." }
+      : {},
+  );
+  const [challenge, setChallenge] = useState<CodeChallenge | null>(handoff?.challenge ?? null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
-  const storageKey = `signInChallenge:${email.trim().toLowerCase()}`;
+  const storageKey = challengeKey(email);
+
+  useEffect(() => {
+    if (!handoff) return;
+    if (handoff.challenge) saveChallenge(challengeKey(handoff.email), handoff.challenge);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, [handoff]);
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();

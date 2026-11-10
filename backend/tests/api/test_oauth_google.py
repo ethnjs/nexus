@@ -10,7 +10,7 @@ from authlib.integrations.starlette_client.apps import StarletteOAuth2App
 
 from app.core.auth import create_session
 from app.models.models import OAuthIdentity, OAuthProvider, User
-from tests.conftest import login
+from tests.conftest import emailed_code, login
 
 
 @pytest.fixture
@@ -95,6 +95,17 @@ def _location(res) -> str:
     return res.headers["location"]
 
 
+def _fragment(res) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(urlparse(_location(res)).fragment).items()}
+
+
+def _enter_code(client, res):
+    return client.post(
+        "/auth/code/verify/",
+        json={"challenge_token": _fragment(res)["challenge_token"], "code": emailed_code()},
+    )
+
+
 class TestGoogleStart:
     def test_redirects_to_google_with_pkce(self, client, google_settings):
         res = _start(client, intent="login", redirect="/dashboard")
@@ -125,8 +136,8 @@ class TestGoogleStart:
 
 
 class TestGoogleCallback:
-    def test_new_user_is_created_and_sent_to_onboarding(
-        self, client, db, google_settings, monkeypatch
+    def test_new_user_is_created_unverified_and_sent_to_the_code_step(
+        self, client, db, google_settings, monkeypatch, mock_send_email
     ):
         _start(client, redirect="/join")
         res = _callback(
@@ -141,12 +152,16 @@ class TestGoogleCallback:
             },
         )
         assert res.status_code == 302
-        assert _location(res).startswith("http://localhost:3000/onboarding?")
-        assert "redirect=%2Fjoin" in _location(res)
-        assert "access_token" in res.cookies
+        assert _location(res).startswith("http://localhost:3000/sign-in?redirect=%2Fjoin#")
+        fragment = _fragment(res)
+        assert fragment["email"] == "ada@example.com"
+        assert 590 < int(fragment["expires_in"]) <= 600
+        assert 50 < int(fragment["resend_in"]) <= 60
+        assert "access_token" not in res.cookies
+        assert mock_send_email.call_args.args[0] == "ada@example.com"
 
         user = db.query(User).filter(User.email == "ada@example.com").one()
-        assert user.email_verified is True
+        assert user.email_verified is False
         assert user.hashed_password is None
         assert user.first_name == "Ada"
         assert user.last_name == "Lovelace"
@@ -154,6 +169,12 @@ class TestGoogleCallback:
         assert identity.provider == OAuthProvider.google
         assert identity.provider_account_id == "google-sub-1"
         assert "oauth_state" in res.headers.get("set-cookie", "")
+
+        verified = _enter_code(client, res)
+        assert verified.status_code == 200
+        assert "access_token" in verified.cookies
+        db.refresh(user)
+        assert user.email_verified is True
 
     @pytest.mark.parametrize("verified", [False, None])
     def test_unverified_google_email_creates_no_account(
@@ -173,7 +194,9 @@ class TestGoogleCallback:
         assert db.query(User).filter(User.email == "unverified@example.com").count() == 0
         assert db.query(OAuthIdentity).filter_by(provider_account_id="google-sub-2").count() == 0
 
-    def test_returning_user_signs_in(self, client, db, td_user, google_settings, monkeypatch):
+    def test_returning_user_gets_a_code_and_no_session(
+        self, client, db, td_user, google_settings, monkeypatch
+    ):
         _complete_profile(db, td_user)
         db.add(
             OAuthIdentity(
@@ -194,8 +217,57 @@ class TestGoogleCallback:
                 "email_verified": True,
             },
         )
-        assert _location(res) == "http://localhost:3000/dashboard"
-        assert db.query(User).filter(User.email == "td@test.com").count() == 1
+        assert _location(res).startswith("http://localhost:3000/sign-in#")
+        assert _fragment(res)["email"] == "td@test.com"
+        assert "access_token" not in res.cookies
+        assert client.get("/users/me/").status_code == 401
+
+        assert _enter_code(client, res).status_code == 200
+        assert client.get("/users/me/").json()["email"] == "td@test.com"
+
+    def test_second_attempt_within_a_minute_reopens_the_open_code(
+        self, client, db, td_user, google_settings, monkeypatch, mock_send_email
+    ):
+        db.add(
+            OAuthIdentity(
+                user_id=td_user.id,
+                provider=OAuthProvider.google,
+                provider_account_id="td-sub",
+                email_at_provider="td@test.com",
+            )
+        )
+        db.commit()
+        claims = {"sub": "td-sub", "email": "td@test.com", "email_verified": True}
+        _start(client)
+        first = _callback(client, monkeypatch, claims)
+        _start(client)
+        second = _callback(client, monkeypatch, claims)
+        assert _location(second) == "http://localhost:3000/sign-in#email=td%40test.com"
+        assert mock_send_email.await_count == 1
+        assert _enter_code(client, first).status_code == 200
+
+    def test_signs_in_directly_while_codes_are_off(
+        self, client, db, td_user, google_settings, monkeypatch, mock_send_email
+    ):
+        from app.core.config import get_settings
+
+        monkeypatch.setattr(get_settings(), "login_codes_required", False)
+        db.add(
+            OAuthIdentity(
+                user_id=td_user.id,
+                provider=OAuthProvider.google,
+                provider_account_id="td-sub",
+                email_at_provider="td@test.com",
+            )
+        )
+        db.commit()
+        _start(client)
+        res = _callback(
+            client, monkeypatch, {"sub": "td-sub", "email": "td@test.com", "email_verified": True}
+        )
+        assert _location(res) == "http://localhost:3000/onboarding"
+        assert "access_token" in res.cookies
+        assert mock_send_email.await_count == 0
 
     def test_existing_email_is_not_auto_linked(
         self, client, db, td_user, google_settings, monkeypatch
@@ -274,7 +346,7 @@ class TestGoogleCallback:
             },
         )
         assert "evil.example" not in _location(res)
-        assert _location(res) == "http://localhost:3000/onboarding"
+        assert _location(res).startswith("http://localhost:3000/sign-in#")
 
 
 class TestGoogleLink:
