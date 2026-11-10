@@ -47,7 +47,7 @@ from app.core.tournament.memberships import (
     onboarding_reads,
     resolve_person_refs,
 )
-from app.core.tournament.onboarding import needs_tournament_onboarding
+from app.core.tournament.onboarding import needs_tournament_onboarding, onboarding_paths
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     get_user_permissions,
@@ -263,11 +263,14 @@ def list_memberships(
     # Age flags and onboarding are derived, not stored, so they can't be part
     # of the query.
     memberships = filter_age_flags(memberships, age)
-    memberships = filter_onboarding(db, tournament_id, memberships, onboarding)
+    paths = None
+    if onboarding:
+        paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
+        memberships = filter_onboarding(memberships, onboarding, paths)
     responses = [MembershipFullResponse.model_validate(m) for m in memberships]
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    enrich_built_groups(db, tournament, requested, memberships, responses)
+    enrich_built_groups(db, tournament, requested, memberships, responses, onboarding_paths=paths)
     # gate_age_flags per row, exactly as the detail route does: asking for the
     # age group must never override a member's withheld consent.
     exclude = dump_exclude(requested)

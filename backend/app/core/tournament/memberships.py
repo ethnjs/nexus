@@ -458,16 +458,20 @@ def get_custom_form_answers_bulk(
     return {user_id: list(latest.values()) for user_id, latest in by_user.items()}
 
 
-def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list:
+def onboarding_reads(
+    db: Session, tournament_id: int, memberships: list, paths: dict | None = None
+) -> list:
     """One MembershipOnboardingRead (or None) per membership, in order —
-    shared by the roster and the detail route so both count the same way."""
+    shared by the roster and the detail route so both count the same way.
+    Pass `paths` when the caller already has them."""
     from app.core.tournament.onboarding import onboarding_paths
     from app.schemas.tournament.membership import (
         MembershipOnboardingRead,
         MembershipOnboardingStepRead,
     )
 
-    paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
+    if paths is None:
+        paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
     return [
         MembershipOnboardingRead(
             completed=sum(step.completed for step in path),
@@ -481,20 +485,21 @@ def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list
 
 
 def enrich_built_groups(
-    db: Session, tournament, requested, memberships: list, responses: list
+    db: Session,
+    tournament,
+    requested,
+    memberships: list,
+    responses: list,
+    *,
+    onboarding_paths: dict | None = None,
 ) -> None:
     """Fills the roster's *built* field groups — the ones whose final value
     can't come off the ORM rows alone (see field_groups.FieldGroup.built).
+    Everything else `fields` selects is loaded by field_groups.loader_options.
 
-    Everything else `fields` selects is already handled at the query level by
-    field_groups.loader_options, which is why this no longer reads the
-    display config: what to include is `fields`' answer now, and a surface
-    that wants to narrow says so by resolving to a field set first (see
-    display_config.fields_for_surface).
-
-    A roster is every member in the tournament, so each group is resolved for
-    the whole page in one query and then handed out — never per membership.
-    Mutates `responses` in place, positionally paired with `memberships`.
+    Each group is resolved for the whole page in one query, never per
+    membership. Mutates `responses` in place, positionally paired with
+    `memberships`. Pass `onboarding_paths` when the caller already has them.
     """
     from app.core.tournament.field_groups import CUSTOM, EVENT_PREFS, LUNCH, ONBOARDING, wants
 
@@ -503,7 +508,9 @@ def enrich_built_groups(
 
     if wants(requested, ONBOARDING):
         for response, progress in zip(
-            responses, onboarding_reads(db, tournament.id, memberships), strict=True
+            responses,
+            onboarding_reads(db, tournament.id, memberships, onboarding_paths),
+            strict=True,
         ):
             response.onboarding = progress
 
