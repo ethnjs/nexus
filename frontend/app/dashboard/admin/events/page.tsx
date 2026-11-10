@@ -613,6 +613,14 @@ function SeasonView({
   async function toggle(event: CanonicalEvent, division: TournamentDivision, next: boolean) {
     const key = `${event.id}:${division}`;
     if (busy.has(key)) return;
+    // The event's last row takes the event, and its format and flags, out of the season.
+    const others = (seasonEvents ?? []).filter(
+      (s) => s.event.id === event.id && s.division !== division,
+    );
+    if (!next && others.length === 0) {
+      setRemoveTargets([event]);
+      return;
+    }
     setBusy((prev) => new Set(prev).add(key));
     setError(undefined);
     const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${formatSeason(year)}`;
@@ -1004,8 +1012,8 @@ function SeasonView({
               ) : (
                 `${removeTargets.length} events`
               )}{" "}
-              from {formatSeason(year)}? This drops every division they&rsquo;re in this season. The
-              events stay in the catalog.
+              from {formatSeason(year)}? This drops every division they&rsquo;re in this season,
+              with their format, impound and self-schedule. The events stay in the catalog.
             </>
           }
           onDelete={(event) =>
