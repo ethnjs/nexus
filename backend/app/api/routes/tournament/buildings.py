@@ -367,6 +367,7 @@ def delete_room(
 
     placements = (
         db.query(TournamentEventTrack)
+        .options(selectinload(TournamentEventTrack.rooms))
         .join(TournamentEventTrack.rooms)
         .filter(TournamentRoom.id == room.id)
         .all()
