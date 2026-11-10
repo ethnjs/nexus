@@ -26,6 +26,9 @@ export const EVENT_PANEL = "event_panel";
 // The buildings page's event list: which card details show (`event_field:*`
 // in `hidden`) and its filters. Per track tab — use tabSurface().
 export const BUILDINGS_EVENTS = "buildings_events";
+// The zones page's member list: the assignment card's fields, filters and
+// sorts, saved apart from the assignments board. Per track tab.
+export const ZONES_MEMBERS = "zones_members";
 // The shifts table — filters and sort only (it always shows every column).
 export const SHIFTS_TABLE = "shifts_table";
 // Whether the page header is folded into the Topbar — one setting for every

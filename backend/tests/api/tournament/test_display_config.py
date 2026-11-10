@@ -350,6 +350,33 @@ def test_put_buildings_events_requires_a_tab(client, td_user, td_tournament):
     assert response.status_code == 422
 
 
+def test_put_zones_members_takes_the_member_card_settings(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "zones_members:track:3": {
+                "hidden": ["card_field:availability"],
+                "filters": {"role": ["2"]},
+                "sorts": [{"field": "last_name", "direction": "asc"}],
+            }
+        },
+    )
+    assert response.status_code == 200, response.text
+    saved = response.json()["zones_members:track:3"]
+    assert saved["hidden"] == ["card_field:availability"]
+    assert saved["filters"] == {"role": ["2"]}
+
+
+def test_put_zones_members_requires_a_tab(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"zones_members": {"hidden": []}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_assignments_board_accepts_a_per_track_tab(client, td_user, td_tournament):
     """The board is tabbed per track, so its surfaces are a family of keys
     rather than one each. A track id isn't checked against the catalog — a
