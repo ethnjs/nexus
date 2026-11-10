@@ -209,7 +209,6 @@ export default function BuildingsPage() {
     return saveLocation(event, { floor: null, room_ids: [room.id] });
   }
 
-  /** Out of its last room, the event is unplaced. */
   /** A list card moves the event to this room alone; a chip dragged from
    *  another room of the same building swaps that room for this one. */
   function moveEvent(
@@ -228,6 +227,7 @@ export default function BuildingsPage() {
     if (current.length === 1 && current[0] === toRoomId) return;
     return saveLocation(event, { floor: null, room_ids: [toRoomId] });
   }
+
   function removeFromRoom(event: TournamentEvent, roomId: number) {
     const detail = activeTrackId === null ? undefined : trackDetail(event, activeTrackId);
     const remaining = (detail?.room_ids ?? []).filter((id) => id !== roomId);
