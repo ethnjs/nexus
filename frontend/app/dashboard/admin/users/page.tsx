@@ -46,7 +46,7 @@ import {
   adminUserSortValue,
   DEFAULT_ADMIN_USER_SORT,
 } from "@/lib/adminUserSort";
-import { type AdminUserFull, type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
+import { type AdminUserListItem, type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
@@ -108,7 +108,7 @@ function UserRow({
   onOpen,
   onAction,
 }: {
-  user: AdminUserFull;
+  user: AdminUserListItem;
   /** The account doing the looking — the backend refuses every one of these on yourself. */
   isSelf: boolean;
   /** This row is the one the panel is showing. */
@@ -288,13 +288,13 @@ function UserRow({
 
 type PendingAction = {
   kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete";
-  user: AdminUserFull;
+  user: AdminUserListItem;
 };
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const run = useActionToast();
-  const [users, setUsers] = useState<AdminUserFull[] | null>(null);
+  const [users, setUsers] = useState<AdminUserListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<AdminUsersFilterState>(() =>

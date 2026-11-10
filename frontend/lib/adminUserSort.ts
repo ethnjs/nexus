@@ -1,5 +1,5 @@
 import type { SortFieldOption } from "@/components/ui/SortModal";
-import type { AdminUserFull } from "@/lib/api";
+import type { AdminUserListItem } from "@/lib/api";
 import { userAffiliation, yearLevelOrder } from "@/lib/personDisplay";
 import type { SortRule, SortValue } from "@/lib/sorting";
 
@@ -38,7 +38,7 @@ const ROLE_ORDER = { admin: 0, user: 1 };
 // Active through to the account an admin shut.
 const STATUS_ORDER = { active: 0, invited: 1, deactivated: 2, locked: 3 };
 
-export function adminUserSortValue(user: AdminUserFull, field: AdminUserSortField): SortValue {
+export function adminUserSortValue(user: AdminUserListItem, field: AdminUserSortField): SortValue {
   switch (field) {
     // Last name first, so "A → Z" reads down a roster; no name at all falls
     // back to the email the Name column shows instead.
@@ -59,7 +59,7 @@ export function adminUserSortValue(user: AdminUserFull, field: AdminUserSortFiel
 }
 
 /** The hidden tail every chain ends with, so the order is total. */
-export function adminUserSortTiebreak(a: AdminUserFull, b: AdminUserFull): number {
+export function adminUserSortTiebreak(a: AdminUserListItem, b: AdminUserListItem): number {
   const byName = (adminUserSortValue(a, "name") as string).localeCompare(
     adminUserSortValue(b, "name") as string,
     undefined,

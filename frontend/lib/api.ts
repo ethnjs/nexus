@@ -209,6 +209,11 @@ export interface AdminUserSlim extends UserSlim {
   status: USER_STATUS;
 }
 
+// GET /admin/users/ — matches AdminUserListResponse: what the users table reads.
+export interface AdminUserListItem
+  extends AdminUserSlim,
+    Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {}
+
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends AdminUserSlim {
   is_profile_complete: boolean;
@@ -391,7 +396,7 @@ interface AdminUserUpdate {
 }
 
 export const adminUsersApi = {
-  list: () => api.get<AdminUserFull[]>("/admin/users/"),
+  list: () => api.get<AdminUserListItem[]>("/admin/users/"),
   get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
   getByEmail: (email: string) =>
     api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),

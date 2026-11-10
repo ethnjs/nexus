@@ -7,7 +7,7 @@ import {
   type FilterState,
   filterAllows,
 } from "@/components/ui/FilterModal";
-import type { AdminUserFull } from "@/lib/api";
+import type { AdminUserListItem } from "@/lib/api";
 import {
   userAffiliation,
   YEAR_LEVEL_FILTER_OPTIONS,
@@ -44,7 +44,7 @@ const VERIFIED_OPTIONS: FilterOption[] = [
 
 /** The affiliations people have, as the column shows them. A school and an
  *  employer spelled the same are one option, as on the members table. */
-export function affiliationOptions(users: AdminUserFull[]): FilterOption[] {
+export function affiliationOptions(users: AdminUserListItem[]): FilterOption[] {
   const byKey = new Map<string, string>();
   for (const user of users) {
     const affiliation = userAffiliation(user, true)?.trim();
@@ -56,7 +56,10 @@ export function affiliationOptions(users: AdminUserFull[]): FilterOption[] {
     .map(([key, label]) => ({ value: key, label }));
 }
 
-export function userPassesFilters(user: AdminUserFull, filters: AdminUsersFilterState): boolean {
+export function userPassesFilters(
+  user: AdminUserListItem,
+  filters: AdminUsersFilterState,
+): boolean {
   if (!filterAllows(filters.role, user.role)) return false;
   if (!filterAllows(filters.status, user.status)) return false;
   if (!filterAllows(filters.verified, user.email_verified ? "verified" : "unverified"))

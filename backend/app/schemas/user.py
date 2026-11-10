@@ -75,6 +75,16 @@ class AdminUserSlimResponse(UserSlimResponse):
     status: USER_STATUS
 
 
+class AdminUserListResponse(AdminUserSlimResponse):
+    """The admin users table's row: account fields plus what its affiliation
+    and year level columns read."""
+
+    student_status: STUDENT_STATUS | None = None
+    university: UniversityResponse | None = None
+    year_level: int | None = None
+    employer: str | None = None
+
+
 class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
