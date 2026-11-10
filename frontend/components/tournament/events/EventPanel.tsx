@@ -47,6 +47,7 @@ import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import {
   NO_SEASON_DEFAULTS,
   SEASON_FIELDS,
+  type SeasonDefaults,
   seasonDefaultsFor,
   useSeasonEvents,
 } from "@/lib/seasonDefaults";
@@ -269,20 +270,17 @@ export function EventPanel({
     patch({ eventText: text, event_id: matched ? matched.id : null, name: matched ? null : text });
   }
 
+  function patchSeason(p: Partial<SeasonDefaults>) {
+    patch(p);
+    setSetByTd((prev) => new Set([...prev, ...(Object.keys(p) as (keyof SeasonDefaults)[])]));
+  }
+
   function buildPayload(trackDetails: EventTrackDetail[]): TournamentEventInput {
-    // A new event leaves out what the TD didn't change, so the backend fills
-    // it from the matching season event instead of overwriting it with blanks.
-    const blank = draftFromEvent(null);
-    const seasonFields: Partial<TournamentEventInput> = {};
-    for (const field of SEASON_FIELDS) {
-      if (!isNew || draft[field] !== blank[field])
-        Object.assign(seasonFields, { [field]: draft[field] });
-    }
     return {
       name: draft.event_id ? null : draft.name?.trim() || null,
       division: draft.division,
       event_type: draft.event_type,
-      ...seasonFields,
+      ...seasonValues,
       event_id: draft.event_id,
       track_details: trackDetails,
     };
@@ -343,6 +341,20 @@ export function EventPanel({
   // of the draft is kept, so an unsaved edit elsewhere survives it.
   const seasonEvents = useSeasonEvents(selectedTournament?.season_year ?? null);
   const seasonDefaults = current && seasonEvents ? seasonDefaultsFor(current, seasonEvents) : null;
+
+  // A new event shows its season defaults in the fields the TD hasn't set, and saves what it shows.
+  const [setByTd, setSetByTd] = useState<ReadonlySet<keyof SeasonDefaults>>(new Set());
+  const newEventDefaults = isNew && seasonEvents ? seasonDefaultsFor(draft, seasonEvents) : null;
+  const seasonValues: SeasonDefaults = {
+    format: draft.format,
+    has_impound: draft.has_impound,
+    has_self_schedule: draft.has_self_schedule,
+  };
+  if (newEventDefaults) {
+    for (const field of SEASON_FIELDS) {
+      if (!setByTd.has(field)) Object.assign(seasonValues, { [field]: newEventDefaults[field] });
+    }
+  }
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | undefined>(undefined);
   async function handleResetToDefaults() {
@@ -595,35 +607,31 @@ export function EventPanel({
 
           <SettingsRow
             label="Format"
-            helper={
-              isNew && draft.event_id
-                ? "Left as is, these come from this season's events."
-                : undefined
-            }
+            helper={newEventDefaults ? "Starts from this season's events." : undefined}
           >
             <ButtonGroup
               options={[
                 ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
                 { value: NO_FORMAT, label: "None" },
               ]}
-              value={draft.format ?? NO_FORMAT}
-              onChange={(v) => patch({ format: v === NO_FORMAT ? null : (v as EventFormat) })}
+              value={seasonValues.format ?? NO_FORMAT}
+              onChange={(v) => patchSeason({ format: v === NO_FORMAT ? null : (v as EventFormat) })}
               locked={locked}
             />
           </SettingsRow>
 
           <SettingsRow label="Impound">
             <Switch
-              checked={draft.has_impound}
-              onChange={(v) => patch({ has_impound: v })}
+              checked={seasonValues.has_impound}
+              onChange={(v) => patchSeason({ has_impound: v })}
               locked={locked}
             />
           </SettingsRow>
 
           <SettingsRow label="Self-schedule">
             <Switch
-              checked={draft.has_self_schedule}
-              onChange={(v) => patch({ has_self_schedule: v })}
+              checked={seasonValues.has_self_schedule}
+              onChange={(v) => patchSeason({ has_self_schedule: v })}
               locked={locked}
             />
           </SettingsRow>
