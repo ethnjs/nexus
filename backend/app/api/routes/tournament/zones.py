@@ -144,9 +144,13 @@ def _validate_members(
             )
 
 
-def _set_members(zone: TournamentZone, members: list[ZoneMember]) -> None:
-    """Replace a zone's rules whole-set."""
-    zone.members.clear()
+def _set_members(db: Session, zone: TournamentZone, members: list[ZoneMember]) -> None:
+    """Replace a zone's rules whole-set. Flushes when it removes rules."""
+    if zone.members:
+        zone.members.clear()
+        # The unit of work inserts before it deletes, so a rule kept across
+        # the replace would collide with its own old row in the unique indexes.
+        db.flush()
     for member in members:
         zone.members.append(
             TournamentZoneMember(
@@ -228,7 +232,7 @@ def create_zone(
         name=payload.name,
     )
     db.add(zone)
-    _set_members(zone, payload.members)
+    _set_members(db, zone, payload.members)
 
     try:
         db.commit()
@@ -263,11 +267,13 @@ def update_zone(
     require_not_archived(tournament)
     zone = get_scoped_or_404(db, TournamentZone, zone_id, tournament_id, "Zone")
 
-    if payload.name is not None:
-        zone.name = payload.name
+    # Rules before the name: their queries and flush would write a pending
+    # rename outside the try below, turning a duplicate name into a 500.
     if payload.members is not None:
         _validate_members(db, tournament_id, zone.track_id, payload.members)
-        _set_members(zone, payload.members)
+        _set_members(db, zone, payload.members)
+    if payload.name is not None:
+        zone.name = payload.name
 
     try:
         db.commit()

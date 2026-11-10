@@ -744,3 +744,19 @@ def test_archived_tournament_blocks_zone_writes(client, db, td_user, td_tourname
     assert client.post(base, json={"track_id": track, "name": "Later"}).status_code == 403
     assert client.patch(f"{base}{zone['id']}/", json={"name": "Nope"}).status_code == 403
     assert client.delete(f"{base}{zone['id']}/").status_code == 403
+
+
+def test_adding_a_rule_keeps_the_ones_already_there(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    anatomy = _event(client, td_tournament.id, track, "Anatomy")
+    chem = _event(client, td_tournament.id, track, "Chemistry")
+    first = {"kind": "event", "tournament_event_id": anatomy["id"]}
+    zone = _zone(client, td_tournament.id, track, members=[first]).json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/zones/{zone['id']}/",
+        json={"members": [first, {"kind": "event", "tournament_event_id": chem["id"]}]},
+    )
+    assert response.status_code == 200, response.text
+    assert sorted(response.json()["event_ids"]) == sorted([anatomy["id"], chem["id"]])
