@@ -7,6 +7,9 @@
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
+# In a linked worktree git gives hooks GIT_DIR but not GIT_WORK_TREE, so git run from
+# backend/ or frontend/ would take that directory for the top of the work tree.
+export GIT_WORK_TREE="$root"
 
 # A subshell, so its cd doesn't leak into the frontend check's pathspec.
 backend_checks() (
