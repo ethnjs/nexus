@@ -9,4 +9,4 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [[ -f "$root/scripts/setup-worktree-db.sh" ]] || exit 0
 
 # Never fail a checkout over dev-environment setup.
-bash "$root/scripts/setup-worktree-db.sh" || true
+bash "$root/scripts/setup-worktree-db.sh" --on-checkout || true
