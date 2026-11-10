@@ -30,6 +30,7 @@ import {
 } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useStepUp } from "@/lib/useStepUp";
 
 // Fixed px wherever the content has a known maximum — a formatted date range,
 // a count, a badge — and minmax() only where it is open-ended. The min half
@@ -371,6 +372,7 @@ export default function AdminTournamentsPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
 
   const run = useActionToast();
+  const { withStepUp, stepUpModal } = useStepUp();
   const [ownerUserId, setOwnerUserId] = useState<number | null>(null);
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -437,6 +439,7 @@ export default function AdminTournamentsPage() {
   return (
     <>
       <PageHeader heading="Tournaments" />
+      {stepUpModal}
 
       {loadError && (
         <p
@@ -586,7 +589,9 @@ export default function AdminTournamentsPage() {
             </>
           }
           onDelete={(t) =>
-            run(`${tournamentDisplayName(t)} deleted`, () => tournamentsApi.delete(t.id))
+            run(`${tournamentDisplayName(t)} deleted`, () =>
+              withStepUp(() => tournamentsApi.delete(t.id)),
+            )
           }
           onClose={() => setDeleteTarget(null)}
           onDeleted={removeRows}
