@@ -39,13 +39,12 @@ Add dependencies with `uv add <pkg>`, or `uv add --dev <pkg>` for dev-only tools
 
 ### Google sign-in (optional)
 
-Leave the `GOOGLE_OAUTH_*` variables blank and the button reports that Google sign-in isn't available. To try it, create a Web-application OAuth client (scopes `openid email profile`) and register:
+Leave the `GOOGLE_OAUTH_*` variables blank and the button reports that Google sign-in isn't available. To try it, create a Web-application OAuth client (scopes `openid email profile`) and register a redirect URI of `FRONTEND_URL` followed by `api/proxy/auth/oauth/google/callback`, with no trailing slash:
 
-- `http://localhost:8001/auth/oauth/google/callback/` (dev, browser talks to the backend directly)
-- `http://localhost:3000/api/proxy/auth/oauth/google/callback` (dev, once local traffic goes through the proxy)
+- `http://localhost:3000/api/proxy/auth/oauth/google/callback`
 - `https://nexus.socalscioly.org/api/proxy/auth/oauth/google/callback`
 
-Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (the URI this environment actually uses), and `OAUTH_STATE_SECRET` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Production refuses to start on the dev default secret.
+Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `OAUTH_STATE_SECRET` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Production refuses to start on the dev default secret. Google sign-in still asks for the code emailed to the account.
 
 ### 3. Frontend
 

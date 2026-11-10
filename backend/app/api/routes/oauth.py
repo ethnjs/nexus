@@ -27,6 +27,7 @@ from app.core.oauth import (
     email_and_sub,
     frontend_redirect,
     get_google_oauth,
+    google_redirect_uri,
     is_discord_link_configured,
     is_google_configured,
     link_identity,
@@ -91,7 +92,7 @@ async def google_start(
     request.session["oauth_redirect"] = safe_redirect_path(redirect)
     return await get_google_oauth().google.authorize_redirect(
         request,
-        get_settings().google_oauth_redirect_uri,
+        google_redirect_uri(),
         prompt="select_account",
     )
 

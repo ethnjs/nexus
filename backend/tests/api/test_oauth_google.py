@@ -49,9 +49,6 @@ def google_settings(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "google_oauth_client_id", "test-client")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "test-secret")
-    monkeypatch.setattr(
-        settings, "google_oauth_redirect_uri", "http://localhost:8001/auth/oauth/google/callback/"
-    )
     monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000/")
 
     async def fake_load(self):
@@ -116,6 +113,9 @@ class TestGoogleStart:
         assert query["code_challenge_method"] == ["S256"]
         assert query["prompt"] == ["select_account"]
         assert "code_challenge" in query
+        assert query["redirect_uri"] == [
+            "http://localhost:3000/api/proxy/auth/oauth/google/callback"
+        ]
         assert "oauth_state" in res.cookies
 
     def test_unconfigured_redirects(self, client, monkeypatch):
@@ -124,7 +124,6 @@ class TestGoogleStart:
         settings = get_settings()
         monkeypatch.setattr(settings, "google_oauth_client_id", "")
         monkeypatch.setattr(settings, "google_oauth_client_secret", "")
-        monkeypatch.setattr(settings, "google_oauth_redirect_uri", "")
         monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000/")
         res = _start(client)
         assert res.status_code == 302

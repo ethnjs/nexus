@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     # Web OAuth client for Google sign-in — not the service account above.
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
-    google_oauth_redirect_uri: str = ""
     # Signs the oauth_state cookie. Production refuses the default.
     oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
 
