@@ -205,6 +205,10 @@ function extendField(field: ExtendableField): FieldExtension {
   if (!kind) return NO_EXTENSION;
   return {
     keyLockedReason: `Set by the ${PRESETS[kind].label} preset — edit it from the presets icon below.`,
+    sharedKeyNote:
+      kind === "event_preference"
+        ? "Give every form the same event groupings: the member panel labels each member's picks with one form's options, not necessarily the form they answered."
+        : undefined,
     allowedQuestionTypes: PRESETS[kind].allowedQuestionTypes,
     // A track status answer is what moves the member's track, so it can't be skipped.
     requiredLocked: kind === "track_status",

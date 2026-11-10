@@ -46,7 +46,7 @@ export function FieldKeyPopover({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { keyLockedReason } = useFieldExtension(field);
+  const { keyLockedReason, sharedKeyNote } = useFieldExtension(field);
   // Cleared the instant field_key changes for *any* reason (typing here, or an
   // add-on editing the key), rather than staying stuck until the next blur or Save.
   const [localError, setLocalError] = useState<string | undefined>(undefined);
@@ -160,6 +160,7 @@ export function FieldKeyPopover({
               }}
             >
               Other forms use this key too. A member&rsquo;s latest answer to it is the one shown.
+              {sharedKeyNote && ` ${sharedKeyNote}`}
             </span>
           )}
         </div>

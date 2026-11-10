@@ -28,6 +28,8 @@ export interface ExtendableField {
 export interface FieldExtension {
   /** Set when the add-on owns this field's key: the key popover locks and shows this. */
   keyLockedReason?: string;
+  /** Added to the key popover's note when other forms use this key too. */
+  sharedKeyNote?: string;
   allowedQuestionTypes?: FormQuestionType[];
   requiredLocked?: boolean;
   /** Defaults to true. */

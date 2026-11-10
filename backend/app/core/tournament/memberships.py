@@ -203,9 +203,9 @@ def build_event_preferences(
             Form.tournament_id == membership.tournament_id,
             FormField.field_key.in_({f"event_preference_{tid}" for tid in track_ids}),
         )
-        # Live fields first so a live option wins the mapping over an archived
-        # field that shares the key — an archived field doesn't reserve its
-        # key, so both can exist at once.
+        # Forms may share the key, and only the first field's option claims
+        # an event: live before archived, then oldest. The builder warns TDs
+        # to group events the same way on every form.
         .order_by(FormField.is_archived, FormField.id)
         .all()
     )
