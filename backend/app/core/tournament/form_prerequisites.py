@@ -16,9 +16,28 @@ def member_meets_form_prerequisites(
     membership: TournamentMembership,
     tournament_form: TournamentForm,
 ) -> bool:
-    return meets_prerequisites(
-        tournament_form.prerequisites, _membership_role_ids(db, membership.id)
+    roles = role_ids_by_user(db, membership.tournament_id, [membership.user_id])
+    return meets_prerequisites(tournament_form.prerequisites, roles[membership.user_id])
+
+
+def role_ids_by_user(
+    db: Session, tournament_id: int, user_ids: list[int] | None = None
+) -> dict[int, set[int]]:
+    """The role ids each member holds, for `user_ids` or the whole tournament.
+    Every member is a key, with an empty set if they hold no roles."""
+    query = (
+        db.query(TournamentMembership.user_id, TournamentTrackAssignment.role_id)
+        .outerjoin(TournamentTrackAssignment)
+        .filter(TournamentMembership.tournament_id == tournament_id)
     )
+    if user_ids is not None:
+        query = query.filter(TournamentMembership.user_id.in_(user_ids))
+    roles: dict[int, set[int]] = {}
+    for user_id, role_id in query:
+        held = roles.setdefault(user_id, set())
+        if role_id is not None:
+            held.add(role_id)
+    return roles
 
 
 def meets_prerequisites(prerequisites: object, role_ids: set[int]) -> bool:
@@ -52,12 +71,3 @@ def _passes(condition: object, role_ids: set[int]) -> bool:
     else:
         return False
     return holds != (condition.get("inverse") is True)
-
-
-def _membership_role_ids(db: Session, membership_id: int) -> set[int]:
-    return {
-        role_id
-        for (role_id,) in db.query(TournamentTrackAssignment.role_id)
-        .filter(TournamentTrackAssignment.membership_id == membership_id)
-        .all()
-    }

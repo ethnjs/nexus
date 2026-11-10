@@ -62,6 +62,7 @@ from app.core.tournament.form_flow import member_form_flow
 from app.core.tournament.form_prerequisites import (
     meets_prerequisites,
     member_meets_form_prerequisites,
+    role_ids_by_user,
 )
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import (
@@ -80,7 +81,6 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentRole,
-    TournamentTrackAssignment,
     User,
     utcnow,
 )
@@ -450,22 +450,9 @@ def preview_tournament_form_prerequisites(
     prerequisites = payload.model_dump()
     _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
 
-    role_ids_by_user: dict[int, set[int]] = {
-        user_id: set()
-        for (user_id,) in db.query(TournamentMembership.user_id).filter(
-            TournamentMembership.tournament_id == tournament_id
-        )
-    }
-    for user_id, role_id in (
-        db.query(TournamentMembership.user_id, TournamentTrackAssignment.role_id)
-        .join(TournamentTrackAssignment)
-        .filter(TournamentMembership.tournament_id == tournament_id)
-    ):
-        role_ids_by_user[user_id].add(role_id)
-
     matching = {
         user_id
-        for user_id, role_ids in role_ids_by_user.items()
+        for user_id, role_ids in role_ids_by_user(db, tournament_id).items()
         if meets_prerequisites(prerequisites, role_ids)
     }
     refs = resolve_person_refs(db, tournament_id, set(matching))

@@ -13,13 +13,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session, contains_eager
 
-from app.core.tournament.form_prerequisites import meets_prerequisites
+from app.core.tournament.form_prerequisites import meets_prerequisites, role_ids_by_user
 from app.models.models import (
     Form,
     FormResponse,
     TournamentForm,
     TournamentMembership,
-    TournamentTrackAssignment,
     utcnow,
 )
 
@@ -72,16 +71,7 @@ def onboarding_paths(
     ):
         answered.setdefault(user_id, set()).add(form_id)
 
-    role_ids: dict[int, set[int]] = {}
-    for user_id, role_id in (
-        db.query(TournamentMembership.user_id, TournamentTrackAssignment.role_id)
-        .join(TournamentTrackAssignment)
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembership.user_id.in_(user_ids),
-        )
-    ):
-        role_ids.setdefault(user_id, set()).add(role_id)
+    role_ids = role_ids_by_user(db, tournament_id, user_ids)
 
     for user_id, path in paths.items():
         done = answered.get(user_id, set())

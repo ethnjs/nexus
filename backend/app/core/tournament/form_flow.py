@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.core.tournament.form_prerequisites import meets_prerequisites
+from app.core.tournament.form_prerequisites import meets_prerequisites, role_ids_by_user
 from app.core.tournament.onboarding import exempt_from_onboarding, onboarding_paths
 from app.core.tournament.permissions import get_user_permissions
 from app.models.models import (
@@ -15,7 +15,6 @@ from app.models.models import (
     FormResponse,
     TournamentForm,
     TournamentMembership,
-    TournamentTrackAssignment,
 )
 
 
@@ -54,12 +53,9 @@ def member_form_flow(db: Session, membership: TournamentMembership) -> MemberFor
             FormResponse.form_id.in_([row.form_id for row in rows]),
         )
     }
-    role_ids = {
-        role_id
-        for (role_id,) in db.query(TournamentTrackAssignment.role_id).filter(
-            TournamentTrackAssignment.membership_id == membership.id
-        )
-    }
+    role_ids = role_ids_by_user(db, membership.tournament_id, [membership.user_id])[
+        membership.user_id
+    ]
     path = onboarding_paths(
         db, membership.tournament_id, [membership.user_id], include_drafts=True
     )[membership.user_id]
