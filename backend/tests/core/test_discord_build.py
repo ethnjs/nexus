@@ -29,6 +29,7 @@ from app.models.models import (
     TournamentEvent,
     TournamentEventTrack,
     TournamentRole,
+    TournamentRoom,
     utcnow,
 )
 from app.services.discord.permissions import (
@@ -702,16 +703,12 @@ async def test_admin_roles_are_created_hoisted(db, link, guild, scope):
     assert guild.role("Tournament Director")["hoist"] is False
 
 
-def _add_events(db, link, names: list[str], building_id: int | None = None) -> None:
+def _add_events(db, link, names: list[str]) -> None:
     for name in names:
         event = TournamentEvent(tournament_id=link.tournament_id, name=name, division="C")
         db.add(event)
         db.flush()
-        db.add(
-            TournamentEventTrack(
-                tournament_event_id=event.id, track_id=link.track_id, building_id=building_id
-            )
-        )
+        db.add(TournamentEventTrack(tournament_event_id=event.id, track_id=link.track_id))
     db.commit()
 
 
@@ -747,8 +744,8 @@ class TestCategoryCapacity:
         rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
         for i in range(48):
             guild.add_channel(f"chat-{i}", parent_id=int(rowland["id"]))
-        building = events["Circuit Lab B"].track_details[0].building_id
-        events["Anatomy C"].track_details[0].building_id = building
+        building = events["Circuit Lab B"].track_details[0].building
+        events["Anatomy C"].track_details[0].rooms = [TournamentRoom(building=building, name="103")]
         db.commit()
 
         assert await _build(db, link, scope, reset=True) is None

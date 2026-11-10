@@ -11,6 +11,7 @@ from app.models.models import (
     TournamentBuildingTrack,
     TournamentEvent,
     TournamentEventTrack,
+    TournamentRoom,
 )
 from tests.conftest import primary_track_id
 
@@ -35,9 +36,9 @@ def events(db, td_tournament, track_id) -> dict[str, TournamentEvent]:
     db.flush()
     db.add(TournamentBuildingTrack(building_id=rowland.id, track_id=track_id))
     made = {}
-    for name, division, building in [
-        ("Circuit Lab", "B", rowland.id),
-        ("Circuit Lab", "C", rowland.id),
+    for name, division, room in [
+        ("Circuit Lab", "B", "101"),
+        ("Circuit Lab", "C", "102"),
         ("Anatomy", "C", None),
     ]:
         event = TournamentEvent(tournament_id=td_tournament.id, name=name, division=division)
@@ -45,7 +46,9 @@ def events(db, td_tournament, track_id) -> dict[str, TournamentEvent]:
         db.flush()
         db.add(
             TournamentEventTrack(
-                tournament_event_id=event.id, track_id=track_id, building_id=building
+                tournament_event_id=event.id,
+                track_id=track_id,
+                rooms=[TournamentRoom(building=rowland, name=room)] if room else [],
             )
         )
         made[f"{name} {division}"] = event

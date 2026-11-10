@@ -22,7 +22,7 @@ from itertools import count
 from typing import Any
 
 from sqlalchemy import ColumnElement, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.discord.layout import (
     CATEGORY_CAPACITY,
@@ -51,10 +51,10 @@ from app.core.oauth import frontend_redirect
 from app.core.tournament.zones import resolve_track_zones
 from app.models.discord import DiscordGuildLink, DiscordManagedChannel, DiscordManagedRole
 from app.models.models import (
-    TournamentBuilding,
     TournamentEvent,
     TournamentEventTrack,
     TournamentRole,
+    TournamentRoom,
     TournamentZone,
     utcnow,
 )
@@ -152,19 +152,15 @@ def load_snapshot(db: Session, link_id: int) -> Snapshot:
         z.id: Place(z.id, z.name)
         for z in db.query(TournamentZone).filter(TournamentZone.track_id == link.track_id)
     }
-    buildings = {
-        b.id: Place(b.id, b.name)
-        for b in db.query(TournamentBuilding).filter(
-            TournamentBuilding.tournament_id == link.tournament_id
-        )
-    }
     events = []
     for placement, event in (
         db.query(TournamentEventTrack, TournamentEvent)
         .join(TournamentEvent, TournamentEvent.id == TournamentEventTrack.tournament_event_id)
         .filter(TournamentEventTrack.track_id == link.track_id)
+        .options(selectinload(TournamentEventTrack.rooms).joinedload(TournamentRoom.building))
     ):
         zone_id = zone_of.get(event.id)
+        building = placement.building
         events.append(
             LayoutEvent(
                 id=event.id,
@@ -172,7 +168,7 @@ def load_snapshot(db: Session, link_id: int) -> Snapshot:
                 division=event.division,
                 catalog_id=event.event_id,
                 catalog_name=event.display_name if event.event_id else None,
-                building=buildings.get(placement.building_id) if placement.building_id else None,
+                building=Place(building.id, building.name) if building else None,
                 zone=zones.get(zone_id) if zone_id else None,
             )
         )
