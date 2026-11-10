@@ -695,7 +695,9 @@ export default function AdminUsersPage() {
       {pending?.kind === "delete" && (
         <DeleteUserModal
           user={pending.user}
-          onDelete={(u) => run(`${userName(u)} deleted`, () => adminUsersApi.delete(u.id))}
+          onDelete={(u) =>
+            run(`${userName(u)} deleted`, () => withStepUp(() => adminUsersApi.delete(u.id)))
+          }
           onClose={() => setPending(null)}
           onDeleted={removeRows}
         />

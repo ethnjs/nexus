@@ -181,13 +181,19 @@ def admin_update_user(
 # ---------------------------------------------------------------------------
 # DELETE /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.delete("/admin/users/{user_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/admin/users/{user_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def admin_delete_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    _: UserSession = Depends(require_recent_code),
 ):
-    """Delete any user. Admin only. Irreversible.
+    """Delete any user. Admin only. Irreversible, so it needs a code entered in the last 10
+    minutes; see POST /auth/step-up/.
 
     Everything personal goes: profile, experience, sessions, chapter and
     tournament memberships, form responses. Things they made for other people

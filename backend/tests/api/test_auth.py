@@ -353,6 +353,7 @@ GUARDED_ACTIONS = {
         f"/admin/users/{u}/", json={"email": "renamed@test.com"}
     ),
     "create_sign_in_code": lambda c, t, u: c.post(f"/admin/users/{u}/sign-in-code/"),
+    "delete_user": lambda c, t, u: c.delete(f"/admin/users/{u}/"),
 }
 
 
