@@ -69,13 +69,15 @@ async def lifespan(app: FastAPI):
         from app.db.seed_universities import seed_universities
         from app.db.session import SessionLocal
 
-        with SessionLocal() as db:
-            seed_events_and_categories(db)  # always — dev + prod
-            seed_universities(db)  # always — dev + prod
-
-        if get_settings().app_env in ("development", "preview"):
+        is_dev = get_settings().app_env in ("development", "preview")
+        # Production migrates in the Procfile before uvicorn starts.
+        if is_dev:
             init_db()
-            with SessionLocal() as db:
+
+        with SessionLocal() as db:
+            seed_events_and_categories(db)
+            seed_universities(db)
+            if is_dev:
                 seed_dev_data(db)
 
         from apscheduler.schedulers.background import BackgroundScheduler
