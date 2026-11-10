@@ -133,7 +133,8 @@ export function Modal({
                 fontFamily: "var(--font-serif)",
                 fontSize: "22px",
                 color: variant === "danger" ? "var(--color-danger)" : "var(--color-text-primary)",
-                flexShrink: 0,
+                minWidth: 0,
+                overflowWrap: "break-word",
               }}
             >
               {title}
