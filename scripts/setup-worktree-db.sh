@@ -26,9 +26,9 @@ db_name=$(printf '%s' "$worktree_name" | tr '[:upper:]-' '[:lower:]_' | tr -cd '
 env_file="$repo_root/backend/.env"
 db_url="postgresql://${PGUSER}:${PGPASSWORD}@127.0.0.1:${PGPORT}/${db_name}"
 
-# Already pointed at the right database? Nothing to do. This keeps the hook
-# cheap on ordinary branch checkouts, which also fire post-checkout.
-if [[ -f $env_file ]] && grep -qx "DATABASE_URL=${db_url}" "$env_file"; then
+# On a checkout, trust a matching DATABASE_URL: checking that the database still
+# exists takes about a second. Run by hand, recreate it if it's gone.
+if [[ ${1:-} == --on-checkout && -f $env_file ]] && grep -qx "DATABASE_URL=${db_url}" "$env_file"; then
   exit 0
 fi
 
