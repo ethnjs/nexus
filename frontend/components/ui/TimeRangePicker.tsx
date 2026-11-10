@@ -231,7 +231,6 @@ export function TimeRangePicker({
           padding: 0,
           fontFamily: "var(--font-sans)",
           fontSize: sizing.fontSize,
-          fontWeight: 500,
           color: locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
           background: "transparent",
           border: "none",
