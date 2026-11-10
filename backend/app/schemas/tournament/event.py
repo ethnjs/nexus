@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
-from app.schemas.tournament.building import TournamentRoomRead, sorted_rooms
+from app.schemas.tournament.building import TournamentRoomRead, blank_to_none, sorted_rooms
 from app.schemas.tournament.shift import TournamentShiftBase, TournamentShiftRead
 from app.schemas.tournament.track import TournamentTrackRead
 
@@ -85,9 +85,7 @@ class EventTrackDetail(BaseModel):
     @field_validator("floor")
     @classmethod
     def _clean_floor(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        return v.strip() or None
+        return blank_to_none(v)
 
     @field_validator("room_ids")
     @classmethod

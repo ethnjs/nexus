@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.core.tournament.zones import KIND_BUILDING, KIND_EVENT, KIND_FLOOR, KIND_ROOM, VALID_KINDS
 from app.schemas.person import PersonNameRef, PersonRoleRead
+from app.schemas.tournament.building import blank_to_none
 
 
 def _validate_name(value: str) -> str:
@@ -43,7 +44,7 @@ class ZoneMember(BaseModel):
     @field_validator("floor")
     @classmethod
     def _clean_floor(cls, v: str | None) -> str | None:
-        return (v.strip() or None) if v is not None else None
+        return blank_to_none(v)
 
     @model_validator(mode="after")
     def _check_shape(self) -> ZoneMember:

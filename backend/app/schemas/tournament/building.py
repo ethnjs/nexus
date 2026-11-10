@@ -14,8 +14,8 @@ def _validate_name(value: str) -> str:
     return value
 
 
-def _clean_short_name(value: str | None) -> str | None:
-    """Blank clears it, the same as sending null."""
+def blank_to_none(value: str | None) -> str | None:
+    """Trimmed, with blank meaning null, so a cleared input clears the field."""
     if value is None:
         return None
     return value.strip() or None
@@ -53,7 +53,7 @@ class TournamentBuildingCreate(BaseModel):
     @field_validator("short_name")
     @classmethod
     def _check_short_name(cls, value: str | None) -> str | None:
-        return _clean_short_name(value)
+        return blank_to_none(value)
 
     @field_validator("track_ids")
     @classmethod
@@ -80,18 +80,12 @@ class TournamentBuildingUpdate(BaseModel):
     @field_validator("short_name")
     @classmethod
     def _check_short_name(cls, value: str | None) -> str | None:
-        return _clean_short_name(value)
+        return blank_to_none(value)
 
     @field_validator("track_ids")
     @classmethod
     def _check_track_ids(cls, value: list[int] | None) -> list[int] | None:
         return _validate_track_ids(value) if value is not None else value
-
-
-def _clean_floor(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return value.strip() or None
 
 
 class TournamentRoomRead(BaseModel):
@@ -150,7 +144,7 @@ class TournamentRoomUpdate(BaseModel):
     @field_validator("floor")
     @classmethod
     def _check_floor(cls, value: str | None) -> str | None:
-        return _clean_floor(value)
+        return blank_to_none(value)
 
 
 class TournamentBuildingRead(BaseModel):
