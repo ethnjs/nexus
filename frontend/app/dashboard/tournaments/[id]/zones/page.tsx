@@ -124,12 +124,21 @@ export default function ZonesPage() {
 
   useEffect(() => {
     if (!canManageEvents || activeTrackId === null) return;
+    let cancelled = false;
+    setLoadError(undefined);
     zonesApi
       .list(tournamentId, activeTrackId)
-      .then(setCoverage)
-      .catch((err) =>
-        setLoadError(err instanceof ApiError ? err.message : "Failed to load zones."),
-      );
+      .then((data) => {
+        if (!cancelled) setCoverage(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLoadError(err instanceof ApiError ? err.message : "Failed to load zones.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [tournamentId, activeTrackId, canManageEvents]);
 
   // Roles need manage_members, manage_roles or manage_forms; without them the
