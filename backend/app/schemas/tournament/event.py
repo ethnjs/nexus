@@ -19,10 +19,10 @@ def validate_event_format(v: str | None) -> str | None:
     return v
 
 
-def reject_null(v: bool | None) -> bool:
+def reject_null[T](v: T | None) -> T:
     """For an update field whose None means "not sent": an explicit null can't be stored."""
     if v is None:
-        raise ValueError("must be true or false")
+        raise ValueError("can't be null")
     return v
 
 

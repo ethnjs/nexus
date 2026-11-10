@@ -37,7 +37,9 @@ class SeasonEventUpdate(BaseModel):
     has_self_schedule: bool | None = None
 
     _validate_format = field_validator("format")(validate_event_format)
-    _reject_null_flags = field_validator("has_impound", "has_self_schedule")(reject_null)
+    _reject_null = field_validator(
+        "year", "division", "is_active", "has_impound", "has_self_schedule"
+    )(reject_null)
 
     @field_validator("division")
     @classmethod

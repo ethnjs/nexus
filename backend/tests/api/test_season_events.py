@@ -1,6 +1,8 @@
 """Tests for /admin/season-events endpoints (SeasonEvent model) and the
 /tournaments/{tournament_id}/events/load-defaults bulk-load action."""
 
+import pytest
+
 from app.models.models import SeasonEvent
 from tests.conftest import login
 
@@ -103,10 +105,11 @@ def test_update_season_event_clears_format(client, admin_user, event):
     assert response.json()["format"] is None
 
 
-def test_update_season_event_rejects_null_flag(client, admin_user, event):
+@pytest.mark.parametrize("field", ["year", "division", "is_active", "has_impound"])
+def test_update_season_event_rejects_null(client, admin_user, event, field):
     _login_admin(client)
     created = _make_season_event(client, event_id=event.id).json()
-    response = client.patch(f"/admin/season-events/{created['id']}/", json={"has_impound": None})
+    response = client.patch(f"/admin/season-events/{created['id']}/", json={field: None})
     assert response.status_code == 422
 
 
