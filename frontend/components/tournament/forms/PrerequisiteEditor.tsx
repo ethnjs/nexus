@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MemberSummary } from "@/components/tournament/MemberSummary";
 import { Button } from "@/components/ui/Button";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -12,7 +13,6 @@ import {
   type RolePrerequisite,
   type TournamentFormPrerequisites,
 } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
 
 export interface RoleOption {
   id: number;
@@ -215,9 +215,9 @@ function MatchingMembers({
       {open && members && (
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+            gap: "10px 16px",
             maxHeight: "220px",
             overflowY: "auto",
             padding: "4px 0 0 18px",
@@ -225,15 +225,7 @@ function MatchingMembers({
         >
           {members.length === 0 && <span style={MUTED}>No members match.</span>}
           {members.map((member) => (
-            <div
-              key={member.user_id ?? member.membership_id}
-              style={{ display: "flex", gap: "8px" }}
-            >
-              <span style={TEXT}>{personName(member)}</span>
-              <span style={MUTED}>
-                {(member.roles ?? []).map((role) => role.label).join(", ") || "No roles"}
-              </span>
-            </div>
+            <MemberSummary key={member.user_id ?? member.membership_id} member={member} />
           ))}
         </div>
       )}

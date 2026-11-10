@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { FlowSection, FlowTitle } from "@/components/tournament/forms/flow/FlowPane";
+import { MemberSummary } from "@/components/tournament/MemberSummary";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconCheck, IconChevronLeft, IconMembers, IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { NavItem } from "@/components/ui/ModalNav";
 import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, type FlowStep, formsApi, type MemberFormFlow, type PersonRef } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
@@ -91,13 +91,24 @@ export function PreviewMemberList({
           <span style={{ ...MUTED, padding: "8px 10px" }}>No members match.</span>
         ) : (
           shown.map((member) => (
-            <NavItem
+            <Button
               key={member.membership_id}
-              active={selectedId === member.membership_id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              fullWidth
               onClick={() => onSelect(member)}
+              style={{
+                height: "auto",
+                padding: "6px 8px",
+                justifyContent: "flex-start",
+                // Longhand: Button's hover sets backgroundColor.
+                backgroundColor:
+                  selectedId === member.membership_id ? "var(--color-accent-subtle)" : undefined,
+              }}
             >
-              {personName(member)}
-            </NavItem>
+              <MemberSummary member={member} />
+            </Button>
           ))
         )}
       </div>
@@ -146,10 +157,11 @@ export function MemberFlowView({
       ) : (
         <>
           <div style={{ marginBottom: "16px" }}>
-            <FlowTitle>{personName(member)}</FlowTitle>
-            <span style={MUTED}>
-              {(member.roles ?? []).map((r) => r.label).join(", ") || "No roles"}
-            </span>
+            <MemberSummary
+              member={member}
+              size="lg"
+              name={<FlowTitle>{personName(member)}</FlowTitle>}
+            />
           </div>
           {error && (
             <p
