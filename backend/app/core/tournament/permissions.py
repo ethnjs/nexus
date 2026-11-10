@@ -41,6 +41,7 @@ MANAGE_MEMBERS = "manage_members"  # membership data — roster + assign member 
 MANAGE_EVENTS = "manage_events"  # read + write events page
 MANAGE_INVITES = "manage_invites"  # join codes + staff invites
 MANAGE_FORMS = "manage_forms"  # forms creation and editing
+MANAGE_DISCORD = "manage_discord"  # link, build, reset and sync Discord servers
 
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
@@ -50,6 +51,7 @@ ALL_PERMISSIONS: list[str] = [
     MANAGE_EVENTS,
     MANAGE_INVITES,
     MANAGE_FORMS,
+    MANAGE_DISCORD,
 ]
 
 
@@ -79,6 +81,7 @@ DEFAULT_ROLES: list[dict] = [
             MANAGE_EVENTS,
             MANAGE_INVITES,
             MANAGE_FORMS,
+            MANAGE_DISCORD,
         ],
         "torus_role": "tournament_director",
         "duosmium_role": "tournament_director",
@@ -86,12 +89,26 @@ DEFAULT_ROLES: list[dict] = [
     {
         "label": "Volunteer Coordinator",
         "rank": 20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
+        "permissions": [
+            MANAGE_MEMBERS,
+            MANAGE_ROLES,
+            MANAGE_EVENTS,
+            MANAGE_INVITES,
+            MANAGE_FORMS,
+            MANAGE_DISCORD,
+        ],
     },
     {
         "label": "Test Coordinator",
         "rank": 20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES, MANAGE_FORMS],
+        "permissions": [
+            MANAGE_MEMBERS,
+            MANAGE_EVENTS,
+            MANAGE_ROLES,
+            MANAGE_INVITES,
+            MANAGE_FORMS,
+            MANAGE_DISCORD,
+        ],
         "torus_role": "test_coordinator",
     },
     {

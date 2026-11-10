@@ -328,7 +328,9 @@ export interface LoginResponse {
 }
 
 // The server's timestamps are on its clock, which this browser's may not match.
-function onLocalClock<T extends SecondsLeft>(challenge: T): T {
+export function onLocalClock<T extends SecondsLeft>(
+  challenge: T,
+): T & Pick<CodeChallenge, "expires_at" | "can_resend_at"> {
   const now = Date.now();
   return {
     ...challenge,
@@ -376,6 +378,10 @@ export const authApi = {
 
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>("/auth/email/revert/", { token, new_password: newPassword }),
+
+  // A full navigation, not fetch: the backend answers with a redirect to Discord.
+  discordStartUrl: (redirect?: string) =>
+    `/api/proxy/auth/oauth/discord/start${redirect ? `?${new URLSearchParams({ redirect })}` : ""}`,
 };
 
 // -------------------------------------------------------------------------
@@ -390,9 +396,18 @@ export interface UserSession {
   is_current: boolean;
 }
 
+export interface OAuthIdentity {
+  provider: "google" | "discord";
+  email_at_provider: string | null;
+  username_at_provider: string | null;
+  created_at: string;
+}
+
 export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
   me: () => api.get<UserMeSlim>("/users/me/"),
+  identities: () => api.get<OAuthIdentity[]>("/users/me/identities/"),
+  unlinkDiscord: () => api.delete<void>("/users/me/identities/discord/"),
   // GET /users/me/?full=true — matches UserMeFullResponse
   meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
   // PATCH /users/me/ — matches UserMeFullResponse
@@ -1521,7 +1536,8 @@ export type Permission =
   | "manage_members"
   | "manage_events"
   | "manage_invites"
-  | "manage_forms";
+  | "manage_forms"
+  | "manage_discord";
 
 export const ALL_PERMISSIONS: Permission[] = [
   "manage_tournament",
@@ -1530,6 +1546,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "manage_events",
   "manage_invites",
   "manage_forms",
+  "manage_discord",
 ];
 
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
@@ -1557,6 +1574,11 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   manage_forms: {
     label: "Manage Forms",
     description: "Create and edit forms, and manage their published state.",
+  },
+  manage_discord: {
+    label: "Manage Discord",
+    description:
+      "Add lobot to Discord servers, and build, reset, and sync them. In Discord, members with this role are staff and see every channel.",
   },
 };
 
@@ -1613,6 +1635,77 @@ export interface InviteUpdate {
   label?: string | null;
   add_hours?: number | null;
 }
+
+// -------------------------------------------------------------------------
+// Discord — per-track server links, under /tournaments/{id}/tracks/{track_id}/discord/
+// -------------------------------------------------------------------------
+export type DiscordCategoryGrouping = "building" | "zone";
+
+// Matches DiscordLinkResponse. guild_id is a string: Discord ids exceed JS integer precision.
+export interface DiscordLink {
+  guild_id: string;
+  guild_name: string | null;
+  merge_divisions: boolean;
+  category_grouping: DiscordCategoryGrouping;
+  installed_by_name: string | null;
+  built_at: string | null;
+  bot_removed_at: string | null;
+  last_build_at: string | null;
+  last_build_status: string | null;
+  last_build_error: string | null;
+  last_sync_error: string | null;
+  // The last sync succeeded but skipped something, such as roles above the bot's.
+  last_sync_warning: string | null;
+  created_at: string;
+}
+
+export interface DiscordTrackStatus {
+  track_id: number;
+  link: DiscordLink | null;
+}
+
+// Matches DiscordBuildPreview: a dry run of the build, grouped under headings.
+export interface DiscordBuildPreview {
+  groups: { title: string; items: string[] }[];
+  warnings: string[];
+  blockers: string[];
+  preview_token: string | null;
+}
+
+export interface DiscordLinkSettings {
+  merge_divisions: boolean;
+  category_grouping: DiscordCategoryGrouping;
+}
+
+export const discordApi = {
+  // 404 when Discord is off on this deployment.
+  status: (tournamentId: number, trackId: number) =>
+    api.get<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`),
+  update: (tournamentId: number, trackId: number, body: Partial<DiscordLinkSettings>) =>
+    api.patch<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`, body),
+  unlink: (tournamentId: number, trackId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/`),
+  previewBuild: (tournamentId: number, trackId: number, reset: boolean) =>
+    api.post<DiscordBuildPreview>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/build/`, {
+      reset,
+      dry_run: true,
+    }),
+  // Starts the build in the background; poll status() for last_build_status.
+  startBuild: (tournamentId: number, trackId: number, reset: boolean, previewToken: string) =>
+    api.post<DiscordTrackStatus>(`/tournaments/${tournamentId}/tracks/${trackId}/discord/build/`, {
+      reset,
+      dry_run: false,
+      preview_token: previewToken,
+    }),
+  // A full navigation, not fetch: the backend redirects to Discord's bot install screen.
+  installUrl: (tournamentId: number, trackId: number, settings: DiscordLinkSettings) =>
+    `/api/proxy/tournaments/${tournamentId}/tracks/${trackId}/discord/install?${new URLSearchParams(
+      {
+        merge_divisions: String(settings.merge_divisions),
+        category_grouping: settings.category_grouping,
+      },
+    )}`,
+};
 
 export const invitesApi = {
   list: (tournamentId: number) => api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
