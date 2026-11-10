@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    func,
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -1423,7 +1424,11 @@ class TournamentRoom(Base):
     def effective_floor(self) -> str | None:
         return self.floor or derived_floor(self.name)
 
-    __table_args__ = (UniqueConstraint("building_id", "name", name="uq_tournament_room_name"),)
+    # Case-insensitive, so "Lab" and "lab" can't both exist; imports match
+    # rooms by name regardless of case.
+    __table_args__ = (
+        Index("uq_tournament_room_name", "building_id", func.lower(name), unique=True),
+    )
 
 
 # ---------------------------------------------------------------------------

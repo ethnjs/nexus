@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -258,7 +259,8 @@ def _room_name_taken(
     db: Session, building_id: int, name: str, *, excluding_id: int | None = None
 ) -> bool:
     query = db.query(TournamentRoom).filter(
-        TournamentRoom.building_id == building_id, TournamentRoom.name == name
+        TournamentRoom.building_id == building_id,
+        func.lower(TournamentRoom.name) == name.lower(),
     )
     if excluding_id is not None:
         query = query.filter(TournamentRoom.id != excluding_id)
@@ -284,16 +286,16 @@ def create_rooms(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    """Add rooms to a building. Names it already has are skipped, so a list can
-    be pasted again safely. Returns all of the building's rooms in natural
+    """Add rooms to a building. Names it already has, in any case, are skipped,
+    so a list can be pasted again safely. Returns all of the building's rooms in natural
     order."""
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
 
-    existing = {room.name for room in building.rooms}
+    existing = {room.name.lower() for room in building.rooms}
     for name in payload.names:
-        if name not in existing:
+        if name.lower() not in existing:
             building.rooms.append(TournamentRoom(name=name))
     try:
         db.commit()

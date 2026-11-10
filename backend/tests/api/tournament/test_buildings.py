@@ -449,6 +449,34 @@ def test_adding_rooms_skips_names_the_building_already_has(client, td_user, td_t
     assert [room["name"] for room in response.json()] == ["210", "212", "214"]
 
 
+def test_room_names_are_unique_regardless_of_case(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    url = _rooms_url(td_tournament.id, building["id"])
+    client.post(url, json={"names": ["Lab", "lab"]})
+    response = client.post(url, json={"names": ["LAB", "Gym"]})
+    assert [room["name"] for room in response.json()] == ["Gym", "Lab"]
+
+    gym = response.json()[0]
+    renamed = client.patch(
+        _rooms_url(td_tournament.id, building["id"], gym["id"]), json={"name": "lab"}
+    )
+    assert renamed.status_code == 409
+
+
+def test_a_room_can_be_renamed_to_a_different_case_of_itself(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    building = _make_building(client, td_tournament.id).json()
+    room = client.post(
+        _rooms_url(td_tournament.id, building["id"]), json={"names": ["lab"]}
+    ).json()[0]
+    response = client.patch(
+        _rooms_url(td_tournament.id, building["id"], room["id"]), json={"name": "Lab"}
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "Lab"
+
+
 def test_adding_no_rooms_is_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     building = _make_building(client, td_tournament.id).json()

@@ -112,8 +112,8 @@ def sorted_rooms(rooms) -> list[TournamentRoomRead]:
 
 
 class TournamentRoomsCreate(BaseModel):
-    """Names are trimmed and blanks dropped, so a pasted list can be sent as
-    its lines."""
+    """Names are trimmed, and blanks and case-insensitive repeats dropped, so a
+    pasted list can be sent as its lines."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -122,7 +122,12 @@ class TournamentRoomsCreate(BaseModel):
     @field_validator("names")
     @classmethod
     def _check_names(cls, value: list[str]) -> list[str]:
-        names = list(dict.fromkeys(name.strip() for name in value if name.strip()))
+        by_key: dict[str, str] = {}
+        for name in value:
+            name = name.strip()
+            if name:
+                by_key.setdefault(name.lower(), name)
+        names = list(by_key.values())
         if not names:
             raise ValueError("names must include at least one room")
         too_long = [name for name in names if len(name) > 64]
