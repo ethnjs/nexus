@@ -215,6 +215,17 @@ class MembershipTrackStatusRead(BaseModel):
         )
 
 
+class TrackVenueUsage(BaseModel):
+    """What turning off competition day on a track removes: the track from
+    `buildings` buildings (deleting `buildings_deleted` of them, which are on no
+    other day), the rooms of `placed_events` events, and `zones` zones."""
+
+    buildings: int
+    buildings_deleted: int
+    placed_events: int
+    zones: int
+
+
 class TournamentTrackDeleteResult(BaseModel):
     """What DELETE /tracks/{id}/ actually did. Two outcomes share one route
     because the TD's next action differs: a purged track is gone, a pending

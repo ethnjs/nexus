@@ -5,6 +5,7 @@ import { SettingsSection } from "@/components/settings/SettingsRow";
 import { TrackFields } from "@/components/tournament/TrackFields";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   IconCalendar,
   IconChevronDown,
@@ -23,6 +24,7 @@ import {
   rolesApi,
   type TournamentTrack,
   type TournamentTrackDeleteResult,
+  type TrackVenueUsage,
   tournamentTracksApi,
   type University,
   universitiesApi,
@@ -274,6 +276,28 @@ export function TracksSection({
   const { tracks, newRows, universities, roles, loadError, drafts, errors } = editor;
   const [expandedKey, setExpandedKey] = useState<number | null>(autoExpandKey ?? null);
   const [deleteTarget, setDeleteTarget] = useState<TournamentTrack | null>(null);
+  const [demoteTarget, setDemoteTarget] = useState<{
+    track: TournamentTrack;
+    usage: TrackVenueUsage | null;
+  } | null>(null);
+
+  async function changeDraft(
+    key: number,
+    track: TournamentTrack | null,
+    updates: Partial<TrackDraft>,
+  ) {
+    if (updates.is_primary !== false || !track?.is_primary) {
+      editor.setDraft(key, updates);
+      return;
+    }
+    const usage = await tournamentTracksApi
+      .venueUsage(track.tournament_id, track.id)
+      .catch(() => null);
+    const nothingToRemove =
+      usage !== null && usage.buildings === 0 && usage.placed_events === 0 && usage.zones === 0;
+    if (nothingToRemove) editor.setDraft(key, updates);
+    else setDemoteTarget({ track, usage });
+  }
 
   // The row a click on "Add track" just created — it scrolls itself into
   // view once rendered, since a new row lands below the fold on a
@@ -383,7 +407,7 @@ export function TracksSection({
                 expanded={expandedKey === row.key}
                 scrollIntoView={scrollToKey === row.key}
                 onToggleExpanded={() => setExpandedKey((cur) => (cur === row.key ? null : row.key))}
-                onDraftChange={(updates) => editor.setDraft(row.key, updates)}
+                onDraftChange={(updates) => void changeDraft(row.key, row.track, updates)}
                 onRestored={editor.onReplaced}
                 onDelete={() =>
                   row.track ? setDeleteTarget(row.track) : editor.discardRow(row.key)
@@ -401,7 +425,51 @@ export function TracksSection({
           onDone={(result) => editor.onDeleted(deleteTarget.id, result)}
         />
       )}
+      {demoteTarget && (
+        <ConfirmModal
+          title="Turn off competition day"
+          description={demoteDescription(demoteTarget.track, demoteTarget.usage)}
+          confirmLabel="Turn off"
+          onConfirm={async () => editor.setDraft(demoteTarget.track.id, { is_primary: false })}
+          onClose={() => setDemoteTarget(null)}
+        />
+      )}
     </SettingsSection>
+  );
+}
+
+function counted(n: number, noun: string) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/** Buildings and zones exist only on competition days, so saving this removes them. */
+function demoteDescription(track: TournamentTrack, usage: TrackVenueUsage | null) {
+  const name = <strong>{track.name}</strong>;
+  if (usage === null) {
+    return (
+      <>
+        When you save, {name} comes off every building, its events are unplaced from their rooms and
+        its zones are deleted.
+      </>
+    );
+  }
+  const removed = [
+    usage.buildings > 0 &&
+      `comes off ${counted(usage.buildings, "building")}` +
+        (usage.buildings_deleted > 0
+          ? ` (deleting ${usage.buildings_deleted} on no other day, with their rooms)`
+          : ""),
+    usage.placed_events > 0 && `unplaces ${counted(usage.placed_events, "event")} from their rooms`,
+    usage.zones > 0 && `deletes ${counted(usage.zones, "zone")}`,
+  ].filter(Boolean);
+  const list =
+    removed.length > 1
+      ? `${removed.slice(0, -1).join(", ")} and ${removed[removed.length - 1]}`
+      : removed[0];
+  return (
+    <>
+      When you save, {name} {list}.
+    </>
   );
 }
 

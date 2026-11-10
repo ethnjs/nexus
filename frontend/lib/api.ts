@@ -590,6 +590,15 @@ export type TournamentTrackUpdate = Partial<TournamentTrackCreate> & {
 // What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
 // purged: false means the track is now pending-delete and `blocked_by`
 // names the TD-authored references holding it there.
+/** What turning off is_primary on a track would remove. */
+export interface TrackVenueUsage {
+  buildings: number;
+  /** Of `buildings`, those on no other day, which are deleted with their rooms. */
+  buildings_deleted: number;
+  placed_events: number;
+  zones: number;
+}
+
 export interface TournamentTrackDeleteResult {
   purged: boolean;
   blocked_by: string[];
@@ -2394,6 +2403,8 @@ export const tournamentTracksApi = {
     api.delete<TournamentTrackDeleteResult>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
   restore: (tournamentId: number, trackId: number) =>
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
+  venueUsage: (tournamentId: number, trackId: number) =>
+    api.get<TrackVenueUsage>(`/tournaments/${tournamentId}/tracks/${trackId}/venue-usage/`),
 };
 
 // -------------------------------------------------------------------------

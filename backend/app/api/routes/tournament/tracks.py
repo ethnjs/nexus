@@ -19,11 +19,13 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament.tracks import (
+    clear_track_venue,
     live_primary_track_count,
     sync_sole_track_name,
     track_blocking_references,
     track_member_data_count,
     track_shift_count,
+    track_venue_usage,
 )
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentRole, TournamentTrack, User
@@ -32,6 +34,7 @@ from app.schemas.tournament.track import (
     TournamentTrackDeleteResult,
     TournamentTrackRead,
     TournamentTrackUpdate,
+    TrackVenueUsage,
     require_primary_fields,
 )
 
@@ -204,16 +207,19 @@ def update_track(
 
     # Demoting the last primary track would leave the tournament with no
     # dates, venue or divisions at all — the same hole deleting it would.
-    if updates.get("is_primary") is False and track.is_primary:
-        if live_primary_track_count(db, tournament_id, excluding_id=track.id) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A tournament needs at least one primary track; make another track primary first",
-            )
+    demoting = updates.get("is_primary") is False and track.is_primary
+    if demoting and live_primary_track_count(db, tournament_id, excluding_id=track.id) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A tournament needs at least one primary track; make another track primary first",
+        )
 
     if payload.reassign_assignments:
         _reassign_default_role(db, tournament, track, updates, current_user)
 
+    # Buildings and zones exist only on competition days.
+    if demoting:
+        clear_track_venue(db, track.id)
     for field, value in updates.items():
         setattr(track, field, value)
     _validate_state(track)
@@ -233,6 +239,22 @@ def update_track(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
     return track
+
+
+@router.get("/{track_id}/venue-usage/", response_model=TrackVenueUsage)
+def get_track_venue_usage(
+    tournament_id: int,
+    track_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+):
+    """What turning off `is_primary` on this track would remove: buildings and
+    zones exist only on competition days, so that PATCH takes the track off
+    every building, unplaces its events from their rooms and deletes its
+    zones."""
+    get_tournament(tournament_id, db)
+    track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
+    return track_venue_usage(db, track.id)
 
 
 # ---------------------------------------------------------------------------

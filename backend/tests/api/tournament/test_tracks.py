@@ -305,6 +305,86 @@ def test_demoting_is_allowed_once_another_primary_exists(client, td_user, td_tou
     assert response.json()["is_primary"] is False
 
 
+def _demote(client, tournament_id, track_id):
+    return client.patch(
+        f"/tournaments/{tournament_id}/tracks/{track_id}/",
+        json={
+            "is_primary": False,
+            "start_date": None,
+            "end_date": None,
+            "location": None,
+            "division": None,
+        },
+    )
+
+
+def _venue_on_main(client, tournament_id, main_id, day_2_id):
+    """Rowland only on Main, Kerckhoff on both days, Anatomy placed in a
+    Kerckhoff room on Main, and a zone on Main."""
+    base = f"/tournaments/{tournament_id}"
+    client.post(f"{base}/buildings/", json={"name": "Rowland", "track_ids": [main_id]})
+    kerckhoff = client.post(
+        f"{base}/buildings/", json={"name": "Kerckhoff", "track_ids": [main_id, day_2_id]}
+    ).json()
+    room = client.post(
+        f"{base}/buildings/{kerckhoff['id']}/rooms/", json={"names": ["210"]}
+    ).json()[0]
+    event = client.post(
+        f"{base}/events/",
+        json={
+            "tournament_id": tournament_id,
+            "name": "Anatomy",
+            "division": "C",
+            "track_details": [{"track_id": main_id, "room_ids": [room["id"]], "floor": "3"}],
+        },
+    )
+    assert event.status_code == 201, event.text
+    zone = client.post(
+        f"{base}/zones/",
+        json={
+            "track_id": main_id,
+            "name": "North",
+            "members": [{"kind": "building", "building_id": kerckhoff["id"]}],
+        },
+    )
+    assert zone.status_code == 201, zone.text
+    return event.json()
+
+
+def test_venue_usage_counts_what_demoting_removes(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    day_2 = _create_track(client, td_tournament.id, "Day 2", **_primary_fields()).json()
+    main = next(t for t in td_tournament.tracks if t.name == "Main")
+    _venue_on_main(client, td_tournament.id, main.id, day_2["id"])
+
+    response = client.get(f"/tournaments/{td_tournament.id}/tracks/{main.id}/venue-usage/")
+    assert response.status_code == 200
+    assert response.json() == {
+        "buildings": 2,
+        "buildings_deleted": 1,
+        "placed_events": 1,
+        "zones": 1,
+    }
+
+
+def test_demoting_removes_the_tracks_buildings_rooms_and_zones(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    day_2 = _create_track(client, td_tournament.id, "Day 2", **_primary_fields()).json()
+    main = next(t for t in td_tournament.tracks if t.name == "Main")
+    event = _venue_on_main(client, td_tournament.id, main.id, day_2["id"])
+
+    assert _demote(client, td_tournament.id, main.id).status_code == 200
+
+    buildings = client.get(f"/tournaments/{td_tournament.id}/buildings/").json()
+    assert [(b["name"], b["track_ids"]) for b in buildings] == [("Kerckhoff", [day_2["id"]])]
+    events = client.get(f"/tournaments/{td_tournament.id}/events/").json()
+    detail = next(e for e in events if e["id"] == event["id"])["track_details"][0]
+    assert detail["room_ids"] == []
+    assert detail["floor"] is None
+    coverage = client.get(f"/tournaments/{td_tournament.id}/zones/?track_id={main.id}").json()
+    assert coverage["zones"] == []
+
+
 # ---------------------------------------------------------------------------
 # Delete lifecycle
 # ---------------------------------------------------------------------------
