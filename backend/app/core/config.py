@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     resend_api_key: str = ""  # set in .env file for dev or env vars in prod, never commit here
     frontend_url: str = "http://localhost:3000/"  # remember to set to actual url in prod
 
+    # Emergency switch for email outages: false skips sign-in and step-up codes.
+    login_codes_required: bool = True
+
     @model_validator(mode="after")
     def require_email_in_production(self) -> Self:
         # Emails send in the background, so a missing key would otherwise only show in logs.

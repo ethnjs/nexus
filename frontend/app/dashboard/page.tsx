@@ -9,10 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Tooltip, type TooltipStatus } from "@/components/ui/Tooltip";
 import {
-  ApiError,
-  authApi,
   type Tournament,
   type TournamentSummary,
   tournamentsApi,
@@ -51,49 +48,9 @@ export default function DashboardPage() {
     }
   });
 
-  const [tooltipStatus, setTooltipStatus] = useState<Record<string, TooltipStatus>>({
-    resendEmail: "idle",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
   const user = useAuth().user;
 
-  const resendEmailTooltipMessages: Partial<Record<TooltipStatus, string | undefined>> = {
-    success: "Email sent successfully. Please check your inbox.",
-    error: errors.resendEmail ?? undefined,
-  };
-
   const bannerRules: BannerRule[] = [
-    {
-      id: 1,
-      variant: "warning",
-      message: "Please verify your email address",
-      condition: (user) => !user.email_verified,
-      snoozeDays: 1,
-      action: (
-        <Tooltip status={tooltipStatus.resendEmail} message={resendEmailTooltipMessages}>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setLoading((l) => ({ ...l, "verify-email": true }));
-              authApi
-                .sendEmailVerification()
-                .then(() => setTooltipStatus((s) => ({ ...s, resendEmail: "success" })))
-                .catch((err) => {
-                  const message = err instanceof ApiError ? err.message : "Something went wrong";
-                  setTooltipStatus((s) => ({ ...s, resendEmail: "error" }));
-                  setErrors({ resendEmail: message });
-                })
-                .finally(() => setLoading((l) => ({ ...l, "verify-email": false })));
-            }}
-            loading={loading["verify-email"]}
-          >
-            Resend Email
-          </Button>
-        </Tooltip>
-      ),
-    },
     {
       id: 2,
       variant: "warning",

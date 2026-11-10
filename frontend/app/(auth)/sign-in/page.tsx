@@ -2,11 +2,13 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, authApi } from "@/lib/api";
+import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
+import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 
 export default function SignInPage() {
   return (
@@ -21,11 +23,13 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
   const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : "/sign-up";
+  const storageKey = `signInChallenge:${email.trim().toLowerCase()}`;
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -42,11 +46,21 @@ function SignInContent() {
     }
 
     try {
-      await authApi.login(email, password);
-
+      const res = await authApi.login(email, password);
+      if (res.challenge) {
+        saveChallenge(storageKey, res.challenge);
+        setChallenge(res.challenge);
+        return;
+      }
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
-      if (error instanceof ApiError) {
+      // A 429 comes only after a correct password, when this account's code went out under a
+      // minute ago. If that was from this tab, reopen it: the emailed code still works.
+      const last =
+        error instanceof ApiError && error.status === 429 && loadOpenChallenge(storageKey);
+      if (last) {
+        setChallenge(last);
+      } else if (error instanceof ApiError) {
         setErrors({ form: error.message });
       } else {
         setErrors({ form: "Something went wrong :(" });
@@ -56,20 +70,56 @@ function SignInContent() {
     }
   }
 
+  const heading = (
+    <h2
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "28px",
+        fontWeight: "700",
+        color: "var(--color-text-primary)",
+        margin: "0 0 30px",
+        textAlign: "center",
+      }}
+    >
+      {challenge ? "Check your email" : "Sign In"}
+    </h2>
+  );
+
+  if (challenge) {
+    return (
+      <div style={{ width: "100%" }}>
+        {heading}
+        <CodeEntry
+          challenge={challenge}
+          email={email}
+          submitLabel="Sign In"
+          onClosed={() => saveChallenge(storageKey, null)}
+          onSubmit={async (challengeToken, code) => {
+            await authApi.verifyCode(challengeToken, code);
+            saveChallenge(storageKey, null);
+            window.location.href = redirect ?? "/dashboard";
+          }}
+        />
+        <div style={{ marginTop: "20px", textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setChallenge(null);
+              setPassword("");
+            }}
+            className="link-subtle"
+            style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 30px",
-          textAlign: "center",
-        }}
-      >
-        Sign In
-      </h2>
+      {heading}
 
       <form
         onSubmit={handleSubmit}

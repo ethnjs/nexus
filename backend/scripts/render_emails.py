@@ -18,6 +18,7 @@ TO = "volunteer@example.com"
 NEW = "new-address@example.com"
 OLD = "current-address@example.com"
 TOKEN = "placeholder-token"
+CODE = "123456"
 TOURNAMENT = "2026 SoCal Invitational"
 
 Sent = tuple[str, str, str, str]
@@ -31,7 +32,9 @@ async def _render_all() -> list[Sent]:
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code=ABC123"
     with patch.object(email_service, "_send", capture):
-        await email_service.send_verification_email(TO, TOKEN)
+        await email_service.send_sign_in_code_email(TO, CODE)
+        await email_service.send_sign_up_code_email(TO, CODE)
+        await email_service.send_step_up_code_email(TO, CODE)
         await email_service.send_email_change_email(NEW, TOKEN)
         await email_service.send_email_change_requested_notice(OLD, NEW, TOKEN)
         await email_service.send_password_reset_email(TO, TOKEN)

@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from app.schemas.user import AdminUserSlimResponse
 
 
 class LoginRequest(BaseModel):
@@ -84,6 +86,51 @@ class RegisterRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     detail: str
+
+
+# ---------------------------------------------------------------------------
+# Emailed codes — sign-in, sign-up, and step-up
+# ---------------------------------------------------------------------------
+
+
+class CodeChallengeResponse(BaseModel):
+    """
+    A code was emailed. Send it back with challenge_token to finish. expires_in and resend_in
+    are seconds from this response, for clients whose clock may not match the server's.
+    """
+
+    challenge_token: str
+    expires_at: datetime
+    can_resend_at: datetime
+    expires_in: int
+    resend_in: int
+
+
+class LoginResponse(BaseModel):
+    """
+    POST /auth/login. When code_required, challenge is set and user is null; otherwise the
+    session cookie is set and user is the signed-in account.
+    """
+
+    code_required: bool
+    challenge: CodeChallengeResponse | None = None
+    user: AdminUserSlimResponse | None = None
+
+
+class CodeVerifyRequest(BaseModel):
+    challenge_token: str
+    code: str = Field(max_length=32)
+
+
+class CodeResendRequest(BaseModel):
+    challenge_token: str
+
+
+class AdminSignInCodeResponse(BaseModel):
+    """POST /admin/users/{id}/sign-in-code. The code is shown only in this response."""
+
+    code: str
+    expires_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +222,6 @@ class AccountSetupConfirm(BaseModel):
     Dormant: nothing currently mints an 'account_setup' token, so no user can
     reach status="invited". Kept for the invite flow's eventual producer — see
     the note on User.status.
-
-    Does NOT set email_verified — that still requires the normal verification flow.
     """
 
     token: str

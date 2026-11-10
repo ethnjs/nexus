@@ -9,7 +9,6 @@ const AUTH_ROUTES = ["/", "/sign-in", "/sign-up"];
 // A shared form link shows signed-out visitors a sign-in card instead.
 const SHARED_FORM_LINK = /^\/forms\/[^/]+\/view\/?$/;
 const TOKEN_REQUIRED_ROUTES = [
-  "/verify-email",
   "/reset-password",
   "/confirm-email-change",
   "/account-setup",

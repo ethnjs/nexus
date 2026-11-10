@@ -112,6 +112,48 @@ def test_retry_delay_backs_off_without_retry_after():
     assert 4 <= email_service._retry_delay(_rate_limited(), attempt=3) < 5
 
 
+@pytest.mark.parametrize("app_env", ["development", "preview", "test"])
+async def test_nexus_dev_logged_not_sent_outside_production(
+    use_settings, resend_send, caplog, app_env
+):
+    use_settings(app_env=app_env)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
+        await email_service._send("User1@Nexus.Dev", "Subject", "Your code: 123456", "<p></p>")
+
+    resend_send.assert_not_called()
+    assert "Your code: 123456" in caplog.text
+
+
+async def test_nexus_dev_sent_in_production(use_settings, resend_send):
+    use_settings(app_env="production")
+
+    await email_service._send("user1@nexus.dev", "Subject", "Text", "<p></p>")
+
+    resend_send.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "send",
+    [
+        email_service.send_sign_in_code_email,
+        email_service.send_sign_up_code_email,
+        email_service.send_step_up_code_email,
+    ],
+)
+async def test_code_emails_show_the_code_in_both_versions(monkeypatch, send):
+    capture = AsyncMock()
+    monkeypatch.setattr(email_service, "_send", capture)
+
+    await send("v@example.com", "042917")
+
+    _, subject, text, html = capture.call_args.args
+    assert "Your code: 042917" in text
+    assert "042917" in html
+    assert "042917" not in subject
+    assert "If the button doesn't work" not in html
+
+
 async def test_unconfigured_in_development_logs_body_and_skips(use_settings, resend_send, caplog):
     use_settings(resend_api_key="")
 

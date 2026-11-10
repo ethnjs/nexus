@@ -2,12 +2,10 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { CodeEntry } from "@/components/auth/CodeEntry";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
-import { Button } from "@/components/ui/Button";
-import { IconCheckCircle } from "@/components/ui/Icons";
-import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
-import { ApiError, authApi } from "@/lib/api";
+import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath } from "@/lib/auth";
 
 export default function SignUpPage() {
@@ -22,7 +20,7 @@ function SignUpContent() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
-  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -37,12 +35,7 @@ function SignUpContent() {
     setFormError(undefined);
 
     try {
-      await authApi.register({ email, password });
-
-      authApi
-        .sendEmailVerification()
-        .catch(() => {})
-        .finally(() => setShowVerifyModal(true));
+      setChallenge(await authApi.register({ email, password }));
     } catch (error: unknown) {
       setFormError(error instanceof ApiError ? error.message : "Something went wrong :(");
     } finally {
@@ -50,51 +43,8 @@ function SignUpContent() {
     }
   }
 
-  function VerifyModal() {
-    return (
-      <Modal onClose={() => {}}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-          }}
-        >
-          <IconCheckCircle
-            style={{ color: "var(--color-success)", marginBottom: "20px" }}
-            size={72}
-          />
-          <h2
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: "22px",
-              color: "var(--color-text-primary)",
-              marginBottom: "10px",
-            }}
-          >
-            Your account was created successfully
-          </h2>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", marginBottom: "10px" }}>
-            We sent a verification link to {email}
-          </p>
-          <Button
-            fullWidth
-            onClick={() => {
-              window.location.href = onboardingHref;
-            }}
-          >
-            Got it!
-          </Button>
-        </div>
-      </Modal>
-    );
-  }
-
   return (
     <div style={{ width: "100%" }}>
-      {showVerifyModal && <VerifyModal />}
-
       <h2
         style={{
           fontFamily: "var(--font-sans)",
@@ -105,36 +55,61 @@ function SignUpContent() {
           textAlign: "center",
         }}
       >
-        Sign Up
+        {challenge ? "Verify your email" : "Sign Up"}
       </h2>
 
-      <CredentialsForm
-        email={email}
-        onEmailChange={setEmail}
-        onSubmit={handleRegister}
-        submitLabel="Sign Up"
-        loading={loading}
-        formError={formError}
-      />
+      {challenge ? (
+        <CodeEntry
+          challenge={challenge}
+          email={email}
+          submitLabel="Create account"
+          onSubmit={async (challengeToken, code) => {
+            await authApi.verifyCode(challengeToken, code);
+            window.location.href = onboardingHref;
+          }}
+        />
+      ) : (
+        <CredentialsForm
+          email={email}
+          onEmailChange={setEmail}
+          onSubmit={handleRegister}
+          submitLabel="Sign Up"
+          loading={loading}
+          formError={formError}
+        />
+      )}
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "13px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          Already have an account?{" "}
-        </span>
-        <button
-          type="button"
-          onClick={() => router.push(signInHref)}
-          className="link-subtle"
-          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}
-        >
-          Sign in
-        </button>
+        {challenge ? (
+          <button
+            type="button"
+            onClick={() => setChallenge(null)}
+            className="link-subtle"
+            style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}
+          >
+            Use a different email
+          </button>
+        ) : (
+          <>
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              Already have an account?{" "}
+            </span>
+            <button
+              type="button"
+              onClick={() => router.push(signInHref)}
+              className="link-subtle"
+              style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}
+            >
+              Sign in
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

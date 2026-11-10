@@ -10,9 +10,21 @@ from sqlalchemy import event
 
 import app.api.routes.auth as auth_routes
 import app.core.auth as auth_core
+import app.core.email_codes as email_codes
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
-from app.models.models import User, VerificationToken
-from tests.conftest import login
+from app.models.models import (
+    EmailCode,
+    TournamentMembership,
+    User,
+    UserSession,
+    VerificationToken,
+)
+from tests.conftest import emailed_code, login
+
+
+def _sent(mock_send_email) -> list[tuple[str, str]]:
+    """(recipient, subject) for each email sent."""
+    return [(call.args[0], call.args[1]) for call in mock_send_email.call_args_list]
 
 
 @pytest.fixture
@@ -144,6 +156,342 @@ class TestLogin:
 
 
 # ---------------------------------------------------------------------------
+# Sign-in codes: POST /auth/code/verify/ and /auth/code/resend/
+# ---------------------------------------------------------------------------
+
+
+def _start_sign_in(client, email="td@test.com", password="tdpass") -> str:
+    res = client.post("/auth/login/", json={"email": email, "password": password})
+    assert res.status_code == 200, res.text
+    return res.json()["challenge"]["challenge_token"]
+
+
+def _verify(client, token: str, code: str):
+    return client.post("/auth/code/verify/", json={"challenge_token": token, "code": code})
+
+
+def _wrong(code: str) -> str:
+    return f"{(int(code) + 1) % 10**6:06d}"
+
+
+def _age_codes(db, **fields: timedelta) -> None:
+    """Moves every challenge's timestamps back, as if that much time had passed."""
+    for row in db.query(EmailCode).all():
+        for field, delta in fields.items():
+            setattr(row, field, getattr(row, field) - delta)
+    db.commit()
+
+
+class TestSignInCode:
+    def test_login_sends_code_and_sets_no_cookie(self, client, td_user, mock_send_email):
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["code_required"] is True
+        assert data["user"] is None
+        assert data["challenge"]["challenge_token"]
+        assert 598 <= data["challenge"]["expires_in"] <= 600
+        assert 58 <= data["challenge"]["resend_in"] <= 60
+        assert "access_token" not in res.cookies
+        assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS sign-in code")]
+        assert client.get("/users/me/").status_code == 401
+
+    def test_code_signs_in_and_verifies_email(self, client, db, td_user):
+        assert not td_user.email_verified
+        token = _start_sign_in(client)
+        res = _verify(client, token, emailed_code())
+        assert res.status_code == 200
+        assert "access_token" in res.cookies
+        assert res.json()["email_verified"] is True
+        assert client.get("/users/me/").status_code == 200
+
+    def test_existing_unverified_user_keeps_row_and_data(self, client, db, td_user, td_tournament):
+        user_id = td_user.id
+        assert not td_user.email_verified
+        assert login(client, "td@test.com", "tdpass").status_code == 200
+
+        db.expire_all()
+        user = db.get(User, user_id)
+        assert user is not None
+        assert user.email_verified
+        assert (user.email, user.first_name, user.last_name) == ("td@test.com", "TD", "User")
+        assert (
+            db.query(TournamentMembership)
+            .filter_by(user_id=user_id, tournament_id=td_tournament.id)
+            .count()
+            == 1
+        )
+
+    def test_wrong_code_rejected(self, client, td_user):
+        token = _start_sign_in(client)
+        res = _verify(client, token, _wrong(emailed_code()))
+        assert res.status_code == 400
+        assert "access_token" not in res.cookies
+
+    def test_sixth_attempt_fails_even_with_right_code(self, client, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        for _ in range(4):
+            assert (
+                _verify(client, token, _wrong(code)).json()["detail"] == "That code is incorrect."
+            )
+        closed = {"code": "code_closed", "message": email_codes.TOO_MANY_ATTEMPTS}
+        res = _verify(client, token, _wrong(code))
+        assert (res.status_code, res.json()["detail"]) == (400, closed)
+        res = _verify(client, token, code)
+        assert (res.status_code, res.json()["detail"]) == (400, closed)
+
+    def test_resend_refused_once_out_of_attempts(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        for _ in range(5):
+            _verify(client, token, _wrong(code))
+        _age_codes(db, last_sent_at=timedelta(seconds=61))
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.status_code == 400
+        assert res.json()["detail"]["code"] == "code_closed"
+
+    def test_expired_code_rejected(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        _age_codes(db, expires_at=timedelta(minutes=11))
+        res = _verify(client, token, code)
+        assert res.status_code == 400
+        assert res.json()["detail"] == {"code": "code_closed", "message": email_codes.EXPIRED}
+
+    def test_used_challenge_cannot_be_reused(self, client, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        assert _verify(client, token, code).status_code == 200
+        assert _verify(client, token, code).status_code == 400
+
+    def test_new_login_within_a_minute_rate_limited(self, client, td_user):
+        _start_sign_in(client)
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 429
+
+    def test_new_login_after_running_out_of_attempts_rate_limited(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        for _ in range(5):
+            _verify(client, token, _wrong(code))
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 429
+
+        _age_codes(db, created_at=timedelta(seconds=61))
+        _start_sign_in(client)
+
+    def test_resend_waits_a_minute_and_replaces_code(self, client, db, td_user, mock_send_email):
+        token = _start_sign_in(client)
+        old_code = emailed_code()
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.status_code == 429
+
+        _age_codes(db, last_sent_at=timedelta(seconds=61))
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.status_code == 200
+        assert mock_send_email.call_count == 2
+        new_code = emailed_code()
+        if new_code != old_code:
+            assert _verify(client, token, old_code).status_code == 400
+        assert _verify(client, token, new_code).status_code == 200
+
+    def test_resend_resets_attempts(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        for _ in range(4):
+            assert _verify(client, token, _wrong(code)).status_code == 400
+
+        _age_codes(db, last_sent_at=timedelta(seconds=61))
+        assert client.post("/auth/code/resend/", json={"challenge_token": token}).status_code == 200
+        code = emailed_code()
+        for _ in range(4):
+            assert _verify(client, token, _wrong(code)).status_code == 400
+        assert _verify(client, token, code).status_code == 200
+
+    def test_resend_does_not_extend_expiry(self, client, db, td_user):
+        token = _start_sign_in(client)
+        expires_at = db.query(EmailCode).one().expires_at
+        _age_codes(db, last_sent_at=timedelta(seconds=61))
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert datetime.fromisoformat(res.json()["expires_at"]) == expires_at
+        assert 58 <= res.json()["resend_in"] <= 60
+
+    def test_deactivated_between_steps_rejected(self, client, db, td_user):
+        token = _start_sign_in(client)
+        td_user.status = "deactivated"
+        db.commit()
+        assert _verify(client, token, emailed_code()).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Step-up: POST /auth/step-up/, /auth/step-up/verify/, and the routes that need it
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def step_up_setup(db, td_user, other_user, td_tournament):
+    """td_user owns td_tournament and is a site admin; other_user is a member to act on."""
+    td_user.role = "admin"
+    db.add(
+        TournamentMembership(user_id=other_user.id, tournament_id=td_tournament.id, source="manual")
+    )
+    db.commit()
+    return td_tournament.id, other_user.id
+
+
+GUARDED_ACTIONS = {
+    "request_email_change": lambda c, t, u: c.post(
+        "/auth/email/request-change/", json={"new_email": "fresh@test.com"}
+    ),
+    "delete_tournament": lambda c, t, u: c.delete(f"/tournaments/{t}/"),
+    "transfer_ownership": lambda c, t, u: c.post(
+        f"/tournaments/{t}/transfer-ownership/", json={"new_owner_id": u}
+    ),
+    "change_site_role": lambda c, t, u: c.patch(f"/admin/users/{u}/", json={"role": "admin"}),
+    "change_user_email": lambda c, t, u: c.patch(
+        f"/admin/users/{u}/", json={"email": "renamed@test.com"}
+    ),
+    "create_sign_in_code": lambda c, t, u: c.post(f"/admin/users/{u}/sign-in-code/"),
+    "delete_user": lambda c, t, u: c.delete(f"/admin/users/{u}/"),
+}
+
+
+def _age_sessions(db, delta=timedelta(minutes=11)) -> None:
+    for row in db.query(UserSession).all():
+        row.code_verified_at = row.code_verified_at - delta if row.code_verified_at else None
+    db.commit()
+
+
+def _step_up(client) -> None:
+    res = client.post("/auth/step-up/")
+    assert res.status_code == 200, res.text
+    verify = client.post(
+        "/auth/step-up/verify/",
+        json={"challenge_token": res.json()["challenge_token"], "code": emailed_code()},
+    )
+    assert verify.status_code == 200, verify.text
+
+
+@pytest.mark.parametrize("action", GUARDED_ACTIONS)
+class TestStepUpGuards:
+    def test_old_session_needs_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        res = GUARDED_ACTIONS[action](client, *step_up_setup)
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "step_up_required"
+
+    def test_session_from_before_codes_needs_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        db.query(UserSession).update({"code_verified_at": None})
+        db.commit()
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code == 403
+
+    def test_works_right_after_code_sign_in(self, client, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+    def test_works_after_step_up(self, client, db, step_up_setup, action):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        _step_up(client)
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+
+class TestStepUp:
+    def test_sends_step_up_email(self, client, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/step-up/").status_code == 200
+        assert _sent(mock_send_email) == [("td@test.com", "Confirm it's you on NEXUS")]
+
+    def test_requires_sign_in(self, client):
+        assert client.post("/auth/step-up/").status_code == 401
+
+    def test_wrong_code_rejected(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        token = client.post("/auth/step-up/").json()["challenge_token"]
+        res = client.post(
+            "/auth/step-up/verify/",
+            json={"challenge_token": token, "code": _wrong(emailed_code())},
+        )
+        assert res.status_code == 400
+        db.expire_all()
+        assert db.query(UserSession).one().code_verified_at < datetime.now(UTC) - timedelta(
+            minutes=10
+        )
+
+    def test_challenge_cannot_be_verified_from_another_session(self, client, db, td_user):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        login(client, "td@test.com", "tdpass")
+        token = client.post("/auth/step-up/").json()["challenge_token"]
+        code = emailed_code()
+
+        with TestClient(app) as other:
+            login(other, "td@test.com", "tdpass")
+            res = other.post("/auth/step-up/verify/", json={"challenge_token": token, "code": code})
+            assert res.status_code == 400
+
+        res = client.post("/auth/step-up/verify/", json={"challenge_token": token, "code": code})
+        assert res.status_code == 200
+
+    def test_status_change_needs_no_step_up(self, client, db, step_up_setup):
+        login(client, "td@test.com", "tdpass")
+        _age_sessions(db)
+        _, other_user_id = step_up_setup
+        res = client.patch(f"/admin/users/{other_user_id}/", json={"status": "locked"})
+        assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# LOGIN_CODES_REQUIRED=false
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def codes_off(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "login_codes_required", False)
+
+
+class TestCodesSwitchedOff:
+    def test_login_signs_in_directly(self, client, td_user, codes_off, mock_send_email):
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["code_required"] is False
+        assert data["challenge"] is None
+        assert data["user"]["email"] == "td@test.com"
+        assert "access_token" in res.cookies
+        assert not mock_send_email.called
+        assert client.get("/users/me/").status_code == 200
+
+    def test_wrong_password_still_rejected(self, client, td_user, codes_off):
+        assert login(client, "td@test.com", "wrong").status_code == 401
+
+    @pytest.mark.parametrize("action", GUARDED_ACTIONS)
+    def test_guarded_actions_skip_step_up(self, client, db, step_up_setup, codes_off, action):
+        login(client, "td@test.com", "tdpass")
+        db.query(UserSession).update({"code_verified_at": None})
+        db.commit()
+        assert GUARDED_ACTIONS[action](client, *step_up_setup).status_code < 300
+
+    def test_startup_warns(self, codes_off, caplog):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        with TestClient(app):
+            pass
+        assert "LOGIN_CODES_REQUIRED is false" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/logout/
 # ---------------------------------------------------------------------------
 
@@ -263,56 +611,69 @@ class TestPasswordRules:
 
 
 class TestRegister:
-    def test_register_success(self, client):
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
+    def _register(self, client, email="new@test.com", password=VALID_PASSWORD):
+        return client.post("/auth/register/", json={"email": email, "password": password})
+
+    def test_register_sends_code_and_creates_no_user(self, client, db, mock_send_email):
+        res = self._register(client)
         assert res.status_code == 201
+        assert res.json()["challenge_token"]
+        assert "access_token" not in res.cookies
+        assert _sent(mock_send_email) == [("new@test.com", "Verify your email on NEXUS")]
+        assert db.query(User).filter_by(email="new@test.com").count() == 0
+
+    def test_code_creates_verified_user_and_signs_in(self, client, db):
+        token = self._register(client, email="NEW@TEST.COM").json()["challenge_token"]
+        res = _verify(client, token, emailed_code())
+        assert res.status_code == 200
+        assert "access_token" in res.cookies
         data = res.json()
         assert data["email"] == "new@test.com"
-        assert data["role"] == "user"
-        assert data["status"] == "active"
+        assert data["email_verified"] is True
+        assert (data["role"], data["status"]) == ("user", "active")
         assert "hashed_password" not in data
+        assert client.get("/users/me/").json()["email"] == "new@test.com"
 
-    def test_register_sets_cookie(self, client):
-        # Registration should log the user in immediately
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 201
-        assert "access_token" in res.cookies
+    def test_new_account_signs_in_with_its_password(self, client):
+        token = self._register(client).json()["challenge_token"]
+        _verify(client, token, emailed_code())
+        client.post("/auth/logout/")
+        assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
-    def test_register_auto_login(self, client):
-        # Cookie from registration should allow immediate access to /me/
-        client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        res = client.get("/users/me/")
-        assert res.status_code == 200
-        assert res.json()["email"] == "new@test.com"
+    def test_wrong_code_creates_no_user(self, client, db):
+        token = self._register(client).json()["challenge_token"]
+        assert _verify(client, token, _wrong(emailed_code())).status_code == 400
+        assert db.query(User).filter_by(email="new@test.com").count() == 0
 
-    def test_register_email_stored_lowercase(self, client):
-        res = client.post(
-            "/auth/register/",
-            json={
-                "email": "NEW@TEST.COM",
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 201
-        assert res.json()["email"] == "new@test.com"
+    def test_second_sign_up_replaces_pending_one(self, client, db):
+        first = self._register(client, password="First@123").json()["challenge_token"]
+        first_code = emailed_code()
+        assert self._register(client).status_code == 429
+
+        _age_codes(db, created_at=timedelta(seconds=61))
+        second = self._register(client, password="Second@123").json()["challenge_token"]
+        assert _verify(client, first, first_code).status_code == 400
+        assert _verify(client, second, emailed_code()).status_code == 200
+        client.post("/auth/logout/")
+        assert login(client, "new@test.com", "First@123").status_code == 401
+        assert login(client, "new@test.com", "Second@123").status_code == 200
+
+    def test_register_passwordless_account_email_rejected(self, client, volunteer_no_password):
+        assert self._register(client, email="vol@test.com").status_code == 409
+
+    def test_email_taken_before_code_entered(self, client, db):
+        token = self._register(client).json()["challenge_token"]
+        db.add(User(email="new@test.com", role="user", status="active"))
+        db.commit()
+        assert _verify(client, token, emailed_code()).status_code == 409
+        assert db.query(User).filter_by(email="new@test.com").count() == 1
+
+    def test_email_taken_between_check_and_insert(self, client, db, monkeypatch):
+        token = self._register(client).json()["challenge_token"]
+        db.add(User(email="new@test.com", role="user", status="active"))
+        db.commit()
+        monkeypatch.setattr(auth_routes, "check_if_email_exists", lambda *a, **k: None)
+        assert _verify(client, token, emailed_code()).status_code == 409
 
     def test_register_duplicate_email_rejected(self, client, td_user):
         assert (
@@ -337,18 +698,6 @@ class TestRegister:
             ).status_code
             == 409
         )
-
-    def test_register_can_login_with_new_credentials(self, client):
-        # Confirms the password was hashed and stored correctly
-        client.post(
-            "/auth/register/",
-            json={
-                "email": "new@test.com",
-                "password": VALID_PASSWORD,
-            },
-        )
-        client.post("/auth/logout/")
-        assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
     def test_register_password_too_short(self, client):
         assert (
@@ -422,69 +771,6 @@ class TestRegister:
             ).status_code
             == 422
         )
-
-
-# ---------------------------------------------------------------------------
-# GET /auth/verify-email/
-# ---------------------------------------------------------------------------
-
-
-class TestVerifyEmail:
-    def test_valid_token_verifies_email(self, client, td_user, db):
-        assert td_user.email_verified is False
-        token = create_verification_token(db, td_user.id, "signup_verify")
-        res = client.get(f"/auth/verify-email/?token={token}")
-        assert res.status_code == 200
-        db.refresh(td_user)
-        assert td_user.email_verified is True
-
-    def test_invalid_token_rejected(self, client):
-        assert client.get("/auth/verify-email/?token=garbage").status_code == 400
-
-    def test_token_already_used_rejected(self, client, td_user, db):
-        token = create_verification_token(db, td_user.id, "signup_verify")
-        assert client.get(f"/auth/verify-email/?token={token}").status_code == 200
-        assert client.get(f"/auth/verify-email/?token={token}").status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# POST /auth/send-email-verification/
-# ---------------------------------------------------------------------------
-
-
-def _sent(mock_send_email) -> list[tuple[str, str]]:
-    """(recipient, subject) for each email sent."""
-    return [(call.args[0], call.args[1]) for call in mock_send_email.call_args_list]
-
-
-class TestSendEmailVerification:
-    def test_unverified_user_can_request(self, client, td_user, mock_send_email):
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 200
-        assert _sent(mock_send_email) == [("td@test.com", "Verify your email on NEXUS")]
-
-    def test_rate_limited_on_repeat(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        client.post("/auth/send-email-verification/")
-        assert client.post("/auth/send-email-verification/").status_code == 429
-
-    def test_failed_send_still_succeeds_and_is_logged(
-        self, client, td_user, mock_send_email, caplog
-    ):
-        mock_send_email.side_effect = RuntimeError("provider down")
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 200
-        assert "Background email failed: send_verification_email to td@test.com" in caplog.text
-        assert "provider down" in caplog.text
-
-    def test_already_verified_rejected(self, client, td_user, db):
-        td_user.email_verified = True
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/send-email-verification/").status_code == 400
-
-    def test_unauthenticated_forbidden(self, client):
-        assert client.post("/auth/send-email-verification/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -609,8 +895,8 @@ class TestConfirmEmailChange:
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
 
     def test_wrong_purpose_token_rejected(self, client, td_user, db):
-        # A signup_verify token shouldn't be usable here
-        token = create_verification_token(db, td_user.id, "signup_verify")
+        # A token for another purpose shouldn't be usable here
+        token = create_verification_token(db, td_user.id, "password_reset")
         assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
 
 
@@ -867,6 +1153,7 @@ class TestConfirmAccountSetup:
         db.refresh(invited_user)
         assert invited_user.status == "active"
         assert invited_user.hashed_password is not None
+        assert invited_user.email_verified
 
     def test_confirm_logs_user_in(self, client, invited_user, db):
         token = create_verification_token(db, invited_user.id, "account_setup")
@@ -947,7 +1234,7 @@ class TestConsumeVerificationToken:
 
     def test_wrong_purpose_rejected_and_token_left_usable(self, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
-        assert consume_verification_token(db, token, "signup_verify") is None
+        assert consume_verification_token(db, token, "email_change") is None
         assert consume_verification_token(db, token, "account_setup") is None
         assert consume_verification_token(db, token, "password_reset") is not None
 

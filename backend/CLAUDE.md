@@ -38,6 +38,8 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 ## Auth (`app/core/auth.py`)
 
 - Sessions are opaque random tokens, not JWTs. The raw token is in the httpOnly `access_token` cookie; only its SHA-256 hash is stored on a `UserSession` row, with a fixed 7-day expiry.
+- A session is created only after an emailed code is entered at `/auth/code/verify/`; `/auth/login/` and `/auth/register/` just start the challenge (`app/core/email_codes.py`). A new sign-in method calls `start_challenge(db, "sign_in", ...)` the same way. `LOGIN_CODES_REQUIRED=false` is the outage switch that skips codes.
+- Sensitive routes depend on `require_recent_code`, which returns 403 `step_up_required` unless the session entered a code in the last 10 minutes.
 - Use `get_current_user` / `get_current_session` as dependencies. `require_admin` is for site-wide admin routes only.
 - Every router also requires the `X-API-Key` header, which the frontend proxy attaches. The check is skipped in `development` and `test` when `API_KEY` is empty.
 
