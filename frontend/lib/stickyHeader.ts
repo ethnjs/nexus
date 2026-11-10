@@ -19,8 +19,12 @@ export function stickyHeader(header: HTMLElement | null) {
   // Only a `.scroll` card is switched; anything else is left as it is.
   const cardScrolls = getComputedStyle(card).overflowX === "auto";
   let fits = true;
+  let scroller: HTMLElement | null = null;
+  let scrollerPaddingTop = "";
   let offset = 0;
   let frame = 0;
+  // Scrolling moves things without changing these, so only a resize or a column change re-measures.
+  let stale = true;
 
   // The table's own scrollWidth rather than the card's, which clip would
   // hide, so this never has to switch the card back to measure. Not
@@ -51,17 +55,25 @@ export function stickyHeader(header: HTMLElement | null) {
     header.style.transform = offset ? `translateY(${offset}px)` : "";
   }
 
+  function measure() {
+    measureFit();
+    scroller = verticalScroller();
+    scrollerPaddingTop = scroller ? getComputedStyle(scroller).paddingTop : "";
+  }
+
   function place() {
     frame = 0;
     if (!header || !table || !card) return;
-    // Columns can widen without the table resizing (a column turned on).
-    measureFit();
-    const scroller = verticalScroller();
+    // No scroller yet but a scroll happened: content elsewhere may have made the page scroll.
+    if (stale || !scroller) {
+      measure();
+      stale = false;
+    }
     const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
     if (fits) {
       // Sticky measures from inside the scroller's padding (main's 22px), so
       // without this the header pins that far below the top bar.
-      const top = scroller ? `-${getComputedStyle(scroller).paddingTop}` : "";
+      const top = scroller ? `-${scrollerPaddingTop}` : "";
       if (header.style.top !== top) header.style.top = top;
       setOffset(0);
       header.dataset.stuck =
@@ -81,24 +93,31 @@ export function stickyHeader(header: HTMLElement | null) {
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(place);
   };
+  const remeasure = () => {
+    stale = true;
+    schedule();
+  };
 
   // Capture, since scroll events don't bubble and the scroller is an ancestor.
   document.addEventListener("scroll", schedule, { capture: true, passive: true });
-  const observer = new ResizeObserver(schedule);
+  // A taller window can stop the scroller scrolling without resizing the table or card.
+  window.addEventListener("resize", remeasure);
+  const observer = new ResizeObserver(remeasure);
   observer.observe(table);
   observer.observe(card);
   // grid-template-columns is set inline, and a column turned on may not resize anything.
-  const columns = new MutationObserver(schedule);
+  const columns = new MutationObserver(remeasure);
   columns.observe(table, { attributes: true, attributeFilter: ["style"] });
   // ...and on an `.animatedTracks` table it only settles when the transition ends.
-  table.addEventListener("transitionend", schedule);
+  table.addEventListener("transitionend", remeasure);
   schedule();
 
   return () => {
     document.removeEventListener("scroll", schedule, { capture: true });
+    window.removeEventListener("resize", remeasure);
     observer.disconnect();
     columns.disconnect();
-    table.removeEventListener("transitionend", schedule);
+    table.removeEventListener("transitionend", remeasure);
     cancelAnimationFrame(frame);
     if (cardScrolls) card.style.overflowX = "";
   };
