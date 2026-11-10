@@ -25,6 +25,7 @@ from app.models.models import (
     TournamentEvent,
     TournamentEventTrack,
     TournamentRole,
+    TournamentRoom,
     TournamentTrack,
     TournamentTrackAssignment,
     User,
@@ -356,13 +357,15 @@ class TestStructure:
     async def test_a_new_event_gets_a_role_and_a_channel(
         self, db, built, guild, scope, td_tournament, track_id, events
     ):
-        building = events["Circuit Lab B"].track_details[0].building_id
+        building = events["Circuit Lab B"].track_details[0].building
         boom = TournamentEvent(tournament_id=td_tournament.id, name="Boomilever", division="C")
         db.add(boom)
         db.flush()
         db.add(
             TournamentEventTrack(
-                tournament_event_id=boom.id, track_id=track_id, building_id=building
+                tournament_event_id=boom.id,
+                track_id=track_id,
+                rooms=[TournamentRoom(building=building, name="103")],
             )
         )
         mark_structure(db, built.id)
@@ -381,13 +384,15 @@ class TestStructure:
         rowland = guild.channel("Rowland Hall", GUILD_CATEGORY)
         for i in range(48):
             guild.add_channel(f"chat-{i}", parent_id=int(rowland["id"]))
-        building = events["Circuit Lab B"].track_details[0].building_id
+        building = events["Circuit Lab B"].track_details[0].building
         boom = TournamentEvent(tournament_id=td_tournament.id, name="Boomilever", division="C")
         db.add(boom)
         db.flush()
         db.add(
             TournamentEventTrack(
-                tournament_event_id=boom.id, track_id=track_id, building_id=building
+                tournament_event_id=boom.id,
+                track_id=track_id,
+                rooms=[TournamentRoom(building=building, name="103")],
             )
         )
         mark_structure(db, built.id)
@@ -625,14 +630,18 @@ class TestMergedChannels:
     async def test_a_new_division_joins_the_merged_channel(
         self, db, link, guild, scope, td_tournament, track_id, events, merged
     ):
-        building = events["Circuit Lab B"].track_details[0].building_id
+        building = events["Circuit Lab B"].track_details[0].building
         a = TournamentEvent(
             tournament_id=td_tournament.id, name="Circuit Lab", division="A", event_id=merged.id
         )
         db.add(a)
         db.flush()
         db.add(
-            TournamentEventTrack(tournament_event_id=a.id, track_id=track_id, building_id=building)
+            TournamentEventTrack(
+                tournament_event_id=a.id,
+                track_id=track_id,
+                rooms=[TournamentRoom(building=building, name="103")],
+            )
         )
         mark_structure(db, link.id)
         db.commit()
