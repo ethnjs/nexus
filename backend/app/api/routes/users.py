@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -489,31 +488,27 @@ def list_my_identities(
         400: {"description": "No password set, or Google is not connected"},
     },
 )
-async def unlink_google(
+def unlink_google(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    def unlink() -> tuple[str, str | None]:
-        row = (
-            db.query(OAuthIdentity)
-            .filter(
-                OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google
-            )
-            .first()
+    row = (
+        db.query(OAuthIdentity)
+        .filter(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == OAuthProvider.google)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
+    if not user.hashed_password:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
         )
-        if row is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google is not connected")
-        if not user.hashed_password:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Set a password before disconnecting Google"
-            )
-        # Read before the commit expires them.
-        notice = (user.email, row.email_at_provider)
-        db.delete(row)
-        db.commit()
-        return notice
-
-    await send_identity_unlinked_notice(*await asyncio.to_thread(unlink))
+    send_in_background(
+        background_tasks, send_identity_unlinked_notice, user.email, row.email_at_provider
+    )
+    db.delete(row)
+    db.commit()
     return {"detail": "Google disconnected"}
 
 
