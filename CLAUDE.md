@@ -19,7 +19,8 @@ Setup, the release process and PR conventions for humans are in `CONTRIBUTING.md
 
 Backend tests are slow: one API test file takes about 100 seconds, and the full suite about 15 minutes. A whole directory like `tests/api/tournament/` takes nearly as long as the full suite. CI runs Ruff, ty and the full suite on every backend PR.
 
-- **Scope:** run the test files your change touches. In a multi-step task, write tests as you go and run them once the steps are done, not after each step. Run the full suite, a whole directory, or `tests/test_migrations.py` (which builds a scratch database from every migration) only once, at the end, as a final check.
+- **Scope:** run the test files your change touches. In a multi-step task, write tests as you go and run them once the steps are done, not after each step.
+- **Leave the full suite to CI.** Once the PR is essentially complete, push and let CI run the full suite instead of running it locally. Run the full suite, a whole directory, or `tests/test_migrations.py` (which builds a scratch database from every migration) locally only while the PR isn't done and the next step depends on the result.
 - **Run in the background** (`run_in_background: true` on the Bash/PowerShell call) for anything longer than re-running a single test while debugging, and keep working meanwhile.
 - **Exact command:** `cd backend && uv run python -u -m pytest <paths> -q`. A background shell starts at the repo root, so the `cd` is required. `-u` keeps output unbuffered. Never pipe through `tail` or `head`: the pipe holds all output until pytest exits, so a live run looks identical to a dead one.
 - **One pytest run at a time.** Concurrent runs share the test database and stall each other. Before starting one, check that no other pytest process is running.
