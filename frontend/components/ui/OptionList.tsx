@@ -109,7 +109,7 @@ export function enterChoice(names: readonly string[], active: number, text: stri
   return active < 0 && exact ? exact : names[index];
 }
 
-type Pos = { left: number; width: number; maxHeight: number } & (
+type Pos = { left?: number; right?: number; width: number; maxHeight: number } & (
   | { top: number; bottom?: undefined }
   | { bottom: number; top?: undefined }
 );
@@ -186,17 +186,21 @@ export function OptionList({
       const flip = below < PANEL_MAX_HEIGHT && above > below;
       // Rounded: a panel on a subpixel rasterises every row's checkbox at
       // that same offset phase.
-      const left = Math.round(width !== undefined && align === "right" ? r.right - width : r.left);
+      // A right-aligned panel sized by its rows doesn't know its width yet, so it's pinned by `right`.
+      const x =
+        align === "right" && width === undefined
+          ? { right: Math.round(document.documentElement.clientWidth - r.right) }
+          : { left: Math.round(align === "right" ? r.right - (width ?? 0) : r.left) };
       const maxHeight = Math.round((flip ? above : below) - VIEWPORT_MARGIN);
       setPos(
         flip
           ? {
               bottom: Math.round(window.innerHeight - r.top + PANEL_GAP),
-              left,
+              ...x,
               width: r.width,
               maxHeight,
             }
-          : { top: Math.round(r.bottom + PANEL_GAP), left, width: r.width, maxHeight },
+          : { top: Math.round(r.bottom + PANEL_GAP), ...x, width: r.width, maxHeight },
       );
     };
     update();
@@ -251,6 +255,7 @@ export function OptionList({
       style={{
         position: "fixed",
         left: pos.left,
+        right: pos.right,
         zIndex: 9999,
         ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
         maxHeight: `${pos.maxHeight}px`,
@@ -396,7 +401,7 @@ export function OptionList({
                     style={{ pointerEvents: "none", minWidth: 0, overflow: "hidden" }}
                   />
                 ) : (
-                  <div style={{ overflow: "hidden" }}>
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {opt.label}
                       {opt.badge}

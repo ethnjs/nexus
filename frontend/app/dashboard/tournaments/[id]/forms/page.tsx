@@ -2,8 +2,7 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { FormActionIcon } from "@/components/forms/FormActionIcon";
-import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
+import { copyFormLink, FormActionsMenu } from "@/components/forms/FormActionsMenu";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { FormFlowModal } from "@/components/tournament/forms/flow/FormFlowModal";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
@@ -13,7 +12,7 @@ import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock, IconPlus } from "@/components/ui/Icons";
+import { IconForms, IconLink, IconLock, IconMembers, IconPlus } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -35,11 +34,9 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useToast } from "@/lib/useToast";
 
 // Name / Status / Prerequisites / Creator / Responses / Updated / Actions.
-// Name, Prerequisites and Creator share the free space. Actions is
-// fixed, not auto: each row is its own grid, so a width that followed the
-// button count would misalign rows. 170px fits the most a row ever shows —
-// a status move, archive, delete, and the ⋮ menu.
-const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1.2fr) minmax(0, 1fr) 90px 100px 170px";
+// Actions is fixed, not auto: each row is its own grid, so a width that
+// followed the row's content would misalign rows.
+const FORM_ROW_COLUMNS = "minmax(0, 2fr) 100px minmax(0, 1.2fr) 140px 90px 100px 100px";
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "warning" | "confirmed" | "removed"> = {
   draft: "warning",
@@ -65,12 +62,15 @@ function FormRow({
   lockedReason?: string;
 }) {
   const summary = prerequisiteSummary(form.prerequisites, roleLabel);
-  const [busy, setBusy] = useState(false);
+  const { show } = useToast();
 
-  async function act(option: FormActionOption) {
-    setBusy(true);
-    await onAction(form, option);
-    setBusy(false);
+  async function copyLink() {
+    try {
+      await copyFormLink(form.id);
+      show("Copied form link");
+    } catch {
+      show("Failed to copy the link.", "error");
+    }
   }
 
   return (
@@ -163,34 +163,36 @@ function FormRow({
         style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Which moves exist depends on the status and on whether anyone has
-            responded — the same rules the builder's status menu uses. */}
-        {formStatusActions(form, lockedReason).map((option) => (
-          <Button
-            key={option.action}
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconOnly
-            title={option.disabledReason ?? option.label}
-            disabled={!!option.disabledReason || busy}
-            onClick={() => act(option)}
-            style={option.danger ? { color: "var(--color-danger)" } : undefined}
-          >
-            <FormActionIcon action={option.action} />
-          </Button>
-        ))}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title="View responses"
+          onClick={() =>
+            window.open(`/forms/${form.id}/responses`, "_blank", "noopener,noreferrer")
+          }
+        >
+          <IconMembers size={14} />
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          title={form.status === "published" ? "Copy link" : "Publish the form to share its link."}
+          disabled={form.status !== "published"}
+          onClick={copyLink}
+        >
+          <IconLink size={14} />
+        </Button>
         <FormActionsMenu
           form={form}
-          items={[
-            "edit",
-            "preview",
-            "responses",
-            "copy-link",
-            "prerequisites",
-            "allow-edits",
-            "onboarding",
-          ]}
+          items={["edit", "preview", "prerequisites", "allow-edits", "onboarding"]}
+          // Which moves exist depends on the status and on whether anyone has
+          // responded — the same rules the builder's status menu uses.
+          statusActions={formStatusActions(form, lockedReason)}
+          onStatusAction={(option) => onAction(form, option)}
           onEditPrerequisites={() => onEditPrerequisites(form)}
           onAllowEditsChange={(allow) => onAllowEditsChange(form.id, allow)}
           onOnboardingChange={() => onOnboardingChange()}

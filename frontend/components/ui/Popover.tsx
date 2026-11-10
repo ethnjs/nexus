@@ -15,7 +15,8 @@ export interface PopoverProps<T> {
   /** May throw/reject — the popover shows the error inline and stays open. */
   onSelect: (item: T) => void | Promise<void>;
   emptyMessage?: string;
-  width?: number;
+  /** "auto" sizes the panel to its rows. */
+  width?: number | "auto";
   /** Which side of the trigger the panel hangs from. */
   align?: "left" | "right";
   /** Checklist mode: rows render as a checkbox + label (like a picker list), stay open across selections instead of closing after each one. Requires isSelected. */
@@ -34,7 +35,7 @@ export interface PopoverProps<T> {
   /** Rendered above the rows and outside their scroll container — for a control that acts on the list as a whole, e.g. a select-all toggle. */
   header?: ReactNode;
   /** Heads a run of consecutive items sharing this text, as Dropdown's option groups do. Items must already be ordered by group. */
-  getGroup?: (item: T) => string;
+  getGroup?: (item: T) => string | undefined;
 }
 
 // Generic click-to-open panel of selectable items, anchored to a trigger —
@@ -191,7 +192,7 @@ export function Popover<T>({
             active={active}
             onActiveChange={setActive}
             onPick={(index) => void handleSelect(visibleItems[index])}
-            width={width}
+            width={width === "auto" ? undefined : width}
             align={align}
             followAnchor={false}
             reasonAs="tooltip"
