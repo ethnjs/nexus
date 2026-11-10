@@ -34,5 +34,5 @@ tracks: Mapped[list["TournamentTrack"]] = relationship(
 - Read and fix the generated file. Autogenerate misses server defaults, some type changes and renames (which it emits as drop + add, losing data). Hand-write data migrations.
 - Generated files are run through Ruff by `post_write_hooks` in `alembic.ini`.
 - **Never edit, re-parent or delete a revision that has been pushed.** Railway preview environments deploy branches and may already be on it, and a missing revision crashes their startup. Fix forward with a new revision. When `main` and a branch both added revisions, add an `alembic merge` revision rather than rewriting `down_revision`.
-- `tests/test_migrations.py` builds a database from the migrations alone and compares it to the models. It's slow, so run it only as a final check, in the background (see root CLAUDE.md). `uv run alembic check` against an up-to-date dev database is a quick local check that the models and migrations agree.
+- `tests/test_migrations.py` builds a database from the migrations alone and compares it to the models. It's slow, so leave it to CI once the PR is done (see root CLAUDE.md). `uv run alembic check` against an up-to-date dev database is a quick local check that the models and migrations agree.
 - Production runs `alembic upgrade head` from the `Procfile` before starting; development and preview run it at app startup.
