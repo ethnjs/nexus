@@ -1012,7 +1012,11 @@ function SeasonView({
             Promise.all(
               (seasonEvents ?? [])
                 .filter((s) => s.event.id === event.id)
-                .map((s) => seasonEventsApi.delete(s.id)),
+                .map(async (s) => {
+                  await seasonEventsApi.delete(s.id);
+                  // Dropped one by one, so a retry after a partial failure resends only the rest.
+                  setSeasonEvents((prev) => (prev ?? []).filter((row) => row.id !== s.id));
+                }),
             )
           }
           onClose={() => setRemoveTargets(null)}
