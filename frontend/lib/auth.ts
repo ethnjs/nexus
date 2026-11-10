@@ -8,6 +8,8 @@ const GOOGLE_AUTH_ERRORS: Record<string, string> = {
   google_unavailable: "Google sign-in isn't available right now.",
   google_already_linked: "That Google account is already connected to a different NEXUS account.",
   google_link_exists: "A Google account is already connected.",
+  google_email_unverified:
+    "Google hasn't verified this email address, so it can't be used to create an account. Verify it with Google or sign up with a password.",
 };
 
 export function googleAuthErrorMessage(code: string | null | undefined): string | null {
