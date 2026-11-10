@@ -1,5 +1,9 @@
 /* Shared by RichTextInput and FormattedText, so formatted text reads the same
    in the builder as on the form. */
+.prose {
+  overflow-wrap: anywhere;
+}
+
 .prose p {
   margin: 0;
 }
