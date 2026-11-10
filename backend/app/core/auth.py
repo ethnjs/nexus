@@ -2,9 +2,9 @@
 Core auth utilities.
 
 - Password hashing via Argon2 (pwdlib), still verifying legacy bcrypt hashes
-- Sessions (opaque DB-backed tokens, replacing the previous JWT scheme)
-- Verification tokens (signup verify / email change / password reset)
-- FastAPI dependencies: get_current_user, require_admin
+- Sessions (opaque DB-backed tokens)
+- Verification tokens (the emailed links)
+- FastAPI dependencies: get_current_session, get_current_user, require_admin
 
 Tournament-level permission checking lives in app/core/tournament/permissions.py.
 """
@@ -48,6 +48,10 @@ class _LegacyBcryptHasher(BcryptHasher):
 # legacy hashes; login upgrades them to Argon2 via verify_and_update_password.
 pwd_context = PasswordHash((Argon2Hasher(), _LegacyBcryptHasher()))
 
+# Login verifies against this when no account matches, so an unknown email
+# takes as long as a wrong password.
+DUMMY_PASSWORD_HASH = pwd_context.hash(secrets.token_urlsafe(16))
+
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
@@ -65,14 +69,9 @@ def verify_and_update_password(plain: str, hashed: str) -> tuple[bool, str | Non
 
 # ---------------------------------------------------------------------------
 # Sessions
-# Replaces the previous stateless JWT — the access_token cookie now holds
-# a random opaque session token (not a JWT). This trades a small amount of
-# stateless-JWT convenience for the ability to actually revoke access in
-# real time (a JWT stays valid until it naturally expires; nothing short
-# of a DB-backed check can kill it early).
-#
-# token_hash uses SHA-256 (_hash_token), not the password hasher — see
-# _hash_token for why that's safe. Lookup is a direct indexed equality match.
+# The access_token cookie holds a random opaque token, checked against the
+# database on every request so a session can be revoked immediately. Only its
+# SHA-256 hash is stored (see _hash_token).
 # ---------------------------------------------------------------------------
 
 SESSION_EXPIRE_DAYS = 7  # fixed from creation — no sliding renewal
@@ -92,7 +91,7 @@ def _hash_token(raw_token: str) -> str:
 
 def get_client_ip(request: Request) -> str | None:
     """
-    Prefers X-Forwarded-For (Render sits in front of the app), falls back
+    Prefers X-Forwarded-For (Railway's proxy sits in front of the app), falls back
     to the direct connection IP. Takes the first entry — the original
     client — since X-Forwarded-For can be a comma-separated chain of proxies.
     """
@@ -107,6 +106,7 @@ def create_session(
     user_id: int,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    code_verified: bool = False,
 ) -> str:
     """
     Creates a new session and returns the raw token — this is the only
@@ -121,6 +121,7 @@ def create_session(
         user_agent=user_agent,
         ip_address=ip_address,
         expires_at=now + timedelta(days=SESSION_EXPIRE_DAYS),
+        code_verified_at=now if code_verified else None,
     )
     db.add(session_row)
     db.commit()
@@ -182,11 +183,7 @@ def revoke_all_other_sessions(db: Session, user_id: int, keep_session_id: int) -
 
 
 def revoke_all_sessions(db: Session, user_id: int) -> None:
-    """
-    Revokes EVERY session for the user, including whatever's currently
-    active — used for admin account-locking, where the point is immediate
-    total lockout, not preserving anyone's current session.
-    """
+    """Revokes every session for the user, including the one making the request."""
     now = datetime.now(UTC)
     db.query(UserSession).filter(
         UserSession.user_id == user_id,
@@ -234,17 +231,13 @@ def clear_auth_cookie(response: Response) -> None:
 
 # ---------------------------------------------------------------------------
 # Verification tokens
-# Backs signup email verification, email change and revert, password reset,
-# and account setup. Raw token is emailed to the user; only its SHA-256 hash
+# Backs email change and revert, password reset, and account setup. Raw token is emailed to the user; only its SHA-256 hash
 # is ever persisted (VerificationToken.token_hash, via _hash_token).
 # ---------------------------------------------------------------------------
 
-Purpose = Literal[
-    "signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"
-]
+Purpose = Literal["email_change", "password_reset", "account_setup", "email_change_revert"]
 
 TOKEN_TTL: dict[Purpose, timedelta] = {
-    "signup_verify": timedelta(hours=24),
     "email_change": timedelta(hours=24),
     "password_reset": timedelta(hours=1),
     "account_setup": timedelta(days=7),  # admin invites sit longer before expiring
@@ -254,12 +247,6 @@ TOKEN_TTL: dict[Purpose, timedelta] = {
 RATE_LIMIT_WINDOW = timedelta(seconds=60)
 
 
-class RateLimitedError(Exception):
-    """Raised when a new token is requested too soon after a prior one."""
-
-    pass
-
-
 def create_verification_token(
     db: Session,
     user_id: int,
@@ -267,15 +254,10 @@ def create_verification_token(
     new_email: str | None = None,
 ) -> str:
     """
-    Creates a new verification token for the given user + purpose.
-
-    - Rate limits: raises RateLimitedError if an unconsumed, unexpired token
-      for this (user_id, purpose) was created within RATE_LIMIT_WINDOW.
-    - Stale-token guarding: invalidates (marks used_at) any other unconsumed
-      tokens for this (user_id, purpose) before issuing the new one, so only
-      the most recently issued link is ever valid.
-
-    Returns the raw token — this is the only time it exists in plaintext.
+    Commits a new token for (user_id, purpose) and returns it raw, the only
+    time it exists in plaintext. Invalidates that pair's older unused tokens,
+    so only the newest link works. Raises 429 if one was issued within
+    RATE_LIMIT_WINDOW.
     """
     now = datetime.now(UTC)
 
@@ -292,11 +274,11 @@ def create_verification_token(
 
     for row in existing:
         if row.created_at is not None and (now - row.created_at) < RATE_LIMIT_WINDOW:
-            raise RateLimitedError(
-                f"A {purpose} request was already made recently. Please wait before retrying."
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"A {purpose} request was already made recently. Please wait before retrying.",
             )
 
-    # Stale-token guarding — invalidate any other pending tokens for this purpose
     for row in existing:
         row.used_at = now
 
@@ -350,9 +332,7 @@ def consume_verification_token(
 
     Lookup and consume are one UPDATE ... RETURNING, so of two concurrent
     requests with the same token only one gets the row back; the other's
-    WHERE no longer matches once used_at is set. Tokens issued before the
-    switch to SHA-256 stored Argon2/bcrypt hashes, which never match a digest,
-    so they're simply rejected and the user requests a new link.
+    WHERE no longer matches once used_at is set.
     """
     now = datetime.now(UTC)
 
@@ -434,8 +414,7 @@ def get_current_user(
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """
-    Dependency — restricts a route to admin users only.
-    Used for site-wide admin operations (e.g. GET /users/, POST /auth/register).
+    Dependency — restricts a route to site admins (e.g. GET /admin/users/).
 
     For tournament-level permission checks use require_permission() from
     app.core.tournament.permissions instead.

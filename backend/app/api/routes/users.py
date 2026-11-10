@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
     clear_auth_cookie,
+    create_verification_token,
     get_current_session,
     get_current_user,
     require_admin,
@@ -14,21 +16,29 @@ from app.core.auth import (
     revoke_all_sessions,
     verify_password,
 )
+from app.core.email_codes import require_recent_code, start_admin_sign_in_code
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
     is_profile_complete,
 )
-from app.core.users import find_user_by_id, require_not_last_admin
+from app.core.users import check_if_email_exists, find_user_by_id, require_not_last_admin
 from app.db.session import get_db
 from app.models.models import (
+    EmailCode,
     Event,
     User,
     UserCompetitionExperience,
     UserSession,
     UserVolunteerExperience,
+    VerificationToken,
 )
-from app.schemas.auth import AccountDeactivateRequest, AccountDeleteRequest, MessageResponse
+from app.schemas.auth import (
+    AccountDeactivateRequest,
+    AccountDeleteRequest,
+    AdminSignInCodeResponse,
+    MessageResponse,
+)
 from app.schemas.session import SessionResponse
 from app.schemas.user import (
     AdminUserFullResponse,
@@ -39,13 +49,15 @@ from app.schemas.user import (
     UserMeSlimResponse,
     UserUpdate,
 )
-from app.services.email_service import send_password_reset_request_email
+from app.services.email_service import send_in_background, send_password_reset_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["users"])
 
 
 # ---------------------------------------------------------------------------
-# GET /users/ — admin only (global unscoped list)
+# GET /admin/users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/", response_model=list[AdminUserListResponse])
 def list_users(
@@ -62,7 +74,7 @@ def list_users(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/{user_id}/ — admin only
+# GET /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/{user_id}/", response_model=AdminUserFullResponse)
 def get_user(
@@ -78,7 +90,7 @@ def get_user(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/by-email/{email}/ — admin only
+# GET /admin/users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
 @router.get("/admin/users/by-email/{email}/", response_model=AdminUserFullResponse)
 def get_user_by_email(
@@ -96,15 +108,23 @@ def get_user_by_email(
 # ---------------------------------------------------------------------------
 # PATCH /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.patch("/admin/users/{user_id}/", response_model=AdminUserSlimResponse)
+@router.patch(
+    "/admin/users/{user_id}/",
+    response_model=AdminUserSlimResponse,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    session: UserSession = Depends(get_current_session),
 ):
     """
-    Admin can only update a user's role and status.
+    Admin can update a user's role, status, and email. Changing the role or email needs a code
+    entered in the last 10 minutes; see POST /auth/step-up/. A new email is unverified until the
+    user next signs in with a code sent to it, and codes and links sent to the old one stop
+    working.
 
     Moving a user off status="active" revokes every session they hold. Losing
     access is meant to take effect now, not at their next sign-in — login
@@ -120,6 +140,26 @@ def admin_update_user(
     """
     user = find_user_by_id(db, user_id)
     updates = body.model_dump(exclude_unset=True)
+
+    if "role" in updates and updates["role"] != user.role:
+        require_recent_code(session)
+
+    email = updates.pop("email", None)
+    if email is not None and email.lower() != user.email:
+        require_recent_code(session)
+        check_if_email_exists(db, email, exclude_user_id=user.id)
+        user.email = email.lower()
+        user.email_verified = False
+        # Codes and links already mailed to the old address stop working.
+        now = datetime.now(UTC)
+        db.query(EmailCode).filter(
+            EmailCode.user_id == user.id,
+            EmailCode.purpose != "admin_sign_in",
+            EmailCode.consumed_at.is_(None),
+        ).update({"consumed_at": now}, synchronize_session=False)
+        db.query(VerificationToken).filter(
+            VerificationToken.user_id == user.id, VerificationToken.used_at.is_(None)
+        ).update({"used_at": now}, synchronize_session=False)
 
     if user.id == current_user.id:
         if updates.get("role") == "user":
@@ -147,13 +187,19 @@ def admin_update_user(
 # ---------------------------------------------------------------------------
 # DELETE /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.delete("/admin/users/{user_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/admin/users/{user_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "A fresh code is needed first (detail.code step_up_required)"}},
+)
 def admin_delete_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    _: UserSession = Depends(require_recent_code),
 ):
-    """Delete any user. Admin only. Irreversible.
+    """Delete any user. Admin only. Irreversible, so it needs a code entered in the last 10
+    minutes; see POST /auth/step-up/.
 
     Everything personal goes: profile, experience, sessions, chapter and
     tournament memberships, form responses. Things they made for other people
@@ -189,23 +235,18 @@ def admin_delete_user(
     responses={
         400: {"description": "User has no password to reset"},
         429: {"description": "Reset requested too recently"},
-        500: {"description": "Failed to send reset email"},
     },
 )
-async def admin_send_password_reset(
+def admin_send_password_reset(
     user_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     """
     Sends the same reset email the public forgot-password flow sends, on an
-    admin's behalf.
-
-    Unlike that route, this one reports real errors instead of a uniform 200.
-    The generic response there exists to prevent account enumeration, which
-    doesn't apply to an admin acting on a user they picked off the admin
-    list — and swallowing the 429 would just leave them unable to tell a
-    rate-limit from a send failure.
+    admin's behalf. Unlike that route, it reports a 429 instead of a uniform
+    200, since an admin already knows the account exists.
 
     Status isn't checked: a deactivated or locked user still can't log in, so
     resetting their password is harmless, and blocking it would get in the way
@@ -221,9 +262,46 @@ async def admin_send_password_reset(
             detail="User has no password set",
         )
 
-    await send_password_reset_request_email(db, user.id, user.email)
+    token = create_verification_token(db, user.id, "password_reset")
+    send_in_background(background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "Password reset email sent"}
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/users/{user_id}/sign-in-code/ — admin only
+# ---------------------------------------------------------------------------
+@router.post(
+    "/admin/users/{user_id}/sign-in-code/",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AdminSignInCodeResponse,
+    responses={
+        400: {"description": "User has no password set"},
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
+    },
+)
+def admin_create_sign_in_code(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    _: UserSession = Depends(require_recent_code),
+):
+    """
+    Issues a one-time sign-in code for a user whose emails aren't arriving. They still enter
+    their password, then type this code where the emailed one would go. It works once, expires
+    in 30 minutes, and replaces any earlier one. The code appears only in this response. Needs a
+    code entered in the last 10 minutes; see POST /auth/step-up/.
+    """
+    user = find_user_by_id(db, user_id)
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no password set",
+        )
+
+    code, row = start_admin_sign_in_code(db, user, admin)
+    logger.warning("Admin %s issued a one-time sign-in code for user %s", admin.id, user.id)
+    return AdminSignInCodeResponse(code=code, expires_at=row.expires_at)
 
 
 # ---------------------------------------------------------------------------

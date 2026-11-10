@@ -1,14 +1,25 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
+    DUMMY_PASSWORD_HASH,
     RATE_LIMIT_WINDOW,
     clear_auth_cookie,
     consume_verification_token,
     create_session,
+    create_verification_token,
     get_active_session,
     get_client_ip,
     get_current_session,
@@ -22,15 +33,26 @@ from app.core.auth import (
     verify_and_update_password,
     verify_password,
 )
+from app.core.config import get_settings
+from app.core.email_codes import (
+    require_recent_code,
+    resend_challenge,
+    start_challenge,
+    verify_challenge,
+)
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
-from app.models.models import User, UserSession, VerificationToken
+from app.models.models import EmailCode, User, UserSession, VerificationToken
 from app.schemas.auth import (
     AccountSetupConfirm,
+    CodeChallengeResponse,
+    CodeResendRequest,
+    CodeVerifyRequest,
     EmailChangeRequest,
     EmailChangeRevertConfirm,
     EmailPendingChangeResponse,
     LoginRequest,
+    LoginResponse,
     MessageResponse,
     PasswordChangeRequest,
     PasswordResetConfirm,
@@ -39,20 +61,39 @@ from app.schemas.auth import (
 )
 from app.schemas.user import AdminUserSlimResponse
 from app.services.email_service import (
-    send_email_change_request_email,
+    send_email_change_email,
     send_email_change_requested_notice,
+    send_in_background,
     send_password_changed_notice,
-    send_password_reset_request_email,
-    send_signup_verification_email,
+    send_password_reset_email,
+    send_sign_in_code_email,
+    send_sign_up_code_email,
+    send_step_up_code_email,
 )
 
 router = APIRouter(tags=["auth"])
 
-# Argon2 is CPU-bound (~50 ms per hash or verify), so it must never run on the
-# event loop, where it stalls every other request on the worker. Routes that
-# hash and await nothing are plain `def`, which FastAPI runs in its threadpool;
-# the async ones (they await an email send) wrap hash_password/verify_password
-# in run_in_threadpool.
+CODE_SENDERS = {
+    "sign_in": send_sign_in_code_email,
+    "sign_up": send_sign_up_code_email,
+    "step_up": send_step_up_code_email,
+}
+
+
+def _challenge_response(raw_token: str, row: EmailCode) -> CodeChallengeResponse:
+    now = datetime.now(UTC)
+    can_resend_at = row.last_sent_at + RATE_LIMIT_WINDOW
+    return CodeChallengeResponse(
+        challenge_token=raw_token,
+        expires_at=row.expires_at,
+        can_resend_at=can_resend_at,
+        expires_in=max(0, int((row.expires_at - now).total_seconds())),
+        resend_in=max(0, int((can_resend_at - now).total_seconds())),
+    )
+
+
+# Every route is plain `def`, so FastAPI runs it in its threadpool: Argon2
+# (~50 ms per hash) and the DB calls would otherwise stall the event loop.
 
 
 # ---------------------------------------------------------------------------
@@ -60,11 +101,20 @@ router = APIRouter(tags=["auth"])
 # ---------------------------------------------------------------------------
 
 
-@router.post("/auth/login/", response_model=AdminUserSlimResponse)
-def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+@router.post("/auth/login/", response_model=LoginResponse)
+def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
-    Authenticate with email + password.
-    Sets an httpOnly session cookie on success.
+    Checks the email and password, then emails a 6-digit code to the account address and
+    returns a challenge. Finish signing in with POST /auth/code/verify/. No cookie is set here.
+
+    While codes are switched off for an email outage, code_required is false and this sets the
+    session cookie and returns the user directly.
     """
     user = (
         db.query(User)
@@ -75,8 +125,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         .first()
     )
 
-    # Deliberate: same error whether email or password is wrong — prevents enumeration
+    # Same error and the same hashing work whether the email or the password is
+    # wrong, so neither the response nor its timing reveals which accounts exist.
     if not user or not user.hashed_password:
+        verify_password(body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -89,17 +141,89 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             detail="Invalid email or password",
         )
     if upgraded_hash:
-        # Legacy bcrypt hash: swap in Argon2. Committed by create_session below.
         user.hashed_password = upgraded_hash
+        db.commit()
+
+    if not get_settings().login_codes_required:
+        raw_token = create_session(
+            db,
+            user.id,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=get_client_ip(request),
+        )
+        set_auth_cookie(response, raw_token)
+        return LoginResponse(code_required=False, user=AdminUserSlimResponse.model_validate(user))
+
+    raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
+    send_in_background(background_tasks, send_sign_in_code_email, user.email, code)
+    return LoginResponse(code_required=True, challenge=_challenge_response(raw_token, row))
+
+
+@router.post(
+    "/auth/code/verify/",
+    response_model=AdminUserSlimResponse,
+    responses={
+        400: {"description": "Incorrect or expired code"},
+        409: {"description": "The sign-up's email was registered in the meantime"},
+    },
+)
+def verify_code(
+    body: CodeVerifyRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """
+    Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here.
+    Sets an httpOnly session cookie on success and marks the email verified. Five wrong guesses
+    at one code end the challenge.
+    """
+    row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in", "sign_up"))
+
+    if row.purpose == "sign_up":
+        check_if_email_exists(db, row.email)
+        try:
+            user = create_user(db, row.email, hashed_password=row.hashed_password)
+        except IntegrityError:
+            # Another pending sign-up for this email finished between the check and the insert.
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
+    else:
+        found = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
+        if found is None:
+            raise HTTPException(400, "This code has expired. Start again to get a new one.")
+        user = found
+    user.email_verified = True
 
     raw_token = create_session(
         db,
         user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
+        code_verified=True,
     )
     set_auth_cookie(response, raw_token)
+    db.refresh(user)
     return user
+
+
+@router.post(
+    "/auth/code/resend/",
+    response_model=CodeChallengeResponse,
+    responses={
+        400: {"description": "Expired challenge"},
+        429: {"description": "Code sent too recently"},
+    },
+)
+def resend_code(
+    body: CodeResendRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Emails a new code for a challenge. The old code stops working; the expiry doesn't move."""
+    code, row = resend_challenge(db, body.challenge_token)
+    send_in_background(background_tasks, CODE_SENDERS[row.purpose], row.email, code)
+    return _challenge_response(body.challenge_token, row)
 
 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
@@ -127,76 +251,79 @@ def logout(
 
 
 @router.post(
-    "/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED
+    "/auth/register/",
+    response_model=CodeChallengeResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        409: {"description": "Email already registered"},
+        429: {"description": "Sign-up code sent too recently"},
+    },
 )
 def register(
-    body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)
+    body: RegisterRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """
-    Public route to create a new user account.
-    All registered users get role="user".
+    Starts a sign-up: emails a 6-digit code to the address and returns a challenge. The account
+    is created, verified, and signed in by POST /auth/code/verify/. Until then nothing reserves
+    the email, and signing up again replaces the pending sign-up.
     """
     check_if_email_exists(db, body.email)
 
-    user = create_user(db, body.email, password=body.password)
-
-    raw_token = create_session(
-        db,
-        user.id,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=get_client_ip(request),
+    email = body.email.lower()
+    raw_token, code, row = start_challenge(
+        db, "sign_up", email=email, hashed_password=hash_password(body.password)
     )
-    set_auth_cookie(response, raw_token)
-
-    return user
+    send_in_background(background_tasks, send_sign_up_code_email, email, code)
+    return _challenge_response(raw_token, row)
 
 
 # ---------------------------------------------------------------------------
-# Signup email verification
+# Step-up: a fresh code before a sensitive action
 # ---------------------------------------------------------------------------
-
-
-@router.get(
-    "/auth/verify-email/",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
-    responses={
-        400: {"description": "Invalid or expired token"},
-    },
-)
-def verify_email(token: str, db: Session = Depends(get_db)):
-    """Consumes a signup_verify token and marks the user's email verified."""
-    token_row = consume_verification_token(db, token, "signup_verify")
-    if token_row is None:
-        raise HTTPException(400, "Invalid or expired token")
-
-    user = find_user_by_id(db, token_row.user_id)
-    user.email_verified = True
-    db.commit()
-    return {"detail": "User email successfully verified"}
 
 
 @router.post(
-    "/auth/send-email-verification/",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
-    responses={
-        400: {"description": "Email already verified"},
-        429: {"description": "Verification email requested too recently"},
-        500: {"description": "Failed to send verification email"},
-    },
+    "/auth/step-up/",
+    response_model=CodeChallengeResponse,
+    responses={429: {"description": "Code sent too recently"}},
 )
-async def send_email_verification(
+def start_step_up(
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
+    session: UserSession = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    """Resends the signup verification email for the current user."""
-    if user.email_verified:
-        raise HTTPException(400, "Email already verified")
+    """
+    Emails a code to the signed-in user. Call this when a request fails with a 403 whose
+    detail.code is "step_up_required", then send the code to POST /auth/step-up/verify/.
+    """
+    raw_token, code, row = start_challenge(
+        db, "step_up", user=user, session=session, email=user.email
+    )
+    send_in_background(background_tasks, send_step_up_code_email, user.email, code)
+    return _challenge_response(raw_token, row)
 
-    await send_signup_verification_email(db, user.email, user.id)
 
-    return {"detail": "Verification email successfully sent"}
+@router.post(
+    "/auth/step-up/verify/",
+    response_model=MessageResponse,
+    responses={400: {"description": "Incorrect or expired code"}},
+)
+def verify_step_up(
+    body: CodeVerifyRequest,
+    session: UserSession = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """
+    Checks a step-up code. On success, this session can make sensitive requests for the next
+    10 minutes. The challenge must have been started from this same session.
+    """
+    verify_challenge(
+        db, body.challenge_token, body.code, purposes=("step_up",), session_id=session.id
+    )
+    session.code_verified_at = datetime.now(UTC)
+    db.commit()
+    return {"detail": "Confirmed"}
 
 
 # ---------------------------------------------------------------------------
@@ -229,31 +356,41 @@ def get_pending_email_change_route(
     status_code=status.HTTP_200_OK,
     response_model=EmailPendingChangeResponse,
     responses={
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
         409: {"description": "Email already registered to another account"},
         429: {"description": "Email change requested too recently"},
-        500: {"description": "Failed to send confirmation email"},
     },
 )
-async def request_email_change(
+def request_email_change(
     body: EmailChangeRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
+    _: UserSession = Depends(require_recent_code),
     db: Session = Depends(get_db),
 ):
     """
-    Sends a confirmation link to the NEW address. user.email is untouched
-    until that link is clicked — see confirm_email_change(). Also doubles
-    as the resend route: the frontend calls this again with the same
-    new_email to resend, rather than a separate no-arg resend endpoint.
-
-    Also notifies the OLD address immediately (not on confirm) — user.email
-    is still the original address here, so it's captured before anything
-    is mutated. This is the only notice the account owner will see if they
-    weren't the one who made the request.
+    Emails a confirmation link to the new address, and a notice with an undo
+    link to the current one. The account email changes only once the link is
+    confirmed. Call again with the same new_email to resend.
     """
     check_if_email_exists(db, body.new_email, exclude_user_id=user.id)
 
-    await send_email_change_request_email(db, user.id, body.new_email)
-    await send_email_change_requested_notice(db, user.id, user.email, body.new_email)
+    # The undo link goes out now, not on confirm, so the owner can stop a change
+    # they didn't make; once applied, /forgot-password would reach the new address.
+    # Created first because a just-confirmed change leaves its revert token unused,
+    # so a quick second request is rate-limited here, before anything is written.
+    revert_token = create_verification_token(
+        db, user.id, "email_change_revert", new_email=user.email
+    )
+    token = create_verification_token(db, user.id, "email_change", new_email=body.new_email)
+    send_in_background(background_tasks, send_email_change_email, body.new_email, token)
+    send_in_background(
+        background_tasks,
+        send_email_change_requested_notice,
+        user.email,
+        body.new_email,
+        revert_token,
+    )
 
     token_row = get_pending_email_change(db, user.id)
     assert token_row is not None
@@ -363,24 +500,21 @@ def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(ge
         401: {"description": "Current password is incorrect"},
     },
 )
-async def change_password(
+def change_password(
     body: PasswordChangeRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     session: UserSession = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     """Authenticated password change — requires current_password to match before setting new_password."""
-    if not user.hashed_password or not await run_in_threadpool(
-        verify_password,
-        body.current_password,
-        user.hashed_password,
-    ):
+    if not user.hashed_password or not verify_password(body.current_password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
-    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
+    user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    await send_password_changed_notice(user.email)
+    send_in_background(background_tasks, send_password_changed_notice, user.email)
     revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
@@ -389,7 +523,11 @@ async def change_password(
 @router.post(
     "/auth/password/reset/request/", status_code=status.HTTP_200_OK, response_model=MessageResponse
 )
-async def request_password_reset(body: PasswordResetRequest, db: Session = Depends(get_db)):
+def request_password_reset(
+    body: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
     Always returns the same generic response regardless of whether the
     email matches an account — avoids account enumeration. Pending
@@ -407,12 +545,13 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
 
     if user and user.hashed_password:
         try:
-            await send_password_reset_request_email(db, user.id, user.email)
+            token = create_verification_token(db, user.id, "password_reset")
         except HTTPException as e:
-            if e.status_code != 429:
+            # A 429 instead of the generic 200 would reveal that the account exists.
+            if e.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
                 raise
-            # Swallow rate-limit responses here too — surfacing a 429 vs.
-            # the generic 200 would itself leak whether the email exists.
+        else:
+            send_in_background(background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "If an account exists for this email, a reset link has been sent."}
 
@@ -425,17 +564,21 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
         400: {"description": "Invalid or expired token"},
     },
 )
-async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depends(get_db)):
+def confirm_password_reset(
+    body: PasswordResetConfirm,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Logged-out password reset — consumes a password_reset token and sets new_password."""
     token_row = consume_verification_token(db, body.token, "password_reset")
     if token_row is None:
         raise HTTPException(400, "Invalid or expired token")
 
     user = find_user_by_id(db, token_row.user_id)
-    user.hashed_password = await run_in_threadpool(hash_password, body.new_password)
+    user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    await send_password_changed_notice(user.email)
+    send_in_background(background_tasks, send_password_changed_notice, user.email)
     revoke_all_sessions(db, user.id)
 
     return {"detail": "Password successfully reset"}
@@ -467,9 +610,9 @@ def confirm_account_setup(
     db: Session = Depends(get_db),
 ):
     """
-    Completes an invited account: sets the initial password. Logs the user in
-    immediately, same as register(), since this mirrors sign-up's flow. Phone
-    and any name correction happen afterward in onboarding.
+    Completes an invited account: sets the initial password and signs the user in. The emailed
+    link proves the address, so this also marks the email verified. Phone and any name
+    correction happen afterward in onboarding.
     """
     token_row = consume_verification_token(db, body.token, "account_setup")
     if token_row is None:
@@ -479,6 +622,7 @@ def confirm_account_setup(
 
     user.hashed_password = hash_password(body.password)
     user.status = "active"
+    user.email_verified = True
     db.commit()
     db.refresh(user)
 
@@ -487,6 +631,7 @@ def confirm_account_setup(
         user.id,
         user_agent=request.headers.get("user-agent"),
         ip_address=get_client_ip(request),
+        code_verified=True,
     )
     set_auth_cookie(response, raw_token)
 

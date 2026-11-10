@@ -127,8 +127,8 @@ def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
     starting early (Impound, 7-8am, attached after Morning) has to sort into
     its place rather than print the day as 8am, 12pm, 4pm, 8am."""
     login(client, "td@test.com", "tdpass")
-    # Mid-day UTC, so every shift falls on the tournament's first Los Angeles
-    # day in both PDT and PST; 07:00Z is the day before once DST ends.
+    # Track bounds are checked in the tournament's Pacific time, so these stay
+    # well inside EVENT_DATE there in both standard and daylight time.
     morning = _make_shift(
         client,
         td_tournament.id,

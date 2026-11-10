@@ -53,6 +53,7 @@ class UserUpdate(BaseModel):
 class AdminUserUpdate(BaseModel):
     role: Literal["user", "admin"] | None = None
     status: USER_STATUS | None = None
+    email: EmailStr | None = None
 
 
 class UserSlimResponse(BaseModel):

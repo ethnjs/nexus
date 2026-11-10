@@ -51,11 +51,12 @@ def create_user(
     phone: str | None = None,
     password: str | None = None,
     status: str = "active",
+    hashed_password: str | None = None,
 ) -> User:
     user = User(
         email=email.lower(),
         phone=phone,
-        hashed_password=hash_password(password) if password else None,
+        hashed_password=hash_password(password) if password else hashed_password,
         first_name=first_name,
         last_name=last_name,
         role=role,

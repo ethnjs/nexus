@@ -1,10 +1,12 @@
 from functools import lru_cache
+from typing import Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "development"
     app_host: str = "0.0.0.0"
@@ -23,6 +25,16 @@ class Settings(BaseSettings):
 
     resend_api_key: str = ""  # set in .env file for dev or env vars in prod, never commit here
     frontend_url: str = "http://localhost:3000/"  # remember to set to actual url in prod
+
+    # Emergency switch for email outages: false skips sign-in and step-up codes.
+    login_codes_required: bool = True
+
+    @model_validator(mode="after")
+    def require_email_in_production(self) -> Self:
+        # Emails send in the background, so a missing key would otherwise only show in logs.
+        if self.app_env == "production" and not self.resend_api_key:
+            raise ValueError("RESEND_API_KEY must be set in production")
+        return self
 
 
 @lru_cache

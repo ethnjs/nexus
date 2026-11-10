@@ -29,9 +29,11 @@ In development, startup runs `alembic upgrade head` and seeds these accounts:
 - `admin@nexus.dev` / `admin1234`: site admin
 - `user1@nexus.dev` through `user15@nexus.dev` / `user1234`: regular users, with no tournaments
 
+Signing in also asks for a 6-digit code emailed to the account. Outside production, email to `@nexus.dev` is never sent: the full email, code included, is logged instead, in the backend console in development and in the preview logs.
+
 API docs are at [localhost:8001/docs](http://localhost:8001/docs) (Swagger) and [localhost:8001/reference](http://localhost:8001/reference) (Scalar). Both are served only when `APP_ENV` is `development` or `preview`. Production serves only the spec at `/openapi.json`, which the docs site renders.
 
-Email (verification, password reset, invites) is sent through Resend and needs `RESEND_API_KEY`. The seeded accounts don't need it.
+Email (sign-in and sign-up codes, password reset, invites) is sent through Resend and needs `RESEND_API_KEY`. Without it, development logs each email, including its links and codes, instead of sending it. The seeded accounts don't need it.
 
 Add dependencies with `uv add <pkg>`, or `uv add --dev <pkg>` for dev-only tools. Commit `pyproject.toml` and `uv.lock` together, and never edit either one's versions by hand.
 

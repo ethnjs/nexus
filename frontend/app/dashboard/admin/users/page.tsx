@@ -22,18 +22,23 @@ import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconCheckCircle,
+  IconDotsVertical,
+  IconEdit,
   IconKey,
   IconLock,
   IconMembers,
   IconRestore,
   IconSearch,
+  IconShield,
   IconTrash,
   IconUser,
   IconUserShield,
   IconXCircle,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Popover } from "@/components/ui/Popover";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import { Spinner } from "@/components/ui/Spinner";
@@ -46,7 +51,13 @@ import {
   adminUserSortValue,
   DEFAULT_ADMIN_USER_SORT,
 } from "@/lib/adminUserSort";
-import { type AdminUserListItem, type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
+import {
+  type AdminSignInCode,
+  type AdminUserListItem,
+  type AdminUserSlim,
+  ApiError,
+  adminUsersApi,
+} from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
@@ -54,9 +65,10 @@ import { formatDuration } from "@/lib/timeFormat";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useStepUp } from "@/lib/useStepUp";
 
 // Every track carries a floor *and* an `fr` weight, so the slack on a wide
-// display spreads across all seven in proportion to what they hold. Two `fr`
+// display spreads across every column in proportion to what they hold. Two `fr`
 // columns among five fixed ones dumped it all into Name and Email; capping
 // them instead just moved the gap to the right of Actions. The floor is what
 // stops a narrow window squeezing a cell until it wraps — an `fr` alone
@@ -70,15 +82,15 @@ const COLUMNS = [
   "minmax(92px, 0.6fr)", // role — one badge
   "minmax(104px, 0.7fr)", // status — one badge
   "minmax(96px, 0.7fr)", // joined
-  // Sized to exactly what it holds: four sm iconOnly buttons are 28px square
-  // (Button's sm height) with 4px gaps — 4*28 + 3*4. At that width "centred"
+  // Sized to exactly what it holds: three sm iconOnly buttons are 28px square
+  // (Button's sm height) with 4px gaps — 3*28 + 2*4. At that width "centred"
   // and "flush right" are the same thing, so the header sits over the buttons
   // and the track still ends at the card's right edge. An `fr` share here left
   // the buttons floating in a 250px track with the header adrift from them.
-  "124px", // actions — 4 * 28px buttons + 3 * 4px gaps
+  "92px", // actions — 3 * 28px buttons + 2 * 4px gaps
 ].join(" ");
 
-const MIN_TABLE_WIDTH = 1262;
+const MIN_TABLE_WIDTH = 1230;
 
 const NUM_CELL: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
@@ -114,10 +126,16 @@ function UserRow({
   /** This row is the one the panel is showing. */
   isOpen: boolean;
   onOpen: () => void;
-  onAction: (kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete") => void;
+  onAction: (kind: PendingAction["kind"]) => void;
 }) {
   const isActive = user.status === "active";
   const selfTitle = "You can't do this to your own account";
+  const menuItems: MenuKey[] = [
+    user.role === "admin" ? "demote" : "promote",
+    "email",
+    "reset",
+    "delete",
+  ];
 
   return (
     <div
@@ -200,9 +218,8 @@ function UserRow({
         </span>
       </HoverCard>
 
-      {/* Every one of these is refused on your own account server-side, so the
-          row for the acting admin shows them disabled rather than letting a
-          click come back a 400. */}
+      {/* What the backend refuses on your own account is disabled on your row,
+          rather than letting a click come back a 400. */}
       <div
         style={{ display: "flex", justifyContent: "center", gap: "4px" }}
         onClick={(e) => e.stopPropagation()}
@@ -233,67 +250,81 @@ function UserRow({
           </Button>
         )}
 
-        {user.role === "admin" ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconOnly
-            disabled={isSelf}
-            title={isSelf ? selfTitle : "Demote to user"}
-            onClick={() => onAction("demote")}
-          >
-            <IconUser size={13} />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconOnly
-            disabled={isSelf}
-            title={isSelf ? selfTitle : "Promote to admin"}
-            onClick={() => onAction("promote")}
-          >
-            <IconUserShield size={13} />
-          </Button>
-        )}
-
         <Button
           type="button"
           variant="secondary"
           size="sm"
           iconOnly
-          title="Send password reset email"
-          onClick={() => onAction("reset")}
+          title="Create a one-time sign-in code"
+          onClick={() => onAction("signInCode")}
         >
-          <IconKey size={13} />
+          <IconShield size={13} />
         </Button>
 
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          disabled={isSelf}
-          title={isSelf ? selfTitle : "Delete account"}
-          onClick={() => onAction("delete")}
-        >
-          <IconTrash size={13} style={{ color: isSelf ? undefined : "var(--color-danger)" }} />
-        </Button>
+        <Popover
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconOnly title="More options">
+              <IconDotsVertical size={16} />
+            </Button>
+          }
+          items={menuItems}
+          getKey={(key) => key}
+          renderLabel={(key) => {
+            const Icon = MENU_ICONS[key];
+            const danger = key === "delete" && !isSelf;
+            return (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: danger ? "var(--color-danger)" : undefined,
+                }}
+              >
+                <Icon size={13} />
+                {MENU_LABELS[key]}
+              </span>
+            );
+          }}
+          isDisabled={(key) => isSelf && SELF_REFUSED.has(key)}
+          disabledReason={() => selfTitle}
+          onSelect={onAction}
+          width={210}
+        />
       </div>
     </div>
   );
 }
 
+type MenuKey = "promote" | "demote" | "email" | "reset" | "delete";
+
+const MENU_LABELS: Record<MenuKey, string> = {
+  promote: "Promote to admin",
+  demote: "Demote to user",
+  email: "Edit email",
+  reset: "Send password reset email",
+  delete: "Delete account",
+};
+
+const MENU_ICONS: Record<MenuKey, typeof IconEdit> = {
+  promote: IconUserShield,
+  demote: IconUser,
+  email: IconEdit,
+  reset: IconKey,
+  delete: IconTrash,
+};
+
+const SELF_REFUSED = new Set<MenuKey>(["promote", "demote", "delete"]);
+
 type PendingAction = {
-  kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete";
+  kind: "lock" | "activate" | "promote" | "demote" | "email" | "reset" | "signInCode" | "delete";
   user: AdminUserListItem;
 };
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const run = useActionToast();
+  const { withStepUp, stepUpModal } = useStepUp();
   const [users, setUsers] = useState<AdminUserListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
@@ -307,6 +338,13 @@ export default function AdminUsersPage() {
 
   const [panelUserId, setPanelUserId] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailError, setEmailError] = useState<string | undefined>(undefined);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [issuedCode, setIssuedCode] = useState<{
+    user: AdminUserSlim;
+    code: AdminSignInCode;
+  } | null>(null);
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   useEffect(() => {
@@ -381,6 +419,7 @@ export default function AdminUsersPage() {
 
   return (
     <>
+      {stepUpModal}
       <PageHeader heading="Users" />
 
       {loadError && (
@@ -481,7 +520,11 @@ export default function AdminUsersPage() {
                 isSelf={currentUser?.id === u.id}
                 isOpen={panelUserId === u.id}
                 onOpen={() => setPanelUserId(u.id)}
-                onAction={(kind) => setPending({ kind, user: u })}
+                onAction={(kind) => {
+                  setPending({ kind, user: u });
+                  setEmailDraft(u.email);
+                  setEmailError(undefined);
+                }}
               />
             ))}
           </div>
@@ -500,7 +543,7 @@ export default function AdminUsersPage() {
           }
           onConfirm={() =>
             run(`${userName(pending.user)} locked`, () =>
-              adminUsersApi.updateRole(pending.user.id, { status: "locked" }).then(replaceRow),
+              adminUsersApi.update(pending.user.id, { status: "locked" }).then(replaceRow),
             )
           }
           onClose={() => setPending(null)}
@@ -520,7 +563,7 @@ export default function AdminUsersPage() {
           }
           onConfirm={() =>
             run(`${userName(pending.user)} restored`, () =>
-              adminUsersApi.updateRole(pending.user.id, { status: "active" }).then(replaceRow),
+              adminUsersApi.update(pending.user.id, { status: "active" }).then(replaceRow),
             )
           }
           onClose={() => setPending(null)}
@@ -540,7 +583,9 @@ export default function AdminUsersPage() {
           }
           onConfirm={() =>
             run(`${userName(pending.user)} is now an admin`, () =>
-              adminUsersApi.updateRole(pending.user.id, { role: "admin" }).then(replaceRow),
+              withStepUp(() => adminUsersApi.update(pending.user.id, { role: "admin" })).then(
+                replaceRow,
+              ),
             )
           }
           onClose={() => setPending(null)}
@@ -560,11 +605,126 @@ export default function AdminUsersPage() {
           }
           onConfirm={() =>
             run(`${userName(pending.user)} is no longer an admin`, () =>
-              adminUsersApi.updateRole(pending.user.id, { role: "user" }).then(replaceRow),
+              withStepUp(() => adminUsersApi.update(pending.user.id, { role: "user" })).then(
+                replaceRow,
+              ),
             )
           }
           onClose={() => setPending(null)}
         />
+      )}
+
+      {pending?.kind === "email" && (
+        <Modal title="Edit email" onClose={() => setPending(null)}>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setEmailError(undefined);
+              setEmailSaving(true);
+              try {
+                await run("Email updated", () =>
+                  withStepUp(() =>
+                    adminUsersApi.update(pending.user.id, { email: emailDraft.trim() }),
+                  ).then(replaceRow),
+                );
+                setPending(null);
+              } catch (err: unknown) {
+                setEmailError(err instanceof ApiError ? err.message : "Something went wrong.");
+              } finally {
+                setEmailSaving(false);
+              }
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+          >
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              Change the email for <strong>{userName(pending.user)}</strong>. The new address is
+              unverified until they sign in with a code sent to it.
+            </p>
+            <Input
+              label="Email"
+              type="email"
+              font="sans"
+              fullWidth
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              error={emailError}
+              autoFocus
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <Button type="button" variant="secondary" onClick={() => setPending(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={emailSaving}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {pending?.kind === "signInCode" && (
+        <ConfirmModal
+          title="Create sign-in code"
+          variant="primary"
+          confirmLabel="Create code"
+          description={
+            <>
+              Create a one-time code for <strong>{userName(pending.user)}</strong> to use if our
+              emails aren&rsquo;t reaching them. They still need their password. Share it only after
+              confirming who you&rsquo;re talking to.
+            </>
+          }
+          onConfirm={() =>
+            withStepUp(() => adminUsersApi.createSignInCode(pending.user.id)).then((code) =>
+              setIssuedCode({ user: pending.user, code }),
+            )
+          }
+          onClose={() => setPending(null)}
+        />
+      )}
+
+      {issuedCode && (
+        <Modal title="One-time sign-in code" onClose={() => setIssuedCode(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "32px",
+                letterSpacing: "0.3em",
+                textAlign: "center",
+                color: "var(--color-text-primary)",
+                margin: 0,
+              }}
+            >
+              {issuedCode.code.code}
+            </p>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+                margin: 0,
+              }}
+            >
+              {userName(issuedCode.user)} enters this after their password, where the emailed code
+              goes. It works once and expires at{" "}
+              {new Date(issuedCode.code.expires_at).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+              . It won&rsquo;t be shown again.
+            </p>
+            <Button fullWidth onClick={() => setIssuedCode(null)}>
+              Done
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {pending?.kind === "reset" && (
@@ -590,7 +750,9 @@ export default function AdminUsersPage() {
       {pending?.kind === "delete" && (
         <DeleteUserModal
           user={pending.user}
-          onDelete={(u) => run(`${userName(u)} deleted`, () => adminUsersApi.delete(u.id))}
+          onDelete={(u) =>
+            run(`${userName(u)} deleted`, () => withStepUp(() => adminUsersApi.delete(u.id)))
+          }
           onClose={() => setPending(null)}
           onDeleted={removeRows}
         />

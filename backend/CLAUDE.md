@@ -20,11 +20,13 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 - `app/models/models.py`: every model, in one file.
 - `app/services/`: Google Sheets and Forms clients, sheet sync, and email (Resend). Every email goes through `email_service._send()`, which the tests' autouse `mock_send_email` patches; keep new senders going through it.
 - `app/db/`: session, startup seeding, and dev scripts (`seed_members.py`, `anonymize_users.py`, documented in `docs/`).
+- `scripts/render_emails.py`: renders every email to `tmp_emails/` for previewing without sending; see `docs/email-previews.md`. Add new senders to it.
 
 ## Routes
 
 - Every path ends in `/`. With `redirect_slashes=False`, a request without the trailing slash gets a 404.
 - Routes are sync `def` with a sync `Session` from `Depends(get_db)`. Queries use `db.query(...)` throughout; match that rather than mixing in `select()`.
+- Routes send email with `email_service.send_in_background()`, which runs after the response goes out, so create any token first and pass the sender only plain values, never `db`. Only when the response needs the send's result (staff invites) does a route wait for it, with `anyio.from_thread.run()`.
 - Declare `response_model`. Schemas exist per *audience* (who may see the data), not per screen or caller.
 - Prefer fewer, query-shaped routes over one route per screen. Before adding a route, check whether a query parameter on an existing one covers it. When callers want different amounts of the same data, add a `fields` query: omitting it returns everything, and an unrequested group is absent from the JSON, while `null` always means "no value".
 - Gate access on the route with permission dependencies. Don't build a full response and redact it afterwards.
@@ -36,6 +38,8 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 ## Auth (`app/core/auth.py`)
 
 - Sessions are opaque random tokens, not JWTs. The raw token is in the httpOnly `access_token` cookie; only its SHA-256 hash is stored on a `UserSession` row, with a fixed 7-day expiry.
+- A session is created only after an emailed code is entered at `/auth/code/verify/`; `/auth/login/` and `/auth/register/` just start the challenge (`app/core/email_codes.py`). A new sign-in method calls `start_challenge(db, "sign_in", ...)` the same way. `LOGIN_CODES_REQUIRED=false` is the outage switch that skips codes.
+- Sensitive routes depend on `require_recent_code`, which returns 403 `step_up_required` unless the session entered a code in the last 10 minutes.
 - Use `get_current_user` / `get_current_session` as dependencies. `require_admin` is for site-wide admin routes only.
 - Every router also requires the `X-API-Key` header, which the frontend proxy attaches. The check is skipped in `development` and `test` when `API_KEY` is empty.
 

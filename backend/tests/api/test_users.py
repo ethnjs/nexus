@@ -1,7 +1,10 @@
 """Tests for /admin/users and /users/me endpoints."""
 
-from app.core.auth import hash_password
+from datetime import timedelta
+
+from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
+    EmailCode,
     Event,
     EventCategory,
     University,
@@ -425,7 +428,9 @@ class TestAdminSendPasswordReset:
         login(client, "admin@test.com", "adminpass")
         res = client.post(f"/admin/users/{alice.id}/password-reset/")
         assert res.status_code == 200
-        assert mock_send_email.called
+        to, subject = mock_send_email.call_args.args[:2]
+        assert to == alice.email
+        assert subject == "Reset your password on NEXUS"
 
     def test_user_without_password_rejected(self, client, admin_user, db, mock_send_email):
         """No password means the account was never set up — that needs the
@@ -459,6 +464,135 @@ class TestAdminSendPasswordReset:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.post("/admin/users/1/password-reset/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# PATCH /admin/users/{id}/ with email
+# ---------------------------------------------------------------------------
+
+
+class TestAdminEditEmail:
+    def test_admin_changes_email_and_clears_verification(self, client, admin_user, db):
+        alice = _db_user(db, email_verified=True)
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"email": "Alice.New@Example.com"})
+        assert res.status_code == 200
+        assert res.json()["email"] == "alice.new@example.com"
+        assert res.json()["email_verified"] is False
+
+    def test_same_email_keeps_verification(self, client, admin_user, db):
+        alice = _db_user(db, email_verified=True)
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"email": "ALICE@example.com"})
+        assert res.status_code == 200
+        assert res.json()["email_verified"] is True
+
+    def test_email_of_another_account_rejected(self, client, admin_user, db):
+        alice = _db_user(db)
+        _db_user(db, email="bob@example.com")
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"email": "Bob@Example.com"})
+        assert res.status_code == 409
+        db.refresh(alice)
+        assert alice.email == "alice@example.com"
+
+    def test_old_address_codes_and_links_stop_working(self, client, admin_user, db):
+        alice = _db_user(db)
+        token = _start_sign_in(client)
+        reset = create_verification_token(db, alice.id, "password_reset")
+        login(client, "admin@test.com", "adminpass")
+        client.patch(f"/admin/users/{alice.id}/", json={"email": "alice.new@example.com"})
+
+        db.query(EmailCode).update({"last_sent_at": EmailCode.last_sent_at - timedelta(seconds=61)})
+        db.commit()
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.json()["detail"]["code"] == "code_closed"
+        assert consume_verification_token(db, reset, "password_reset") is None
+
+    def test_new_email_verified_at_next_sign_in(self, client, admin_user, db, mock_send_email):
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+        client.patch(f"/admin/users/{alice.id}/", json={"email": "alice.new@example.com"})
+        client.post("/auth/logout/")
+        res = login(client, "alice.new@example.com", "Password@1")
+        assert res.status_code == 200
+        assert res.json()["email_verified"] is True
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/users/{id}/sign-in-code/ — admin only
+# ---------------------------------------------------------------------------
+
+
+def _start_sign_in(client, email="alice@example.com", password="Password@1") -> str:
+    res = client.post("/auth/login/", json={"email": email, "password": password})
+    assert res.status_code == 200, res.text
+    return res.json()["challenge"]["challenge_token"]
+
+
+def _verify(client, token: str, code: str):
+    return client.post("/auth/code/verify/", json={"challenge_token": token, "code": code})
+
+
+class TestAdminSignInCode:
+    def _issue(self, client, db, alice) -> str:
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(f"/admin/users/{alice.id}/sign-in-code/")
+        assert res.status_code == 201, res.text
+        client.post("/auth/logout/")
+        return res.json()["code"]
+
+    def test_code_works_once_at_the_sign_in_code_step(self, client, admin_user, db):
+        alice = _db_user(db)
+        code = self._issue(client, db, alice)
+
+        assert _verify(client, _start_sign_in(client), code).status_code == 200
+        client.post("/auth/logout/")
+        assert _verify(client, _start_sign_in(client), code).status_code == 400
+
+    def test_code_is_not_a_session_by_itself(self, client, admin_user, db):
+        alice = _db_user(db)
+        self._issue(client, db, alice)
+        assert client.get("/users/me/").status_code == 401
+
+    def test_expires_after_30_minutes(self, client, admin_user, db):
+        alice = _db_user(db)
+        code = self._issue(client, db, alice)
+        row = db.query(EmailCode).filter_by(purpose="admin_sign_in").one()
+        row.expires_at -= timedelta(minutes=31)
+        db.commit()
+        assert _verify(client, _start_sign_in(client), code).status_code == 400
+
+    def test_only_for_that_user(self, client, admin_user, db):
+        alice = _db_user(db)
+        _db_user(db, email="bob@example.com")
+        code = self._issue(client, db, alice)
+        token = _start_sign_in(client, email="bob@example.com")
+        assert _verify(client, token, code).status_code == 400
+
+    def test_issuing_is_logged(self, client, admin_user, db, caplog):
+        alice = _db_user(db)
+        self._issue(client, db, alice)
+        assert f"issued a one-time sign-in code for user {alice.id}" in caplog.text
+
+    def test_user_without_password_rejected(self, client, admin_user, db):
+        alice = _db_user(db, hashed_password=None)
+        login(client, "admin@test.com", "adminpass")
+        assert client.post(f"/admin/users/{alice.id}/sign-in-code/").status_code == 400
+
+    def test_non_admin_forbidden(self, client, td_user, db):
+        alice = _db_user(db)
+        login(client, "td@test.com", "tdpass")
+        assert client.post(f"/admin/users/{alice.id}/sign-in-code/").status_code == 403
+
+    def test_new_code_replaces_earlier_one(self, client, admin_user, db):
+        alice = _db_user(db)
+        first = self._issue(client, db, alice)
+        second = self._issue(client, db, alice)
+        token = _start_sign_in(client)
+        if first != second:
+            assert _verify(client, token, first).status_code == 400
+        assert _verify(client, token, second).status_code == 200
 
 
 # ---------------------------------------------------------------------------

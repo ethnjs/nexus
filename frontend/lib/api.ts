@@ -292,13 +292,54 @@ export interface EmailPendingChange {
   can_resend_at: string | null;
 }
 
+// Matches CodeChallengeResponse: a code was emailed; send it back with challenge_token.
+// expires_at and can_resend_at are rebuilt on this browser's clock as the response arrives
+// (see onLocalClock), so countdowns can compare them with Date.now().
+export interface CodeChallenge {
+  challenge_token: string;
+  expires_at: string;
+  can_resend_at: string;
+}
+
+interface SecondsLeft {
+  expires_in: number;
+  resend_in: number;
+}
+
+// Matches LoginResponse. When code_required, challenge is set and user is null.
+export interface LoginResponse {
+  code_required: boolean;
+  challenge: (CodeChallenge & SecondsLeft) | null;
+  user: AdminUserSlim | null;
+}
+
+// The server's timestamps are on its clock, which this browser's may not match.
+function onLocalClock<T extends SecondsLeft>(challenge: T): T {
+  const now = Date.now();
+  return {
+    ...challenge,
+    expires_at: new Date(now + challenge.expires_in * 1000).toISOString(),
+    can_resend_at: new Date(now + challenge.resend_in * 1000).toISOString(),
+  };
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<AdminUserSlim>("/auth/login/", { email, password }),
+    api
+      .post<LoginResponse>("/auth/login/", { email, password })
+      .then((res) => (res.challenge ? { ...res, challenge: onLocalClock(res.challenge) } : res)),
   logout: () => api.post<void>("/auth/logout/", {}),
-  register: (body: AuthRegister) => api.post<AdminUserSlim>("/auth/register/", body),
-  verifyEmail: (token: string) => api.get<void>(`/auth/verify-email/?token=${token}`),
-  sendEmailVerification: () => api.post<void>("/auth/send-email-verification/", {}),
+  register: (body: AuthRegister) =>
+    api.post<CodeChallenge & SecondsLeft>("/auth/register/", body).then(onLocalClock),
+  verifyCode: (challengeToken: string, code: string) =>
+    api.post<AdminUserSlim>("/auth/code/verify/", { challenge_token: challengeToken, code }),
+  resendCode: (challengeToken: string) =>
+    api
+      .post<CodeChallenge & SecondsLeft>("/auth/code/resend/", { challenge_token: challengeToken })
+      .then(onLocalClock),
+  startStepUp: () => api.post<CodeChallenge & SecondsLeft>("/auth/step-up/", {}).then(onLocalClock),
+  verifyStepUp: (challengeToken: string, code: string) =>
+    api.post<void>("/auth/step-up/verify/", { challenge_token: challengeToken, code }),
 
   getPendingEmailChange: () => api.get<EmailPendingChange>("/auth/email/pending-change/"),
   requestEmailChange: (newEmail: string) =>
@@ -393,6 +434,13 @@ export const usersApi = {
 interface AdminUserUpdate {
   role?: ROLE;
   status?: USER_STATUS;
+  email?: string;
+}
+
+// Matches AdminSignInCodeResponse. Shown once; the backend keeps only a hash.
+export interface AdminSignInCode {
+  code: string;
+  expires_at: string;
 }
 
 export const adminUsersApi = {
@@ -400,13 +448,15 @@ export const adminUsersApi = {
   get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
   getByEmail: (email: string) =>
     api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
-  updateRole: (id: number, body: AdminUserUpdate) =>
+  update: (id: number, body: AdminUserUpdate) =>
     api.patch<AdminUserSlim>(`/admin/users/${id}/`, body),
   delete: (id: number) => api.delete<void>(`/admin/users/${id}/`),
   // Sends the same email the public forgot-password flow does, but reports
   // real errors (400 no password / 429 rate-limited) instead of a uniform 200
   // — enumeration isn't a concern for a user picked off the admin list.
   sendPasswordReset: (id: number) => api.post<void>(`/admin/users/${id}/password-reset/`, {}),
+  createSignInCode: (id: number) =>
+    api.post<AdminSignInCode>(`/admin/users/${id}/sign-in-code/`, {}),
 };
 
 // -------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, authApi, type EmailPendingChange } from "@/lib/api";
 import { validateEmail } from "@/lib/auth";
+import { useStepUp } from "@/lib/useStepUp";
 
 interface ChangeEmailModalProps {
   currentEmail: string;
@@ -24,6 +25,7 @@ export function ChangeEmailModal({
   const [error, setError] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const { withStepUp, stepUpModal } = useStepUp();
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -50,7 +52,7 @@ export function ChangeEmailModal({
     setError(undefined);
     setSending(true);
     try {
-      const result = await authApi.requestEmailChange(newEmail);
+      const result = await withStepUp(() => authApi.requestEmailChange(newEmail));
       onChange(result);
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.message : "Failed to send confirmation email.");
@@ -61,6 +63,7 @@ export function ChangeEmailModal({
 
   return (
     <Modal title="Change email" onClose={onClose}>
+      {stepUpModal}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         <p
           style={{
