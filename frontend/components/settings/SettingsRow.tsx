@@ -34,7 +34,7 @@ export function SettingsRow({
 interface SettingsSectionProps {
   title?: string;
   children: ReactNode;
-  /** "danger" gives the section a red-accented border/title — use for irreversible/high-stakes actions. */
+  /** "danger" gives the section a red title and edge tint, for irreversible actions. */
   variant?: "normal" | "danger";
 }
 

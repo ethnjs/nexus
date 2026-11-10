@@ -86,21 +86,20 @@ export function Modal({
       <div
         className="modal-panel"
         style={{
-          background: variant === "danger" ? "var(--color-danger-subtle)" : "var(--color-surface)",
-          border:
-            variant === "danger"
-              ? "2px solid var(--color-danger)"
-              : "1px solid var(--color-border)",
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)",
           padding: "28px",
           width,
           maxWidth: "100%",
-          // Centred while it fits, pinned to the top once it doesn't — which
-          // is what keeps a tall modal's title reachable instead of clipped
-          // off the top of the viewport.
+          // Centred while it fits, pinned to the top once it doesn't, so a
+          // tall modal's title isn't clipped off the viewport.
           margin: "auto",
           flexShrink: 0,
-          boxShadow: "var(--shadow-lg)",
+          boxShadow:
+            variant === "danger"
+              ? "inset 0 0 28px 6px var(--color-danger-subtle), var(--shadow-lg)"
+              : "var(--shadow-lg)",
           ...contentStyle,
         }}
         onClick={(e) => e.stopPropagation()}
