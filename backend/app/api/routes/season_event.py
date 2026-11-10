@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth import require_admin
 from app.db.session import get_db
-from app.models.models import Event, SeasonEvent, User
+from app.models.models import SEASON_FIELDS, Event, SeasonEvent, User
 from app.schemas.season_event import SeasonEventCreate, SeasonEventRead, SeasonEventUpdate
 
 # GET is public/unauthenticated, matching the canonical Event/EventCategory
@@ -14,11 +14,9 @@ from app.schemas.season_event import SeasonEventCreate, SeasonEventRead, SeasonE
 router = APIRouter(prefix="/season-events", tags=["season-events"])
 admin_router = APIRouter(prefix="/admin/season-events", tags=["season-events"])
 
-SHARED_FIELDS = ("format", "has_impound", "has_self_schedule")
-
 
 def _sync_shared_fields(db: Session, season_event: SeasonEvent, sent: set[str]) -> None:
-    """Keeps every division of an event in a season agreeing on SHARED_FIELDS:
+    """Keeps every division of an event in a season agreeing on SEASON_FIELDS:
     the ones this write sent are copied to the other divisions, and the rest
     are taken from them. Flushes, so a duplicate surfaces as IntegrityError."""
     db.flush()
@@ -31,7 +29,7 @@ def _sync_shared_fields(db: Session, season_event: SeasonEvent, sent: set[str]) 
         )
         .all()
     )
-    for field in SHARED_FIELDS:
+    for field in SEASON_FIELDS:
         if field in sent:
             for sibling in siblings:
                 setattr(sibling, field, getattr(season_event, field))

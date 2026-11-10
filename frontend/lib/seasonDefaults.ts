@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { FilterOption } from "@/components/ui/FilterModal";
 import {
   ApiError,
+  EVENT_FORMAT_LABELS,
+  EVENT_FORMATS,
   type SeasonEvent,
   seasonEventsApi,
   type TournamentEvent,
@@ -14,6 +17,32 @@ export const SEASON_FIELDS = ["format", "has_impound", "has_self_schedule"] as c
 export type SeasonDefaults = Required<Pick<TournamentEventInput, (typeof SEASON_FIELDS)[number]>>;
 
 export const NO_SEASON_DEFAULTS = "This season's events don't list this event and division.";
+
+/** The value standing in for a null format where a control can't hold null. */
+export const NO_FORMAT = "none";
+
+/** Every format, then "None" with the given value. */
+export function formatOptions(none: string = NO_FORMAT): FilterOption[] {
+  return [
+    ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
+    { value: none, label: "None" },
+  ];
+}
+
+/** For a mass editor's flag, where "" leaves it unchanged. */
+export const ON_OFF: FilterOption[] = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+];
+
+export const onOff = (v: boolean | undefined) => (v === undefined ? "" : v ? "on" : "off");
+
+export const YES_NO_OPTIONS: FilterOption[] = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+export const yesNo = (v: boolean | undefined) => (v ? "yes" : "no");
 
 /** The season's events, null while they load or when loading failed. Empty for a tournament with no dates yet. */
 export function useSeasonEvents(seasonYear: number | null): {

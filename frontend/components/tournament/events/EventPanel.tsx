@@ -28,8 +28,6 @@ import {
   ApiError,
   type CanonicalEvent,
   displayConfigApi,
-  EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
   type EventFormat,
   type EventTrackDetail,
   type Role,
@@ -45,6 +43,8 @@ import { ensureBuildingOnTrack } from "@/lib/buildings";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
 import {
+  formatOptions,
+  NO_FORMAT,
   NO_SEASON_DEFAULTS,
   SEASON_FIELDS,
   type SeasonDefaults,
@@ -79,8 +79,6 @@ interface EventDraft {
   // see lib/eventTrackDetails.
   trackDetails: DraftTrackDetail[];
 }
-
-const NO_FORMAT = "none";
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
   return {
@@ -612,10 +610,7 @@ export function EventPanel({
             helper={newEventDefaults ? "Starts from this season's events." : undefined}
           >
             <ButtonGroup
-              options={[
-                ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-                { value: NO_FORMAT, label: "None" },
-              ]}
+              options={formatOptions()}
               value={seasonValues.format ?? NO_FORMAT}
               onChange={(v) => patchSeason({ format: v === NO_FORMAT ? null : (v as EventFormat) })}
               locked={locked}

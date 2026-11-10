@@ -10,8 +10,6 @@ import { type MassNote, MassResultsCard } from "@/components/ui/MassResultsCard"
 import {
   ApiError,
   type CanonicalEvent,
-  EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
   type EventFormat,
   type SeasonEvent,
   type SeasonEventInput,
@@ -19,16 +17,10 @@ import {
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
+import { formatOptions, NO_FORMAT, ON_OFF, onOff } from "@/lib/seasonDefaults";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 export const SEASON_MASS_EDITOR_WIDTH = 440;
-
-const NO_FORMAT = "none";
-
-const ON_OFF = [
-  { value: "on", label: "On" },
-  { value: "off", label: "Off" },
-];
 
 /** Unset fields are left alone on every selected event. */
 interface SeasonMassDraft {
@@ -45,8 +37,6 @@ interface EventResult {
   error?: string;
   notes?: MassNote[];
 }
-
-const onOff = (v: boolean | undefined) => (v === undefined ? "" : v ? "on" : "off");
 
 export function SeasonMassEditor({
   year,
@@ -166,10 +156,7 @@ export function SeasonMassEditor({
         <SettingsSection title="Fields to apply">
           <SettingsRow label="Format">
             <ButtonGroup
-              options={[
-                ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-                { value: NO_FORMAT, label: "None" },
-              ]}
+              options={formatOptions()}
               value={draft.format === undefined ? "" : (draft.format ?? NO_FORMAT)}
               onChange={(v) =>
                 setDraft((d) => ({ ...d, format: v === NO_FORMAT ? null : (v as EventFormat) }))

@@ -16,7 +16,6 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import {
   type Assignment,
   EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
   type EventFormat,
   type TournamentDivision,
   type TournamentEvent,
@@ -26,6 +25,7 @@ import { staffedCount } from "@/lib/assignments/staffing";
 import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import type { EventSortField } from "@/lib/eventSort";
 import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
+import { formatOptions } from "@/lib/seasonDefaults";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
@@ -495,10 +495,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
               <SelectCell
                 display={display}
                 value={e.format ?? ""}
-                options={[
-                  ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-                  { value: "", label: "None" },
-                ]}
+                options={formatOptions("")}
                 lockReason={lockReason}
                 onPick={(format) =>
                   edit.update(e, { format: (format || null) as EventFormat | null })

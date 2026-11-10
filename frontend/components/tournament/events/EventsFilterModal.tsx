@@ -10,13 +10,9 @@ import {
   filterStateToStored,
   isFilterActive,
 } from "@/components/ui/FilterModal";
-import {
-  type Assignment,
-  EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
-  type TournamentEvent,
-} from "@/lib/api";
+import type { Assignment, TournamentEvent } from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
+import { formatOptions, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
 
 // Shared by the events table and the assignments board — same keys, same
 // meaning, same predicate (eventPassesFilters) on both.
@@ -68,17 +64,7 @@ export const EVENT_TYPE_OPTIONS: FilterOption[] = [
   { value: "trial", label: "Trial" },
 ];
 
-const FORMAT_OPTIONS: FilterOption[] = [
-  ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-  { value: EVENT_FILTER_UNSET, label: "None" },
-];
-
-const YES_NO_OPTIONS: FilterOption[] = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-];
-
-const yesNo = (v: boolean) => (v ? "yes" : "no");
+const FORMAT_OPTIONS = formatOptions(EVENT_FILTER_UNSET);
 
 // Not a partition: an event passes if it matches *any* picked value, and
 // "Nobody assigned" is a sharper cut of "Short" worth picking on its own.

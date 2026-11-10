@@ -19,8 +19,6 @@ import { Popover } from "@/components/ui/Popover";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
-  EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
   type EventFormat,
   type Role,
   rolesApi,
@@ -35,7 +33,15 @@ import {
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
-import { NO_SEASON_DEFAULTS, seasonDefaultsFor, useSeasonEvents } from "@/lib/seasonDefaults";
+import {
+  formatOptions,
+  NO_FORMAT,
+  NO_SEASON_DEFAULTS,
+  ON_OFF,
+  onOff,
+  seasonDefaultsFor,
+  useSeasonEvents,
+} from "@/lib/seasonDefaults";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -57,15 +63,6 @@ interface MassEventDraft {
   has_impound?: boolean;
   has_self_schedule?: boolean;
 }
-
-const NO_FORMAT = "none";
-
-const ON_OFF = [
-  { value: "on", label: "On" },
-  { value: "off", label: "Off" },
-];
-
-const onOff = (v: boolean | undefined) => (v === undefined ? "" : v ? "on" : "off");
 
 interface EventResult {
   event: TournamentEvent;
@@ -526,10 +523,7 @@ export function MassEventEditor({
 
           <SettingsRow label="Format">
             <ButtonGroup
-              options={[
-                ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-                { value: NO_FORMAT, label: "None" },
-              ]}
+              options={formatOptions()}
               value={draft.format === undefined ? "" : (draft.format ?? NO_FORMAT)}
               onChange={(v) =>
                 setDraft((d) => ({ ...d, format: v === NO_FORMAT ? null : (v as EventFormat) }))

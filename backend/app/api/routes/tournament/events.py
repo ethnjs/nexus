@@ -17,6 +17,7 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import (
+    SEASON_FIELDS,
     Event,
     SeasonEvent,
     TournamentBuilding,
@@ -54,9 +55,6 @@ def _validate_division(division: str | None, tournament) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"division must be one of the tournament's divisions: {tournament.division}",
         )
-
-
-SEASON_FIELDS = ("format", "has_impound", "has_self_schedule")
 
 
 def _season_event(

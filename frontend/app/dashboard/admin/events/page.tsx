@@ -39,7 +39,6 @@ import {
   type CanonicalEvent,
   canonicalEventsApi,
   EVENT_FORMAT_LABELS,
-  EVENT_FORMATS,
   type EventCategory,
   type EventFormat,
   eventCategoriesApi,
@@ -51,6 +50,7 @@ import {
   type TournamentDivision,
 } from "@/lib/api";
 import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, FORMAT_RANK } from "@/lib/eventSort";
+import { formatOptions, NO_FORMAT, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
 import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
@@ -130,14 +130,6 @@ const DIVISION_VARIANT: Record<TournamentDivision, "divisionA" | "divisionB" | "
 
 const SEASON_FILTER_KEYS = ["category", "division", "format", "impound", "self_schedule"] as const;
 type SeasonFilterKey = (typeof SEASON_FILTER_KEYS)[number];
-
-// The filter's value for an unset format, which FilterState can't hold as null.
-const NO_FORMAT = "none";
-
-const YES_NO_OPTIONS: FilterOption[] = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-];
 
 /** Shared by every division of an event in a season; the backend keeps them in step. */
 type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self_schedule">;
@@ -561,7 +553,6 @@ function SeasonView({
         if (!active.some((d) => filters.division.has(d))) return false;
       }
       const details = detailsRow.get(e.id);
-      const yesNo = (v: boolean | undefined) => (v ? "yes" : "no");
       if (!filterAllows(filters.format, details?.format ?? NO_FORMAT)) return false;
       if (!filterAllows(filters.impound, yesNo(details?.has_impound))) return false;
       if (!filterAllows(filters.self_schedule, yesNo(details?.has_self_schedule))) return false;
@@ -611,10 +602,7 @@ function SeasonView({
       key: "format",
       title: "Format",
       control: "buttons",
-      options: [
-        ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-        { value: NO_FORMAT, label: "Not set" },
-      ],
+      options: formatOptions(),
     },
     { key: "impound", title: "Impound", control: "buttons", options: YES_NO_OPTIONS },
     { key: "self_schedule", title: "Self-schedule", control: "buttons", options: YES_NO_OPTIONS },
@@ -1155,10 +1143,7 @@ function FormatCell({
         )
       }
       value={value ?? ""}
-      options={[
-        ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
-        { value: "", label: "None" },
-      ]}
+      options={formatOptions("")}
       lockReason={lockReason}
       onPick={(next) => onSave(event, { format: (next || null) as EventFormat | null })}
     />

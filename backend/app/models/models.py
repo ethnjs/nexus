@@ -250,6 +250,9 @@ class EventRelationship(Base):
 # format/has_impound/has_self_schedule live here rather than on Event because
 # the rules change between seasons. TournamentEvent copies them on creation.
 # ---------------------------------------------------------------------------
+SEASON_FIELDS = ("format", "has_impound", "has_self_schedule")
+
+
 class SeasonEvent(Base):
     __tablename__ = "season_events"
 
