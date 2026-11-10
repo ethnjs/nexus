@@ -59,7 +59,7 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 ## Domain notes
 
 - `Tournament` has no date, location or division columns. Those come from its primary `TournamentTrack`s, exposed through properties on `Tournament`.
-- A zone's event list is derived on every read from its rules (a building, or a floor of one) plus explicitly added events; it's never stored. See the module docstring in `core/tournament/zones.py`.
+- A zone's event list is derived on every read from its rules (a building, a floor of one, a room, or an event added by hand, most specific winning); it's never stored. See the module docstring in `core/tournament/zones.py`.
 - Forms are the most intricate area. `.claude/rules/forms.md` loads when you touch them.
 
 ## Config and startup
