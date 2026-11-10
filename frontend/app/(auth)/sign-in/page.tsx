@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
+import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 
 export default function SignInPage() {
   return (
@@ -23,12 +24,12 @@ function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
-  const lastChallenge = useRef<{ email: string; challenge: CodeChallenge } | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
   const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : "/sign-up";
+  const storageKey = `signInChallenge:${email.trim().toLowerCase()}`;
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -47,22 +48,18 @@ function SignInContent() {
     try {
       const res = await authApi.login(email, password);
       if (res.challenge) {
-        lastChallenge.current = { email: email.trim().toLowerCase(), challenge: res.challenge };
+        saveChallenge(storageKey, res.challenge);
         setChallenge(res.challenge);
         return;
       }
       window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
       // A 429 comes only after a correct password, when this account's code went out under a
-      // minute ago. If that was from here, reopen it: the emailed code still works.
-      const last = lastChallenge.current;
-      if (
-        error instanceof ApiError &&
-        error.status === 429 &&
-        last?.email === email.trim().toLowerCase() &&
-        new Date(last.challenge.expires_at).getTime() > Date.now()
-      ) {
-        setChallenge(last.challenge);
+      // minute ago. If that was from this tab, reopen it: the emailed code still works.
+      const last =
+        error instanceof ApiError && error.status === 429 && loadOpenChallenge(storageKey);
+      if (last) {
+        setChallenge(last);
       } else if (error instanceof ApiError) {
         setErrors({ form: error.message });
       } else {
@@ -96,11 +93,10 @@ function SignInContent() {
           challenge={challenge}
           email={email}
           submitLabel="Sign In"
-          onClosed={() => {
-            lastChallenge.current = null;
-          }}
+          onClosed={() => saveChallenge(storageKey, null)}
           onSubmit={async (challengeToken, code) => {
             await authApi.verifyCode(challengeToken, code);
+            saveChallenge(storageKey, null);
             window.location.href = redirect ?? "/dashboard";
           }}
         />

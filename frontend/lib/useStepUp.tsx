@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
+import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 import { useAuth } from "@/lib/useAuth";
 
 export function isStepUpRequired(err: unknown): err is ApiError {
@@ -20,8 +21,8 @@ interface PendingStepUp {
   cancel: () => void;
 }
 
-// Module-wide because the backend's one-a-minute limit is per session, not per component.
-let lastChallenge: CodeChallenge | null = null;
+// One key for every component, since the backend's one-a-minute limit is per session.
+const STORAGE_KEY = "stepUpChallenge";
 
 /**
  * Runs a sensitive action, and when the backend answers `step_up_required`, emails a code,
@@ -34,14 +35,14 @@ export function useStepUp() {
 
   async function startOrReopen(): Promise<CodeChallenge> {
     try {
-      lastChallenge = await authApi.startStepUp();
-      return lastChallenge;
+      const challenge = await authApi.startStepUp();
+      saveChallenge(STORAGE_KEY, challenge);
+      return challenge;
     } catch (err: unknown) {
       // A 429 means the code sent under a minute ago is still open, so reopen it rather than
       // making someone who closed the prompt wait. onClosed forgets one that's out of attempts.
-      const last = lastChallenge;
-      const open = last !== null && new Date(last.expires_at).getTime() > Date.now();
-      if (err instanceof ApiError && err.status === 429 && open) return last;
+      const last = err instanceof ApiError && err.status === 429 && loadOpenChallenge(STORAGE_KEY);
+      if (last) return last;
       throw err;
     }
   }
@@ -71,11 +72,10 @@ export function useStepUp() {
         challenge={pending.challenge}
         email={user?.email ?? "your email address"}
         submitLabel="Confirm"
-        onClosed={() => {
-          lastChallenge = null;
-        }}
+        onClosed={() => saveChallenge(STORAGE_KEY, null)}
         onSubmit={async (challengeToken, code) => {
           await authApi.verifyStepUp(challengeToken, code);
+          saveChallenge(STORAGE_KEY, null);
           setPending(null);
           pending.resolve();
         }}
