@@ -166,6 +166,11 @@
     justify-content: flex-start;
   }
 
+  /* Centred in the space below the link. */
+  .page:has(.backLink) .authStack {
+    margin-block: auto;
+  }
+
   .backLink {
     /* Relative, not static: it still has to paint above the grid. */
     position: relative;

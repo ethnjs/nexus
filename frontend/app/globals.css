@@ -131,7 +131,7 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text-primary);
   line-height: 1.5;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* h1, h2 → serif */
