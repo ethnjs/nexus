@@ -220,40 +220,24 @@ export default function ZonesPage() {
 
   /** Moves the rule here from whichever zone held it. Throws so the picker can show why. */
   async function addRule(zone: Zone, rule: ZoneMember) {
-    const key = ruleKey(rule);
-    const owner = owners.get(key);
+    const owner = owners.get(ruleKey(rule));
     if (owner?.id === zone.id) return;
-    const before = zone.members.map(ruleInput);
-    const ownerBefore = owner?.members.map(ruleInput) ?? [];
     try {
-      if (owner) {
-        await writeRules(
-          owner,
-          ownerBefore.filter((r) => ruleKey(r) !== key),
-        );
-      }
-      await writeRules(zone, [...before, rule]);
+      await zonesApi.addRule(tournamentId, zone.id, rule);
     } finally {
       await reloadCoverage().catch(() => {});
     }
     if (owner) {
       show(`Moved from ${owner.name} to ${zone.name}`, "success", {
         label: "Undo",
-        onClick: () => void undoMove(zone, before, owner, ownerBefore),
+        onClick: () => void undoMove(owner, rule),
       });
     }
   }
 
-  async function undoMove(
-    zone: Zone,
-    before: ZoneMember[],
-    owner: Zone,
-    ownerBefore: ZoneMember[],
-  ) {
+  async function undoMove(owner: Zone, rule: ZoneMember) {
     try {
-      // This zone first, so the rule is free before the other zone takes it back.
-      await writeRules(zone, before);
-      await writeRules(owner, ownerBefore);
+      await zonesApi.addRule(tournamentId, owner.id, rule);
     } catch (err) {
       show(err instanceof ApiError ? err.message : "Failed to undo.", "error");
     }

@@ -760,3 +760,69 @@ def test_adding_a_rule_keeps_the_ones_already_there(client, db, td_user, td_tour
     )
     assert response.status_code == 200, response.text
     assert sorted(response.json()["event_ids"]) == sorted([anatomy["id"], chem["id"]])
+
+
+def _add_rule(client, tournament_id, zone_id, rule):
+    return client.post(f"/tournaments/{tournament_id}/zones/{zone_id}/rules/", json=rule)
+
+
+def test_adding_a_rule_another_zone_holds_moves_it(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [track])
+    anatomy = _event(client, td_tournament.id, track, "Anatomy", building_id=building["id"])
+    rule = {"kind": "building", "building_id": building["id"]}
+    north = _zone(client, td_tournament.id, track, "North", members=[rule]).json()
+    south = _zone(client, td_tournament.id, track, "South").json()
+
+    response = _add_rule(client, td_tournament.id, south["id"], rule)
+    assert response.status_code == 200, response.text
+    assert response.json()["event_ids"] == [anatomy["id"]]
+
+    zones = {z["name"]: z for z in _coverage(client, td_tournament.id, track)["zones"]}
+    assert zones["North"]["members"] == []
+    assert zones["North"]["event_ids"] == []
+    assert [m["building_id"] for m in zones["South"]["members"]] == [building["id"]]
+    assert north["id"] == zones["North"]["id"]
+
+
+def test_adding_a_rule_keeps_the_zones_other_rules(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [track])
+    room = _room(client, td_tournament.id, building["id"], "210")
+    zone = _zone(
+        client,
+        td_tournament.id,
+        track,
+        members=[{"kind": "floor", "building_id": building["id"], "floor": "3"}],
+    ).json()
+
+    response = _add_rule(client, td_tournament.id, zone["id"], {"kind": "room", "room_id": room})
+    assert response.status_code == 200, response.text
+    assert sorted(m["kind"] for m in response.json()["members"]) == ["floor", "room"]
+
+
+def test_adding_a_rule_the_zone_already_holds_changes_nothing(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    building = _building(client, td_tournament.id, [track])
+    rule = {"kind": "building", "building_id": building["id"]}
+    zone = _zone(client, td_tournament.id, track, members=[rule]).json()
+
+    response = _add_rule(client, td_tournament.id, zone["id"], rule)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["members"]) == 1
+
+
+def test_adding_a_rule_validates_it_against_the_zones_track(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track = _track(db, td_tournament)
+    other_day = _day(client, td_tournament.id)
+    building = _building(client, td_tournament.id, [other_day])
+    zone = _zone(client, td_tournament.id, track).json()
+
+    response = _add_rule(
+        client, td_tournament.id, zone["id"], {"kind": "building", "building_id": building["id"]}
+    )
+    assert response.status_code == 422

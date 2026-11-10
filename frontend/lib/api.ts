@@ -2569,6 +2569,9 @@ export const zonesApi = {
   // moving one would mean revalidating every rule against a different venue.
   update: (tournamentId: number, zoneId: number, body: Partial<Omit<ZoneInput, "track_id">>) =>
     api.patch<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/`, body),
+  // Takes the rule from whichever zone on the track held it, atomically.
+  addRule: (tournamentId: number, zoneId: number, rule: ZoneMember) =>
+    api.post<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/rules/`, rule),
   delete: (tournamentId: number, zoneId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/zones/${zoneId}/`),
 };

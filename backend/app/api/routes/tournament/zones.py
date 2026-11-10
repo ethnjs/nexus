@@ -293,6 +293,69 @@ def update_zone(
     return ZoneRead.from_row(zone, grouped.get(zone.id, []))
 
 
+def _claim_of(db: Session, track_id: int, member: ZoneMember) -> TournamentZoneMember | None:
+    """The rule row on this track that claims what `member` names, if any."""
+    query = db.query(TournamentZoneMember).filter(
+        TournamentZoneMember.track_id == track_id,
+        TournamentZoneMember.kind == member.kind,
+    )
+    if member.kind == KIND_ROOM:
+        query = query.filter(TournamentZoneMember.room_id == member.room_id)
+    elif member.kind == KIND_EVENT:
+        query = query.filter(TournamentZoneMember.tournament_event_id == member.tournament_event_id)
+    else:
+        query = query.filter(
+            TournamentZoneMember.building_id == member.building_id,
+            TournamentZoneMember.floor == member.floor,
+        )
+    return query.first()
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/zones/{zone_id}/rules/
+# ---------------------------------------------------------------------------
+@router.post("/{zone_id}/rules/", response_model=ZoneRead)
+def add_zone_rule(
+    tournament_id: int,
+    zone_id: int,
+    payload: ZoneMember,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Add one rule to a zone. If another zone on the same track holds that
+    rule, it moves here in the same transaction. Adding a rule the zone already
+    holds changes nothing."""
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    zone = get_scoped_or_404(db, TournamentZone, zone_id, tournament_id, "Zone")
+    _validate_members(db, tournament_id, zone.track_id, [payload])
+
+    claim = _claim_of(db, zone.track_id, payload)
+    if claim is None or claim.zone_id != zone.id:
+        if claim is not None:
+            db.delete(claim)
+            db.flush()
+        zone.members.append(
+            TournamentZoneMember(
+                track_id=zone.track_id,
+                kind=payload.kind,
+                building_id=payload.building_id,
+                floor=payload.floor,
+                room_id=payload.room_id,
+                tournament_event_id=payload.tournament_event_id,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            _claimed_conflict(db)
+
+    db.refresh(zone)
+    grouped = events_by_zone(db, zone.track_id)
+    return ZoneRead.from_row(zone, grouped.get(zone.id, []))
+
+
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/zones/{zone_id}/ — assignments cascade.
 # ---------------------------------------------------------------------------
