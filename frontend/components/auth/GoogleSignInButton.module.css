@@ -1,0 +1,27 @@
+/* Google's hover and focus states: a shadow, and a tint over the fill. */
+.button {
+  transition: box-shadow 0.218s;
+}
+
+.button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-google-button-state);
+  opacity: 0;
+  transition: opacity 0.218s;
+  pointer-events: none;
+}
+
+.button:hover {
+  box-shadow: var(--shadow-google-button-hover);
+}
+
+.button:hover::before {
+  opacity: 0.08;
+}
+
+.button:focus-visible::before,
+.button:active::before {
+  opacity: 0.12;
+}

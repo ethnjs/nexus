@@ -68,11 +68,13 @@
   --color-danger-hover: #c53030;
   /* Discord's brand guidelines allow its symbol only in blurple, black or white. */
   --color-discord-blurple: #5865f2;
-  /* Google's "G" keeps its four colors on any background. */
-  --color-google-blue: #4285f4;
-  --color-google-green: #34a853;
-  --color-google-yellow: #fbbc05;
-  --color-google-red: #ea4335;
+  /* Sign in with Google button, light theme, from Google's branding guidelines. */
+  --color-google-button-fill: #ffffff;
+  --color-google-button-border: #747775;
+  --color-google-button-text: #1f1f1f;
+  --color-google-button-state: #303030;
+  --shadow-google-button-hover:
+    0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
 
   --color-text-primary: #0a0a0a;
   --color-text-secondary: #6b6b65;
