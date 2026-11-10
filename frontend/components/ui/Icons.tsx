@@ -1324,12 +1324,12 @@ export function IconDiscord({
   );
 }
 
-// Google's gradient "G", cropped from the pre-approved Sign in with Google assets, which the
-// guidelines say not to alter and to show on white. A PNG: Google's SVG draws the gradient
-// through an HTML foreignObject, which browsers don't render consistently.
+// Google's gradient "G": its pre-approved Sign in with Google icon with the button frame removed,
+// which the guidelines say not to alter. An <img> rather than inline, since the SVG's mask and
+// filter ids would collide when it appears twice on a page.
 export function IconGoogle({ size = 16 }: { size?: number }) {
   return (
     // biome-ignore lint/performance/noImgElement: a fixed-size static brand image gains nothing from next/image.
-    <img src="/google-g.png" alt="" width={size} height={size} style={{ flexShrink: 0 }} />
+    <img src="/google-g.svg" alt="" width={size} height={size} style={{ flexShrink: 0 }} />
   );
 }
