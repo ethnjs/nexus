@@ -1042,7 +1042,6 @@ function SeasonView({
   );
 }
 
-/** Makes a control inert while locked, so a click on it reaches the row. */
 function RelatedCell({
   event,
   candidates,
@@ -1098,6 +1097,7 @@ function RelatedCell({
   );
 }
 
+/** Makes a control inert while locked, so a click on it reaches the row. */
 function SelectLock({
   lockReason,
   centered = false,
