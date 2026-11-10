@@ -2,11 +2,12 @@
 
 import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
+import { AuthShell } from "@/components/auth/AuthShell";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
-import cardStyles from "@/components/layout/CenteredCard.module.css";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -55,34 +56,24 @@ function SignInCard({ formId }: { formId: string }) {
   const redirectParam = `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
 
   return (
-    <div className={cardStyles.page}>
-      <section className={cardStyles.card}>
-        <h1 className={cardStyles.wordmark}>NEXUS</h1>
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-            color: "var(--color-text-secondary)",
-            textAlign: "center",
-            marginBottom: "24px",
-          }}
+    <AuthShell>
+      <AuthHeading
+        title="Sign in to continue"
+        subtitle="Sign in or create an account to fill out this form."
+      />
+      <div style={{ width: "100%", display: "flex", gap: "10px" }}>
+        <Button
+          fullWidth
+          variant="secondary"
+          onClick={() => router.push(`/sign-up${redirectParam}`)}
         >
-          Please sign in or create an account to fill out this form.
-        </p>
-        <div style={{ width: "100%", display: "flex", gap: "10px" }}>
-          <Button
-            fullWidth
-            variant="secondary"
-            onClick={() => router.push(`/sign-up${redirectParam}`)}
-          >
-            Create account
-          </Button>
-          <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
-            Sign in
-          </Button>
-        </div>
-      </section>
-    </div>
+          Create account
+        </Button>
+        <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
+          Sign in
+        </Button>
+      </div>
+    </AuthShell>
   );
 }
 

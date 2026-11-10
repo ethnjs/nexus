@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
-import { GridWarp } from "@/components/home/GridWarp";
+import { AuthShell } from "@/components/auth/AuthShell";
 import styles from "@/components/layout/CenteredCard.module.css";
 import { IconArrowLeft } from "@/components/ui/Icons";
 import { safeRedirectPath } from "@/lib/auth";
@@ -18,44 +18,39 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isEntry = pathname in SWITCHES;
-  const isWide = pathname === "/join";
 
   return (
-    <div className={styles.page}>
-      <div className={styles.authGrid} aria-hidden>
-        {/* --color-border: lighter than the home page's lines, which have only a
-            wordmark to compete with rather than a form. */}
-        <GridWarp lineColor={0xe2e2de} />
-      </div>
-      {isEntry && (
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className={`link-subtle ${styles.backLink} ${styles.cloud}`}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-          }}
-        >
-          <IconArrowLeft />
-          Back to home
-        </button>
-      )}
-      <div className={`${styles.authStack} ${isWide ? styles.authStackWide : ""}`}>
-        <section className={`${styles.card} ${styles.authCard}`}>
-          <h1 className={`${styles.wordmark} ${styles.wordmarkCompact}`}>NEXUS</h1>
-          {children}
-        </section>
-        {isEntry && (
+    <AuthShell
+      wide={pathname === "/join"}
+      backLink={
+        isEntry && (
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className={`link-subtle ${styles.backLink} ${styles.cloud}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+            }}
+          >
+            <IconArrowLeft />
+            Back to home
+          </button>
+        )
+      }
+      footer={
+        isEntry && (
           <Suspense fallback={null}>
             <AuthSwitch pathname={pathname} />
           </Suspense>
-        )}
-      </div>
-    </div>
+        )
+      }
+    >
+      {children}
+    </AuthShell>
   );
 }
 
