@@ -268,13 +268,13 @@ def test_unplacing_an_event_makes_it_unzoned(db, td_tournament, track):
     link.floor = None
     db.flush()
 
-    assert anatomy.id in unzoned_event_ids(db, track)
+    assert anatomy.id in unzoned_event_ids(resolve_track_zones(db, track))
 
 
 def test_an_event_matching_nothing_is_unzoned(db, td_tournament, track):
     anatomy = _event(db, td_tournament.id, track, "Anatomy")
     assert resolve_track_zones(db, track)[anatomy.id] is None
-    assert anatomy.id in unzoned_event_ids(db, track)
+    assert anatomy.id in unzoned_event_ids(resolve_track_zones(db, track))
 
 
 # ---------------------------------------------------------------------------

@@ -62,8 +62,11 @@ def resolve_track_zones(db: Session, track_id: int) -> dict[int, int | None]:
     return resolved
 
 
-def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
-    """`{zone_id: [event_id, ...]}`, with empty zones present as empty lists."""
+def events_by_zone(
+    db: Session, track_id: int, resolved: dict[int, int | None] | None = None
+) -> dict[int, list[int]]:
+    """`{zone_id: [event_id, ...]}`, with empty zones present as empty lists.
+    Pass `resolve_track_zones`'s result as `resolved` to reuse it."""
     zone_ids = [
         row_id
         for (row_id,) in db.query(TournamentZone.id).filter(
@@ -72,7 +75,9 @@ def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
     ]
     grouped: dict[int, list[int]] = {zone_id: [] for zone_id in zone_ids}
 
-    for event_id, zone_id in resolve_track_zones(db, track_id).items():
+    if resolved is None:
+        resolved = resolve_track_zones(db, track_id)
+    for event_id, zone_id in resolved.items():
         if zone_id is not None:
             grouped.setdefault(zone_id, []).append(event_id)
     for events in grouped.values():
@@ -80,13 +85,9 @@ def events_by_zone(db: Session, track_id: int) -> dict[int, list[int]]:
     return grouped
 
 
-def unzoned_event_ids(db: Session, track_id: int) -> list[int]:
-    """Events on this track that no zone claims."""
-    return sorted(
-        event_id
-        for event_id, zone_id in resolve_track_zones(db, track_id).items()
-        if zone_id is None
-    )
+def unzoned_event_ids(resolved: dict[int, int | None]) -> list[int]:
+    """The events in `resolve_track_zones`'s result that no zone claims."""
+    return sorted(event_id for event_id, zone_id in resolved.items() if zone_id is None)
 
 
 def unplaced_event_ids(db: Session, track_id: int) -> list[int]:

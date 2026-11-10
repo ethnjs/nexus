@@ -15,6 +15,7 @@ from app.core.tournament.zones import (
     KIND_EVENT,
     KIND_ROOM,
     events_by_zone,
+    resolve_track_zones,
     unplaced_event_ids,
     unzoned_event_ids,
 )
@@ -197,11 +198,12 @@ def list_zones(
         .all()
     )
 
-    grouped = events_by_zone(db, track_id)
+    resolved = resolve_track_zones(db, track_id)
+    grouped = events_by_zone(db, track_id, resolved)
     return ZoneCoverageRead(
         track_id=track_id,
         zones=[ZoneRead.from_row(z, grouped.get(z.id, [])) for z in zones],
-        unzoned_event_ids=unzoned_event_ids(db, track_id),
+        unzoned_event_ids=unzoned_event_ids(resolved),
         unplaced_event_ids=unplaced_event_ids(db, track_id),
     )
 
