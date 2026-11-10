@@ -33,8 +33,8 @@ import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { IconInfo } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
@@ -143,13 +143,7 @@ function firstUnansweredState(a: OnboardingAnswers, from: number): number {
 
 export default function OnboardingPage() {
   return (
-    <Suspense
-      fallback={
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingState />}>
       <OnboardingContent />
     </Suspense>
   );
@@ -388,11 +382,7 @@ function OnboardingContent() {
   }
 
   if (authLoading || (!original && !loadError)) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (loadError || !original) {

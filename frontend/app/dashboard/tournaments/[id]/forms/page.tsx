@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconForms, IconLink, IconLock, IconMembers, IconPlus } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import table from "@/components/ui/Table.module.css";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
@@ -297,11 +297,7 @@ export default function FormsPage() {
   }, [canManageForms, loadForms, tournamentId, refreshKey]);
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageForms) {
@@ -317,11 +313,7 @@ export default function FormsPage() {
   }
 
   if (forms === null) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   // Delete confirms first; every other move is one PATCH. The server's

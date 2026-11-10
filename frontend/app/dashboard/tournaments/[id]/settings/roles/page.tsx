@@ -22,7 +22,7 @@ import {
   IconUserShield,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, type Role, type RoleWithMemberCount, rolesApi } from "@/lib/api";
 import { groupByRank } from "@/lib/roles/roleReorder";
@@ -109,11 +109,7 @@ export default function RolesSettingsPage() {
   );
 
   if (membershipLoading || roles === null) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageRoles) {

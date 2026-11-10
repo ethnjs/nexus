@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
   EVENT_FORMAT_LABELS,
@@ -87,9 +87,7 @@ export function LoadDefaultEventsModal({
   return (
     <Modal title="Load default events" onClose={onClose} width={650}>
       {seasonEvents === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState context="section" />
       ) : (
         <>
           <p

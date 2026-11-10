@@ -6,12 +6,12 @@ import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi } from "@/lib/api";
 
 export default function RevertEmailChangePage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <RevertEmailChangeContent />
     </Suspense>
   );

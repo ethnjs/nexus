@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconChevronRight, IconLock } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type AuditLogActor, type AuditLogEntry, auditLogApi } from "@/lib/api";
 import {
   ACTION_LABELS,
@@ -212,11 +212,7 @@ export default function AuditLogSettingsPage() {
   }
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canViewAuditLog) {
@@ -283,9 +279,7 @@ export default function AuditLogSettingsPage() {
       )}
 
       {entries === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       ) : entries.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState

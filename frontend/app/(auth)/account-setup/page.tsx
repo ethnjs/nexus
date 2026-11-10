@@ -4,12 +4,12 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi } from "@/lib/api";
 
 export default function AccountSetupPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <AccountSetupContent />
     </Suspense>
   );

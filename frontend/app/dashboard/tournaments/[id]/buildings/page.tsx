@@ -55,9 +55,9 @@ import {
   IconUpload,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -663,11 +663,7 @@ export default function BuildingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<TournamentBuilding | null>(null);
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageEvents) {
@@ -724,9 +720,7 @@ export default function BuildingsPage() {
       )}
 
       {buildings === null && !loadError ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       ) : (
         <>
           <div

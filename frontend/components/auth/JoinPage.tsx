@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type JoinPreviewTournament, joinApi, membersApi } from "@/lib/api";
 import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { useAuth } from "@/lib/useAuth";
@@ -124,7 +124,7 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
 
 export function JoinPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <JoinPageContent />
     </Suspense>
   );
@@ -196,7 +196,7 @@ function JoinPageContent() {
   }
 
   if (preview === null) {
-    return <Spinner size="lg" />;
+    return <LoadingState context="section" />;
   }
 
   if (preview === "chapter") {
@@ -213,7 +213,7 @@ function JoinPageContent() {
       <TournamentFacts preview={preview} />
 
       {authLoading ? (
-        <Spinner size="lg" />
+        <LoadingState context="section" />
       ) : !user ? (
         <div style={{ width: "100%", display: "flex", gap: "10px" }}>
           <Button
@@ -252,7 +252,7 @@ function JoinPageContent() {
           </Button>
         </div>
       ) : !membershipChecked ? (
-        <Spinner size="lg" />
+        <LoadingState context="section" />
       ) : alreadyMember ? (
         <div
           style={{

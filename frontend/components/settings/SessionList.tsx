@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type UserSession, usersApi } from "@/lib/api";
 import { formatRelativeTime, parseUserAgent } from "@/lib/timeFormat";
 
@@ -56,11 +56,7 @@ export function SessionList() {
   }
 
   if (!sessions) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "20px 0" }}>
-        <Spinner />
-      </div>
-    );
+    return <LoadingState context="section" />;
   }
 
   const otherCount = sessions.filter((s) => !s.is_current).length;

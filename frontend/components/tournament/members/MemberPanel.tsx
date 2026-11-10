@@ -7,7 +7,7 @@ import { MemberPanelConfigModal } from "@/components/tournament/members/MemberPa
 import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   ApiError,
   type DisplayConfigSection,
@@ -264,9 +264,7 @@ export function MemberPanel({
             {error}
           </p>
         ) : !full ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-            <Spinner size="lg" />
-          </div>
+          <LoadingState />
         ) : (
           <>
             <ProfileHeader user={full.user} />

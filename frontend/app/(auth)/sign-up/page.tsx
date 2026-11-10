@@ -5,13 +5,13 @@ import { Suspense, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath } from "@/lib/auth";
 
 export default function SignUpPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <SignUpContent />
     </Suspense>
   );

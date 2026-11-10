@@ -5,13 +5,13 @@ import { Suspense, useEffect, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 
 export default function ConfirmEmailChangePage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <ConfirmEmailChangeContent />
     </Suspense>
   );
@@ -40,7 +40,7 @@ function ConfirmEmailChangeContent() {
     <>
       <AuthHeading title="Confirm email change" />
 
-      {state === "loading" && <Spinner size="lg" />}
+      {state === "loading" && <LoadingState context="section" />}
 
       {state === "success" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>

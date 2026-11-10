@@ -34,7 +34,7 @@ import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { Button } from "@/components/ui/Button";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconArrowLeft } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   ApiError,
   type CanonicalEvent,
@@ -291,9 +291,7 @@ export default function ProfileEditPage() {
     return (
       <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
         <Topbar showWordmark showAvatar />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }

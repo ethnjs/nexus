@@ -3,7 +3,7 @@
 import { Banner } from "@/components/ui/Banner";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import table from "@/components/ui/Table.module.css";
 import { stickyHeader } from "@/lib/stickyHeader";
 
@@ -42,9 +42,7 @@ export function ExportPreview({ header, rows, warnings, loading, blocked }: Expo
       ))}
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>
-          <Spinner />
-        </div>
+        <LoadingState context="section" />
       ) : blocked ? (
         <EmptyState size="sm" title={blocked} />
       ) : rows.length === 0 ? (

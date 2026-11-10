@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormattedText } from "@/components/ui/FormattedText";
 import { IconEdit, IconLock } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, type Form, type FormResponse, formsApi } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
@@ -179,11 +179,7 @@ export default function FormViewPage() {
   }
 
   if (authLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!user) return <SignInCard formId={formId} />;
@@ -206,11 +202,7 @@ export default function FormViewPage() {
   }
 
   if (!form || !checkedExisting) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (existing && existingResponse && editing) {

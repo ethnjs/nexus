@@ -59,11 +59,11 @@ import {
   IconWarning,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -809,11 +809,7 @@ export default function EventsPage() {
   // constraint the flattening had to respect: a gate that returned before
   // them would change the hook order between renders.
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageEvents) {
@@ -835,9 +831,7 @@ export default function EventsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Events" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }

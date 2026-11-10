@@ -2,7 +2,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, tournamentOnboardingApi } from "@/lib/api";
 import { safeRedirectPath } from "@/lib/auth";
 
@@ -50,9 +50,5 @@ export default function TournamentOnboardingPage() {
     );
   }
 
-  return (
-    <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-      <Spinner size="lg" />
-    </div>
-  );
+  return <LoadingState />;
 }

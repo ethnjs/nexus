@@ -28,8 +28,8 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconLocation, IconLock, IconPlus } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
-import { Spinner } from "@/components/ui/Spinner";
 import { TabStrip } from "@/components/ui/TabStrip";
 import {
   ApiError,
@@ -640,11 +640,7 @@ export default function ZonesPage() {
   });
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageEvents) {
@@ -748,9 +744,7 @@ export default function ZonesPage() {
       </div>
 
       {dayCoverage === null && !loadError ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       ) : zones.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState

@@ -15,8 +15,8 @@ import {
   IconTrash,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
   type Role,
@@ -354,9 +354,7 @@ export function TracksSection({
       )}
 
       {tracks === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-          <Spinner size="sm" />
-        </div>
+        <LoadingState context="section" />
       ) : (
         rows.length > 0 && (
           <div

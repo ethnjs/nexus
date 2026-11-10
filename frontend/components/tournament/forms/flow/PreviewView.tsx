@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconCheck, IconChevronLeft, IconMembers, IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type FlowStep, formsApi, type MemberFormFlow, type PersonRef } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
 
@@ -84,9 +84,7 @@ export function PreviewMemberList({
         }}
       >
         {members === null ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-            <Spinner />
-          </div>
+          <LoadingState context="section" />
         ) : shown.length === 0 ? (
           <span style={{ ...MUTED, padding: "8px 10px" }}>No members match.</span>
         ) : (
@@ -174,7 +172,7 @@ export function MemberFlowView({
               {error}
             </p>
           )}
-          {!flow && !error && <Spinner />}
+          {!flow && !error && <LoadingState context="section" />}
           {flow && <FlowDetail flow={flow} />}
         </>
       )}

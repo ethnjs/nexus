@@ -56,9 +56,9 @@ import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState } from "@/components/ui/FilterModal";
 import { IconEvents, IconLock, IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -1453,11 +1453,7 @@ export default function AssignmentsPage() {
   });
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canView) {
@@ -1476,11 +1472,7 @@ export default function AssignmentsPage() {
   }
 
   if (events === null) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (

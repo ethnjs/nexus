@@ -12,8 +12,8 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconInfo } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, authApi, type EmailPendingChange, type UserMeFull, usersApi } from "@/lib/api";
 import {
@@ -165,11 +165,7 @@ export default function AccountSettingsPage() {
   }
 
   if (authLoading || (!original && !loadError)) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (loadError || !original || !draft) {

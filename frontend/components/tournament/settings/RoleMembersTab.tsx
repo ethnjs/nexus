@@ -7,7 +7,7 @@ import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Button } from "@/components/ui/Button";
 import { IconLock, IconSearch, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type MembershipFull, membersApi, type Role } from "@/lib/api";
 import { changeRoleScope, NO_SCOPE, type RoleScope, scopeOf } from "@/lib/roles/roleScope";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
@@ -135,9 +135,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
         }}
       >
         {members === null ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
-            <Spinner size="sm" />
-          </div>
+          <LoadingState context="section" />
         ) : members.length === 0 ? (
           <p
             style={{

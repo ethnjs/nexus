@@ -20,7 +20,7 @@ import {
   IconTrash,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import table from "@/components/ui/Table.module.css";
 import { ApiError, type Invite, invitesApi } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
@@ -218,11 +218,7 @@ export default function InvitesSettingsPage() {
   }, []);
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageInvites) {
@@ -244,9 +240,7 @@ export default function InvitesSettingsPage() {
     return (
       <div>
         <SettingsPageHeader page="invites" heading="Invites" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }

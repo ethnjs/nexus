@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   ApiError,
   type ShiftDeleteImpact,
@@ -77,9 +77,7 @@ export function DeleteShiftModal({
             Delete <strong>{single ? single.label : `${shifts.length} shifts`}</strong>?
           </span>
           {impact === null ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "6px 0" }}>
-              <Spinner />
-            </div>
+            <LoadingState context="section" />
           ) : loadError ? (
             <span style={{ color: "var(--color-danger)" }}>
               {loadError} Deleting also removes {it} from any availability and forms that list {it}.

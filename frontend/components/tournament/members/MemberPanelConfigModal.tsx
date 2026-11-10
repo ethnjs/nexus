@@ -29,8 +29,8 @@ import {
   IconPlus,
   IconTrash,
 } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
 import type { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
@@ -268,9 +268,7 @@ export function MemberPanelConfigModal({
       )}
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState context="section" />
       ) : (
         <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
           <DndContext

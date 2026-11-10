@@ -6,14 +6,14 @@ import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
 import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <SignInContent />
     </Suspense>
   );

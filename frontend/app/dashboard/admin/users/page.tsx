@@ -36,12 +36,12 @@ import {
   IconXCircle,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Popover } from "@/components/ui/Popover";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ADMIN_USER_SORT_OPTIONS,
@@ -483,9 +483,7 @@ export default function AdminUsersPage() {
       )}
 
       {users === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : visible.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState

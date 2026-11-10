@@ -1,0 +1,13 @@
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-style: solid;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

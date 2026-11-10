@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, type MembershipFull, membersApi } from "@/lib/api";
 import { changeRoleScope, NO_SCOPE, type RoleScope, WIDE_SCOPE } from "@/lib/roles/roleScope";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
@@ -128,9 +128,7 @@ export function AddRoleMembersModal({
           }}
         >
           {candidates === null ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
-              <Spinner size="sm" />
-            </div>
+            <LoadingState context="section" />
           ) : (
             candidates.length === 0 && (
               <p

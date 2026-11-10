@@ -7,7 +7,7 @@ import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi } from "@/lib/api";
 import {
   checkPassword,
@@ -18,7 +18,7 @@ import {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <ResetPasswordContent />
     </Suspense>
   );

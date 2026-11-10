@@ -27,12 +27,12 @@ import {
 } from "@/components/ui/FilterModal";
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Popover } from "@/components/ui/Popover";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -775,9 +775,7 @@ function SeasonView({
       )}
 
       {seasonEvents === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : rows.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState
@@ -1228,9 +1226,7 @@ export default function AdminEventsPage() {
       )}
 
       {events === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : view === CATALOG ? (
         <CatalogView
           events={events}

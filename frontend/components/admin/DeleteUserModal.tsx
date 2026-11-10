@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { type AdminUserSlim, ApiError, adminUsersApi, type OwnedTournamentRef } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 
@@ -51,9 +51,7 @@ export function DeleteUserModal({
           </span>
 
           {owned === null ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "6px 0" }}>
-              <Spinner />
-            </div>
+            <LoadingState context="section" />
           ) : loadError ? (
             <span style={{ color: "var(--color-danger)" }}>
               {loadError} Any tournaments they own will be left without an owner.

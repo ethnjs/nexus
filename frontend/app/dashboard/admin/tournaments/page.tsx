@@ -21,10 +21,10 @@ import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import { IconArchive, IconRestore, IconSearch, IconTrash, IconTrophy } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { type AdminTournament, ApiError, adminTournamentsApi, tournamentsApi } from "@/lib/api";
 import { rowActivation } from "@/lib/rowActivation";
@@ -555,9 +555,7 @@ export default function AdminTournamentsPage() {
       )}
 
       {tournaments === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : visible.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState

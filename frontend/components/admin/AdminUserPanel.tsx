@@ -11,7 +11,7 @@ import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { Button } from "@/components/ui/Button";
 import { IconExpand } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { type AdminUserFull, ApiError, adminUsersApi } from "@/lib/api";
 
 // Exported so a caller registering this in the layout slot reserves exactly
@@ -105,9 +105,7 @@ export function AdminUserPanel({
           {error}
         </p>
       ) : !user ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px" }}>
           {/* Account state rides in the header beside the name — it's the

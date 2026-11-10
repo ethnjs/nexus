@@ -39,11 +39,11 @@ import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconLock, IconMembers, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
   type DisplayConfig,
@@ -775,11 +775,7 @@ export default function MembersPage() {
   useEffect(() => () => clearPanel(), [clearPanel]);
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageMembers) {
@@ -801,9 +797,7 @@ export default function MembersPage() {
     return (
       <div>
         <CollapsibleHeader heading="Members" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }

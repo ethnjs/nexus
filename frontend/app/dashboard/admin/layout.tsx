@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { useAuth } from "@/lib/useAuth";
 
 /**
@@ -23,13 +23,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [loading, allowed, router]);
 
   if (loading) {
-    return (
-      <div
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}
-      >
-        <Spinner />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   // Render nothing through the redirect rather than flashing the page.

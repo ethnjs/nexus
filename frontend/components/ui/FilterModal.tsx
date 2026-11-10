@@ -8,8 +8,8 @@ import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { IconPlus } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 
 export interface FilterOption {
   value: string;
@@ -372,9 +372,7 @@ export function FilterModal<K extends string>({
   return (
     <Modal title={title} onClose={onClose} width={width}>
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState context="section" />
       ) : (
         // Fills the viewport minus the title and footer, so it only scrolls
         // on a short window or a long filter list.
