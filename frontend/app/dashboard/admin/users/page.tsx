@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconCheckCircle,
+  IconDotsVertical,
   IconEdit,
   IconKey,
   IconLock,
@@ -29,6 +30,7 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { type AdminSignInCode, type AdminUserSlim, ApiError, adminUsersApi } from "@/lib/api";
@@ -52,15 +54,15 @@ const COLUMNS = [
   "minmax(92px, 0.6fr)", // role — one badge
   "minmax(104px, 0.7fr)", // status — one badge
   "minmax(96px, 0.7fr)", // joined
-  // Sized to exactly what it holds: six sm iconOnly buttons are 28px square
-  // (Button's sm height) with 4px gaps — 6*28 + 5*4. At that width "centred"
+  // Sized to exactly what it holds: three sm iconOnly buttons are 28px square
+  // (Button's sm height) with 4px gaps — 3*28 + 2*4. At that width "centred"
   // and "flush right" are the same thing, so the header sits over the buttons
   // and the track still ends at the card's right edge. An `fr` share here left
   // the buttons floating in a 250px track with the header adrift from them.
-  "188px", // actions — 6 * 28px buttons + 5 * 4px gaps
+  "92px", // actions — 3 * 28px buttons + 2 * 4px gaps
 ].join(" ");
 
-const MIN_TABLE_WIDTH = 1094;
+const MIN_TABLE_WIDTH = 998;
 
 type RoleFilter = "all" | "admin" | "user";
 
@@ -108,6 +110,12 @@ function UserRow({
 }) {
   const isActive = user.status === "active";
   const selfTitle = "You can't do this to your own account";
+  const menuItems: MenuKey[] = [
+    user.role === "admin" ? "demote" : "promote",
+    "email",
+    "reset",
+    "delete",
+  ];
 
   return (
     <div
@@ -184,9 +192,8 @@ function UserRow({
         </span>
       </HoverCard>
 
-      {/* Every one of these is refused on your own account server-side, so the
-          row for the acting admin shows them disabled rather than letting a
-          click come back a 400. */}
+      {/* What the backend refuses on your own account is disabled on your row,
+          rather than letting a click come back a 400. */}
       <div
         style={{ display: "flex", justifyContent: "center", gap: "4px" }}
         onClick={(e) => e.stopPropagation()}
@@ -217,54 +224,6 @@ function UserRow({
           </Button>
         )}
 
-        {user.role === "admin" ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconOnly
-            disabled={isSelf}
-            title={isSelf ? selfTitle : "Demote to user"}
-            onClick={() => onAction("demote")}
-          >
-            <IconUser size={13} />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconOnly
-            disabled={isSelf}
-            title={isSelf ? selfTitle : "Promote to admin"}
-            onClick={() => onAction("promote")}
-          >
-            <IconUserShield size={13} />
-          </Button>
-        )}
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          title="Edit email"
-          onClick={() => onAction("email")}
-        >
-          <IconEdit size={13} />
-        </Button>
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          title="Send password reset email"
-          onClick={() => onAction("reset")}
-        >
-          <IconKey size={13} />
-        </Button>
-
         <Button
           type="button"
           variant="secondary"
@@ -276,21 +235,60 @@ function UserRow({
           <IconShield size={13} />
         </Button>
 
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          disabled={isSelf}
-          title={isSelf ? selfTitle : "Delete account"}
-          onClick={() => onAction("delete")}
-        >
-          <IconTrash size={13} style={{ color: isSelf ? undefined : "var(--color-danger)" }} />
-        </Button>
+        <Popover
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconOnly title="More options">
+              <IconDotsVertical size={16} />
+            </Button>
+          }
+          items={menuItems}
+          getKey={(key) => key}
+          renderLabel={(key) => {
+            const Icon = MENU_ICONS[key];
+            const danger = key === "delete" && !isSelf;
+            return (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: danger ? "var(--color-danger)" : undefined,
+                }}
+              >
+                <Icon size={13} />
+                {MENU_LABELS[key]}
+              </span>
+            );
+          }}
+          isDisabled={(key) => isSelf && SELF_REFUSED.has(key)}
+          disabledReason={() => selfTitle}
+          onSelect={onAction}
+          width={210}
+        />
       </div>
     </div>
   );
 }
+
+type MenuKey = "promote" | "demote" | "email" | "reset" | "delete";
+
+const MENU_LABELS: Record<MenuKey, string> = {
+  promote: "Promote to admin",
+  demote: "Demote to user",
+  email: "Edit email",
+  reset: "Send password reset email",
+  delete: "Delete account",
+};
+
+const MENU_ICONS: Record<MenuKey, typeof IconEdit> = {
+  promote: IconUserShield,
+  demote: IconUser,
+  email: IconEdit,
+  reset: IconKey,
+  delete: IconTrash,
+};
+
+const SELF_REFUSED = new Set<MenuKey>(["promote", "demote", "delete"]);
 
 type PendingAction = {
   kind: "lock" | "activate" | "promote" | "demote" | "email" | "reset" | "signInCode" | "delete";
