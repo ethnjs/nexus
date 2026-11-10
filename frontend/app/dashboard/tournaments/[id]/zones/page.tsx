@@ -2,11 +2,17 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
+import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import { TrackSummary } from "@/components/tournament/TrackSummary";
 import { AddZoneModal } from "@/components/tournament/zones/AddZoneModal";
+import { DayStatusDot } from "@/components/tournament/zones/DayStatusDot";
+import { ZoneCard } from "@/components/tournament/zones/ZoneCard";
+import { ZoneContentsTable } from "@/components/tournament/zones/ZoneContentsTable";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconLocation, IconLock, IconPlus } from "@/components/ui/Icons";
@@ -14,19 +20,47 @@ import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
+  buildingsApi,
+  type CanonicalEvent,
+  canonicalEventsApi,
+  type MembershipFull,
+  membersApi,
   type Role,
   rolesApi,
+  type TournamentBuilding,
+  type TournamentEvent,
+  type TournamentShift,
   type TournamentTrack,
+  tournamentEventsApi,
+  tournamentShiftsApi,
   tournamentTracksApi,
+  type Zone,
+  type ZoneAssignment,
   type ZoneCoverage,
+  type ZoneMember,
+  zoneAssignmentsApi,
   zonesApi,
 } from "@/lib/api";
+import { type AssignmentRole, roleSummary, sameRole } from "@/lib/assignments/lanes";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { trackDetail } from "@/lib/eventTrackDetails";
+import { personName, userName } from "@/lib/personDisplay";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { replaceSearchParams } from "@/lib/usePanelUrl";
+import { replaceSearchParams, useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useToast } from "@/lib/useToast";
 import { useTournament } from "@/lib/useTournament";
+import {
+  memberDayStatus,
+  ruleInput,
+  ruleKey,
+  ruleLabel,
+  ruleOwners,
+  zoneContents,
+  zoneTargets,
+} from "@/lib/zones";
 
 const NO_ZONE_ROLE = "__none__";
 
@@ -39,6 +73,7 @@ export default function ZonesPage() {
   const isPrivileged = currentUser?.role === "admin" || !!membership?.is_owner;
   const canManageEvents = isPrivileged || hasPermission("manage_events");
   const canManageTournament = isPrivileged || hasPermission("manage_tournament");
+  const canManageMembers = isPrivileged || hasPermission("manage_members");
   const { isArchived, archivedReason } = useArchiveLock();
   const { tracks, selectedTournament, setSelectedTournament } = useTournament();
   const { show } = useToast();
@@ -107,7 +142,282 @@ export default function ZonesPage() {
     }
   }
 
+  const [buildings, setBuildings] = useState<TournamentBuilding[]>([]);
+  const [events, setEvents] = useState<TournamentEvent[]>([]);
+  useEffect(() => {
+    if (!canManageEvents) return;
+    buildingsApi
+      .list(tournamentId)
+      .then(setBuildings)
+      .catch(() => setBuildings([]));
+    tournamentEventsApi
+      .list(tournamentId)
+      .then(setEvents)
+      .catch(() => setEvents([]));
+  }, [tournamentId, canManageEvents]);
+  const dayBuildings = useMemo(
+    () => buildings.filter((b) => activeTrackId !== null && b.track_ids.includes(activeTrackId)),
+    [buildings, activeTrackId],
+  );
+  const dayEvents = useMemo(
+    () => events.filter((e) => activeTrackId !== null && trackDetail(e, activeTrackId)),
+    [events, activeTrackId],
+  );
+  const targets = useMemo(() => zoneTargets(dayBuildings, dayEvents), [dayBuildings, dayEvents]);
+
+  // Staffing zones is manage_members, like the routes behind it.
+  const [members, setMembers] = useState<MembershipFull[]>([]);
+  const [assignments, setAssignments] = useState<ZoneAssignment[]>([]);
+  useEffect(() => {
+    if (!canManageMembers) return;
+    membersApi
+      .list(tournamentId, { fields: ["tracks"] })
+      .then(setMembers)
+      .catch(() => setMembers([]));
+  }, [tournamentId, canManageMembers]);
+  useEffect(() => {
+    if (!canManageMembers || activeTrackId === null) return;
+    zoneAssignmentsApi
+      .list(tournamentId, { trackId: activeTrackId })
+      .then(setAssignments)
+      .catch(() => setAssignments([]));
+  }, [tournamentId, activeTrackId, canManageMembers]);
+  const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+
+  const reloadCoverage = useCallback(async () => {
+    if (activeTrackId === null) return;
+    setCoverage(await zonesApi.list(tournamentId, activeTrackId));
+  }, [tournamentId, activeTrackId]);
+
+  const writeRules = (zone: Zone, rules: ZoneMember[]) =>
+    zonesApi.update(tournamentId, zone.id, { members: rules });
+
+  /** Moves the rule here from whichever zone held it. Throws so the picker can show why. */
+  async function addRule(zone: Zone, rule: ZoneMember) {
+    const key = ruleKey(rule);
+    const owner = owners.get(key);
+    if (owner?.id === zone.id) return;
+    const before = zone.members.map(ruleInput);
+    const ownerBefore = owner?.members.map(ruleInput) ?? [];
+    try {
+      if (owner) {
+        await writeRules(
+          owner,
+          ownerBefore.filter((r) => ruleKey(r) !== key),
+        );
+      }
+      await writeRules(zone, [...before, rule]);
+    } finally {
+      await reloadCoverage().catch(() => {});
+    }
+    if (owner) {
+      show(`Moved from ${owner.name} to ${zone.name}`, "success", {
+        label: "Undo",
+        onClick: () => void undoMove(zone, before, owner, ownerBefore),
+      });
+    }
+  }
+
+  async function undoMove(
+    zone: Zone,
+    before: ZoneMember[],
+    owner: Zone,
+    ownerBefore: ZoneMember[],
+  ) {
+    try {
+      // This zone first, so the rule is free before the other zone takes it back.
+      await writeRules(zone, before);
+      await writeRules(owner, ownerBefore);
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to undo.", "error");
+    }
+    await reloadCoverage().catch(() => {});
+  }
+
+  async function removeRule(zone: Zone, key: string) {
+    try {
+      await writeRules(
+        zone,
+        zone.members.map(ruleInput).filter((r) => ruleKey(r) !== key),
+      );
+      await reloadCoverage();
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to remove.", "error");
+    }
+  }
+
+  async function renameZone(zone: Zone, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === zone.name) return;
+    const saved = await zonesApi.update(tournamentId, zone.id, { name: trimmed });
+    setCoverage((cur) =>
+      cur
+        ? {
+            ...cur,
+            zones: cur.zones
+              .map((z) => (z.id === saved.id ? saved : z))
+              .sort((a, b) => a.name.localeCompare(b.name)),
+          }
+        : cur,
+    );
+  }
+
+  async function addMember(zone: Zone, member: MembershipFull) {
+    const created = await zoneAssignmentsApi.create(tournamentId, {
+      zone_id: zone.id,
+      membership_id: member.id,
+    });
+    setAssignments((cur) => [...cur, created]);
+  }
+
+  /** A member's rows in a zone, one per role. */
+  const rowsFor = (zoneId: number, membershipId: number) =>
+    assignments.filter((a) => a.zone_id === zoneId && a.member.membership_id === membershipId);
+
+  async function deleteRow(id: number) {
+    await zoneAssignmentsApi.delete(tournamentId, id);
+    setAssignments((cur) => cur.filter((a) => a.id !== id));
+  }
+
+  async function addRole(zone: Zone, membershipId: number, role: AssignmentRole) {
+    if (role.id === null) return;
+    const created = await zoneAssignmentsApi.create(tournamentId, {
+      zone_id: zone.id,
+      membership_id: membershipId,
+      role_id: role.id,
+    });
+    setAssignments((cur) => [...cur, created]);
+  }
+
+  async function removeMember(zone: Zone, membershipId: number) {
+    try {
+      for (const row of rowsFor(zone.id, membershipId)) await deleteRow(row.id);
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to remove.", "error");
+    }
+  }
+
+  /** Replaces the member's roles in this zone with `role`. */
+  async function pickRole(zone: Zone, membershipId: number, role: AssignmentRole) {
+    const rows = rowsFor(zone.id, membershipId);
+    try {
+      if (!rows.some((r) => sameRole(r.role, role))) await addRole(zone, membershipId, role);
+      for (const row of rows.filter((r) => !sameRole(r.role, role))) await deleteRow(row.id);
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to change the role.", "error");
+    }
+  }
+
+  async function toggleRole(zone: Zone, membershipId: number, role: AssignmentRole) {
+    const row = rowsFor(zone.id, membershipId).find((r) => sameRole(r.role, role));
+    try {
+      if (row) await deleteRow(row.id);
+      else await addRole(zone, membershipId, role);
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : "Failed to change the role.", "error");
+    }
+  }
+
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Zone | null>(null);
+
+  // Until the new day's zones arrive, the previous day's are still in state.
+  const dayCoverage = coverage?.track_id === activeTrackId ? coverage : null;
+  const zones = dayCoverage?.zones ?? [];
+  const owners = useMemo(() => ruleOwners(dayCoverage?.zones ?? []), [dayCoverage]);
+  const dayAssignments = assignments.filter((a) => a.track_id === activeTrackId);
+
+  // ── the event panel ───────────────────────────────────────────────────
+  const [focusedEventId, setFocusedEventId] = useState<number | null>(useInitialPanelId("event"));
+  usePanelUrlSync("event", focusedEventId);
+  const focusedEvent = events.find((e) => e.id === focusedEventId) ?? null;
+  const [allShifts, setAllShifts] = useState<TournamentShift[]>([]);
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
+  const [panelDataLoaded, setPanelDataLoaded] = useState(false);
+  useEffect(() => {
+    if (focusedEventId === null || panelDataLoaded) return;
+    setPanelDataLoaded(true);
+    tournamentShiftsApi
+      .list(tournamentId)
+      .then(setAllShifts)
+      .catch(() => {});
+    canonicalEventsApi
+      .list()
+      .then(setCanonicalEvents)
+      .catch(() => {});
+  }, [focusedEventId, panelDataLoaded, tournamentId]);
+
+  // Prev and next step through the open event's zone, else the whole day.
+  const panelList = useMemo(() => {
+    const zone = dayCoverage?.zones.find(
+      (z) => focusedEventId !== null && z.event_ids.includes(focusedEventId),
+    );
+    return dayEvents
+      .filter((e) => !zone || zone.event_ids.includes(e.id))
+      .sort((a, b) => eventNameWithDivision(a).localeCompare(eventNameWithDivision(b)));
+  }, [dayCoverage, dayEvents, focusedEventId]);
+
+  const { setPanel, clearPanel } = useSetLayoutPanel();
+  useEffect(() => clearPanel, [clearPanel]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the panel's handlers are recreated each render
+  useEffect(() => {
+    if (!focusedEvent) {
+      clearPanel();
+      return;
+    }
+    const index = panelList.findIndex((e) => e.id === focusedEvent.id);
+    setPanel(
+      <EventPanel
+        key={focusedEvent.id}
+        tournamentId={tournamentId}
+        event={focusedEvent}
+        locked={isArchived}
+        canonicalEvents={canonicalEvents}
+        allShifts={allShifts}
+        tracks={tracks}
+        buildings={buildings}
+        roles={roles}
+        onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+        onBuildingSaved={(building) =>
+          setBuildings((cur) =>
+            cur.some((b) => b.id === building.id)
+              ? cur.map((b) => (b.id === building.id ? building : b))
+              : [...cur, building],
+          )
+        }
+        onClose={() => setFocusedEventId(null)}
+        onSaved={(next) => {
+          setEvents((cur) => cur.map((e) => (e.id === next.id ? { ...e, ...next } : e)));
+          // A new location can move the event between zones.
+          void reloadCoverage().catch(() => {});
+        }}
+        onDeleted={(id) => {
+          setEvents((cur) => cur.filter((e) => e.id !== id));
+          setFocusedEventId(null);
+          void reloadCoverage().catch(() => {});
+        }}
+        onPrev={() => index > 0 && setFocusedEventId(panelList[index - 1].id)}
+        onNext={() =>
+          index >= 0 && index < panelList.length - 1 && setFocusedEventId(panelList[index + 1].id)
+        }
+        hasPrev={index > 0}
+        hasNext={index >= 0 && index < panelList.length - 1}
+      />,
+      EVENT_PANEL_WIDTH,
+    );
+  }, [
+    focusedEvent,
+    panelList,
+    isArchived,
+    canonicalEvents,
+    allShifts,
+    tracks,
+    buildings,
+    roles,
+    setPanel,
+    clearPanel,
+  ]);
 
   if (membershipLoading) {
     return (
@@ -146,10 +456,6 @@ export default function ZonesPage() {
       </div>
     );
   }
-
-  // Until the new day's zones arrive, the previous day's are still in state.
-  const dayCoverage = coverage?.track_id === activeTrackId ? coverage : null;
-  const zones = dayCoverage?.zones ?? [];
 
   return (
     <div>
@@ -247,31 +553,119 @@ export default function ZonesPage() {
         </Card>
       ) : (
         <MasonryGrid minColumnWidth={360} gap={16}>
-          {zones.map((zone) => (
-            <Card key={zone.id} radius="lg" style={{ padding: "16px" }}>
-              <div
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  color: "var(--color-text-primary)",
-                }}
-              >
-                {zone.name}
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "13px",
-                  color: "var(--color-text-secondary)",
-                  marginTop: "4px",
-                }}
-              >
-                {zone.event_ids.length} {zone.event_ids.length === 1 ? "event" : "events"}
-              </div>
-            </Card>
-          ))}
+          {zones.map((zone) => {
+            const own = new Set(zone.members.map(ruleKey));
+            const zoneAssignments = dayAssignments.filter((a) => a.zone_id === zone.id);
+            const assigned = new Set(zoneAssignments.map((a) => a.member.membership_id));
+            return (
+              <ZoneCard
+                key={zone.id}
+                zone={zone}
+                locked={isArchived}
+                lockedReason={archivedReason}
+                locations={zone.members.map((rule) => ({
+                  key: ruleKey(rule),
+                  label: ruleLabel(rule, dayBuildings, dayEvents),
+                }))}
+                locationOptions={targets
+                  .filter((t) => !own.has(ruleKey(t.rule)))
+                  .map((t) => {
+                    const owner = owners.get(ruleKey(t.rule));
+                    return {
+                      key: ruleKey(t.rule),
+                      value: t.rule,
+                      label: t.label,
+                      note: owner ? `In ${owner.name}` : null,
+                      group: t.group,
+                      searchText: t.searchText,
+                    };
+                  })}
+                contents={
+                  activeTrackId !== null && (
+                    <ZoneContentsTable
+                      contents={zoneContents(zone, owners, dayBuildings, dayEvents, activeTrackId)}
+                      onOpenEvent={setFocusedEventId}
+                    />
+                  )
+                }
+                members={
+                  canManageMembers && activeTrack
+                    ? memberChips(zoneAssignments).map(({ membershipId, ref, roles: held }) => {
+                        const member = membersById.get(membershipId);
+                        return {
+                          key: membershipId,
+                          label: personName(ref),
+                          icon: member ? (
+                            <DayStatusDot
+                              status={memberDayStatus(member, activeTrack.id)}
+                              dayName={activeTrack.name}
+                            />
+                          ) : undefined,
+                          trailing: isArchived ? (
+                            <span style={{ color: "var(--color-text-secondary)" }}>
+                              {roleSummary(held)}
+                            </span>
+                          ) : (
+                            <RolePillMenu
+                              roles={held}
+                              roleCatalog={roles}
+                              onPickRole={(role) => void pickRole(zone, membershipId, role)}
+                              onToggleRole={(role) => void toggleRole(zone, membershipId, role)}
+                            />
+                          ),
+                        };
+                      })
+                    : null
+                }
+                memberOptions={
+                  activeTrack
+                    ? members
+                        .filter((m) => !assigned.has(m.id))
+                        .map((m) => {
+                          const elsewhere = dayAssignments
+                            .filter((a) => a.member.membership_id === m.id)
+                            .map((a) => a.zone_name);
+                          return {
+                            key: m.id,
+                            value: m,
+                            label: userName(m.user),
+                            note: elsewhere.length > 0 ? `In ${elsewhere.join(", ")}` : null,
+                            badge: (
+                              <DayStatusDot
+                                status={memberDayStatus(m, activeTrack.id)}
+                                dayName={activeTrack.name}
+                              />
+                            ),
+                            searchText: `${userName(m.user)} ${m.user.email}`,
+                          };
+                        })
+                        .sort((a, b) => a.label.localeCompare(b.label))
+                    : []
+                }
+                onRename={(name) => renameZone(zone, name)}
+                onDelete={() => setDeleteTarget(zone)}
+                onAddLocation={(rule) => addRule(zone, rule)}
+                onRemoveLocation={(key) => void removeRule(zone, String(key))}
+                onAddMember={(member) => addMember(zone, member)}
+                onRemoveMember={(key) => void removeMember(zone, Number(key))}
+              />
+            );
+          })}
         </MasonryGrid>
+      )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete ${deleteTarget.name}?`}
+          description="The members covering it are taken off it, and its events go back to not being in a zone."
+          confirmLabel="Delete"
+          onConfirm={() => zonesApi.delete(tournamentId, deleteTarget.id)}
+          onConfirmed={() => {
+            setAssignments((cur) => cur.filter((a) => a.zone_id !== deleteTarget.id));
+            void reloadCoverage().catch(() => {});
+          }}
+          onClose={() => setDeleteTarget(null)}
+        />
       )}
 
       {adding && activeTrackId !== null && (
@@ -293,4 +687,23 @@ export default function ZonesPage() {
       )}
     </div>
   );
+}
+
+/** One chip per member, carrying every role they cover the zone in. */
+function memberChips(rows: ZoneAssignment[]) {
+  const byMember = new Map<number, ZoneAssignment[]>();
+  for (const row of rows) {
+    if (row.member.membership_id === null) continue;
+    byMember.set(row.member.membership_id, [
+      ...(byMember.get(row.member.membership_id) ?? []),
+      row,
+    ]);
+  }
+  return [...byMember.entries()]
+    .map(([membershipId, held]) => ({
+      membershipId,
+      ref: held[0].member,
+      roles: held.map((row) => row.role),
+    }))
+    .sort((a, b) => personName(a.ref).localeCompare(personName(b.ref)));
 }
