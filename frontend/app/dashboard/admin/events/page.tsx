@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
 import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
+import { SEASON_MASS_EDITOR_WIDTH, SeasonMassEditor } from "@/components/admin/SeasonMassEditor";
+import { SelectCell } from "@/components/tournament/events/EditableCells";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EditableText } from "@/components/ui/EditableText";
@@ -24,21 +27,37 @@ import {
 } from "@/components/ui/FilterModal";
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
+import { Popover } from "@/components/ui/Popover";
+import { SelectionBar } from "@/components/ui/SelectionBar";
+import { SortButton } from "@/components/ui/SortButton";
+import { SortModal } from "@/components/ui/SortModal";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
   type CanonicalEvent,
   canonicalEventsApi,
+  EVENT_FORMAT_LABELS,
   type EventCategory,
+  type EventFormat,
   eventCategoriesApi,
+  type RelatedEvent,
   type SeasonEvent,
+  type SeasonEventInput,
   seasonEventsApi,
   TOURNAMENT_DIVISIONS,
   type TournamentDivision,
 } from "@/lib/api";
+import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, FORMAT_RANK } from "@/lib/eventSort";
+import { formatOptions, NO_FORMAT, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
+import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
+import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useToast } from "@/lib/useToast";
 
 // The season selector's "edit the catalog itself" position. A sentinel rather
 // than a separate tab: picking a season and picking the catalog are the same
@@ -52,15 +71,54 @@ type EventFilterKey = (typeof EVENT_FILTER_KEYS)[number];
 const EVENT_COLUMNS = [
   "minmax(260px, 2fr)", // name
   "minmax(200px, 1.2fr)", // category
+  "minmax(220px, 1.6fr)", // related
   "44px", // actions
 ].join(" ");
 
-const SEASON_COLUMNS = [
-  "minmax(300px, 2fr)", // event — name plus its division badges
-  "minmax(200px, 1.2fr)", // category
-  "168px", // divisions — three sm pills plus gaps
-  "44px", // actions
-].join(" ");
+/** Adds or removes a pair, mirroring it onto the other event, which the
+ *  backend changed too but didn't return. */
+async function saveRelated(
+  events: CanonicalEvent[],
+  onEventsChanged: (events: CanonicalEvent[]) => void,
+  event: CanonicalEvent,
+  other: RelatedEvent,
+  related: boolean,
+) {
+  const updated = related
+    ? await canonicalEventsApi.addRelated(event.id, other.id)
+    : await canonicalEventsApi.removeRelated(event.id, other.id);
+  const self: RelatedEvent = { id: event.id, name: event.name };
+  onEventsChanged(
+    events.map((e) => {
+      if (e.id === event.id) return updated;
+      if (e.id !== other.id) return e;
+      const rest = e.related_events.filter((r) => r.id !== event.id);
+      return {
+        ...e,
+        related_events: (related ? [...rest, self] : rest).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
+      };
+    }),
+  );
+}
+
+// Always a grid track, so Select mode can animate its width from 0.
+const SELECT_COLUMN_WIDTH = "28px";
+
+function seasonColumns(selectMode: boolean) {
+  return [
+    selectMode ? SELECT_COLUMN_WIDTH : "0px",
+    "minmax(240px, 1.4fr)", // event — name plus its division badges
+    "minmax(140px, 1fr)", // category
+    "168px", // divisions — three sm pills plus gaps
+    "minmax(96px, 0.6fr)", // format
+    "minmax(72px, 0.5fr)", // impound
+    "minmax(104px, 0.6fr)", // self-schedule
+    "minmax(180px, 1.2fr)", // related — a chip per related event and the picker
+    "44px", // actions
+  ].join(" ");
+}
 
 // Division colours are shared with the tournaments table, so a division reads
 // the same everywhere.
@@ -70,8 +128,29 @@ const DIVISION_VARIANT: Record<TournamentDivision, "divisionA" | "divisionB" | "
   C: "divisionC",
 };
 
-const SEASON_FILTER_KEYS = ["category", "division"] as const;
+const SEASON_FILTER_KEYS = ["category", "division", "format", "impound", "self_schedule"] as const;
 type SeasonFilterKey = (typeof SEASON_FILTER_KEYS)[number];
+
+/** Shared by every division of an event in a season; the backend keeps them in step. */
+type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self_schedule">;
+
+// The TD events table's sorts that a season row can answer; start time,
+// staffing and location come from a tournament's shifts and rooms.
+const SEASON_SORT_FIELDS = [
+  "name",
+  "division",
+  "category",
+  "format",
+  "impound",
+  "self_schedule",
+] as const;
+type SeasonSortField = (typeof SEASON_SORT_FIELDS)[number];
+const SEASON_SORT_OPTIONS = EVENT_SORT_OPTIONS.filter((o) =>
+  (SEASON_SORT_FIELDS as readonly string[]).includes(o.value),
+);
+const DEFAULT_SEASON_SORT: SortRule<SeasonSortField>[] = [{ field: "name", direction: "asc" }];
+
+const CENTERED: React.CSSProperties = { display: "flex", justifyContent: "center" };
 
 const CELL_TEXT: React.CSSProperties = {
   fontFamily: "var(--font-sans)",
@@ -85,12 +164,6 @@ const TOOLBAR: React.CSSProperties = {
   alignItems: "center",
   marginBottom: "16px",
   flexWrap: "wrap",
-};
-
-const LABEL: React.CSSProperties = {
-  fontFamily: "var(--font-sans)",
-  fontSize: "13px",
-  color: "var(--color-text-secondary)",
 };
 
 // ─── Catalog view ─────────────────────────────────────────────────────────────
@@ -129,18 +202,32 @@ function CatalogView({
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return events.filter((e) => {
-      if (!filterAllows(filters.category, e.category.name)) return false;
-      if (!query) return true;
-      return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
-    });
+    return events
+      .filter((e) => {
+        if (!filterAllows(filters.category, e.category.name)) return false;
+        if (!query) return true;
+        return (
+          e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => compareValues(a.name, b.name) || a.id - b.id);
   }, [events, search, filters]);
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
   async function handleRename(id: number, name: string) {
     await run(`Renamed to ${name}`, async () => {
       const updated = await canonicalEventsApi.update(id, { name });
-      onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+      // Other events list it by name among their related events.
+      onEventsChanged(
+        events.map((e) =>
+          e.id === id
+            ? updated
+            : {
+                ...e,
+                related_events: e.related_events.map((r) => (r.id === id ? { ...r, name } : r)),
+              },
+        ),
+      );
     });
   }
 
@@ -157,9 +244,9 @@ function CatalogView({
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        {/* Grows into the room the toolbar leaves and is the first thing to
+        {/* Takes all the room the toolbar leaves, and is the first thing to
             give it back — narrows before anything else has to wrap. */}
-        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+        <div style={{ flex: "1 1 220px", minWidth: "180px" }}>
           <Input
             placeholder="Search events"
             value={search}
@@ -211,14 +298,15 @@ function CatalogView({
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
             className={table.table}
-            style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "620px" }}
+            style={{ gridTemplateColumns: EVENT_COLUMNS, minWidth: "860px" }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>
                 Event — {visible.length}
                 {isFiltered ? ` of ${events.length}` : ""}
               </span>
               <span>Category</span>
+              <span>Related</span>
               <span />
             </div>
 
@@ -243,6 +331,13 @@ function CatalogView({
                   footerLabel="Add category"
                   footerIcon={<IconPlus />}
                   onFooterClick={() => setShowCategories(true)}
+                />
+                <RelatedCell
+                  event={event}
+                  candidates={events}
+                  onChange={(e, other, related) =>
+                    saveRelated(events, onEventsChanged, e, other, related)
+                  }
                 />
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
@@ -303,7 +398,17 @@ function CatalogView({
           }
           onDelete={(e) => run(`${e.name} deleted`, () => canonicalEventsApi.delete(e.id))}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={(ids) => onEventsChanged(events.filter((e) => !ids.includes(e.id)))}
+          onDeleted={(ids) =>
+            // The backend drops a deleted event's relationships with it.
+            onEventsChanged(
+              events
+                .filter((e) => !ids.includes(e.id))
+                .map((e) => ({
+                  ...e,
+                  related_events: e.related_events.filter((r) => !ids.includes(r.id)),
+                })),
+            )
+          }
         />
       )}
     </>
@@ -318,6 +423,7 @@ function SeasonView({
   categories,
   seasonPicker,
   onSeasonAdded,
+  onEventsChanged,
 }: {
   year: number;
   events: CanonicalEvent[];
@@ -325,16 +431,35 @@ function SeasonView({
   seasonPicker: React.ReactNode;
   /** Bubbles a new season's year up so the picker gains it. */
   onSeasonAdded: (year: number) => void;
+  /** Relationships live on the catalog events, which the page owns. */
+  onEventsChanged: (events: CanonicalEvent[]) => void;
 }) {
   const run = useActionToast();
+  const { show } = useToast();
+  const { setPanel, clearPanel } = useSetLayoutPanel();
   const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[] | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FilterState<SeasonFilterKey>>(() =>
     emptyFilterState(SEASON_FILTER_KEYS),
   );
   const [showFilters, setShowFilters] = useState(false);
+  const [sortRules, setSortRules] = useState<SortRule<SeasonSortField>[]>(DEFAULT_SEASON_SORT);
+  const [showSort, setShowSort] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<CanonicalEvent | null>(null);
+  const [removeTargets, setRemoveTargets] = useState<CanonicalEvent[] | null>(null);
+  const {
+    selectMode,
+    selectedIds,
+    massPanelOpen,
+    panelDirty,
+    setPanelDirty,
+    toggleSelectMode,
+    toggleSelected,
+    toggleSelectAll,
+    openMassPanel,
+    clearSelection,
+    forgetItem,
+  } = usePanelSelection();
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
@@ -356,6 +481,22 @@ function SeasonView({
     };
   }, [year]);
 
+  // Without the spinner reset above, so the table stays put behind the panel.
+  const reload = useCallback(() => {
+    seasonEventsApi
+      .list({ year })
+      .then(setSeasonEvents)
+      .catch(() => setError("Couldn't reload this season."));
+  }, [year]);
+
+  // Selection is of events, which leave the season when their last division goes.
+  useEffect(() => {
+    if (seasonEvents === null) return;
+    const present = new Set(seasonEvents.map((s) => s.event.id));
+    const gone = [...selectedIds].filter((id) => !present.has(id));
+    if (gone.length > 0) forgetItem(gone);
+  }, [seasonEvents, selectedIds, forgetItem]);
+
   // (event_id, division) -> row, so a cell is one lookup.
   const byCell = useMemo(() => {
     const map = new Map<string, SeasonEvent>();
@@ -363,13 +504,45 @@ function SeasonView({
     return map;
   }, [seasonEvents]);
 
+  // The row an event's format and flags are read from and written through.
+  // Any division's would do, since the backend keeps them in step; an active
+  // one is preferred over a leftover switched-off row.
+  const detailsRow = useMemo(() => {
+    const map = new Map<number, SeasonEvent>();
+    for (const s of seasonEvents ?? []) {
+      if (!map.get(s.event.id)?.is_active) map.set(s.event.id, s);
+    }
+    return map;
+  }, [seasonEvents]);
+
+  async function saveDetails(event: CanonicalEvent, patch: SeasonDetails) {
+    const row = detailsRow.get(event.id);
+    if (!row) return;
+    await seasonEventsApi.update(row.id, patch);
+    // The backend copied the change to every division, so mirror that here.
+    setSeasonEvents((prev) =>
+      (prev ?? []).map((s) => (s.event.id === event.id ? { ...s, ...patch } : s)),
+    );
+  }
+
+  function setFlag(
+    event: CanonicalEvent,
+    field: "has_impound" | "has_self_schedule",
+    next: boolean,
+  ) {
+    const noun = field === "has_impound" ? "Impound" : "Self-schedule";
+    run(`${event.name} — ${noun} ${next ? "on" : "off"}`, () =>
+      saveDetails(event, { [field]: next }),
+    ).catch(() => setError("Couldn't save that change."));
+  }
+
   // Only events this season actually holds — the catalog lives in the CATALOG
   // position of the picker, and adding is the modal's job, so there's no
   // reason to list 180 rows of mostly-off toggles here.
   const rows = useMemo(() => {
     const ids = new Set((seasonEvents ?? []).map((s) => s.event.id));
     const query = search.trim().toLowerCase();
-    return events.filter((e) => {
+    const matching = events.filter((e) => {
       if (!ids.has(e.id)) return false;
       if (!filterAllows(filters.category, e.category.name)) return false;
       // Matches an event *active* in any of the picked divisions, which is
@@ -379,10 +552,38 @@ function SeasonView({
         const active = TOURNAMENT_DIVISIONS.filter((d) => byCell.get(`${e.id}:${d}`)?.is_active);
         if (!active.some((d) => filters.division.has(d))) return false;
       }
+      const details = detailsRow.get(e.id);
+      if (!filterAllows(filters.format, details?.format ?? NO_FORMAT)) return false;
+      if (!filterAllows(filters.impound, yesNo(details?.has_impound))) return false;
+      if (!filterAllows(filters.self_schedule, yesNo(details?.has_self_schedule))) return false;
       if (!query) return true;
       return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
     });
-  }, [events, seasonEvents, search, filters, byCell]);
+    return sortRows(
+      matching,
+      sortRules,
+      (e, field) => {
+        switch (field) {
+          case "name":
+            return e.name;
+          // Its lowest active division, so an event in B and C files with the B events.
+          case "division":
+            return TOURNAMENT_DIVISIONS.find((d) => byCell.get(`${e.id}:${d}`)?.is_active) ?? null;
+          case "category":
+            return e.category.name;
+          case "format": {
+            const format = detailsRow.get(e.id)?.format;
+            return format ? FORMAT_RANK[format] : null;
+          }
+          case "impound":
+            return detailsRow.get(e.id)?.has_impound ? 0 : 1;
+          case "self_schedule":
+            return detailsRow.get(e.id)?.has_self_schedule ? 0 : 1;
+        }
+      },
+      (a, b) => compareValues(a.name, b.name) || a.id - b.id,
+    );
+  }, [events, seasonEvents, search, filters, byCell, detailsRow, sortRules]);
 
   const seasonSections: FilterSectionConfig<SeasonFilterKey>[] = [
     {
@@ -397,29 +598,46 @@ function SeasonView({
       control: "divisions",
       options: TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: `Division ${d}` })),
     },
+    {
+      key: "format",
+      title: "Format",
+      control: "buttons",
+      options: formatOptions(),
+    },
+    { key: "impound", title: "Impound", control: "buttons", options: YES_NO_OPTIONS },
+    { key: "self_schedule", title: "Self-schedule", control: "buttons", options: YES_NO_OPTIONS },
   ];
 
   async function toggle(event: CanonicalEvent, division: TournamentDivision, next: boolean) {
     const key = `${event.id}:${division}`;
     if (busy.has(key)) return;
+    // The event's last row takes the event, and its format and flags, out of the season.
+    const others = (seasonEvents ?? []).filter(
+      (s) => s.event.id === event.id && s.division !== division,
+    );
+    if (!next && others.length === 0) {
+      setRemoveTargets([event]);
+      return;
+    }
     setBusy((prev) => new Set(prev).add(key));
     setError(undefined);
-    const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${year}`;
+    const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${formatSeason(year)}`;
     try {
       await run(label, async () => {
         const existing = byCell.get(key);
-        if (existing) {
-          // Patched, not deleted — the row carries created_at, and dropping it
-          // loses when the decision was first made. Removing the event from the
-          // season entirely is the row's own action.
-          const updated = await seasonEventsApi.update(existing.id, { is_active: next });
+        if (!next && existing) {
+          await seasonEventsApi.delete(existing.id);
+          setSeasonEvents((prev) => (prev ?? []).filter((s) => s.id !== existing.id));
+        } else if (existing) {
+          const updated = await seasonEventsApi.update(existing.id, { is_active: true });
           setSeasonEvents((prev) => (prev ?? []).map((s) => (s.id === existing.id ? updated : s)));
         } else {
+          // The backend gives a new division the event's existing format and flags.
           const created = await seasonEventsApi.create({
             event_id: event.id,
             year,
             division,
-            is_active: next,
+            is_active: true,
           });
           setSeasonEvents((prev) => [...(prev ?? []), created]);
         }
@@ -444,21 +662,62 @@ function SeasonView({
   }
 
   const existingPairs = useMemo(() => new Set(byCell.keys()), [byCell]);
-  const activeCount = (seasonEvents ?? []).filter((s) => s.is_active).length;
 
-  // Every division row for the event being removed — the confirm deletes the
-  // event from the season, not one division of it.
-  const removeRows = removeTarget
-    ? (seasonEvents ?? []).filter((s) => s.event.id === removeTarget.id)
-    : [];
+  const selectedEvents = useMemo(
+    () => events.filter((e) => selectedIds.has(e.id)),
+    [events, selectedIds],
+  );
+
+  // The slot lives in the layout and would outlive this view otherwise.
+  useEffect(() => clearPanel, [clearPanel]);
+
+  useEffect(() => {
+    if (!massPanelOpen || selectedEvents.length === 0) {
+      clearPanel();
+      return;
+    }
+    setPanel(
+      <SeasonMassEditor
+        year={year}
+        events={selectedEvents}
+        seasonEvents={seasonEvents ?? []}
+        onClose={clearSelection}
+        onSaved={reload}
+        onDirtyChange={setPanelDirty}
+      />,
+      SEASON_MASS_EDITOR_WIDTH,
+    );
+  }, [
+    massPanelOpen,
+    selectedEvents,
+    seasonEvents,
+    year,
+    reload,
+    clearSelection,
+    setPanelDirty,
+    setPanel,
+    clearPanel,
+  ]);
+
+  const visibleIds = rows.map((e) => e.id);
+  // As on the TD tables: in Select mode a click on a cell selects the row.
+  const lockReason = selectMode ? "Leave Select mode to edit in the table" : undefined;
+
+  const seasonEventsList = useMemo(
+    () => events.filter((e) => detailsRow.has(e.id)),
+    [events, detailsRow],
+  );
+
+  const setRelated = (event: CanonicalEvent, other: RelatedEvent, related: boolean) =>
+    saveRelated(events, onEventsChanged, event, other, related);
 
   return (
     <>
       <div style={TOOLBAR}>
         {seasonPicker}
-        {/* Grows into the room the toolbar leaves and is the first thing to
+        {/* Takes all the room the toolbar leaves, and is the first thing to
             give it back — narrows before anything else has to wrap. */}
-        <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
+        <div style={{ flex: "1 1 220px", minWidth: "180px" }}>
           <Input
             placeholder="Search this season"
             value={search}
@@ -476,7 +735,21 @@ function SeasonView({
           onOpen={() => setShowFilters(true)}
           onClear={() => setFilters(emptyFilterState(SEASON_FILTER_KEYS))}
         />
-        <span style={LABEL}>{activeCount} active</span>
+        <SortButton
+          active={!sameSortRules(sortRules, DEFAULT_SEASON_SORT)}
+          onOpen={() => setShowSort(true)}
+          onReset={() => setSortRules(DEFAULT_SEASON_SORT)}
+        />
+        <Button
+          type="button"
+          variant={selectMode ? "primary" : "secondary"}
+          size="md"
+          onClick={toggleSelectMode}
+          disabled={panelDirty}
+          title={panelDirty ? "Save or discard your changes first" : undefined}
+        >
+          Select
+        </Button>
         <Button
           variant="primary"
           size="md"
@@ -502,14 +775,14 @@ function SeasonView({
       )}
 
       {seasonEvents === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : rows.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState
             icon={<IconEvents size={26} />}
-            title={search.trim() ? "No matching events" : `Nothing set for ${year} yet`}
+            title={
+              search.trim() ? "No matching events" : `Nothing set for ${formatSeason(year)} yet`
+            }
             description={
               search.trim()
                 ? "Try adjusting your search."
@@ -528,18 +801,63 @@ function SeasonView({
       ) : (
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           <div
-            className={table.table}
-            style={{ gridTemplateColumns: SEASON_COLUMNS, minWidth: "760px" }}
+            className={`${table.table} ${table.animatedTracks}`}
+            style={{ gridTemplateColumns: seasonColumns(selectMode), minWidth: "1140px" }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
+              <span
+                className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                style={CENTERED}
+                title={panelDirty ? "Save or discard your changes first" : undefined}
+              >
+                <Checkbox
+                  checked={rows.length > 0 && rows.every((e) => selectedIds.has(e.id))}
+                  locked={panelDirty}
+                  onChange={(checked) => toggleSelectAll(visibleIds, checked)}
+                />
+              </span>
               <span>Event — {rows.length}</span>
               <span>Category</span>
               <span>Divisions</span>
+              <span style={CENTERED}>Format</span>
+              <span style={CENTERED}>Impound</span>
+              <span style={CENTERED}>Self-schedule</span>
+              <span>Related</span>
               <span />
             </div>
 
             {rows.map((event) => (
-              <div key={event.id} className={table.row}>
+              <div
+                key={event.id}
+                className={table.row}
+                data-active={selectMode && selectedIds.has(event.id) ? "true" : undefined}
+                onClick={
+                  selectMode
+                    ? (e) => {
+                        // Controls keep their own clicks. So does anything portalled
+                        // out of the row, like a cell's popover, whose clicks still
+                        // bubble here through React.
+                        const target = e.target as Element;
+                        if (!e.currentTarget.contains(target)) return;
+                        if (target.closest("button, input, a, [role='button']")) return;
+                        toggleSelected(event.id, visibleIds);
+                      }
+                    : undefined
+                }
+                // A Shift-click selects a range of rows, not the text between them.
+                onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
+                style={selectMode ? { cursor: panelDirty ? "not-allowed" : "pointer" } : undefined}
+              >
+                <span
+                  className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                  style={CENTERED}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(event.id)}
+                    locked={panelDirty}
+                    onChange={() => toggleSelected(event.id, visibleIds)}
+                  />
+                </span>
                 {/* Badges sit with the name as the read-out — the control is
                     the button group two cells over. Only active divisions show:
                     an entry switched off isn't in this season's defaults, which
@@ -571,14 +889,36 @@ function SeasonView({
                 {/* All three divisions always offered, so a division can be
                     added to an event already in the season without going back
                     through the add modal. */}
-                <DivisionButtonGroup
-                  options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
-                  value={activeDivisions(event)}
-                  onChange={(v) => {
-                    const division = v as TournamentDivision;
-                    toggle(event, division, !byCell.get(`${event.id}:${division}`)?.is_active);
-                  }}
-                  locked={TOURNAMENT_DIVISIONS.some((d) => busy.has(`${event.id}:${d}`))}
+                <SelectLock lockReason={lockReason}>
+                  <DivisionButtonGroup
+                    options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
+                    value={activeDivisions(event)}
+                    onChange={(v) => {
+                      const division = v as TournamentDivision;
+                      toggle(event, division, !byCell.get(`${event.id}:${division}`)?.is_active);
+                    }}
+                    locked={TOURNAMENT_DIVISIONS.some((d) => busy.has(`${event.id}:${d}`))}
+                  />
+                </SelectLock>
+                <FormatCell
+                  event={event}
+                  value={detailsRow.get(event.id)?.format ?? null}
+                  lockReason={lockReason}
+                  onSave={saveDetails}
+                />
+                {(["has_impound", "has_self_schedule"] as const).map((field) => (
+                  <SelectLock key={field} lockReason={lockReason} centered>
+                    <Checkbox
+                      checked={detailsRow.get(event.id)?.[field] ?? false}
+                      onChange={(next) => setFlag(event, field, next)}
+                    />
+                  </SelectLock>
+                ))}
+                <RelatedCell
+                  event={event}
+                  candidates={seasonEventsList}
+                  lockReason={lockReason}
+                  onChange={setRelated}
                 />
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Button
@@ -586,8 +926,8 @@ function SeasonView({
                     variant="secondary"
                     size="sm"
                     iconOnly
-                    title={`Remove from ${year}`}
-                    onClick={() => setRemoveTarget(event)}
+                    title={`Remove from ${formatSeason(year)}`}
+                    onClick={() => setRemoveTargets([event])}
                   >
                     <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
                   </Button>
@@ -596,6 +936,18 @@ function SeasonView({
             ))}
           </div>
         </Card>
+      )}
+
+      {showSort && (
+        <SortModal
+          title="Sort season"
+          fields={SEASON_SORT_OPTIONS}
+          rules={sortRules}
+          defaults={DEFAULT_SEASON_SORT}
+          tiebreakLabel={EVENT_SORT_TIEBREAK}
+          onApply={(next) => setSortRules(next as SortRule<SeasonSortField>[])}
+          onClose={() => setShowSort(false)}
+        />
       )}
 
       {showFilters && (
@@ -622,34 +974,199 @@ function SeasonView({
         />
       )}
 
-      {removeTarget && (
+      <SelectionBar
+        visible={selectMode && !massPanelOpen}
+        count={selectedIds.size}
+        onEdit={openMassPanel}
+        onCancel={toggleSelectMode}
+        actions={
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            title={`Remove selected from ${formatSeason(year)}`}
+            disabled={selectedIds.size === 0}
+            onClick={() => setRemoveTargets(selectedEvents)}
+          >
+            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+          </Button>
+        }
+      />
+
+      {removeTargets && (
         <BulkDeleteModal
-          items={removeRows}
-          noun="entry"
+          items={removeTargets}
+          noun="event"
+          verb="Remove"
+          verbPast="removed"
           description={
             <>
-              Remove <strong>{removeTarget.name}</strong> from {year}? This drops it from every
-              division it&rsquo;s in this season. The event stays in the catalog — switch a division
-              off instead if you only want it out of the defaults.
+              Remove{" "}
+              {removeTargets.length === 1 ? (
+                <strong>{removeTargets[0].name}</strong>
+              ) : (
+                `${removeTargets.length} events`
+              )}{" "}
+              from {formatSeason(year)}? This drops every division they&rsquo;re in this season,
+              with their format, impound and self-schedule. The events stay in the catalog.
             </>
           }
-          onDelete={(row) =>
-            run(`${row.event.name} removed from ${year}`, () => seasonEventsApi.delete(row.id))
+          onDelete={(event) =>
+            Promise.all(
+              (seasonEvents ?? [])
+                .filter((s) => s.event.id === event.id)
+                .map(async (s) => {
+                  await seasonEventsApi.delete(s.id);
+                  // Dropped one by one, so a retry after a partial failure resends only the rest.
+                  setSeasonEvents((prev) => (prev ?? []).filter((row) => row.id !== s.id));
+                }),
+            )
           }
-          onClose={() => setRemoveTarget(null)}
-          onDeleted={(ids) =>
-            setSeasonEvents((prev) => (prev ?? []).filter((s) => !ids.includes(s.id)))
-          }
+          onClose={() => setRemoveTargets(null)}
+          onDeleted={(ids) => {
+            setSeasonEvents((prev) => (prev ?? []).filter((s) => !ids.includes(s.event.id)));
+            forgetItem(ids);
+            show(
+              ids.length === 1
+                ? `${events.find((e) => e.id === ids[0])?.name ?? "Event"} removed from ${formatSeason(year)}`
+                : `${ids.length} events removed from ${formatSeason(year)}`,
+              "success",
+            );
+          }}
         />
       )}
     </>
   );
 }
 
+function RelatedCell({
+  event,
+  candidates,
+  lockReason,
+  onChange,
+}: {
+  event: CanonicalEvent;
+  /** What the picker offers besides the event itself: the season's events, or the whole catalog. */
+  candidates: CanonicalEvent[];
+  lockReason?: string;
+  onChange: (event: CanonicalEvent, other: RelatedEvent, related: boolean) => Promise<void>;
+}) {
+  const relatedIds = new Set(event.related_events.map((r) => r.id));
+  // A relation to an event outside this season stays listed, so it can be unticked.
+  const items: RelatedEvent[] = [
+    ...candidates.filter((e) => e.id !== event.id),
+    ...event.related_events.filter((r) => !candidates.some((e) => e.id === r.id)),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <SelectLock lockReason={lockReason}>
+      <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px" }}>
+        {event.related_events.length === 0 && (
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            None
+          </span>
+        )}
+        {event.related_events.map((r) => (
+          <Badge key={r.id} variant="default">
+            {r.name}
+          </Badge>
+        ))}
+        <span className={table.revealOnHover}>
+          <Popover
+            trigger={
+              // Same as the roster's Roles cell add button.
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                iconOnly
+                title={`Relate ${event.name} to other events`}
+                style={{ padding: 0, flexShrink: 0 }}
+              >
+                <IconPlus size={14} />
+              </Button>
+            }
+            items={items}
+            getKey={(r) => r.id}
+            renderLabel={(r) => r.name}
+            checklist
+            isSelected={(r) => relatedIds.has(r.id)}
+            onSelect={(r) => onChange(event, r, !relatedIds.has(r.id))}
+            searchable
+            getSearchText={(r) => r.name}
+            width={260}
+            align="left"
+          />
+        </span>
+      </span>
+    </SelectLock>
+  );
+}
+
+/** Makes a control inert while locked, so a click on it reaches the row. */
+function SelectLock({
+  lockReason,
+  centered = false,
+  children,
+}: {
+  lockReason?: string;
+  centered?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      title={lockReason}
+      style={{
+        ...(centered ? CENTERED : { display: "flex" }),
+        cursor: lockReason ? "not-allowed" : undefined,
+      }}
+    >
+      <span style={{ display: "flex", pointerEvents: lockReason ? "none" : undefined }}>
+        {children}
+      </span>
+    </span>
+  );
+}
+
+function FormatCell({
+  event,
+  value,
+  lockReason,
+  onSave,
+}: {
+  event: CanonicalEvent;
+  value: EventFormat | null;
+  lockReason?: string;
+  onSave: (event: CanonicalEvent, patch: SeasonDetails) => Promise<void>;
+}) {
+  return (
+    <SelectCell
+      display={
+        value ? (
+          <Badge variant="default">{EVENT_FORMAT_LABELS[value]}</Badge>
+        ) : (
+          <span style={{ ...CELL_TEXT, color: "var(--color-text-tertiary)" }}>—</span>
+        )
+      }
+      value={value ?? ""}
+      options={formatOptions("")}
+      lockReason={lockReason}
+      onPick={(next) => onSave(event, { format: (next || null) as EventFormat | null })}
+    />
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminEventsPage() {
-  const thisYear = new Date().getFullYear();
+  const thisSeason = currentSeasonYear();
   const [view, setView] = useState<string>(CATALOG);
   const [events, setEvents] = useState<CanonicalEvent[] | null>(null);
   const [categories, setCategories] = useState<EventCategory[]>([]);
@@ -670,15 +1187,15 @@ export default function AdminEventsPage() {
       });
   }, []);
 
-  // Seasons that exist, plus this year and next, so a new one can be started
+  // Seasons that exist, plus this one and next, so a new one can be started
   // before it holds a single row.
   const viewOptions = useMemo(() => {
-    const years = [...new Set([...knownYears, thisYear, thisYear + 1])].sort((a, b) => b - a);
+    const years = [...new Set([...knownYears, thisSeason, thisSeason + 1])].sort((a, b) => b - a);
     return [
       { value: CATALOG, label: "All events" },
-      ...years.map((y) => ({ value: String(y), label: String(y) })),
+      ...years.map((y) => ({ value: String(y), label: formatSeason(y) })),
     ];
-  }, [knownYears, thisYear]);
+  }, [knownYears, thisSeason]);
 
   const seasonPicker = (
     <Dropdown
@@ -709,9 +1226,7 @@ export default function AdminEventsPage() {
       )}
 
       {events === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : view === CATALOG ? (
         <CatalogView
           events={events}
@@ -729,6 +1244,7 @@ export default function AdminEventsPage() {
           categories={categories}
           seasonPicker={seasonPicker}
           onSeasonAdded={(y) => setKnownYears((prev) => (prev.includes(y) ? prev : [...prev, y]))}
+          onEventsChanged={setEvents}
         />
       )}
     </>

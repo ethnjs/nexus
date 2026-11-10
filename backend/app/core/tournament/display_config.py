@@ -24,6 +24,14 @@ EVENT_PANEL = "event_panel"
 # The shifts table — its filters and sort, in its own vocabulary: a shift has
 # a time and a track, not a division. No columns: the table shows them all.
 SHIFTS_TABLE = "shifts_table"
+# The buildings page's docked event list: which details its cards show, and
+# its filters. Per track tab, like the assignments board.
+BUILDINGS_EVENTS = "buildings_events"
+# The zones page's member list. The assignments board's member card on
+# another page, kept separate so filtering one doesn't change the other.
+ZONES_MEMBERS = "zones_members"
+# Surfaces that show the member card, which share its fields, filters and sorts.
+MEMBER_CARD_SURFACES = frozenset({ASSIGNMENT_CARD, ZONES_MEMBERS})
 # Whether this viewer keeps the page header folded into the Topbar. One
 # setting for every page of the tournament, so it is a surface of its own
 # that holds only `collapsed` rather than a field repeated on each table's.
@@ -59,7 +67,9 @@ FLAT_SURFACES = frozenset(
 # ---------------------------------------------------------------------------
 TAB_ALL = "all"
 TAB_TRACK_PREFIX = "track:"
-TAB_SCOPED_SURFACES = frozenset({ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD})
+TAB_SCOPED_SURFACES = frozenset(
+    {ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD, BUILDINGS_EVENTS, ZONES_MEMBERS}
+)
 
 
 def surface_key(base: str, tab: str = TAB_ALL) -> str:
@@ -125,13 +135,26 @@ KNOWN_FILTER_KEYS = frozenset(
         "age",
         "shift",
         "assigned",
+        "affiliation",
+        "year_level",
+        "onboarding",
     }
 )
 
 # Sorting is client-side (the roster is one page), so these are validated but
 # never used in a query — they exist so a stored value that no longer sorts
 # by anything can't be written in the first place.
-KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age", "onboarding"})
+KNOWN_SORT_FIELDS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "joined",
+        "account_age",
+        "onboarding",
+        "affiliation",
+        "year_level",
+    }
+)
 # Plus one sort per track (or per track's event / lunch question), keyed in
 # the same namespaces as the columns so fields_for_surface maps them to data
 # groups the same way. event_pref takes the event too: a sort is by the rank
@@ -158,6 +181,8 @@ COLUMN_JOINED = "joined"
 COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
+COLUMN_AFFILIATION = "affiliation"
+COLUMN_YEAR_LEVEL = "year_level"
 COLUMN_ONBOARDING = "onboarding"
 COLUMN_DIETARY = "dietary_restriction"
 
@@ -169,6 +194,8 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_METHOD, "Join method"),
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
+    (COLUMN_AFFILIATION, "Affiliation"),
+    (COLUMN_YEAR_LEVEL, "Year level"),
     (COLUMN_ONBOARDING, "Onboarding"),
     (COLUMN_DIETARY, "Dietary restriction"),
 )
@@ -198,6 +225,9 @@ DEFAULT_COLUMNS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 EVENT_COLUMN_DIVISION = "division"
 EVENT_COLUMN_TYPE = "type"
+EVENT_COLUMN_FORMAT = "format"
+EVENT_COLUMN_IMPOUND = "impound"
+EVENT_COLUMN_SELF_SCHEDULE = "self_schedule"
 EVENT_COLUMN_CATEGORY = "category"
 EVENT_COLUMN_TRACKS = "tracks"
 EVENT_COLUMN_TIME = "time"
@@ -225,6 +255,9 @@ EVENT_TRACK_COLUMN_FAMILIES: dict[str, bool] = {
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
     (EVENT_COLUMN_TYPE, "Type"),
+    (EVENT_COLUMN_FORMAT, "Format"),
+    (EVENT_COLUMN_IMPOUND, "Impound"),
+    (EVENT_COLUMN_SELF_SCHEDULE, "Self-schedule"),
     (EVENT_COLUMN_CATEGORY, "Category"),
     (EVENT_COLUMN_TRACKS, "Tracks"),
     (EVENT_COLUMN_TIME, "Time"),
@@ -238,6 +271,7 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION,
     EVENT_COLUMN_TYPE,
+    EVENT_COLUMN_FORMAT,
     EVENT_COLUMN_CATEGORY,
     EVENT_COLUMN_TRACKS,
     EVENT_COLUMN_TIME,
@@ -255,9 +289,13 @@ KNOWN_EVENT_FILTER_KEYS = frozenset(
     {
         "division",
         "type",
+        "format",
+        "impound",
+        "self_schedule",
         "category",
         "track",
         "building",
+        "placement",
         "shifts",
         "shift",
         "staffing",
@@ -276,6 +314,9 @@ KNOWN_EVENT_SORT_FIELDS = frozenset(
         "start",
         "staffing",
         "location",
+        "format",
+        "impound",
+        "self_schedule",
         "day",
     }
 )
@@ -349,6 +390,9 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset(
         "start",
         "staffing",
         "location",
+        "format",
+        "impound",
+        "self_schedule",
     }
 )
 
@@ -366,7 +410,7 @@ KNOWN_ASSIGNMENT_EVENT_SORT_FIELDS = frozenset(
 # ---------------------------------------------------------------------------
 CARD_FIELD_NAMESPACE = "card_field:"
 CARD_TRACK_NAMESPACE = "card_track:"
-# One custom question hidden by its form field id ("card_custom:{field_id}") —
+# One custom question hidden by its field key ("card_custom:{field_key}") —
 # the custom_fields field shows every answer the member gave unless hidden.
 CARD_CUSTOM_NAMESPACE = "card_custom:"
 
@@ -399,6 +443,17 @@ ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset(
         "availability",
         "lunch",
     }
+)
+
+
+# ---------------------------------------------------------------------------
+# Buildings page — event list card
+#
+# Hidden-by-exception like the belt card. Name and division always show.
+# ---------------------------------------------------------------------------
+EVENT_FIELD_NAMESPACE = "event_field:"
+BUILDINGS_EVENT_FIELDS = frozenset(
+    {"type", "format", "category", "impound", "self_schedule", "shifts"}
 )
 
 
@@ -475,15 +530,20 @@ DEFAULT_CUSTOM_SECTION_ID = f"{CUSTOM_SECTION_PREFIX}all"
 TRACK_NAMESPACE = "track:"
 LUNCH_NAMESPACE = "lunch:"
 EVENT_PREF_NAMESPACE = "event_pref:"
-FORM_FIELD_NAMESPACE = "form_field:"
+FIELD_KEY_NAMESPACE = "field_key:"
 AVAILABILITY_TRACK_NAMESPACE = "availability_track:"
+# A track's timeline in the panel's Assignments section. Its own namespace, not
+# TRACK_NAMESPACE, so hiding a track's status in Membership leaves its
+# assignments showing. Only the client reads it; the data isn't filtered.
+ASSIGNMENT_TRACK_NAMESPACE = "assignment_track:"
 
 KNOWN_NAMESPACES = (
     TRACK_NAMESPACE,
     LUNCH_NAMESPACE,
     EVENT_PREF_NAMESPACE,
-    FORM_FIELD_NAMESPACE,
+    FIELD_KEY_NAMESPACE,
     AVAILABILITY_TRACK_NAMESPACE,
+    ASSIGNMENT_TRACK_NAMESPACE,
 )
 
 
@@ -510,7 +570,7 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     entry is inert, the same leniency filter values already get.
     """
     surface = surface_base(surface)
-    if surface == ASSIGNMENT_CARD:
+    if surface in MEMBER_CARD_SURFACES:
         if item.startswith(CARD_FIELD_NAMESPACE):
             return item[len(CARD_FIELD_NAMESPACE) :] in ASSIGNMENT_CARD_FIELDS
         if item.startswith(CARD_TRACK_NAMESPACE):
@@ -518,8 +578,8 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
         if item.startswith(CARD_CUSTOM_NAMESPACE):
             # Not checked against the forms: a deleted question's entry is inert.
-            field_id = item[len(CARD_CUSTOM_NAMESPACE) :]
-            return bool(field_id) and ":" not in field_id
+            field_key = item[len(CARD_CUSTOM_NAMESPACE) :]
+            return bool(field_key) and ":" not in field_key
         return False
     # An event row's hideable items are the tracks it runs on: hiding one
     # drops its shifts from the timeline, or its column from the no-shift
@@ -531,6 +591,11 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     # still runs on it, and its Tracks chips and shifts still show.
     if surface == EVENT_PANEL:
         return item.startswith(TRACK_NAMESPACE)
+    if surface == BUILDINGS_EVENTS:
+        return (
+            item.startswith(EVENT_FIELD_NAMESPACE)
+            and item[len(EVENT_FIELD_NAMESPACE) :] in BUILDINGS_EVENT_FIELDS
+        )
     return is_known_namespace(item)
 
 
@@ -577,7 +642,7 @@ def is_known_column(surface: str, key: str) -> bool:
             AVAILABILITY_TRACK_NAMESPACE,
             LUNCH_NAMESPACE,
             EVENT_PREF_NAMESPACE,
-            FORM_FIELD_NAMESPACE,
+            FIELD_KEY_NAMESPACE,
         )
     )
 
@@ -593,12 +658,14 @@ def known_filter_keys(surface: str) -> frozenset[str]:
         return KNOWN_EVENT_FILTER_KEYS
     if surface == ASSIGNMENTS_EVENTS:
         return KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS
+    if surface == BUILDINGS_EVENTS:
+        return KNOWN_EVENT_FILTER_KEYS
     if surface == SHIFTS_TABLE:
         return KNOWN_SHIFT_FILTER_KEYS
     # The belt is filtered by the roster's own modal, so it stores the roster's
     # keys — see the note on ASSIGNMENT_CARD_FIELDS about why it is still its
     # own surface.
-    if surface == ASSIGNMENT_CARD:
+    if surface in MEMBER_CARD_SURFACES:
         return KNOWN_FILTER_KEYS
     return frozenset()
 
@@ -609,7 +676,7 @@ def is_known_sort_field(surface: str, field: str) -> bool:
     track's id isn't checked, the same leniency its column key gets."""
     if field in known_sort_fields(surface):
         return True
-    return surface_base(surface) in (MEMBERS_TABLE, ASSIGNMENT_CARD) and bool(
+    return surface_base(surface) in (MEMBERS_TABLE, *MEMBER_CARD_SURFACES) and bool(
         MEMBER_SORT_FIELD_PATTERN.match(field)
     )
 
@@ -619,7 +686,7 @@ def known_sort_fields(surface: str) -> frozenset[str]:
     known_filter_keys."""
     surface = surface_base(surface)
     # The belt sorts members the same ways the roster does.
-    if surface in (MEMBERS_TABLE, ASSIGNMENT_CARD):
+    if surface in (MEMBERS_TABLE, *MEMBER_CARD_SURFACES):
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_SORT_FIELDS
@@ -754,15 +821,17 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         )
         .all()
     )
-    # field_key, not the question label: the label is a whole sentence
-    # ("What's your favorite color?"), and the form it came from doesn't
-    # matter to a TD deciding whether the panel shows that answer.
-    custom_field_items = [
-        {"key": f"{FORM_FIELD_NAMESPACE}{field.id}", "label": unslug(field.field_key)}
+    # One item per key, labelled by it rather than the question's sentence:
+    # forms may share a key, and a member's latest answer to it is what shows.
+    custom_keys = {
+        field.field_key
         for field, _form in field_rows
         if not any(
             pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
         )
+    }
+    custom_field_items = [
+        {"key": f"{FIELD_KEY_NAMESPACE}{key}", "label": unslug(key)} for key in sorted(custom_keys)
     ]
 
     # One item per track that has shifts. Was one per *day*, which is the
@@ -812,7 +881,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "membership": track_items,
         # Tracks, not availability days: this section is laid out one timeline
         # per track, so a track is the thing you turn off.
-        "assignments": track_items,
+        "assignments": [
+            {"key": f"{ASSIGNMENT_TRACK_NAMESPACE}{t.id}", "label": t.name} for t in tracks
+        ],
         "availability": availability_items,
         "lunch": lunch_items,
         "event_preferences": event_pref_items,
@@ -931,7 +1002,7 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict) -
     if "custom_responses" in data:
         before_custom = data["custom_responses"]
         data["custom_responses"] = [
-            row for row in before_custom if f"{FORM_FIELD_NAMESPACE}{row['field_id']}" not in hidden
+            row for row in before_custom if f"{FIELD_KEY_NAMESPACE}{row['field_key']}" not in hidden
         ]
         _note_if_emptied("custom_responses", before_custom)
 
@@ -960,6 +1031,8 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_METHOD: ("membership",),
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
+    COLUMN_AFFILIATION: ("profile",),
+    COLUMN_YEAR_LEVEL: ("profile",),
     COLUMN_ONBOARDING: ("onboarding",),
     # On the user profile, like shirt size — not on the lunch rows.
     COLUMN_DIETARY: ("profile",),
@@ -969,7 +1042,7 @@ _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
     (TRACK_NAMESPACE, "tracks"),
     (LUNCH_NAMESPACE, "lunch"),
     (EVENT_PREF_NAMESPACE, "event_prefs"),
-    (FORM_FIELD_NAMESPACE, "custom"),
+    (FIELD_KEY_NAMESPACE, "custom"),
     (AVAILABILITY_TRACK_NAMESPACE, "availability"),
 )
 
@@ -1014,7 +1087,7 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     """
     # Not driven by saved config, unlike the three below: the card's face is
     # fixed by the issue, so there is nothing per-viewer to read.
-    if surface and surface_base(surface) == ASSIGNMENT_CARD:
+    if surface and surface_base(surface) in MEMBER_CARD_SURFACES:
         return _ASSIGNMENT_CARD_GROUPS
 
     if surface not in (MEMBERS_TABLE, MEMBERS_PANEL, MEMBER_PAGE):

@@ -4,6 +4,7 @@ import { FieldKeyPopover } from "@/components/forms/builder/FieldKeyPopover";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconBranch, IconButton, IconDescription, IconPlus, IconSwap } from "@/components/ui/Icons";
+import type { FieldKeyUsage } from "@/lib/api";
 import { withoutBranching } from "@/lib/forms/branching";
 import { useFieldExtension, useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { withoutCustomValues } from "@/lib/forms/customValues";
@@ -23,7 +24,7 @@ export function FieldToolbar({
   boxRef,
   field,
   onFieldChange,
-  usedFieldKeys,
+  sharedFieldKeys,
   allFields,
   errors,
   saveAttempt,
@@ -39,7 +40,7 @@ export function FieldToolbar({
   boxRef: React.RefObject<HTMLDivElement | null>;
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
-  usedFieldKeys: string[];
+  sharedFieldKeys: FieldKeyUsage[];
   allFields: EditableField[];
   errors: string[];
   saveAttempt: number;
@@ -127,7 +128,7 @@ export function FieldToolbar({
         <FieldKeyPopover
           field={field}
           onFieldChange={onFieldChange}
-          usedFieldKeys={usedFieldKeys}
+          sharedFieldKeys={sharedFieldKeys}
           allFields={allFields}
           errors={errors}
           saveAttempt={saveAttempt}

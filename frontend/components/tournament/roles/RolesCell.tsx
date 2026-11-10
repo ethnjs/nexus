@@ -47,6 +47,8 @@ interface RolesCellProps {
   /** What to render instead of an empty chip row when the cell is inert — a
       panel field wants to say "None", a table cell would rather stay blank. */
   emptyLabel?: string;
+  /** In a table row: the add button shows only while the row is hovered. */
+  addButtonOnHover?: boolean;
   onUpdated: (updated: MembershipFull) => void;
 }
 
@@ -66,6 +68,7 @@ export function RolesCell({
   lockedReason,
   readOnly = false,
   emptyLabel,
+  addButtonOnHover,
   onUpdated,
 }: RolesCellProps) {
   // Two different reasons the chips go inert; ChipInput only has the one knob.
@@ -82,8 +85,9 @@ export function RolesCell({
   const roleByLabel = new Map(held.map((r) => [r.label, r]));
 
   // Inert with no chips and no add button is a blank cell, which reads as
-  // "still loading" rather than "holds no roles".
-  if (inert && !explained && held.length === 0 && emptyLabel) {
+  // "still loading" rather than "holds no roles". A table row keeps the chip
+  // row's own smaller "None" instead, so it matches the editable rows.
+  if (inert && !explained && held.length === 0 && emptyLabel && !addButtonOnHover) {
     return <FieldValue muted>{emptyLabel}</FieldValue>;
   }
 
@@ -136,6 +140,8 @@ export function RolesCell({
       variant="transparent"
       size="sm"
       disableInput
+      emptyLabel={emptyLabel}
+      addButtonOnHover={addButtonOnHover}
       // Explained locks stay unlocked *to ChipInput*: a locked field drops
       // every affordance, and the lock icons below are the affordance.
       locked={inert && !explained}

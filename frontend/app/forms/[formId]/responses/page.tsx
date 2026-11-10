@@ -7,7 +7,7 @@ import { ResponsesView, respondentName } from "@/components/forms/ResponsesView"
 import { SubHeader } from "@/components/forms/SubHeader";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { type Form, type FormField, type FormResponseManager, formsApi } from "@/lib/api";
 import { builderLoadFailure } from "@/lib/forms/builderLoad";
 import { useActionToast } from "@/lib/useActionToast";
@@ -83,11 +83,7 @@ export default function FormResponsesPage({ params }: { params: Promise<{ formId
   }
 
   if (!form || responses === null) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   const tournamentArchived = !!form.tournament_is_archived;

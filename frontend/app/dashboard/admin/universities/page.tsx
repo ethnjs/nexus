@@ -9,10 +9,11 @@ import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSchool, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import { ApiError, type University, universitiesApi } from "@/lib/api";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { useActionToast } from "@/lib/useActionToast";
 
 const COLUMNS = [
@@ -161,43 +162,28 @@ export default function AdminUniversitiesPage() {
         </p>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          alignItems: "center",
-          marginBottom: "16px",
-          flexWrap: "wrap",
-        }}
-      >
-        <Input
-          placeholder="Search name, abbreviation or location"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          icon={<IconSearch size={16} />}
-          size="md"
-          font="sans"
-          variant="secondary"
-          style={{ width: "420px" }}
-        />
-        {/* Pushed to the right edge — the search sits with the table it
-            filters, the action belongs opposite it. */}
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => setShowNew(true)}
-          style={{ marginLeft: "auto" }}
-        >
+      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Input
+            placeholder="Search name, abbreviation or location"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            icon={<IconSearch size={16} />}
+            size="md"
+            font="sans"
+            variant="secondary"
+            fullWidth
+          />
+        </div>
+        <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
           <IconPlus />
           Add university
         </Button>
       </div>
 
       {universities === null ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spinner />
-        </div>
+        <LoadingState />
       ) : visible.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <EmptyState
@@ -224,7 +210,7 @@ export default function AdminUniversitiesPage() {
             className={table.table}
             style={{ gridTemplateColumns: COLUMNS, minWidth: `${MIN_TABLE_WIDTH}px` }}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span>Name</span>
               <span>Abbreviation</span>
               <span>Location</span>

@@ -73,6 +73,7 @@ function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTr
         division: null,
         is_archived: false,
         default_role_id: null,
+        zone_default_role_id: null,
         created_at: "",
         updated_at: "",
       },

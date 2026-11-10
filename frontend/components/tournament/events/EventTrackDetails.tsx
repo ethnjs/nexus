@@ -2,12 +2,14 @@
 
 import { type ReactNode, useState } from "react";
 import styles from "@/components/settings/Settings.module.css";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ChipInput } from "@/components/ui/ChipInput";
-import { Combobox } from "@/components/ui/Combobox";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { EditableCombobox, EditableText } from "@/components/ui/EditableText";
 import { IconLocation, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import table from "@/components/ui/Table.module.css";
 import type {
   EventStaffingNeed,
   EventTrackDetail,
@@ -15,7 +17,8 @@ import type {
   TournamentBuilding,
   TournamentTrack,
 } from "@/lib/api";
-import { derivedFloor } from "@/lib/eventTrackDetails";
+import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
+import { roomFloor } from "@/lib/eventTrackDetails";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
@@ -30,9 +33,14 @@ import { placeOfTrack } from "@/lib/tournamentDisplay";
  * so a location change is saved by the same button as a name change rather
  * than committing under the TD's hands.
  */
-/** A track detail as the panel edits it: the wire shape, plus a building
- *  name typed but not yet created. Never sent — see resolveNewBuildings. */
-export type DraftTrackDetail = EventTrackDetail & { new_building_name?: string | null };
+/** A track detail as the panel edits it: a building (picked, or a name not
+ *  yet created) and room names, which become room ids on save — see
+ *  resolveDraftLocations. A building with no rooms saves as unplaced. */
+export type DraftTrackDetail = Omit<EventTrackDetail, "room_ids"> & {
+  building_id: number | null;
+  new_building_name?: string | null;
+  room_names: string[];
+};
 
 export function EventTrackDetails({
   details,
@@ -87,11 +95,22 @@ export function EventTrackDetails({
     );
   }
 
+  // Only competition days hold a place: buildings are tagged with those alone.
+  const placeable = visible.filter(({ track }) => track.is_primary);
+
   return (
     <div style={{ padding: "4px 0 8px" }}>
+      {placeable.length > 0 && (
+        <LocationTable
+          rows={placeable}
+          buildings={buildings}
+          locked={locked}
+          showTrack={!simple}
+          onPatch={patchTrack}
+        />
+      )}
       {visible.map(({ track, detail }, index) => {
         const needs = detail.needs ?? [];
-        const hasBuilding = detail.building_id != null || !!detail.new_building_name?.trim();
         const usedRoleIds = new Set(needs.map((n) => n.role_id));
         const spare = roles.filter((r) => !usedRoleIds.has(r.id));
 
@@ -152,78 +171,6 @@ export function EventTrackDetails({
                 )}
               </div>
             )}
-
-            {/* Building, floor and rooms side by side — they are one fact,
-                "where", read left to right like an address. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", padding: "8px 0" }}>
-              <StackedField label="Building" basis="180px" grow={1.3}>
-                <BuildingPicker
-                  trackId={track.id}
-                  buildingId={detail.building_id ?? null}
-                  pendingName={detail.new_building_name ?? null}
-                  buildings={buildings}
-                  locked={locked}
-                  onPick={(buildingId) => {
-                    if (buildingId === (detail.building_id ?? null) && !detail.new_building_name)
-                      return;
-                    // Floor and rooms describe a place inside the old building,
-                    // so they go with it — same rule as the buildings board.
-                    patchTrack(track.id, {
-                      building_id: buildingId,
-                      new_building_name: null,
-                      floor: null,
-                      rooms: [],
-                    });
-                  }}
-                  onPickNew={(name) =>
-                    patchTrack(track.id, {
-                      building_id: null,
-                      new_building_name: name,
-                      // Cleared only when leaving a real building — not on every
-                      // keystroke of the new name, which would wipe a floor typed
-                      // while the name was still pending.
-                      ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
-                    })
-                  }
-                />
-              </StackedField>
-
-              {/* Always rendered, locked until there is a building: hiding
-                  them made the row reflow the moment a building was picked.
-                  A floor of nowhere is still not a place, so they stay inert
-                  rather than accepting input. */}
-              {/* An override: left empty, the floor comes from the first room
-                  (see derivedFloor), which the placeholder shows. */}
-              <StackedField label="Floor" basis="80px" grow={0.5}>
-                <Input
-                  size="sm"
-                  font="mono"
-                  fullWidth
-                  placeholder={derivedFloor(detail.rooms) ?? "Auto"}
-                  title="Taken from the first room unless you type one"
-                  locked={locked || !hasBuilding}
-                  value={detail.floor ?? ""}
-                  // Raw, not trimmed per keystroke — that ate the space in
-                  // "2 East" before the E arrived. The backend strips it.
-                  onChange={(e) => patchTrack(track.id, { floor: e.target.value || null })}
-                />
-              </StackedField>
-
-              <StackedField label="Rooms" basis="180px" grow={1.6}>
-                {/* The default filled variant, not transparent: an empty
-                    transparent field gave no hint it could be typed in. */}
-                <ChipInput
-                  value={detail.rooms ?? []}
-                  onChange={(rooms) => patchTrack(track.id, { rooms })}
-                  disabled={!hasBuilding}
-                  locked={locked}
-                  size="sm"
-                  fullWidth
-                  font="mono"
-                  placeholder={hasBuilding ? "e.g. 210" : undefined}
-                />
-              </StackedField>
-            </div>
 
             <DetailRow label="Staffing">
               <div
@@ -299,78 +246,114 @@ export function EventTrackDetails({
 }
 
 /**
- * Pick a building for one track, or type a new one.
+ * Where the event is on each competition day: one row per day, each cell
+ * edited in place. Edits go to the draft, saved with the rest of the panel.
  *
- * A typed name that matches nothing is held in the draft as
- * `new_building_name` and created when the panel saves — typing it is the
- * whole gesture, with no separate "Create" click. Until then the event has no
- * building id to point at, which is why the name rides alongside instead.
+ * A building name that matches nothing is held as `new_building_name` and
+ * created on save (see resolveDraftLocations); typing it is the whole gesture.
  */
-function BuildingPicker({
-  trackId,
-  buildingId,
-  pendingName,
+function LocationTable({
+  rows,
   buildings,
   locked,
-  onPick,
-  onPickNew,
+  showTrack,
+  onPatch,
 }: {
-  trackId: number;
-  buildingId: number | null;
-  /** A name typed but not yet created. */
-  pendingName: string | null;
-  /** Every building in the tournament — the picker narrows to this track. */
+  rows: { track: TournamentTrack; detail: DraftTrackDetail }[];
+  /** Every building in the tournament; each row offers its own track's. */
   buildings: TournamentBuilding[];
   locked: boolean;
-  onPick: (buildingId: number | null) => void;
-  onPickNew: (name: string) => void;
+  /** Off with one track, whose name is the tournament's. */
+  showTrack: boolean;
+  onPatch: (trackId: number, updates: Partial<DraftTrackDetail>) => void;
 }) {
-  // Only buildings tagged with this track. The composite FK makes the other
-  // pairing impossible, so offering it would be offering a 422.
-  const onTrack = buildings.filter((b) => b.track_ids.includes(trackId));
-  const display = pendingName ?? buildings.find((b) => b.id === buildingId)?.name ?? "";
-
-  const [text, setText] = useState(display);
-  // Adopt a change from outside (Cancel, a refetch, a save landing) during
-  // render — the same derived-state pattern CountInput uses.
-  const [seen, setSeen] = useState(display);
-  if (display !== seen) {
-    setSeen(display);
-    setText(display);
-  }
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-      <Combobox
-        options={onTrack}
-        getId={(b) => b.id}
-        getLabel={(b) => b.name}
-        value={text}
-        onChange={(next, matched) => {
-          setText(next);
-          if (matched) onPick(matched.id);
-          // Clearing the field is how an event goes back to unplaced.
-          else if (!next.trim()) onPick(null);
-          // Raw, not trimmed — trimming per keystroke would eat the space in
-          // "Rowland Hall" before the H arrived. Trimmed on save instead.
-          else onPickNew(next);
-        }}
-        placeholder={onTrack.length === 0 ? "Type a building name" : "Unplaced"}
-        emptyMessage="No buildings yet — type a name to create one"
-        locked={locked}
-        size="sm"
-      />
-      {pendingName?.trim() && (
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "12px",
-            color: "var(--color-text-tertiary)",
-          }}
-        >
-          New building — created when you save
-        </span>
-      )}
+    <div
+      className={table.table}
+      style={{
+        gridTemplateColumns: `${showTrack ? "minmax(0, 1fr) " : ""}minmax(0, 1.2fr) 56px minmax(0, 2fr)`,
+        marginBottom: "4px",
+      }}
+    >
+      <div className={table.header} style={{ position: "static" }}>
+        {showTrack && <span>Track</span>}
+        <span>Building</span>
+        <span>Floor</span>
+        <span>Rooms</span>
+      </div>
+      {rows.map(({ track, detail }) => {
+        const onTrack = buildings.filter((b) => b.track_ids.includes(track.id));
+        const building = buildings.find((b) => b.id === detail.building_id);
+        const pending = detail.new_building_name?.trim() || null;
+        const hasBuilding = !!building || !!pending;
+        return (
+          <div key={track.id} className={table.row}>
+            {showTrack && (
+              <span style={{ ...CELL_TEXT, color: "var(--color-text-secondary)" }}>
+                {track.name}
+              </span>
+            )}
+            <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+              <EditableCombobox
+                value={pending ?? (building ? buildingLabel(building) : "")}
+                placeholder="None"
+                suggestions={onTrack.map(buildingLabel)}
+                suggestionSubtitle={(label) => buildingSubtitle(onTrack, label)}
+                onSave={(text) => {
+                  const name = text.trim();
+                  const match = name
+                    ? onTrack.find(
+                        (b) =>
+                          b.name.toLowerCase() === name.toLowerCase() ||
+                          b.short_name?.toLowerCase() === name.toLowerCase(),
+                      )
+                    : undefined;
+                  if (match?.id === detail.building_id && !pending) return;
+                  // Floor and rooms describe a place inside the old building,
+                  // so they go with it. Clearing the name unplaces the event.
+                  onPatch(track.id, {
+                    building_id: match?.id ?? null,
+                    new_building_name: match || !name ? null : name,
+                    floor: null,
+                    room_names: [],
+                  });
+                }}
+                textStyle={CELL_TEXT}
+                locked={locked}
+                title="Building: its name or short name; a new name is created on save"
+                allowEmpty
+              />
+              {pending && <Badge>New</Badge>}
+            </span>
+            {/* An override: left empty, the floor comes from the first room. */}
+            <EditableText
+              value={detail.floor ?? ""}
+              placeholder={(hasBuilding && draftFloor(detail, buildings)) || "—"}
+              onSave={(floor) => onPatch(track.id, { floor: floor.trim() || null })}
+              textStyle={{ ...CELL_TEXT, fontWeight: 400 }}
+              locked={locked || !hasBuilding}
+              title="Floor: taken from the first room unless you type one"
+              allowEmpty
+            />
+            {hasBuilding ? (
+              // A room the building doesn't have yet is created on save.
+              <ChipInput
+                value={detail.room_names}
+                onChange={(room_names) => onPatch(track.id, { room_names })}
+                locked={locked}
+                variant="transparent"
+                size="sm"
+                fullWidth
+                font="sans"
+                placeholder="Add room"
+                emptyLabel="None"
+              />
+            ) : (
+              <span style={{ ...CELL_TEXT, color: "var(--color-text-tertiary)" }}>None</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -419,39 +402,6 @@ function CountInput({
 }
 
 /**
- * One field of a horizontal group, label above control. The label reuses the
- * Details row's own label class, so it matches DetailRow in weight and size.
- * Flex rather than grid so a narrow panel wraps the fields instead of
- * squeezing a building name down to an ellipsis.
- */
-function StackedField({
-  label,
-  basis,
-  grow,
-  children,
-}: {
-  label: string;
-  basis: string;
-  grow: number;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        flex: `${grow} 1 ${basis}`,
-        minWidth: 0,
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-      }}
-    >
-      <div className={styles.rowLabelText}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-/**
  * The Details section's own row, minus its rule. Built from the same classes
  * as SettingsRow so the labels match it in weight and the controls start on
  * the same column — only the border differs, since rules here go between
@@ -466,4 +416,17 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
       <div className={styles.rowControl}>{children}</div>
     </div>
   );
+}
+
+const CELL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 } as const;
+
+/** The floor the server will derive: the first room's, using the building's
+ *  override for a room it already has. */
+function draftFloor(detail: DraftTrackDetail, buildings: TournamentBuilding[]): string | null {
+  const first = detail.room_names[0]?.trim();
+  if (!first) return null;
+  const known = buildings
+    .find((b) => b.id === detail.building_id)
+    ?.rooms.find((r) => r.name.toLowerCase() === first.toLowerCase());
+  return roomFloor(known ?? { name: first, floor: null });
 }

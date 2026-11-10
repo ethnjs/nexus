@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { Spinner } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Textarea";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type {
@@ -847,17 +848,7 @@ export function CompetitionExperienceSpreadsheet({
                   }}
                 >
                   {saving ? (
-                    <span
-                      style={{
-                        width: "22px",
-                        height: "22px",
-                        border: "2px solid var(--color-border)",
-                        borderTopColor: "var(--color-text-tertiary)",
-                        borderRadius: "50%",
-                        display: "inline-block",
-                        animation: "btn-spin 600ms linear infinite",
-                      }}
-                    />
+                    <Spinner size="md" />
                   ) : (
                     <IconSave
                       size={20}
@@ -964,7 +955,6 @@ export function CompetitionExperienceSpreadsheet({
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-mid {
           opacity: 1 !important;
         }
-        @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {useCards ? (
@@ -1632,17 +1622,7 @@ export function VolunteerExperienceSpreadsheet({
                   }}
                 >
                   {saving ? (
-                    <span
-                      style={{
-                        width: "22px",
-                        height: "22px",
-                        border: "2px solid var(--color-border)",
-                        borderTopColor: "var(--color-text-tertiary)",
-                        borderRadius: "50%",
-                        display: "inline-block",
-                        animation: "btn-spin 600ms linear infinite",
-                      }}
-                    />
+                    <Spinner size="md" />
                   ) : (
                     <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
                   )}
@@ -1710,7 +1690,6 @@ export function VolunteerExperienceSpreadsheet({
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right {
           opacity: 1 !important;
         }
-        @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {useCards ? (

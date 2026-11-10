@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { newOption } from "@/components/forms/builder/OptionsEditor";
 import { newEntityOption } from "@/components/forms/tournament/EntityOptionsEditor";
 import { TrackPicker } from "@/components/tournament/TrackPicker";
@@ -58,7 +58,8 @@ function carryOptions(
   questionType: FormQuestionType,
 ): EditableOption[] {
   if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
-  const existing = field.config?.options ?? [];
+  // A preset maps every option to tournament data, so a typed Other answer has nowhere to go.
+  const existing = (field.config?.options ?? []).filter((option) => !option.is_other);
   if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
   // cleanOption, not a spread: a carried-over key the new shape doesn't
   // declare (branch keys on a non-branching type, anything preset-specific)
@@ -193,9 +194,9 @@ export function PresetPopover({
     if (kind === null) {
       // Clearing is just another kind change: keep the rows, drop back to
       // freeform values, and only seed a starter row if there was nothing
-      // to keep. track_status_enabled goes with the preset — it's an
-      // availability-only opt-in, and the backend rejects the flag on any
-      // other key.
+      // to keep. track_status_enabled and show_shift_times go with the
+      // preset: both are availability-only, and the backend rejects
+      // track_status_enabled on any other key.
       const options = carryOptions(field, null, field.question_type);
       onFieldChange({
         field_key: slugifyFieldKey(toPlainText(field.label)),
@@ -205,6 +206,7 @@ export function PresetPopover({
         config: {
           ...sanitizeConfigForType(field.config, field.question_type),
           track_status_enabled: undefined,
+          show_shift_times: undefined,
           // Only when the type actually takes options: the text config
           // schemas are extra="forbid", so even an empty array 422s the save.
           ...(OPTION_BEARING_TYPES.includes(field.question_type) ? { options } : {}),
@@ -251,6 +253,7 @@ export function PresetPopover({
         // must not carry it over.
         track_status_enabled:
           kind === "availability" ? field.config?.track_status_enabled : undefined,
+        show_shift_times: kind === "availability" ? field.config?.show_shift_times : undefined,
         ...(OPTION_BEARING_TYPES.includes(questionType) ? { options } : {}),
       },
     });
@@ -338,23 +341,15 @@ export function PresetPopover({
                 tracks={tracks}
                 showErrors={!!incompleteError}
               />
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "12px",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  Also update track status
-                </span>
+              <SwitchRow label="Show shift times">
+                <Switch
+                  checked={field.config?.show_shift_times !== false}
+                  onChange={(checked) =>
+                    onFieldChange({ config: { ...field.config, show_shift_times: checked } })
+                  }
+                />
+              </SwitchRow>
+              <SwitchRow label="Also update track status">
                 <Switch
                   checked={!!field.config?.track_status_enabled}
                   onChange={(checked) =>
@@ -387,7 +382,7 @@ export function PresetPopover({
                     })
                   }
                 />
-              </div>
+              </SwitchRow>
             </>
           )}
           {presetKind === "event_preference" && (
@@ -607,6 +602,7 @@ function LunchParams({
         soleReason="Only one track"
       />
       <Input
+        font="sans"
         label="Category"
         required
         placeholder="e.g. Protein"
@@ -616,6 +612,30 @@ function LunchParams({
         fullWidth
         error={showErrors && !category ? "Category is required." : undefined}
       />
+    </div>
+  );
+}
+
+function SwitchRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          color: "var(--color-text-secondary)",
+        }}
+      >
+        {label}
+      </span>
+      {children}
     </div>
   );
 }

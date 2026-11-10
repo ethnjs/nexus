@@ -59,11 +59,11 @@ import {
   IconWarning,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -88,7 +88,7 @@ import {
   tournamentTracksApi,
 } from "@/lib/api";
 import { assignmentsByEvent } from "@/lib/assignments/flags";
-import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { ensureBuildingOnTrack, ensureRooms } from "@/lib/buildings";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { eventName } from "@/lib/eventDisplay";
 import {
@@ -111,6 +111,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
@@ -475,6 +476,13 @@ export default function EventsPage() {
               handleBuildingSaved(building);
               return building;
             },
+            ensureRoom: async (buildingId, name) => {
+              const building = buildings.find((b) => b.id === buildingId);
+              if (!building) throw new Error("That building no longer exists.");
+              const ensured = await ensureRooms(tournamentId, building, [name]);
+              handleBuildingSaved(ensured.building);
+              return ensured.roomIds[0];
+            },
             confirm: setPendingConfirm,
           }
         : undefined,
@@ -576,6 +584,15 @@ export default function EventsPage() {
     );
   }, [events, search, filters, sortRules, byEvent]);
 
+  const toggleVisibleEvent = useCallback(
+    (id: number) =>
+      toggleSelected(
+        id,
+        visibleEvents.map((e) => e.id),
+      ),
+    [toggleSelected, visibleEvents],
+  );
+
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
   const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleEvents, (e) => e.id);
@@ -602,6 +619,9 @@ export default function EventsPage() {
           name: e.event_id ? e.name : `${e.name ?? "Event"} (copy)`,
           division: e.division,
           event_type: e.event_type,
+          format: e.format,
+          has_impound: e.has_impound,
+          has_self_schedule: e.has_self_schedule,
           // Carries the copy's location and staffing needs across with it —
           // track_details is whole-set, so this is also what keeps the copy on
           // the same tracks.
@@ -789,11 +809,7 @@ export default function EventsPage() {
   // constraint the flattening had to respect: a gate that returned before
   // them would change the hook order between renders.
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageEvents) {
@@ -815,9 +831,7 @@ export default function EventsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Events" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }
@@ -1027,7 +1041,7 @@ export default function EventsPage() {
               // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
               onKeyDown={handleGridArrows}
             >
-              <div className={table.header}>
+              <div ref={stickyHeader} className={table.header}>
                 <span
                   className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                   style={{ display: "flex", justifyContent: "center" }}
@@ -1104,7 +1118,7 @@ export default function EventsPage() {
                     selectMode={selectMode}
                     selected={selectedIds.has(e.id)}
                     selectionLocked={panelDirty}
-                    onToggleSelect={toggleSelected}
+                    onToggleSelect={toggleVisibleEvent}
                     focused={focusedEventId === e.id}
                     edit={editContext}
                   />
@@ -1153,6 +1167,7 @@ export default function EventsPage() {
         <LoadDefaultEventsModal
           tournamentId={tournamentId}
           divisions={divisions}
+          seasonYear={selectedTournament?.season_year ?? null}
           existingEvents={events}
           onClose={() => setShowLoadModal(false)}
           onLoaded={(created) => setEvents((prev) => [...(prev ?? []), ...created])}
@@ -1314,6 +1329,8 @@ const EventRow = memo(function EventRow({
       data-active={highlighted ? "true" : undefined}
       data-pending={isPending ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}

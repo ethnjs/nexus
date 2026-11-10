@@ -16,8 +16,10 @@ import { IconMinus, IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { type MassNote, MassResultsCard } from "@/components/ui/MassResultsCard";
 import { Popover } from "@/components/ui/Popover";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
+  type EventFormat,
   type Role,
   rolesApi,
   type TournamentDivision,
@@ -31,6 +33,15 @@ import {
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import {
+  formatOptions,
+  NO_FORMAT,
+  NO_SEASON_DEFAULTS,
+  ON_OFF,
+  onOff,
+  seasonDefaultsFor,
+  useSeasonEvents,
+} from "@/lib/seasonDefaults";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -48,6 +59,9 @@ export const MASS_EVENT_EDITOR_WIDTH = 480;
 interface MassEventDraft {
   division?: TournamentDivision;
   event_type?: "standard" | "trial";
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
 }
 
 interface EventResult {
@@ -213,6 +227,9 @@ export function MassEventEditor({
   const isDirty =
     draft.division !== undefined ||
     draft.event_type !== undefined ||
+    draft.format !== undefined ||
+    draft.has_impound !== undefined ||
+    draft.has_self_schedule !== undefined ||
     shiftsToAdd.size > 0 ||
     shiftsToRemove.size > 0 ||
     tracksToAdd.size > 0 ||
@@ -308,6 +325,10 @@ export function MassEventEditor({
         const patch: Partial<TournamentEventInput> = {};
         if (draft.division !== undefined) patch.division = draft.division;
         if (draft.event_type !== undefined) patch.event_type = draft.event_type;
+        if (draft.format !== undefined) patch.format = draft.format;
+        if (draft.has_impound !== undefined) patch.has_impound = draft.has_impound;
+        if (draft.has_self_schedule !== undefined)
+          patch.has_self_schedule = draft.has_self_schedule;
 
         // Shifts are a property of the event and set whole-set, so the pending
         // adds and removes fold into the same PATCH — one request per event
@@ -332,9 +353,8 @@ export function MassEventEditor({
               .filter((id) => !keptIds.has(id))
               .map((id) => ({
                 track_id: id,
-                building_id: null,
                 floor: null,
-                rooms: [],
+                room_ids: [],
                 needs: [],
               })),
           ];
@@ -387,6 +407,46 @@ export function MassEventEditor({
       }),
     );
 
+    collectResults(outcomes);
+    setDraft({});
+    setShiftsToAdd(new Set());
+    setShiftsToRemove(new Set());
+    setTracksToAdd(new Set());
+    setTracksToRemove(new Set());
+    setNeedsToSet(new Map());
+    setNeedsToRemove(new Map());
+    setSaving(false);
+  }
+
+  const { seasonEvents, error: seasonEventsError } = useSeasonEvents(
+    selectedTournament?.season_year ?? null,
+  );
+  const anySeasonDefaults =
+    !!seasonEvents && events.some((e) => seasonDefaultsFor(e, seasonEvents) !== null);
+  const [resetting, setResetting] = useState(false);
+
+  // Saves straight away and leaves the pending changes above staged.
+  async function handleResetToDefaults() {
+    if (!seasonEvents) return;
+    setResetting(true);
+    setResults(null);
+    const outcomes = await Promise.allSettled(
+      events.map(async (event) => {
+        const defaults = seasonDefaultsFor(event, seasonEvents);
+        if (!defaults) {
+          const notes: MassNote[] = [{ text: "skipped — no season defaults", tone: "muted" }];
+          return { event, notes };
+        }
+        return { event: await tournamentEventsApi.update(tournamentId, event.id, defaults) };
+      }),
+    );
+    collectResults(outcomes);
+    setResetting(false);
+  }
+
+  function collectResults(
+    outcomes: PromiseSettledResult<{ event: TournamentEvent; notes?: MassNote[] }>[],
+  ) {
     const nextResults: EventResult[] = [];
     outcomes.forEach((outcome, i) => {
       const event = events[i];
@@ -407,14 +467,6 @@ export function MassEventEditor({
       }
     });
     setResults(nextResults);
-    setDraft({});
-    setShiftsToAdd(new Set());
-    setShiftsToRemove(new Set());
-    setTracksToAdd(new Set());
-    setTracksToRemove(new Set());
-    setNeedsToSet(new Map());
-    setNeedsToRemove(new Map());
-    setSaving(false);
   }
 
   return (
@@ -457,7 +509,7 @@ export function MassEventEditor({
             />
           </SettingsRow>
 
-          <SettingsRow label="Type" last>
+          <SettingsRow label="Type">
             <ButtonGroup
               options={[
                 { value: "standard", label: "Standard" },
@@ -466,6 +518,58 @@ export function MassEventEditor({
               value={draft.event_type ?? ""}
               onChange={(v) => setDraft((d) => ({ ...d, event_type: v as "standard" | "trial" }))}
             />
+          </SettingsRow>
+
+          <SettingsRow label="Format">
+            <ButtonGroup
+              options={formatOptions()}
+              value={draft.format === undefined ? "" : (draft.format ?? NO_FORMAT)}
+              onChange={(v) =>
+                setDraft((d) => ({ ...d, format: v === NO_FORMAT ? null : (v as EventFormat) }))
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Impound">
+            <ButtonGroup
+              options={ON_OFF}
+              value={onOff(draft.has_impound)}
+              onChange={(v) => setDraft((d) => ({ ...d, has_impound: v === "on" }))}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Self-schedule">
+            <ButtonGroup
+              options={ON_OFF}
+              value={onOff(draft.has_self_schedule)}
+              onChange={(v) => setDraft((d) => ({ ...d, has_self_schedule: v === "on" }))}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            label="Season defaults"
+            helper="Saves this season's format, impound and self-schedule to each selected event."
+            last
+          >
+            <Tooltip
+              variant={seasonEventsError ? "error" : "info"}
+              message={
+                seasonEventsError ?? (seasonEvents && !anySeasonDefaults ? NO_SEASON_DEFAULTS : "")
+              }
+              showIcon={false}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={resetting}
+                disabled={!anySeasonDefaults || resetting || saving}
+                onClick={handleResetToDefaults}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                Reset to defaults
+              </Button>
+            </Tooltip>
           </SettingsRow>
         </SettingsSection>
 

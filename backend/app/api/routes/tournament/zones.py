@@ -12,10 +12,10 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament.zones import (
-    KIND_BUILDING,
     KIND_EVENT,
-    KIND_FLOOR,
+    KIND_ROOM,
     events_by_zone,
+    resolve_track_zones,
     unplaced_event_ids,
     unzoned_event_ids,
 )
@@ -25,6 +25,7 @@ from app.models.models import (
     TournamentEventTrack,
     TournamentMembership,
     TournamentRole,
+    TournamentRoom,
     TournamentTrack,
     TournamentTrackAssignment,
     TournamentZone,
@@ -43,10 +44,7 @@ from app.schemas.tournament.zone import (
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/zones", tags=["tournaments"])
 
-# Flat under the tournament rather than nested under a zone, for the same
-# reason event assignments are: the page that writes these drags between a
-# member list and a zone, and nesting would make one of the two a body field
-# for no reason.
+# Flat under the tournament, like event assignments.
 assignments_router = APIRouter(
     prefix="/tournaments/{tournament_id}/zone-assignments",
     tags=["tournaments"],
@@ -54,12 +52,12 @@ assignments_router = APIRouter(
 
 
 def _zone_query(db: Session):
-    """Every hop a ZoneRead flattens. Without these each zone costs a query
-    per rule for its building and event names."""
+    """Eager-loads every hop a ZoneRead flattens."""
+    members = selectinload(TournamentZone.members)
     return db.query(TournamentZone).options(
-        joinedload(TournamentZone.default_role),
-        selectinload(TournamentZone.members).joinedload(TournamentZoneMember.building),
-        selectinload(TournamentZone.members).joinedload(TournamentZoneMember.tournament_event),
+        members.joinedload(TournamentZoneMember.building),
+        members.joinedload(TournamentZoneMember.room),
+        members.joinedload(TournamentZoneMember.tournament_event),
     )
 
 
@@ -73,35 +71,41 @@ def _get_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrac
     return track
 
 
-def _check_default_role(db: Session, tournament_id: int, role_id: int | None) -> None:
-    if role_id is not None:
-        get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
+def _validate_members(
+    db: Session, tournament_id: int, track_id: int, members: list[ZoneMember]
+) -> None:
+    """422 unless every rule names something on this track and none repeats.
+    Fills in each room rule's building_id from its room."""
+    room_ids = {m.room_id for m in members if m.kind == KIND_ROOM}
+    if room_ids:
+        rooms = {
+            room.id: room
+            for room in db.query(TournamentRoom)
+            .options(joinedload(TournamentRoom.building))
+            .filter(TournamentRoom.id.in_(room_ids))
+        }
+        for member in members:
+            if member.kind != KIND_ROOM:
+                continue
+            room = rooms.get(member.room_id)
+            if room is None or room.building.tournament_id != tournament_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Room {member.room_id} not found",
+                )
+            member.building_id = room.building_id
 
-
-def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> None:
-    """Every rule names something that exists on this track, and no rule is
-    repeated.
-
-    The database enforces all of this too — the composite FKs and the three
-    partial unique indexes — but an IntegrityError reaches the caller as a 500
-    with nothing actionable in it. Everything here is a friendlier restatement,
-    not the only line of defence.
-    """
     seen: set[tuple] = set()
     for member in members:
         key = member.dedupe_key()
         if key in seen:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="A zone must not name the same building, floor or event twice",
+                detail="A zone must not name the same building, floor, room or event twice",
             )
         seen.add(key)
 
-    building_ids = {
-        m.building_id
-        for m in members
-        if m.kind in (KIND_BUILDING, KIND_FLOOR) and m.building_id is not None
-    }
+    building_ids = {m.building_id for m in members if m.building_id is not None}
     if building_ids:
         tagged = {
             row_id
@@ -141,14 +145,13 @@ def _validate_members(db: Session, track_id: int, members: list[ZoneMember]) -> 
             )
 
 
-def _set_members(zone: TournamentZone, members: list[ZoneMember]) -> None:
-    """Replace a zone's rules whole-set.
-
-    Rebuilt rather than diffed, unlike an event's track links: a rule carries
-    nothing but its own identity, so there is no per-row state that recreating
-    it would lose.
-    """
-    zone.members.clear()
+def _set_members(db: Session, zone: TournamentZone, members: list[ZoneMember]) -> None:
+    """Replace a zone's rules whole-set. Flushes when it removes rules."""
+    if zone.members:
+        zone.members.clear()
+        # The unit of work inserts before it deletes, so a rule kept across
+        # the replace would collide with its own old row in the unique indexes.
+        db.flush()
     for member in members:
         zone.members.append(
             TournamentZoneMember(
@@ -156,6 +159,7 @@ def _set_members(zone: TournamentZone, members: list[ZoneMember]) -> None:
                 kind=member.kind,
                 building_id=member.building_id,
                 floor=member.floor,
+                room_id=member.room_id,
                 tournament_event_id=member.tournament_event_id,
             )
         )
@@ -166,18 +170,14 @@ def _claimed_conflict(db: Session) -> None:
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail=(
-            "Another zone on this track already claims one of those buildings, floors or events"
+            "Another zone on this track already claims one of those buildings, floors, rooms "
+            "or events"
         ),
     )
 
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/zones/?track_id=N
-#
-# One response rather than three endpoints: the zones page needs the zones,
-# the events no rule reaches, and the events with no location at all, and the
-# gaps are the whole point of looking. track_id is required — a zone belongs
-# to exactly one track, and coverage only means anything within one.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=ZoneCoverageRead)
 def list_zones(
@@ -198,12 +198,12 @@ def list_zones(
         .all()
     )
 
-    # One resolution pass feeds every zone's contents — see events_by_zone.
-    grouped = events_by_zone(db, track_id)
+    resolved = resolve_track_zones(db, track_id)
+    grouped = events_by_zone(db, track_id, resolved)
     return ZoneCoverageRead(
         track_id=track_id,
         zones=[ZoneRead.from_row(z, grouped.get(z.id, [])) for z in zones],
-        unzoned_event_ids=unzoned_event_ids(db, track_id),
+        unzoned_event_ids=unzoned_event_ids(resolved),
         unplaced_event_ids=unplaced_event_ids(db, track_id),
     )
 
@@ -220,18 +220,21 @@ def create_zone(
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
-    _get_track(db, tournament_id, payload.track_id)
-    _check_default_role(db, tournament_id, payload.default_role_id)
-    _validate_members(db, payload.track_id, payload.members)
+    track = _get_track(db, tournament_id, payload.track_id)
+    if not track.is_primary:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Zones can only be made on a competition day",
+        )
+    _validate_members(db, tournament_id, payload.track_id, payload.members)
 
     zone = TournamentZone(
         tournament_id=tournament_id,
         track_id=payload.track_id,
         name=payload.name,
-        default_role_id=payload.default_role_id,
     )
     db.add(zone)
-    _set_members(zone, payload.members)
+    _set_members(db, zone, payload.members)
 
     try:
         db.commit()
@@ -252,10 +255,7 @@ def create_zone(
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/zones/{zone_id}/
 #
-# The track is not editable. A zone's rules, its assignments and its very
-# meaning are all scoped to one track; moving it would invalidate all three,
-# and making a new zone on the other track is both clearer and what a TD
-# actually wants.
+# The track is not editable: the zone's rules and assignments are scoped to it.
 # ---------------------------------------------------------------------------
 @router.patch("/{zone_id}/", response_model=ZoneRead)
 def update_zone(
@@ -269,15 +269,13 @@ def update_zone(
     require_not_archived(tournament)
     zone = get_scoped_or_404(db, TournamentZone, zone_id, tournament_id, "Zone")
 
-    updates = payload.model_dump(exclude_unset=True)
-    if "default_role_id" in updates:
-        _check_default_role(db, tournament_id, updates["default_role_id"])
-        zone.default_role_id = updates["default_role_id"]
-    if "name" in updates:
-        zone.name = updates["name"]
+    # Rules before the name: their queries and flush would write a pending
+    # rename outside the try below, turning a duplicate name into a 500.
     if payload.members is not None:
-        _validate_members(db, zone.track_id, payload.members)
-        _set_members(zone, payload.members)
+        _validate_members(db, tournament_id, zone.track_id, payload.members)
+        _set_members(db, zone, payload.members)
+    if payload.name is not None:
+        zone.name = payload.name
 
     try:
         db.commit()
@@ -295,13 +293,71 @@ def update_zone(
     return ZoneRead.from_row(zone, grouped.get(zone.id, []))
 
 
+def _claim_of(db: Session, track_id: int, member: ZoneMember) -> TournamentZoneMember | None:
+    """The rule row on this track that claims what `member` names, if any."""
+    query = db.query(TournamentZoneMember).filter(
+        TournamentZoneMember.track_id == track_id,
+        TournamentZoneMember.kind == member.kind,
+    )
+    if member.kind == KIND_ROOM:
+        query = query.filter(TournamentZoneMember.room_id == member.room_id)
+    elif member.kind == KIND_EVENT:
+        query = query.filter(TournamentZoneMember.tournament_event_id == member.tournament_event_id)
+    else:
+        query = query.filter(
+            TournamentZoneMember.building_id == member.building_id,
+            TournamentZoneMember.floor == member.floor,
+        )
+    return query.first()
+
+
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/zones/{zone_id}/
-#
-# Unconditional, and its assignments cascade. Nothing is reported the way a
-# building delete reports cleared locations: a zone holds no data a TD typed
-# into anything else — its rules describe the venue, and the events it covered
-# simply become unzoned, which the coverage response already surfaces.
+# POST /tournaments/{tournament_id}/zones/{zone_id}/rules/
+# ---------------------------------------------------------------------------
+@router.post("/{zone_id}/rules/", response_model=ZoneRead)
+def add_zone_rule(
+    tournament_id: int,
+    zone_id: int,
+    payload: ZoneMember,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Add one rule to a zone. If another zone on the same track holds that
+    rule, it moves here in the same transaction. Adding a rule the zone already
+    holds changes nothing."""
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+    zone = get_scoped_or_404(db, TournamentZone, zone_id, tournament_id, "Zone")
+    _validate_members(db, tournament_id, zone.track_id, [payload])
+
+    claim = _claim_of(db, zone.track_id, payload)
+    if claim is None or claim.zone_id != zone.id:
+        if claim is not None:
+            db.delete(claim)
+            db.flush()
+        zone.members.append(
+            TournamentZoneMember(
+                track_id=zone.track_id,
+                kind=payload.kind,
+                building_id=payload.building_id,
+                floor=payload.floor,
+                room_id=payload.room_id,
+                tournament_event_id=payload.tournament_event_id,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            _claimed_conflict(db)
+
+    db.refresh(zone)
+    grouped = events_by_zone(db, zone.track_id)
+    return ZoneRead.from_row(zone, grouped.get(zone.id, []))
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/zones/{zone_id}/ — assignments cascade.
 # ---------------------------------------------------------------------------
 @router.delete("/{zone_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_zone(
@@ -328,9 +384,6 @@ def list_zone_assignments(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
-    # zone_id IS NOT NULL is implicit in the join, but stated for the same
-    # reason the event listing states its own: one table now holds role grants,
-    # event staffing and zone coverage.
     query = (
         db.query(TournamentTrackAssignment)
         .join(TournamentZone, TournamentZone.id == TournamentTrackAssignment.zone_id)
@@ -348,13 +401,9 @@ def list_zone_assignments(
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/zone-assignments/ — manage_members
 #
-# `role_id` is optional and falls back to the zone's own default, which is
-# what a drag sends. As with an event assignment, a role the member doesn't
-# hold is granted first (rank-bound — see resolve_membership_role), so
-# staffing a runner is one action rather than a detour through the roster.
-#
-# Nothing here checks availability or track status. Those stay warnings the
-# board renders, never refusals — the same line event assignments hold.
+# `role_id` falls back to the track's zone_default_role_id. As with an event
+# assignment, a role the member doesn't hold is granted first, and
+# availability and track status stay warnings rather than refusals.
 # ---------------------------------------------------------------------------
 @assignments_router.post(
     "/",
@@ -379,20 +428,18 @@ def create_zone_assignment(
         "Membership",
     )
 
-    role_id = payload.role_id or zone.default_role_id
+    role_id = payload.role_id or zone.track.zone_default_role_id
     if role_id is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                "This zone has no default role; give the zone one or name a role on the assignment"
+                "This day has no zone role; set one for the day or name a role on the assignment"
             ),
         )
     role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
 
     authorize_role_grant(db, tournament, membership, role, current_user)
 
-    # The track comes from the zone rather than the payload: a zone belongs to
-    # exactly one, and the composite FK would reject any other answer anyway.
     assignment = TournamentTrackAssignment(
         zone_id=zone.id,
         membership_id=membership.id,

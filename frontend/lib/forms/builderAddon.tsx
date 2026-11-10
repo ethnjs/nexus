@@ -2,7 +2,13 @@
 
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
-import type { Form, FormFieldConfig, FormFieldOption, FormQuestionType } from "@/lib/api";
+import type {
+  FieldKeyUsage,
+  Form,
+  FormFieldConfig,
+  FormFieldOption,
+  FormQuestionType,
+} from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import type { EditableField } from "@/lib/forms/editableField";
 
@@ -22,11 +28,15 @@ export interface ExtendableField {
 export interface FieldExtension {
   /** Set when the add-on owns this field's key: the key popover locks and shows this. */
   keyLockedReason?: string;
+  /** Added to the key popover's note when other forms use this key too. */
+  sharedKeyNote?: string;
   allowedQuestionTypes?: FormQuestionType[];
   requiredLocked?: boolean;
   /** Defaults to true. */
   allowsCustomValues?: boolean;
   hideAllowDuplicates?: boolean;
+  /** Whether the TD may add an Other choice. Defaults to true. */
+  allowsOther?: boolean;
   /** Seeds a new option row, for add-ons whose option `value` isn't text. */
   newOption?: () => EditableOption;
   /** A duplicate keeps the source's key, and the add-on's popover opens to make it distinct. */
@@ -68,8 +78,8 @@ export interface FormBuilderAddon {
   /** The collapsed preview's text for an option, when it needs the add-on's
    *  data (e.g. a shift's times). Undefined keeps the option's own label. */
   useOptionLabel: (field: ExtendableField) => ((option: FormFieldOption) => string) | undefined;
-  /** Keys already taken by other forms that share this form's owner. */
-  useUsedFieldKeys: () => string[];
+  /** Keys other forms with this form's owner use, for the key picker to suggest. */
+  useSharedFieldKeys: () => FieldKeyUsage[];
   /** The add-on's toolbar button and popover. */
   Toolbar: ComponentType<AddonToolbarProps> | null;
   /** Validation the core runs alongside its own. */
@@ -79,7 +89,7 @@ export interface FormBuilderAddon {
 }
 
 export const NO_EXTENSION: FieldExtension = {};
-const NO_KEYS: string[] = [];
+const NO_KEYS: FieldKeyUsage[] = [];
 
 function PassThrough({ children }: { form: Form; children: ReactNode }) {
   return children;
@@ -90,7 +100,7 @@ export const CORE_ONLY: FormBuilderAddon = {
   Provider: PassThrough,
   extendField: () => NO_EXTENSION,
   useOptionLabel: () => undefined,
-  useUsedFieldKeys: () => NO_KEYS,
+  useSharedFieldKeys: () => NO_KEYS,
   Toolbar: null,
   issuesFor: () => [],
   ownsIssue: () => false,

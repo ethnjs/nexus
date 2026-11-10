@@ -28,16 +28,7 @@ import { DockedPanel } from "@/components/layout/DockedPanel";
 
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { EventRow } from "@/components/tournament/assignments/EventRow";
-import { MemberCard } from "@/components/tournament/assignments/MemberCard";
-import {
-  DEFAULT_MEMBER_DISPLAY,
-  defaultMemberDisplayForTab,
-  MemberDisplayModal,
-  type MemberDisplayState,
-  memberDisplayFromHidden,
-  memberDisplayToHidden,
-  sameMemberDisplay,
-} from "@/components/tournament/assignments/MemberDisplayModal";
+import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import {
   EVENT_FILTER_UNSET,
@@ -56,28 +47,18 @@ import {
 } from "@/components/tournament/events/EventsFilterModal";
 import { ExportButton } from "@/components/tournament/exports/ExportButton";
 import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
-import {
-  defaultMemberFiltersForTab,
-  MEMBERS_FILTER_KEYS,
-  MembersFilterModal,
-  type MembersFilterState,
-  membersFilterFromStored,
-  membersFilterParams,
-  membersFilterToStored,
-} from "@/components/tournament/members/MembersFilterModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, sameFilterState } from "@/components/ui/FilterModal";
-import { IconEvents, IconLock, IconSearch, IconUser } from "@/components/ui/Icons";
+import { emptyFilterState } from "@/components/ui/FilterModal";
+import { IconEvents, IconLock, IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -89,9 +70,7 @@ import {
   type CanonicalEvent,
   canonicalEventsApi,
   type DisplayConfig,
-  type DisplayConfigCatalog,
   displayConfigApi,
-  type FilterOptionGroup,
   type MembershipFull,
   membersApi,
   type Role,
@@ -131,14 +110,6 @@ import {
   eventSortValue,
   isEventSortField,
 } from "@/lib/eventSort";
-import {
-  isMemberSortField,
-  MEMBER_SORT_TIEBREAK,
-  type MemberSortField,
-  memberSortOptions,
-  memberSortTiebreak,
-  memberSortValue,
-} from "@/lib/memberSort";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import {
   type SortRule,
@@ -192,9 +163,6 @@ const NO_ASSIGNMENTS: Assignment[] = [];
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
-// A belt is scanned for a person, so alphabetical is the order you can
-// predict without reading. The members table defaults to newest joins instead.
-const DEFAULT_BELT_SORT: SortRule<MemberSortField>[] = [{ field: "first_name", direction: "asc" }];
 
 export default function AssignmentsPage() {
   const params = useParams();
@@ -288,22 +256,6 @@ export default function AssignmentsPage() {
   const [showEventFilterModal, setShowEventFilterModal] = useState(false);
   const [showEventSortModal, setShowEventSortModal] = useState(false);
 
-  const [memberQuery, setMemberQuery] = useState("");
-  const [memberFilters, setMemberFilters] = useState<MembersFilterState>(
-    emptyFilterState(MEMBERS_FILTER_KEYS),
-  );
-  const [memberDisplay, setMemberDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY);
-  const [showMemberFilterModal, setShowMemberFilterModal] = useState(false);
-  const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false);
-  const [memberSort, setMemberSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT);
-  const [showMemberSortModal, setShowMemberSortModal] = useState(false);
-  // Names every track, lunch question and custom question — what the card
-  // display and sort modals offer. Same catalog the members page reads.
-  const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null);
-  // Each track's preference events, for the per-event sort. Fetched the
-  // first time the sort modal opens — nothing else on the board needs them.
-  const [eventPrefGroups, setEventPrefGroups] = useState<FilterOptionGroup[] | null>(null);
-
   // Which track tab is showing; null is All. Mirrored into ?track= so a
   // reload comes back to the day being staffed, the way the buildings board
   // does. A stale id simply falls back to All below.
@@ -341,20 +293,7 @@ export default function AssignmentsPage() {
   // own surface key ("assignments_events:track:3"). The whole config is read
   // once and the tab's slice derived from it, rather than a fetch per tab.
   const eventsSurface = tabSurface(ASSIGNMENTS_EVENTS_SURFACE, activeTrackId);
-  const cardSurface = tabSurface(ASSIGNMENT_CARD_SURFACE, activeTrackId);
 
-  // What this tab shows and narrows to before anything is saved for it — and
-  // what its modals' Reset buttons return to. Held once rather than rebuilt
-  // at each use, so the modals and the effect below can't drift apart.
-  const trackIds = useMemo(() => tracks.map((t) => t.id), [tracks]);
-  const memberDisplayDefaults = useMemo(
-    () => defaultMemberDisplayForTab(trackIds, activeTrackId),
-    [trackIds, activeTrackId],
-  );
-  const memberFilterDefaults = useMemo(
-    () => defaultMemberFiltersForTab(trackIds, activeTrackId),
-    [trackIds, activeTrackId],
-  );
   const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null);
 
   // Read once: unlike the roster's, nothing here gates a fetch (both halves
@@ -373,34 +312,19 @@ export default function AssignmentsPage() {
       .catch(() => {
         if (current) setSavedConfig({});
       });
-    displayConfigApi
-      .getCatalog(tournamentId)
-      .then((data) => {
-        if (current) setCatalog(data);
-      })
-      .catch(() => {});
     return () => {
       current = false;
     };
   }, [tournamentId, canView]);
 
   // Re-derived per tab, so switching tabs swaps the whole view with it.
-  const appliedInputs = {
-    savedConfig,
-    eventsSurface,
-    cardSurface,
-    memberFilterDefaults,
-    memberDisplayDefaults,
-  };
+  const appliedInputs = { savedConfig, eventsSurface };
   const [appliedFrom, setAppliedFrom] = useState<typeof appliedInputs | null>(null);
   if (
     savedConfig !== null &&
     (appliedFrom === null ||
       appliedFrom.savedConfig !== savedConfig ||
-      appliedFrom.eventsSurface !== eventsSurface ||
-      appliedFrom.cardSurface !== cardSurface ||
-      appliedFrom.memberFilterDefaults !== memberFilterDefaults ||
-      appliedFrom.memberDisplayDefaults !== memberDisplayDefaults)
+      appliedFrom.eventsSurface !== eventsSurface)
   ) {
     setAppliedFrom(appliedInputs);
     const events = savedConfig[eventsSurface];
@@ -409,18 +333,6 @@ export default function AssignmentsPage() {
     // *array* is a real state (somebody removed every rule) and stays empty.
     setEventSort(
       events?.sorts ? sortRulesFromStored(events.sorts, isEventSortField) : DEFAULT_EVENT_SORT,
-    );
-    const card = savedConfig[cardSurface];
-    // Nothing saved for this tab yet: the tab decides what the belt narrows
-    // to and which tracks the card carries, rather than every tab starting
-    // unfiltered and showing all of them. A saved `{}` is a real state —
-    // somebody cleared every chip — so only an absent one falls back.
-    setMemberFilters(card?.filters ? membersFilterFromStored(card.filters) : memberFilterDefaults);
-    setMemberDisplay(
-      Array.isArray(card?.hidden) ? memberDisplayFromHidden(card.hidden) : memberDisplayDefaults,
-    );
-    setMemberSort(
-      card?.sorts ? sortRulesFromStored(card.sorts, isMemberSortField) : DEFAULT_BELT_SORT,
     );
   }
 
@@ -451,47 +363,6 @@ export default function AssignmentsPage() {
       persistSurface(eventsSurface, { sorts: sortRulesToStored(next) });
     },
     [persistSurface, eventsSurface],
-  );
-
-  const applyMemberFilters = useCallback(
-    (next: MembersFilterState) => {
-      setMemberFilters(next);
-      persistSurface(cardSurface, { filters: membersFilterToStored(next) });
-    },
-    [persistSurface, cardSurface],
-  );
-
-  const applyMemberDisplay = useCallback(
-    (next: MemberDisplayState) => {
-      setMemberDisplay(next);
-      persistSurface(cardSurface, { hidden: memberDisplayToHidden(next) });
-    },
-    [persistSurface, cardSurface],
-  );
-
-  // Per tab, with the tab's filters and card fields. The belt is fetched with
-  // every data group, so no sort here ever waits on a reload.
-  const applyMemberSort = useCallback(
-    (next: SortRule<MemberSortField>[]) => {
-      setMemberSort(next);
-      persistSurface(cardSurface, { sorts: sortRulesToStored(next) });
-    },
-    [persistSurface, cardSurface],
-  );
-
-  const openMemberSortModal = useCallback(() => {
-    setShowMemberSortModal(true);
-    if (eventPrefGroups === null) {
-      membersApi
-        .filterOptions(tournamentId)
-        .then((options) => setEventPrefGroups(options.event_preferences))
-        .catch(() => setEventPrefGroups([]));
-    }
-  }, [eventPrefGroups, tournamentId]);
-
-  const memberSortFields = useMemo(
-    () => memberSortOptions(catalog?.columns ?? [], eventPrefGroups ?? []),
-    [catalog, eventPrefGroups],
   );
 
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
@@ -643,14 +514,6 @@ export default function AssignmentsPage() {
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows]);
 
   const eventFilterActive = isEventsFilterActive(eventFilters);
-  // Against the tab's defaults, not against nothing: the belt is *always*
-  // narrowed to the day being staffed, so isFilterActive would light the
-  // clear button on every tab from the first render and offer to undo a
-  // state the button itself hands back.
-  const memberFilterActive = !sameFilterState(memberFilters, memberFilterDefaults);
-  // Same rule for the cards: off-default is what the control reports, and on
-  // a track tab the default already hides every other day's slices.
-  const memberDisplayActive = !sameMemberDisplay(memberDisplay, memberDisplayDefaults);
   const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT);
 
   // Full objects, not shifts derived from them — a cosmetic track (Test
@@ -703,46 +566,21 @@ export default function AssignmentsPage() {
     );
   }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack]);
 
-  // Members matching the filters, from the same server filter the members
-  // page uses — a client copy drifted. Re-read after writes so the assigned
-  // filter follows a drag. null = no filters set, so everyone passes.
-  const filtersActive = canView && Object.keys(membersFilterParams(memberFilters)).length > 0;
-  const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null);
-  // Dropped as filters clear, so setting new ones doesn't briefly show the old matches.
-  if (!filtersActive && filterMatchIds !== null) setFilterMatchIds(null);
-  useEffect(() => {
-    const filters = membersFilterParams(memberFilters);
-    if (!canView || Object.keys(filters).length === 0) return;
-    let current = true;
-    membersApi
-      .list(tournamentId, { fields: [], filters })
-      .then((data) => {
-        if (current) setFilterMatchIds(new Set(data.map((m) => m.id)));
-      })
-      .catch(() => {
-        if (current) setFilterMatchIds(null);
-      });
-    return () => {
-      current = false;
-    };
-  }, [tournamentId, canView, memberFilters, boardWriteVersion, refreshKey]);
-
-  const belt = useMemo(() => {
-    const text = memberQuery.trim().toLowerCase();
-
-    const matching = members.filter((member) => {
-      if (
-        text &&
-        !fullName(member.user ?? { first_name: null, last_name: null })
-          .toLowerCase()
-          .includes(text)
-      )
-        return false;
-      if (filterMatchIds && !filterMatchIds.has(member.id)) return false;
-      return true;
-    });
-    return sortRows(matching, memberSort, memberSortValue, memberSortTiebreak);
-  }, [filterMatchIds, members, memberQuery, memberSort]);
+  const {
+    belt,
+    headerActions: beltHeaderActions,
+    renderList: renderBelt,
+    modals: beltModals,
+  } = useMemberBelt({
+    tournamentId,
+    enabled: canView,
+    surface: ASSIGNMENT_CARD_SURFACE,
+    tracks,
+    activeTrackId,
+    members,
+    refetchKey: `${boardWriteVersion}:${refreshKey}`,
+    roleCatalog,
+  });
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>();
@@ -1326,90 +1164,8 @@ export default function AssignmentsPage() {
       <div style={{ display: "flex", height: "100%" }}>
         {/* No onClose: the belt is the only way onto the board, so a control
             that hides it would leave the page unable to do its one job. */}
-        <DockedPanel
-          width={BELT_PANEL_WIDTH}
-          headerActions={
-            <>
-              <DisplayButton
-                size="sm"
-                iconOnly
-                label="Configure member cards"
-                active={memberDisplayActive}
-                onOpen={() => setShowMemberDisplayModal(true)}
-                onReset={() => applyMemberDisplay(memberDisplayDefaults)}
-              />
-              <FilterButton
-                size="sm"
-                iconOnly
-                label="Filter members"
-                active={memberFilterActive}
-                onOpen={() => setShowMemberFilterModal(true)}
-                // Back to the tab's own filters, not to nothing: this tab's
-                // unfiltered state *is* the day it is staffing.
-                onClear={() => applyMemberFilters(memberFilterDefaults)}
-              />
-              <SortButton
-                size="sm"
-                iconOnly
-                label="Sort members"
-                active={!sameSortRules(memberSort, DEFAULT_BELT_SORT)}
-                onOpen={openMemberSortModal}
-                onReset={() => applyMemberSort(DEFAULT_BELT_SORT)}
-              />
-            </>
-          }
-        >
-          <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            {/* secondary = white. primary is the same light grey as the page
-                background, which would make the field disappear into it. */}
-            <Input
-              value={memberQuery}
-              onChange={(e) => setMemberQuery(e.target.value)}
-              onClear={() => setMemberQuery("")}
-              placeholder="Search members"
-              icon={<IconSearch />}
-              size="md"
-              variant="secondary"
-              font="sans"
-              fullWidth
-            />
-            <span className={table.headerLabel}>
-              Members — {belt.length}/{members.length}
-            </span>
-
-            {belt.length === 0 ? (
-              <EmptyState
-                icon={<IconUser size={24} />}
-                title={memberQuery || memberFilterActive ? "No members match" : "No members yet"}
-                description={memberQuery || memberFilterActive ? "Try a wider filter." : undefined}
-                action={
-                  memberQuery || memberFilterActive ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setMemberQuery("");
-                        applyMemberFilters(memberFilterDefaults);
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              belt.map((member) => (
-                <MemberCard
-                  key={member.id}
-                  member={member}
-                  selected={focusedId === member.id}
-                  display={memberDisplay}
-                  allShifts={allShifts}
-                  onOpen={openMemberPanel}
-                />
-              ))
-            )}
-          </div>
+        <DockedPanel width={BELT_PANEL_WIDTH} headerActions={beltHeaderActions}>
+          {renderBelt({ focusedId, allShifts, onOpen: openMemberPanel })}
         </DockedPanel>
 
         {/* The stack itself: one box the width of the widest panel, with
@@ -1454,21 +1210,10 @@ export default function AssignmentsPage() {
     visibleEvents,
     openEventPanel,
     belt,
-    members,
     allShifts,
-    memberQuery,
-    memberFilters,
-    memberFilterDefaults,
+    beltHeaderActions,
+    renderBelt,
     panelAssignmentsVersion,
-    memberFilterActive,
-    memberDisplay,
-    memberDisplayActive,
-    memberDisplayDefaults,
-    applyMemberDisplay,
-    applyMemberFilters,
-    memberSort,
-    applyMemberSort,
-    openMemberSortModal,
     canonicalEvents,
     buildings,
     tracks,
@@ -1532,6 +1277,9 @@ export default function AssignmentsPage() {
       name: eventName(event),
       division: event.division,
       event_type: event.event_type,
+      format: event.format,
+      has_impound: event.has_impound,
+      has_self_schedule: event.has_self_schedule,
       shifts: event.shifts,
     };
     const shiftFor = (id: number | null) =>
@@ -1705,11 +1453,7 @@ export default function AssignmentsPage() {
   });
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canView) {
@@ -1728,11 +1472,7 @@ export default function AssignmentsPage() {
   }
 
   if (events === null) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -1883,43 +1623,7 @@ export default function AssignmentsPage() {
           onClose={() => setShowEventSortModal(false)}
         />
       )}
-      {/* No `options` — the roster's own modal fetches the real tournament's
-          filter options itself when it isn't handed pre-built ones. */}
-      {showMemberFilterModal && (
-        <MembersFilterModal
-          tournamentId={tournamentId}
-          roleOptions={roleCatalog.map((r) => ({ value: String(r.id), label: r.label }))}
-          filters={memberFilters}
-          defaults={memberFilterDefaults}
-          onApply={applyMemberFilters}
-          onClose={() => setShowMemberFilterModal(false)}
-        />
-      )}
-      {showMemberDisplayModal && (
-        <MemberDisplayModal
-          display={memberDisplay}
-          defaults={memberDisplayDefaults}
-          tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
-          // "form_field:{id}" in the catalog; the card hides by the bare id.
-          customFields={(catalog?.custom_fields ?? []).map((f) => ({
-            id: f.key.split(":")[1],
-            label: f.label,
-          }))}
-          onApply={applyMemberDisplay}
-          onClose={() => setShowMemberDisplayModal(false)}
-        />
-      )}
-      {showMemberSortModal && (
-        <SortModal
-          title="Sort members"
-          fields={memberSortFields}
-          rules={memberSort}
-          defaults={DEFAULT_BELT_SORT}
-          tiebreakLabel={MEMBER_SORT_TIEBREAK}
-          onApply={(next) => applyMemberSort(next as SortRule<MemberSortField>[])}
-          onClose={() => setShowMemberSortModal(false)}
-        />
-      )}
+      {beltModals}
       {pendingRoleChange && (
         <ConfirmModal
           title="Change default role"

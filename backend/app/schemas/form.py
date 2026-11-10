@@ -30,13 +30,18 @@ def _unique_option_fields(options: list) -> list:
     groups. Two options grouping the same entities are redundant, not
     ambiguous — and requiring them to differ would reject the ordinary
     in-progress state where several options have nothing picked yet and are
-    all still empty."""
+    all still empty.
+
+    An Other option's value is never stored as an answer (the respondent's
+    text is), so it's left out of the value check. At most one may be live."""
     seen_ids, seen_values = set(), set()
+    if sum(1 for o in options if o.is_other and not o.is_archived) > 1:
+        raise ValueError("a question can have only one Other option")
     for option in options:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        if isinstance(option.value, str):
+        if isinstance(option.value, str) and not option.is_other:
             if option.value in seen_values:
                 raise ValueError(f"duplicate option value '{option.value}'")
             seen_values.add(option.value)
@@ -93,6 +98,8 @@ class PlainOption(BaseModel):
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
+    # The respondent types their own answer; see snapshot_answer_value.
+    is_other: bool = False
 
 
 class BranchingOption(BaseModel):
@@ -104,6 +111,7 @@ class BranchingOption(BaseModel):
     value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
+    is_other: bool = False
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
 
@@ -129,6 +137,7 @@ class SingleSelectRadioConfig(BaseModel):
     # a style choice), so this doesn't exist on that config.
     display_style: Literal["buttons", "list"] = "list"
     track_status_enabled: bool = False
+    show_shift_times: bool = True
     options: list[BranchingOption]
 
     @field_validator("options")
@@ -153,6 +162,7 @@ class MultiSelectCheckboxConfig(BaseModel):
     required: bool
     display_style: Literal["buttons", "list"] = "list"
     track_status_enabled: bool = False
+    show_shift_times: bool = True
     options: list[PlainOption]
 
     @field_validator("options")
@@ -177,6 +187,8 @@ class RankedChoiceConfig(BaseModel):
     def _ranks_within_options(self):
         if self.ranks > len(self.options):
             raise ValueError("ranks cannot exceed the number of options")
+        if any(option.is_other for option in self.options):
+            raise ValueError("ranked_choice does not support an Other option")
         return self
 
 
@@ -241,13 +253,14 @@ class BulkFieldsUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class PrerequisiteIdMatch(BaseModel):
-    """A required set of IDs and whether the member needs any or all of it."""
+class RolePrerequisite(BaseModel):
+    """Passes when the member holds any (or all) of `ids`; `inverse` flips the result."""
 
     model_config = ConfigDict(extra="forbid")
 
-    ids: list[int]
+    ids: list[int] = Field(min_length=1)
     match: Literal["any", "all"] = "any"
+    inverse: bool = False
 
     @field_validator("ids")
     @classmethod
@@ -259,30 +272,12 @@ class PrerequisiteIdMatch(BaseModel):
         return values
 
 
-class AvailabilityPrerequisite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    shift_ids: list[int]
-    match: Literal["any", "all"] = "any"
-
-    @field_validator("shift_ids")
-    @classmethod
-    def _positive_unique_shift_ids(cls, values: list[int]) -> list[int]:
-        if any(value <= 0 for value in values):
-            raise ValueError("shift_ids must contain positive integers")
-        if len(values) != len(set(values)):
-            raise ValueError("shift_ids must not contain duplicates")
-        return values
-
-
 class TournamentFormPrerequisites(BaseModel):
-    """Optional conditions a member must all satisfy to access a standard form."""
+    """Role conditions a member must all pass to see and answer a tournament form."""
 
     model_config = ConfigDict(extra="forbid")
 
-    onboarding_complete: bool = False
-    roles: PrerequisiteIdMatch | None = None
-    availability: AvailabilityPrerequisite | None = None
+    roles: list[RolePrerequisite] = []
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +303,8 @@ class FormRead(BaseModel):
     updated_at: datetime
     response_count: int = 0
     prerequisites: TournamentFormPrerequisites | None = None
+    # Null when the form isn't an onboarding step.
+    onboarding_order: int | None = None
     fields: list[FormFieldRead] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -336,8 +333,40 @@ class FormListRead(BaseModel):
     updated_at: datetime
     response_count: int = 0
     prerequisites: TournamentFormPrerequisites | None = None
+    # Null when the form isn't an onboarding step.
+    onboarding_order: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FieldKeyFormRef(BaseModel):
+    id: str
+    name: str
+
+
+class FieldKeyUsageRead(BaseModel):
+    """A key live on one or more of a tournament's forms."""
+
+    field_key: str
+    forms: list[FieldKeyFormRef]
+
+
+class FlowStepRead(BaseModel):
+    form_id: str
+    name: str
+    status: Literal["draft", "published", "archived"]
+    completed: bool
+    # Onboarding: on the member's path. Other forms: their roles pass the prerequisites.
+    applies: bool
+
+
+class MemberFormFlowRead(BaseModel):
+    """One member's forms as a manager previews them."""
+
+    exempt_from_onboarding: bool
+    held_to_onboarding: bool
+    onboarding: list[FlowStepRead]
+    forms: list[FlowStepRead]
 
 
 class MemberFormRead(BaseModel):
@@ -382,10 +411,6 @@ class FormUpdate(BaseModel):
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
     allow_response_edits: bool | None = None
-
-
-class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
-    """Replacement payload for a standard tournament form's prerequisites."""
 
 
 # ---------------------------------------------------------------------------

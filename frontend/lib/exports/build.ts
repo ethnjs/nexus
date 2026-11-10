@@ -121,9 +121,10 @@ export function buildExportTable(
   ctx: ExportContext,
 ): ExportTable {
   // Stale or wrong-row-type columns drop out rather than erroring.
+  const keys = new Set(spec.columns.map((c) => c.key));
   const resolved = spec.columns
     .map((c) => {
-      const column = resolveExportColumn(c.key, ctx);
+      const column = resolveExportColumn(c.key, ctx, keys);
       return column && { column, mode: columnMode(column, c.mode) };
     })
     .filter(
@@ -134,14 +135,19 @@ export function buildExportTable(
   const rows = buildExportRows(members, events, spec);
   const values = rows.map((row) => resolved.map(({ column, mode }) => column.value(row, mode)));
 
-  // A spread column is as wide as its longest value across every row.
-  const widths = resolved.map((_, i) =>
-    values.reduce((width, row) => {
-      const value = row[i];
-      return isSpread(value) ? Math.max(width, value.spread.length) : width;
-    }, 0),
-  );
   const spreads = resolved.map((_, i) => values.some((row) => isSpread(row[i])));
+  // A spread column is as wide as its longest value across every row, and at
+  // least one wide, so it keeps its header when every value is empty (no one
+  // assigned yet).
+  const widths = resolved.map((_, i) =>
+    values.reduce(
+      (width, row) => {
+        const value = row[i];
+        return isSpread(value) ? Math.max(width, value.spread.length) : width;
+      },
+      spreads[i] ? 1 : 0,
+    ),
+  );
 
   // host column index -> the partner interleaved into it. A partner whose
   // host isn't in the export spreads on its own.

@@ -12,7 +12,7 @@ import {
 
 import { IconX } from "@/components/ui/Icons";
 
-type InputFont = "sans" | "mono" | "serif";
+export type InputFont = "sans" | "mono" | "serif";
 type InputSize = "xs" | "sm" | "md" | "lg";
 // primary -- light gray; secondary -- white
 type InputVariant = "primary" | "secondary";
@@ -132,7 +132,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       onClear,
       onChange,
       inputMode,
-      max,
       onFocus,
       onBlur,
       style,
@@ -213,15 +212,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             disabled={locked || disabled}
             inputMode={inputMode ?? (charset === "numeric" ? "numeric" : undefined)}
-            // type="date"/"datetime-local" allow years up to 6 digits by spec, which breaks
-            // any lexicographic YYYY-MM-DD string comparison downstream.
-            max={
-              props.type === "date"
-                ? (max ?? "9999-12-31")
-                : props.type === "datetime-local"
-                  ? (max ?? "9999-12-31T23:59")
-                  : max
-            }
             onChange={handleChange}
             style={{
               height: sizing.height,

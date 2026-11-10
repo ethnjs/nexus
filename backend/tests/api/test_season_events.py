@@ -1,6 +1,8 @@
 """Tests for /admin/season-events endpoints (SeasonEvent model) and the
 /tournaments/{tournament_id}/events/load-defaults bulk-load action."""
 
+import pytest
+
 from app.models.models import SeasonEvent
 from tests.conftest import login
 
@@ -70,6 +72,86 @@ def test_list_season_events_filter_by_multiple_divisions(
     assert ids == {e_b.id, e_c.id}
 
 
+def test_create_season_event_with_format_and_flags(client, admin_user, event):
+    _login_admin(client)
+    response = _make_season_event(
+        client, event_id=event.id, format="build", has_impound=True, has_self_schedule=True
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["format"] == "build"
+    assert data["has_impound"] is True
+    assert data["has_self_schedule"] is True
+
+
+def test_season_event_format_defaults_unset(client, admin_user, event):
+    _login_admin(client)
+    data = _make_season_event(client, event_id=event.id).json()
+    assert data["format"] is None
+    assert data["has_impound"] is False
+    assert data["has_self_schedule"] is False
+
+
+def test_season_event_rejects_unknown_format(client, admin_user, event):
+    _login_admin(client)
+    assert _make_season_event(client, event_id=event.id, format="lab").status_code == 422
+
+
+def test_update_season_event_clears_format(client, admin_user, event):
+    _login_admin(client)
+    created = _make_season_event(client, event_id=event.id, format="test").json()
+    response = client.patch(f"/admin/season-events/{created['id']}/", json={"format": None})
+    assert response.status_code == 200
+    assert response.json()["format"] is None
+
+
+@pytest.mark.parametrize("field", ["year", "division", "is_active", "has_impound"])
+def test_update_season_event_rejects_null(client, admin_user, event, field):
+    _login_admin(client)
+    created = _make_season_event(client, event_id=event.id).json()
+    response = client.patch(f"/admin/season-events/{created['id']}/", json={field: None})
+    assert response.status_code == 422
+
+
+def test_update_season_event_syncs_other_divisions(client, admin_user, event):
+    _login_admin(client)
+    b = _make_season_event(client, event_id=event.id, division="B").json()
+    c = _make_season_event(client, event_id=event.id, division="C").json()
+    client.patch(f"/admin/season-events/{b['id']}/", json={"format": "build", "has_impound": True})
+
+    rows = {r["id"]: r for r in client.get("/season-events/", params={"year": 2026}).json()}
+    assert rows[c["id"]]["format"] == "build"
+    assert rows[c["id"]]["has_impound"] is True
+
+
+def test_update_season_event_leaves_other_years_alone(client, admin_user, event):
+    _login_admin(client)
+    this_year = _make_season_event(client, event_id=event.id, year=2026).json()
+    other_year = _make_season_event(client, event_id=event.id, year=2027).json()
+    client.patch(f"/admin/season-events/{this_year['id']}/", json={"format": "build"})
+
+    [row] = client.get("/season-events/", params={"year": 2027}).json()
+    assert row["id"] == other_year["id"]
+    assert row["format"] is None
+
+
+def test_create_season_event_takes_existing_divisions_values(client, admin_user, event):
+    _login_admin(client)
+    _make_season_event(client, event_id=event.id, division="B", format="hybrid", has_impound=True)
+    c = _make_season_event(client, event_id=event.id, division="C").json()
+    assert c["format"] == "hybrid"
+    assert c["has_impound"] is True
+
+
+def test_create_season_event_with_values_updates_existing_divisions(client, admin_user, event):
+    _login_admin(client)
+    b = _make_season_event(client, event_id=event.id, division="B", format="test").json()
+    _make_season_event(client, event_id=event.id, division="C", format="build")
+
+    rows = {r["id"]: r for r in client.get("/season-events/", params={"year": 2026}).json()}
+    assert rows[b["id"]]["format"] == "build"
+
+
 def test_update_season_event_toggle_active(client, admin_user, event):
     _login_admin(client)
     created = _make_season_event(client, event_id=event.id, is_active=False).json()
@@ -109,8 +191,12 @@ def test_load_defaults_only_pulls_supported_divisions(
     e_a = event_factory(event_category, name="Elementary Event")
     db.add_all(
         [
-            SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=True),
-            SeasonEvent(event_id=e_a.id, year=2026, division="A", is_active=True),
+            SeasonEvent(
+                event_id=e_c.id, year=td_tournament.season_year, division="C", is_active=True
+            ),
+            SeasonEvent(
+                event_id=e_a.id, year=td_tournament.season_year, division="A", is_active=True
+            ),
         ]
     )
     db.commit()
@@ -128,7 +214,9 @@ def test_load_defaults_skips_already_loaded(
     client, admin_user, td_user, td_tournament, db, event_factory, event_category
 ):
     e_c = event_factory(event_category, name="Boomilever")
-    db.add(SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=True))
+    db.add(
+        SeasonEvent(event_id=e_c.id, year=td_tournament.season_year, division="C", is_active=True)
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
@@ -153,13 +241,71 @@ def test_load_defaults_ignores_inactive_season_events(
     client, td_user, td_tournament, db, event_factory, event_category
 ):
     e_c = event_factory(event_category, name="Boomilever")
-    db.add(SeasonEvent(event_id=e_c.id, year=2026, division="C", is_active=False))
+    db.add(
+        SeasonEvent(event_id=e_c.id, year=td_tournament.season_year, division="C", is_active=False)
+    )
     db.commit()
 
     login(client, "td@test.com", "tdpass")
     response = client.post(f"/tournaments/{td_tournament.id}/events/load-defaults/")
     assert response.status_code == 201
     assert response.json() == {"created": [], "skipped": []}
+
+
+def test_load_defaults_only_pulls_the_tournaments_season(
+    client, td_user, td_tournament, db, event_factory, event_category
+):
+    e_now = event_factory(event_category, name="Boomilever")
+    e_old = event_factory(event_category, name="Hovercraft")
+    season = td_tournament.season_year
+    db.add_all(
+        [
+            SeasonEvent(event_id=e_now.id, year=season, division="C", is_active=True),
+            SeasonEvent(event_id=e_old.id, year=season - 1, division="C", is_active=True),
+        ]
+    )
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/events/load-defaults/")
+    assert [e["event_id"] for e in response.json()["created"]] == [e_now.id]
+
+
+def test_load_defaults_copies_format_and_flags(
+    client, td_user, td_tournament, db, event_factory, event_category
+):
+    e_c = event_factory(event_category, name="Boomilever")
+    db.add(
+        SeasonEvent(
+            event_id=e_c.id,
+            year=td_tournament.season_year,
+            division="C",
+            is_active=True,
+            format="build",
+            has_impound=True,
+            has_self_schedule=True,
+        )
+    )
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    [created] = client.post(f"/tournaments/{td_tournament.id}/events/load-defaults/").json()[
+        "created"
+    ]
+    assert created["format"] == "build"
+    assert created["has_impound"] is True
+    assert created["has_self_schedule"] is True
+
+
+def test_load_defaults_needs_tournament_dates(client, td_user, td_tournament, db):
+    for track in td_tournament.tracks:
+        track.start_date = None
+        track.end_date = None
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/events/load-defaults/")
+    assert response.status_code == 422
 
 
 def test_load_defaults_requires_manage_events(client, td_user, other_tournament, db):

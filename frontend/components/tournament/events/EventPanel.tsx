@@ -22,10 +22,13 @@ import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconCalendar, IconEye, IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
+import { Switch } from "@/components/ui/Switch";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
   type CanonicalEvent,
   displayConfigApi,
+  type EventFormat,
   type EventTrackDetail,
   type Role,
   type TournamentBuilding,
@@ -36,9 +39,18 @@ import {
   type TournamentTrack,
   tournamentEventsApi,
 } from "@/lib/api";
-import { ensureBuildingOnTrack } from "@/lib/buildings";
+import { ensureBuildingOnTrack, ensureRooms } from "@/lib/buildings";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import {
+  formatOptions,
+  NO_FORMAT,
+  NO_SEASON_DEFAULTS,
+  SEASON_FIELDS,
+  type SeasonDefaults,
+  seasonDefaultsFor,
+  useSeasonEvents,
+} from "@/lib/seasonDefaults";
 import { formatTime } from "@/lib/timeFormat";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { isSimpleMode, useTournament } from "@/lib/useTournament";
@@ -54,6 +66,9 @@ interface EventDraft {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   // The tracks this event runs on, each with where it happens there and how
   // many of each role it wants. Not derived from its shifts: a cosmetic track
   // (Test Writing) has none by construction, so an event that belongs to one
@@ -72,11 +87,21 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     name: event?.name ?? null,
     division: event?.division ?? null,
     event_type: event?.event_type ?? "standard",
+    format: event?.format ?? null,
+    has_impound: event?.has_impound ?? false,
+    has_self_schedule: event?.has_self_schedule ?? false,
     // Sorted on both levels so the isDirty JSON compare comes out stable —
     // the server has no guaranteed order for either list, and an unsorted
     // round trip would leave an untouched panel reading as dirty.
     trackDetails: (event?.track_details ?? [])
-      .map(toTrackDetailInput)
+      .map((read) => {
+        const { room_ids: _, ...detail } = toTrackDetailInput(read);
+        return {
+          ...detail,
+          building_id: read.building_id,
+          room_names: read.rooms.map((room) => room.name),
+        };
+      })
       .sort((a, b) => a.track_id - b.track_id)
       .map((d) => ({ ...d, needs: [...(d.needs ?? [])].sort((x, y) => x.role_id - y.role_id) })),
   };
@@ -250,51 +275,71 @@ export function EventPanel({
     patch({ eventText: text, event_id: matched ? matched.id : null, name: matched ? null : text });
   }
 
+  function patchSeason(p: Partial<SeasonDefaults>) {
+    patch(p);
+    setSetByTd((prev) => new Set([...prev, ...(Object.keys(p) as (keyof SeasonDefaults)[])]));
+  }
+
   function buildPayload(trackDetails: EventTrackDetail[]): TournamentEventInput {
     return {
       name: draft.event_id ? null : draft.name?.trim() || null,
       division: draft.division,
       event_type: draft.event_type,
+      ...seasonValues,
       event_id: draft.event_id,
       track_details: trackDetails,
     };
   }
 
   /**
-   * Turns every typed-but-uncreated building name into a real building, and
-   * returns track details that point at them by id.
+   * Creates every typed-but-uncreated building and room, and returns the
+   * drafts pointing at those buildings by id alongside the wire details.
    *
-   * See ensureBuildingOnTrack. The same new name on two tracks is created
-   * once and tagged for the second, because `known` grows as it goes.
+   * The same new name on two tracks is created once and reused for the
+   * second, because `known` grows as it goes.
    */
-  async function resolveNewBuildings(details: DraftTrackDetail[]): Promise<EventTrackDetail[]> {
+  async function resolveDraftLocations(
+    details: DraftTrackDetail[],
+  ): Promise<{ drafts: DraftTrackDetail[]; wire: EventTrackDetail[] }> {
     const known = [...buildings];
-    const resolved: EventTrackDetail[] = [];
-    for (const { new_building_name, ...detail } of details) {
-      const name = new_building_name?.trim();
-      if (!name) {
-        resolved.push(detail);
-        continue;
-      }
-      const building = await ensureBuildingOnTrack(tournamentId, name, detail.track_id, known);
+    const remember = (building: TournamentBuilding) => {
       const at = known.findIndex((b) => b.id === building.id);
       if (at >= 0) known[at] = building;
       else known.push(building);
       onBuildingSaved(building);
-      resolved.push({ ...detail, building_id: building.id });
+    };
+    const drafts: DraftTrackDetail[] = [];
+    const wire: EventTrackDetail[] = [];
+    for (const { new_building_name, room_names, ...detail } of details) {
+      let building = known.find((b) => b.id === detail.building_id);
+      const newName = new_building_name?.trim();
+      if (newName) {
+        building = await ensureBuildingOnTrack(tournamentId, newName, detail.track_id, known);
+        remember(building);
+      }
+      let roomIds: number[] = [];
+      if (building && room_names.length > 0) {
+        const ensured = await ensureRooms(tournamentId, building, room_names);
+        if (ensured.building.rooms !== building.rooms) remember(ensured.building);
+        roomIds = ensured.roomIds;
+      }
+      const buildingId = building?.id ?? null;
+      drafts.push({ ...detail, building_id: buildingId, new_building_name: null, room_names });
+      const { building_id: _, ...wireDetail } = detail;
+      wire.push({ ...wireDetail, room_ids: roomIds });
     }
-    return resolved;
+    return { drafts, wire };
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const trackDetails = await resolveNewBuildings(draft.trackDetails);
+      const { drafts, wire } = await resolveDraftLocations(draft.trackDetails);
       // Point the draft at the new rows before the event save, so if that
       // save fails a retry reuses them instead of creating them again.
-      setDraft((d) => ({ ...d, trackDetails }));
-      const payload = buildPayload(trackDetails);
+      setDraft((d) => ({ ...d, trackDetails: drafts }));
+      const payload = buildPayload(wire);
       const saved = isNew
         ? await tournamentEventsApi.create(tournamentId, {
             ...payload,
@@ -308,6 +353,49 @@ export function EventPanel({
       setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Matched on the saved event, since the reset saves straight away. The rest
+  // of the draft is kept, so an unsaved edit elsewhere survives it.
+  const { seasonEvents, error: seasonEventsError } = useSeasonEvents(
+    selectedTournament?.season_year ?? null,
+  );
+  const seasonDefaults = current && seasonEvents ? seasonDefaultsFor(current, seasonEvents) : null;
+
+  // A new event shows its season defaults in the fields the TD hasn't set, and saves what it shows.
+  const [setByTd, setSetByTd] = useState<ReadonlySet<keyof SeasonDefaults>>(new Set());
+  const newEventDefaults = isNew && seasonEvents ? seasonDefaultsFor(draft, seasonEvents) : null;
+  const seasonValues: SeasonDefaults = {
+    format: draft.format,
+    has_impound: draft.has_impound,
+    has_self_schedule: draft.has_self_schedule,
+  };
+  if (newEventDefaults) {
+    for (const field of SEASON_FIELDS) {
+      if (!setByTd.has(field)) Object.assign(seasonValues, { [field]: newEventDefaults[field] });
+    }
+  }
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | undefined>(undefined);
+  async function handleResetToDefaults() {
+    if (!current || !seasonDefaults) return;
+    setResetting(true);
+    setResetError(undefined);
+    try {
+      const updated = await tournamentEventsApi.update(tournamentId, current.id, seasonDefaults);
+      setCurrent(updated);
+      setDraft((d) => ({
+        ...d,
+        format: updated.format,
+        has_impound: updated.has_impound,
+        has_self_schedule: updated.has_self_schedule,
+      }));
+      onSaved(updated);
+    } catch (err) {
+      setResetError(err instanceof ApiError ? err.message : "Failed to reset to defaults.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -403,7 +491,7 @@ export function EventPanel({
         ? draft.trackDetails.filter((d) => d.track_id !== trackId)
         : [
             ...draft.trackDetails,
-            { track_id: trackId, building_id: null, floor: null, rooms: [], needs: [] },
+            { track_id: trackId, building_id: null, floor: null, room_names: [], needs: [] },
           ].sort((a, b) => a.track_id - b.track_id),
     });
   }
@@ -425,6 +513,12 @@ export function EventPanel({
     ? (canonicalEvents.find((e) => e.id === draft.event_id)?.category.name ??
       current?.event?.category.name)
     : undefined;
+  // Set on the catalog by an admin, so read-only here, like the category.
+  const relatedEvents = draft.event_id
+    ? (canonicalEvents.find((e) => e.id === draft.event_id)?.related_events ??
+      current?.event?.related_events ??
+      [])
+    : [];
 
   return (
     <DockedPanel
@@ -499,6 +593,18 @@ export function EventPanel({
             </SettingsRow>
           )}
 
+          {relatedEvents.length > 0 && (
+            <SettingsRow label="Related events">
+              <span style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                {relatedEvents.map((r) => (
+                  <Badge key={r.id} variant="default">
+                    {r.name}
+                  </Badge>
+                ))}
+              </span>
+            </SettingsRow>
+          )}
+
           <SettingsRow label="Division">
             <DivisionButtonGroup
               options={divisions.map((d) => ({ value: d, label: d }))}
@@ -519,6 +625,63 @@ export function EventPanel({
               locked={locked}
             />
           </SettingsRow>
+
+          <SettingsRow
+            label="Format"
+            helper={newEventDefaults ? "Starts from this season's events." : undefined}
+          >
+            <ButtonGroup
+              options={formatOptions()}
+              value={seasonValues.format ?? NO_FORMAT}
+              onChange={(v) => patchSeason({ format: v === NO_FORMAT ? null : (v as EventFormat) })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Impound">
+            <Switch
+              checked={seasonValues.has_impound}
+              onChange={(v) => patchSeason({ has_impound: v })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Self-schedule">
+            <Switch
+              checked={seasonValues.has_self_schedule}
+              onChange={(v) => patchSeason({ has_self_schedule: v })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          {!isNew && !locked && (
+            <SettingsRow
+              label="Season defaults"
+              helper="Saves this season's format, impound and self-schedule to the event."
+            >
+              <Tooltip
+                variant={resetError || seasonEventsError ? "error" : "info"}
+                message={
+                  resetError ??
+                  seasonEventsError ??
+                  (seasonEvents && !seasonDefaults ? NO_SEASON_DEFAULTS : "")
+                }
+                showIcon={false}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={resetting}
+                  disabled={!seasonDefaults || resetting}
+                  onClick={handleResetToDefaults}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  Reset to defaults
+                </Button>
+              </Tooltip>
+            </SettingsRow>
+          )}
 
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no

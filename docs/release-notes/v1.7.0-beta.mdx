@@ -1,0 +1,140 @@
+---
+title: v1.7.0-beta
+description: Sign-in codes, buildings and rooms, zones for runners, form prerequisites, and event formats
+date: 2026-11-09T12:00:00-08:00
+---
+
+You can now map your venue into buildings and rooms, place every event in its rooms, and group rooms into zones for your runners. Forms and onboarding can be gated by roles, events carry their format, impound and self-schedule details, and signing in now asks for a code sent to your email.
+
+## What's new
+
+### Sign in with an emailed code
+
+After you enter your password, NEXUS emails you a 6-digit code to finish signing in. Creating an account works the same way: entering the code confirms your email, so there's no separate verification link anymore.
+
+- If you didn't receive the email, you can ask for a new code after a minute.
+- If you leave the page or reload it, your code still works when you come back.
+- A few sensitive actions ask for a fresh code if you haven't entered one in the last 10 minutes: changing your email, deleting a tournament and transferring ownership.
+
+### Buildings and rooms
+
+The new **Buildings** page, in the tournament sidebar, lays out each competition day's buildings and the rooms in them.
+
+- Add a building with an optional short name, like "RH" for Rowland Hall. Event locations show the short name, so an event reads "RH 210".
+- Paste a list of rooms into a building, or paste a whole room schedule of events and rooms. NEXUS places each event and creates any buildings and rooms that don't exist yet.
+- The day's events sit in a list beside the buildings. Drag an event into a room, or pick one and place it with the keyboard. Drag an event between rooms to move it, or click it to open the event.
+- An event can be in several rooms, as long as they're in one building. Its floor comes from the room number, and you can override it.
+- Use **Select** to delete several rooms at once.
+
+### Zones for runners
+
+The new **Zones** page splits each competition day into areas, such as a wing or a floor, and assigns members to cover them.
+
+- Drag buildings, floors, rooms or single events from the side panel onto a zone, or add them by search. Each zone lists the rooms and events it covers.
+- An event follows its room. Move an event to a room in another zone and it moves zones too.
+- Drag members onto a zone to assign them, and change their role from the zone card. Drag a chip between zones to move it. Drag a chip back to the side panel to remove it.
+- Set the default role members get when they're added to a zone, such as Runner, under **Zone role** in each competition day's track settings.
+
+### Event format, impound and self-schedule
+
+Every event now records its format (test, hybrid or build), whether it has impound, and whether it's self-scheduled. These come from the season's event list when you add events, and you can edit, filter and sort by them on the Events page.
+
+- **Reset to season defaults** in the event panel or mass editor brings an event's details back in line with the season's list.
+- Related events, like Heredity and Designer Genes, show in the event panel. Event preference questions can group related events into one option.
+
+### Tournaments belong to a season
+
+Each tournament now belongs to the school year it runs in. Loading default events pulls only that season's events, and the tournament filters include season shortcuts like "2026–27 season".
+
+### Choose who sees a form
+
+Any tournament form can now require roles. Open a form's menu, choose **Edit prerequisites**, and add conditions like "has the Event Supervisor role" or "has none of these roles". As you build them, you see the list of members who'd get the form.
+
+- Members who don't meet a form's prerequisites don't see it in their forms list, and its link shows a page saying they don't have access.
+- If someone loses a required role, they can no longer open the form or their response to it.
+
+### Onboarding built for each member
+
+Onboarding steps follow prerequisites too. A step a member doesn't qualify for is left off their onboarding, so a judge and a runner can have different steps.
+
+- Turn a form into an onboarding step with **Onboarding step** in its menu. The Onboarding tab is gone.
+- The new **Form flow** button on the Forms page puts the onboarding order and every form's access in one place. Pick a member to see exactly which steps and forms they get.
+- You can add a draft to onboarding ahead of time. Members only need to do it once you publish it.
+- The onboarding ring on the members table counts each member's own steps, and hovering it lists them.
+
+### Reuse a question across forms
+
+Questions on different forms can now share the same key. When they do, the members table, member panel and exports show each member's most recent answer. When you set a question's key, the builder suggests keys already used on your other forms.
+
+### Other, please specify
+
+Multiple choice, dropdown and checkbox questions can have an **Other** option where people type their own answer. On checkbox questions, people can add more than one.
+
+### Add or join a tournament
+
+**Add tournament** on the dashboard now lets you create a tournament or join one by pasting an invite link or code. Tournament and track dates are picked on one calendar.
+
+### Search, filter and sort tournaments
+
+The dashboard's tournament list has search, filters (including a date range) and sorting.
+
+## Improvements
+
+**Forms**
+- Fill out every type of question from the keyboard. Press Enter to continue.
+- Availability questions have a switch to hide shift times.
+- **Edit response** shows a lock and explains why when editing is turned off.
+- The forms list refreshes when you come back to the tab.
+- Each row on the Forms page has buttons for responses and copying the link. Changing a form's status moved into its menu.
+- Change a link's display text, and see its full address, from the link popover.
+- Form flow shows members with their pictures and roles.
+
+**Events and exports**
+- Event exports can include division, type, format, impound, self-schedule and category.
+- An event's location is edited as a table with a row for each day.
+- Table headers stay at the top of the page as you scroll.
+- In tables, a chip column's add button shows when you hover the row, and an empty cell reads "None".
+
+**Members and exports**
+- Add affiliation and year level columns to the members table, sort by them, and filter by them.
+- Filter the members table by onboarding progress: not started, in progress or complete.
+- Exports can include affiliation and year level. Drag to reorder a preset's columns, and add columns from an **Add column** menu.
+- Shift-click to select a range of rows.
+- Search your invites. **Add invite** is now above the table.
+
+**Audit log**
+- Each entry keeps the name and email of the person who made the change, even after they delete their account.
+- Copying or downloading member data from an export is recorded in the audit log.
+
+**Sign in and profile**
+- Sign in, sign up and the other account pages have a new look.
+- Pick your date of birth from a calendar with month and year menus.
+- Links to NEXUS and invite links shared in Discord and other apps show a preview image. An invite's preview shows the tournament's name, days and divisions.
+- Emails include a support contact.
+
+**Admins**
+- Season events can be edited inline, sorted, related to each other, and mass edited or removed in Select mode.
+- Edit a user's email, or create a one-time sign-in code for someone who isn't getting their emails. Less-used user actions moved into a menu.
+- Deleting a user or tournament, changing a user's site role or email, and creating a sign-in code ask for a fresh code.
+- Filter and sort the tournaments and users tables. Users show affiliation and year level.
+- Click a tournament's row to open it in a new tab.
+
+**Other**
+- Pages and panels show one consistent loading spinner.
+- Long titles wrap in pop-up windows instead of running off the edge.
+
+## Fixes
+- Shift times show on availability options that also set a track status.
+- The overview's Forms card shows each form's title instead of its short name.
+- Hiding a track's assignments in the member panel no longer hides its status too.
+- The ranked choice picker stays open for the next choice.
+- Arrow keys keep the highlighted option in view in long menus.
+- Long links in form descriptions wrap instead of running off the page.
+- Members who have finished onboarding are offered **Go to tournament** when they open an invite link again.
+- Changing a step's prerequisites updates who has finished onboarding.
+- Members with no onboarding steps count as complete in the onboarding filter.
+- A start time typed without am or pm is read as morning.
+- The onboarding **Add form** menu can be searched.
+- The account page requires a date of birth.
+- The calendar stays open after you pick a month or year.
+- An email whose staff invite fails to send is listed instead of the whole invite failing.

@@ -7,8 +7,8 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput, type ChipStatus } from "@/components/ui/ChipInput";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
   type Invite,
@@ -217,9 +217,7 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
   if (invites === null) {
     return (
       <Modal title="Invite staff" onClose={onClose}>
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState context="section" />
       </Modal>
     );
   }

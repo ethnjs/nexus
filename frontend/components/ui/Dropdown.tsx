@@ -126,6 +126,12 @@ const BACKGROUND_MAP: Record<"primary" | "secondary" | "transparent", string> = 
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// OptionList mounts its header only once it's positioned, after Dropdown's effects have run,
+// so the search field focuses itself. Module-level so the ref doesn't re-fire every render.
+function focusOnMount(el: HTMLInputElement | null) {
+  el?.focus();
+}
+
 export function Dropdown({
   value,
   onChange,
@@ -159,7 +165,6 @@ export function Dropdown({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
 
   const sizing = SIZE_MAP[size];
   const triggerBg = BACKGROUND_MAP[variant];
@@ -191,11 +196,6 @@ export function Dropdown({
       setSearchQuery("");
     }
   }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focuses only when the menu opens
-  useEffect(() => {
-    if (open && searchable) searchRef.current?.focus();
-  }, [open]);
 
   // ── Close on outside click ────────────────────────────────────────────────
 
@@ -426,7 +426,7 @@ export function Dropdown({
               searchable ? (
                 <div style={{ padding: "6px 8px" }}>
                   <input
-                    ref={searchRef}
+                    ref={focusOnMount}
                     type="text"
                     value={searchQuery}
                     onChange={(e) => {

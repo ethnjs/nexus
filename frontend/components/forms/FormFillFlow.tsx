@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
 import styles from "@/components/forms/FormFlow.module.css";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { FormattedText } from "@/components/ui/FormattedText";
 import type { Form, FormField } from "@/lib/api";
 import { computeWalk } from "@/lib/forms/branching";
+import { hasBlankOther } from "@/lib/forms/otherAnswer";
 import { removedPickedOptions, storedAnswerToInput } from "@/lib/forms/storedAnswer";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
@@ -35,6 +36,7 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
     return undefined;
   }
   if (required && isBlank(value)) return "This question is required.";
+  if (hasBlankOther(value)) return "Type your Other answer.";
   return undefined;
 }
 
@@ -89,6 +91,8 @@ export function FormFillFlow({
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   // Scrolled to in an effect, after the render that reveals its card commits.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // Focused the same way, so the next Tab lands in that question rather than at the page top.
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   // On the final Continue the submit bar slides in and the card drops its button; both have
   // to settle before we can tell whether the bar covers the card.
   const [pendingBarClearanceId, setPendingBarClearanceId] = useState<string | null>(null);
@@ -133,6 +137,14 @@ export function FormFillFlow({
       return next;
     });
   }, [walk]);
+
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    setPendingFocusId(null);
+    document
+      .querySelector<HTMLElement>(`[data-form-field="${pendingFocusId}"]`)
+      ?.focus({ preventScroll: true });
+  }, [pendingFocusId]);
 
   useEffect(() => {
     if (!pendingScrollId) return;
@@ -196,12 +208,47 @@ export function FormFillFlow({
 
   function handleContinue(field: FormField) {
     setAttemptedIds((prev) => new Set(prev).add(field.id));
-    if (fieldErrorMessage(field, answers[field.id])) return;
+    if (fieldErrorMessage(field, answers[field.id])) {
+      setPendingFocusId(field.id);
+      return;
+    }
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
     else setPendingBarClearanceId(field.id);
+    setPendingFocusId(nextField?.id ?? field.id);
   }
+
+  // Enter continues the active question, the same as its button. The listener reads the latest
+  // handler through a ref so it's attached once.
+  const continueActiveRef = useRef<((target: HTMLElement) => void) | null>(null);
+  useEffect(() => {
+    const active = visibleFields[visibleFields.length - 1];
+    continueActiveRef.current =
+      active && !allContinued && !showSuccess
+        ? (target) => {
+            // Focus left in an earlier card doesn't count, so one key can't skip ahead.
+            const card = target.closest<HTMLElement>("[data-form-field]");
+            if (card ? card.dataset.formField === active.id : target === document.body) {
+              handleContinue(active);
+            }
+          }
+        : null;
+  });
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter" || e.shiftKey || e.defaultPrevented || e.isComposing) return;
+      const target = e.target as HTMLElement;
+      // These keep Enter: a new line, a pressed button or link, a pick from an open list.
+      if (target.closest("textarea, button, a, [contenteditable='true'], [data-select-panel]")) {
+        return;
+      }
+      continueActiveRef.current?.(target);
+      if (target instanceof HTMLInputElement) target.blur();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
@@ -235,7 +282,7 @@ export function FormFillFlow({
       className={styles.page}
       // Inline because the submit bar's height is measured at runtime.
       style={{
-        paddingBottom: `${22 + submitBarHeight}px`,
+        paddingBottom: `${120 + submitBarHeight}px`,
         transition: "padding-bottom 0.25s ease",
       }}
     >
@@ -293,6 +340,7 @@ export function FormFillFlow({
             <Card
               key={field.id}
               data-form-field={field.id}
+              tabIndex={-1}
               radius="lg"
               variant={errorMessage ? "danger" : "normal"}
               className={styles.card}

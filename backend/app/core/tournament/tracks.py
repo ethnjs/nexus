@@ -33,11 +33,15 @@ from sqlalchemy.orm import Session
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament.audit import TRACK_PURGED, log_action
 from app.models.models import (
+    TournamentBuilding,
+    TournamentBuildingTrack,
     TournamentEventTrack,
     TournamentMembershipTrackStatus,
     TournamentShift,
     TournamentTrack,
+    TournamentZone,
 )
+from app.schemas.tournament.track import TrackVenueUsage
 
 
 def track_blocking_references(db: Session, tournament_id: int, track_id: int) -> list[str]:
@@ -95,6 +99,57 @@ def track_shift_count(db: Session, track_id: int) -> int:
     to TBD — a shift is bounded by its track's range, and taking the range
     away would leave it bounded by nothing with nothing to re-check it."""
     return db.query(TournamentShift).filter(TournamentShift.track_id == track_id).count()
+
+
+def _buildings_only_on(db: Session, track_id: int) -> list[int]:
+    other_day = (
+        db.query(TournamentBuildingTrack.building_id)
+        .filter(TournamentBuildingTrack.track_id != track_id)
+        .scalar_subquery()
+    )
+    return [
+        building_id
+        for (building_id,) in db.query(TournamentBuildingTrack.building_id).filter(
+            TournamentBuildingTrack.track_id == track_id,
+            TournamentBuildingTrack.building_id.not_in(other_day),
+        )
+    ]
+
+
+def _placements_with_rooms(db: Session, track_id: int):
+    return db.query(TournamentEventTrack).filter(
+        TournamentEventTrack.track_id == track_id, TournamentEventTrack.rooms.any()
+    )
+
+
+def track_venue_usage(db: Session, track_id: int) -> TrackVenueUsage:
+    return TrackVenueUsage(
+        buildings=db.query(TournamentBuildingTrack)
+        .filter(TournamentBuildingTrack.track_id == track_id)
+        .count(),
+        buildings_deleted=len(_buildings_only_on(db, track_id)),
+        placed_events=_placements_with_rooms(db, track_id).count(),
+        zones=db.query(TournamentZone).filter(TournamentZone.track_id == track_id).count(),
+    )
+
+
+def clear_track_venue(db: Session, track_id: int) -> None:
+    """Delete the track's zones, unplace its events from their rooms, and take
+    it off every building, deleting buildings on no other day. Flushes but
+    doesn't commit."""
+    # Zone rules reference the building tags, so the zones go first.
+    for zone in db.query(TournamentZone).filter(TournamentZone.track_id == track_id):
+        db.delete(zone)
+    for placement in _placements_with_rooms(db, track_id):
+        placement.rooms = []
+        placement.floor = None
+    only_here = _buildings_only_on(db, track_id)
+    for building in db.query(TournamentBuilding).filter(TournamentBuilding.id.in_(only_here)):
+        db.delete(building)
+    db.flush()
+    db.query(TournamentBuildingTrack).filter(TournamentBuildingTrack.track_id == track_id).delete(
+        synchronize_session=False
+    )
 
 
 def live_primary_track_count(

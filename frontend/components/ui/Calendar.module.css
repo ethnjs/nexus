@@ -1,0 +1,262 @@
+/*
+ * The calendar inside DatePicker and DateRangePicker: react-day-picker's
+ * markup, styled here through its classNames prop rather than its own
+ * stylesheet, so it takes the app's tokens. The look is shadcn's — rounded
+ * squares, one band per week.
+ */
+
+.shortcut:hover {
+  background: var(--color-accent-subtle);
+}
+
+.root {
+  position: relative;
+  padding: 12px 14px 14px;
+}
+
+.months {
+  display: flex;
+  gap: 20px;
+}
+
+/* Over the captions, its two buttons at the outer edges of the months. */
+.nav {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.navButton {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.navButton:hover {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+.navButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.monthCaption {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captionLabel {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.dropdowns {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.monthGrid {
+  margin-top: 8px;
+  border-collapse: separate;
+  border-spacing: 0 2px;
+}
+
+.weekday {
+  width: 36px;
+  height: 28px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.day {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  text-align: center;
+}
+
+.dayButton {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.dayButton:hover {
+  background: var(--color-accent-subtle);
+}
+
+.dayButton:focus-visible {
+  outline: 2px solid var(--color-border-strong);
+  outline-offset: -2px;
+}
+
+.disabled .dayButton {
+  color: var(--color-text-tertiary);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.disabled .dayButton:hover {
+  background: none;
+}
+
+.outside .dayButton {
+  color: var(--color-text-tertiary);
+}
+
+.today .dayButton {
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+/* The band: square through the middle, rounded at the range's ends and at
+   each week's edges, so a range reads as one bar per row. */
+.rangeMiddle {
+  background: var(--color-accent-subtle);
+}
+
+.rangeMiddle .dayButton {
+  border-radius: 0;
+}
+
+.rangeMiddle:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.rangeMiddle:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.rangeStart {
+  background: var(--color-accent-subtle);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.rangeEnd {
+  background: var(--color-accent-subtle);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.rangeStart.rangeEnd {
+  border-radius: var(--radius-md);
+}
+
+/* DatePicker's pick, or a range's ends. */
+.selected .dayButton,
+.rangeStart .dayButton,
+.rangeEnd .dayButton {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
+
+/* Month changes, driven by DayPicker's `animate`: it slides the old month's
+   weeks out and the new one's in, and fades the captions. The library only
+   cleans up on the exiting caption's animationend, so reduced motion shortens
+   these rather than removing them. */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.weeksBeforeEnter,
+.weeksBeforeExit,
+.weeksAfterEnter,
+.weeksAfterExit,
+.captionEnter,
+.captionExit {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: forwards;
+}
+
+.weeksBeforeEnter {
+  animation-name: slide-in-left;
+}
+
+.weeksBeforeExit {
+  animation-name: slide-out-left;
+}
+
+.weeksAfterEnter {
+  animation-name: slide-in-right;
+}
+
+.weeksAfterExit {
+  animation-name: slide-out-right;
+}
+
+.captionEnter {
+  animation-name: fade-in;
+}
+
+.captionExit {
+  animation-name: fade-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weeksBeforeEnter,
+  .weeksBeforeExit,
+  .weeksAfterEnter,
+  .weeksAfterExit,
+  .captionEnter,
+  .captionExit {
+    animation-duration: 1ms;
+  }
+}

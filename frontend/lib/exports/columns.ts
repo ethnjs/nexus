@@ -1,25 +1,26 @@
-import type {
-  Assignment,
-  DisplayConfigCatalog,
-  ExportColumnMode,
-  ExportRowType,
-  MembershipField,
-  MembershipFull,
-  TournamentEvent,
+import {
+  type Assignment,
+  type DisplayConfigCatalog,
+  EVENT_FORMAT_LABELS,
+  type ExportColumnMode,
+  type ExportRowType,
+  type MembershipField,
+  type MembershipFull,
+  type TournamentEvent,
 } from "@/lib/api";
-import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
+import { eventName, eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import { MULTI_VALUE_SEPARATOR } from "@/lib/exports/output";
 import {
   AVAILABILITY_TRACK_PREFIX,
   EVENT_PREF_PREFIX,
-  FORM_FIELD_PREFIX,
+  FIELD_KEY_PREFIX,
   LUNCH_PREFIX,
   TRACK_PREFIX,
 } from "@/lib/memberColumnKeys";
-import { userName } from "@/lib/personDisplay";
+import { userAffiliation, userName, userYearLevel } from "@/lib/personDisplay";
 
 // The export column registry. Column names are the members table's
-// ("email", "track:3", "form_field:12") plus export-only ones, so a name
+// ("email", "track:3", "field_key:shirt_size") plus export-only ones, so a name
 // means the same thing on both surfaces. Mirrors is_known_export_column.
 
 /** A member and their assignments, trimmed to the export's track and events. */
@@ -182,8 +183,16 @@ function ofEvent(fn: (row: EventRow, mode: ExportColumnMode) => CellValue) {
 
 type FixedDef = Omit<ExportColumn, "key" | "value" | "modes"> & {
   modes?: readonly ColumnModeOption[];
-  value: (ctx: ExportContext) => ExportColumn["value"];
+  /** `keys` are every column in the export, for a column that reads differently beside another. */
+  value: (ctx: ExportContext, keys: ReadonlySet<string>) => ExportColumn["value"];
 };
+
+const eventFixed = (header: string, fn: (row: EventRow) => CellValue): FixedDef => ({
+  header,
+  groups: [],
+  rowTypes: EVENT_ROWS,
+  value: () => ofEvent(fn),
+});
 
 const memberFixed = (
   header: string,
@@ -201,6 +210,12 @@ const FIXED: Record<string, FixedDef> = {
   last_name: memberFixed("Last name", [], (r) => r.member.user.last_name ?? ""),
   email: memberFixed("Email", ["contact"], (r) => r.member.user.email),
   phone: memberFixed("Phone", ["contact"], (r) => r.member.user.phone ?? ""),
+  affiliation: memberFixed(
+    "Affiliation",
+    ["profile"],
+    (r) => userAffiliation(r.member.user, true) ?? "",
+  ),
+  year_level: memberFixed("Year level", ["profile"], (r) => userYearLevel(r.member.user) ?? ""),
   shirt_size: memberFixed("Shirt size", ["profile"], (r) => r.member.user.shirt_size ?? ""),
   dietary_restriction: memberFixed(
     "Dietary restriction",
@@ -219,12 +234,20 @@ const FIXED: Record<string, FixedDef> = {
     unique(r.assignments.map((a) => a.track.name)),
   ),
 
+  // Without its division when the Division column carries it instead.
   event: {
     header: "Event",
     groups: [],
     rowTypes: EVENT_ROWS,
-    value: () => ofEvent((r) => eventNameWithDivision(r.event)),
+    value: (_, keys) =>
+      ofEvent((r) => (keys.has("division") ? eventName(r.event) : eventNameWithDivision(r.event))),
   },
+  division: eventFixed("Division", (r) => r.event.division ?? ""),
+  type: eventFixed("Type", (r) => (r.event.event_type === "trial" ? "Trial" : "Standard")),
+  format: eventFixed("Format", (r) => (r.event.format ? EVENT_FORMAT_LABELS[r.event.format] : "")),
+  impound: eventFixed("Impound", (r) => yesNo(r.event.has_impound)),
+  self_schedule: eventFixed("Self-schedule", (r) => yesNo(r.event.has_self_schedule)),
+  category: eventFixed("Category", (r) => r.event.event?.category.name ?? ""),
   // "Kerckhoff 101, 103" on the export's track; every track's, when none is picked.
   location: {
     header: "Location",
@@ -336,11 +359,11 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     });
   }
 
-  if (key.startsWith(FORM_FIELD_PREFIX)) {
+  if (key.startsWith(FIELD_KEY_PREFIX)) {
     if (!label) return null;
-    const fieldId = key.slice(FORM_FIELD_PREFIX.length);
+    const fieldKey = key.slice(FIELD_KEY_PREFIX.length);
     return memberColumn(key, label, ["custom"], (r) => {
-      const answer = (r.member.custom_responses ?? []).find((a) => a.field_id === fieldId);
+      const answer = (r.member.custom_responses ?? []).find((a) => a.field_key === fieldKey);
       if (!answer || answer.value === null || answer.value === undefined) return "";
       // Stored as {"1": option, "2": option}; one column per rank.
       if (answer.question_type === "ranked_choice" && typeof answer.value === "object") {
@@ -394,7 +417,11 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
 
 /** The column behind `key`, or null when it no longer resolves (a deleted
  *  track or form field) — a stale column is skipped, never an error. */
-export function resolveExportColumn(key: string, ctx: ExportContext): ExportColumn | null {
+export function resolveExportColumn(
+  key: string,
+  ctx: ExportContext,
+  keys: ReadonlySet<string> = new Set(),
+): ExportColumn | null {
   const fixed = FIXED[key];
   if (fixed) {
     return {
@@ -403,7 +430,7 @@ export function resolveExportColumn(key: string, ctx: ExportContext): ExportColu
       groups: fixed.groups,
       rowTypes: fixed.rowTypes,
       modes: fixed.modes ?? NO_MODES,
-      value: fixed.value(ctx),
+      value: fixed.value(ctx, keys),
       pairsWith: fixed.pairsWith,
     };
   }
@@ -435,7 +462,21 @@ export function availableExportColumns(
   const lunchTrack = (key: string) => Number(key.slice(LUNCH_PREFIX.length).split(":")[0]);
 
   const groups: { title: string; keys: string[] }[] = [
-    { title: "Event", keys: ["event", "location", "members", "member_emails"] },
+    {
+      title: "Event",
+      keys: [
+        "event",
+        "division",
+        "type",
+        "format",
+        "impound",
+        "self_schedule",
+        "category",
+        "location",
+        "members",
+        "member_emails",
+      ],
+    },
     {
       title: "Member",
       keys: [
@@ -443,6 +484,8 @@ export function availableExportColumns(
         "last_name",
         "email",
         "phone",
+        "affiliation",
+        "year_level",
         "shirt_size",
         "dietary_restriction",
         "roles",

@@ -7,15 +7,22 @@ import { useIsClient } from "@/lib/useIsClient";
 
 export type ToastVariant = "success" | "error";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   message: string;
   variant: ToastVariant;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  /** Shows a toast, auto-dismissing after ~4s (or dismiss manually via the x). */
-  show: (message: string, variant?: ToastVariant) => void;
+  /** Shows a toast, auto-dismissing after ~4s (or dismiss manually via the x).
+   *  An action button dismisses the toast when clicked. */
+  show: (message: string, variant?: ToastVariant, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -46,9 +53,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const show = useCallback(
-    (message: string, variant: ToastVariant = "success") => {
+    (message: string, variant: ToastVariant = "success", action?: ToastAction) => {
       const id = nextId.current++;
-      setToasts((prev) => [...prev, { id, message, variant }]);
+      setToasts((prev) => [...prev, { id, message, variant, action }]);
       setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
     },
     [dismiss],
@@ -99,6 +106,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 >
                   {styles.icon}
                   <span style={{ flex: 1 }}>{t.message}</span>
+                  {t.action && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dismiss(t.id);
+                        t.action?.onClick();
+                      }}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        padding: "2px 4px",
+                        color: "inherit",
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {t.action.label}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => dismiss(t.id)}

@@ -1,5 +1,5 @@
 import type { SortFieldOption } from "@/components/ui/SortModal";
-import type { Assignment, TournamentEvent } from "@/lib/api";
+import type { Assignment, EventFormat, TournamentEvent } from "@/lib/api";
 import { unfilledCount } from "@/lib/assignments/staffing";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import type { SortRule, SortValue } from "@/lib/sorting";
@@ -14,6 +14,9 @@ export const EVENT_SORT_FIELDS = [
   "staffing",
   "category",
   "location",
+  "format",
+  "impound",
+  "self_schedule",
 ] as const;
 export type EventSortField = (typeof EVENT_SORT_FIELDS)[number];
 
@@ -36,7 +39,18 @@ export const EVENT_SORT_OPTIONS: SortFieldOption[] = [
   },
   { value: "category", label: "Category", ascLabel: "A → Z", descLabel: "Z → A" },
   { value: "location", label: "Location", ascLabel: "A → Z", descLabel: "Z → A" },
+  { value: "format", label: "Format", ascLabel: "Test → Build", descLabel: "Build → Test" },
+  { value: "impound", label: "Impound", ascLabel: "Impound first", descLabel: "Impound last" },
+  {
+    value: "self_schedule",
+    label: "Self-schedule",
+    ascLabel: "Self-scheduled first",
+    descLabel: "Self-scheduled last",
+  },
 ];
+
+/** Test, hybrid, build: how much of the event is built ahead of time. */
+export const FORMAT_RANK: Record<EventFormat, number> = { test: 0, hybrid: 1, build: 2 };
 
 /** Name A→Z, which is the order you can predict without reading the config. */
 export const DEFAULT_EVENT_SORT: SortRule<EventSortField>[] = [{ field: "name", direction: "asc" }];
@@ -88,6 +102,14 @@ export function eventSortValue(
     // label itself. An event across two buildings sorts under the earlier of
     // them — it has to be filed *somewhere*, and the alternative is a row
     // that moves depending on which of its tracks was listed first.
+    // No format sorts last, like any empty value.
+    case "format":
+      return event.format ? FORMAT_RANK[event.format] : null;
+    // 0 first, so ascending puts the events with the flag on at the top.
+    case "impound":
+      return event.has_impound ? 0 : 1;
+    case "self_schedule":
+      return event.has_self_schedule ? 0 : 1;
     case "location": {
       const labels = event.track_details
         .filter((detail) => showsTrack(detail.track_id))

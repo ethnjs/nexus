@@ -1,5 +1,6 @@
 import { FieldGrid, TextField } from "@/components/profile/PanelField";
 import { SectionHeading } from "@/components/profile/SectionHeading";
+import { formatYearLevel } from "@/lib/personDisplay";
 
 interface EducationCareerUser {
   student_status: "Undergraduate" | "Graduate" | "Non-Student" | null;
@@ -8,19 +9,6 @@ interface EducationCareerUser {
   year_level: number | null;
   graduation_year: number | null;
   employer: string | null;
-}
-
-function formatYearLevel(year: number | null): string | null {
-  if (year === null) return null;
-  const suffix =
-    year % 10 === 1 && year % 100 !== 11
-      ? "st"
-      : year % 10 === 2 && year % 100 !== 12
-        ? "nd"
-        : year % 10 === 3 && year % 100 !== 13
-          ? "rd"
-          : "th";
-  return `${year}${suffix} Year`;
 }
 
 export function EducationCareerSection({

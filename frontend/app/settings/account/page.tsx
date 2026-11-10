@@ -8,11 +8,12 @@ import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconInfo } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, authApi, type EmailPendingChange, type UserMeFull, usersApi } from "@/lib/api";
 import {
@@ -21,6 +22,7 @@ import {
   validateDateOfBirth,
   validatePhone,
 } from "@/lib/auth";
+import { todayLocalDateString } from "@/lib/date";
 import { useAuth } from "@/lib/useAuth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { useStepUp } from "@/lib/useStepUp";
@@ -122,7 +124,7 @@ export default function AccountSettingsPage() {
       return;
     }
 
-    const dobErr = draft.date_of_birth ? validateDateOfBirth(draft.date_of_birth) : null;
+    const dobErr = validateDateOfBirth(draft.date_of_birth);
     if (dobErr) {
       setErrors((e) => ({ ...e, date_of_birth: dobErr }));
       setSaving(false);
@@ -134,7 +136,7 @@ export default function AccountSettingsPage() {
         first_name: draft.first_name,
         last_name: draft.last_name,
         phone: draft.phone,
-        date_of_birth: draft.date_of_birth || null,
+        date_of_birth: draft.date_of_birth,
       });
       setOriginal(updated);
       setDraft(toDraft(updated));
@@ -163,11 +165,7 @@ export default function AccountSettingsPage() {
   }
 
   if (authLoading || (!original && !loadError)) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (loadError || !original || !draft) {
@@ -295,12 +293,14 @@ export default function AccountSettingsPage() {
           }
           last
         >
-          <Input
-            type="date"
+          <DatePicker
+            required
             fullWidth
+            aria-label="Date of birth"
+            max={todayLocalDateString()}
             value={draft.date_of_birth}
-            onChange={(e) => {
-              setDraft((d) => (d ? { ...d, date_of_birth: e.target.value } : d));
+            onChange={(v) => {
+              setDraft((d) => (d ? { ...d, date_of_birth: v } : d));
               setErrors((er) => ({ ...er, date_of_birth: undefined }));
             }}
             error={errors.date_of_birth}

@@ -11,8 +11,8 @@ import { TournamentHeaderCard } from "@/components/tournament/overview/Tournamen
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconLock } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
-import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, formsApi, type MemberForm } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
@@ -59,9 +59,7 @@ export default function OverviewPage() {
           <SetupChecklistWidget tournamentId={tournamentId} />
           <MemberSummaryCard tournamentId={Number(tournamentId)} />
           {forms === null ? (
-            <div style={{ padding: "20px" }}>
-              <Spinner size="sm" />
-            </div>
+            <LoadingState context="section" />
           ) : forms.length > 0 ? (
             // Two columns wide, so form names fit beside the status badge, Locked and Edit.
             <OverviewCard title="Forms" data-min-width={560}>
@@ -87,7 +85,8 @@ export default function OverviewPage() {
                         cursor: form.completed ? "pointer" : "default",
                       }}
                     >
-                      <div className={styles.formName}>{form.name}</div>
+                      {/* `name` is the TDs' short name; members see the title. */}
+                      <div className={styles.formName}>{form.title || "Untitled form"}</div>
                       <Badge variant={form.completed ? "confirmed" : "default"}>
                         {form.completed ? "Completed" : "To do"}
                       </Badge>

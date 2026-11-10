@@ -2,7 +2,9 @@
 One-time script: populate season_events for the 2027 season (Division B + C).
 
 Ensures canon events/categories are seeded (adds "Botany"), then upserts
-season_events rows for 2027 marked is_active=True.
+season_events rows for 2027 marked is_active=True, with each event's format,
+impound and self-schedule from EVENT_DETAILS. Safe to re-run: it overwrites
+those fields and is_active on rows that already exist.
 
 Run directly:
     python -m app.db.seed_season_events_2027
@@ -68,6 +70,43 @@ DIVISION_C_EVENTS = [
 ]
 
 
+# (format, has_impound, has_self_schedule), shared by an event's B and C rows.
+EVENT_DETAILS: dict[str, tuple[str, bool, bool]] = {
+    "Anatomy and Physiology": ("test", False, False),
+    "Astronomy": ("test", False, False),
+    "Boomilever": ("build", True, True),
+    "Botany": ("test", False, False),
+    "Chemistry Lab": ("hybrid", False, False),
+    "Circuit Lab": ("hybrid", False, False),
+    "Codebusters": ("test", False, False),
+    "Crime Busters": ("hybrid", False, False),
+    "Designer Genes": ("test", False, False),
+    "Disease Detectives": ("test", False, False),
+    "Dynamic Planet": ("test", False, False),
+    "Elastic Launched Glider": ("build", False, True),
+    "Electric Vehicle": ("build", True, True),
+    "Engineering CAD": ("test", False, False),
+    "Experimental Design": ("test", False, False),
+    "Food Science": ("hybrid", False, False),
+    "Forensics": ("hybrid", False, False),
+    "Heredity": ("test", False, False),
+    "Hovercraft": ("build", True, True),
+    "Meteorology": ("test", False, False),
+    "Mission Possible": ("build", True, True),
+    "Ping-Pong Parachute": ("build", True, True),
+    "Protein Modeling": ("hybrid", True, False),
+    "Remote Sensing": ("test", False, False),
+    "Rocks and Minerals": ("test", False, False),
+    "Roller Coaster": ("build", True, True),
+    "Scrambler": ("build", True, True),
+    "Solar System": ("test", False, False),
+    "Thermodynamics": ("hybrid", True, False),
+    "Water Quality": ("hybrid", False, False),
+    "Wright Stuff": ("build", False, True),
+    "Write It Do It": ("test", False, False),
+}
+
+
 def seed_season_events_2027(db: Session) -> None:
     from app.models.models import Event, SeasonEvent
 
@@ -81,14 +120,26 @@ def seed_season_events_2027(db: Session) -> None:
             event_id = event_id_by_name.get(name)
             if event_id is None:
                 raise ValueError(f"Event {name!r} not found in canon events table")
+            format_, has_impound, has_self_schedule = EVENT_DETAILS[name]
             rows.append(
-                {"event_id": event_id, "year": YEAR, "division": division, "is_active": True}
+                {
+                    "event_id": event_id,
+                    "year": YEAR,
+                    "division": division,
+                    "is_active": True,
+                    "format": format_,
+                    "has_impound": has_impound,
+                    "has_self_schedule": has_self_schedule,
+                }
             )
 
     stmt = insert(SeasonEvent).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=["event_id", "year", "division"],
-        set_={"is_active": stmt.excluded.is_active},
+        set_={
+            field: stmt.excluded[field]
+            for field in ("is_active", "format", "has_impound", "has_self_schedule")
+        },
     )
     db.execute(stmt)
     db.commit()

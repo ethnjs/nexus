@@ -2,17 +2,18 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 import { safeRedirectPath, validateEmail } from "@/lib/auth";
 import { loadOpenChallenge, saveChallenge } from "@/lib/codeChallengeStore";
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <SignInContent />
     </Suspense>
   );
@@ -28,7 +29,6 @@ function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = safeRedirectPath(searchParams.get("redirect"));
-  const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : "/sign-up";
   const storageKey = `signInChallenge:${email.trim().toLowerCase()}`;
 
   async function handleSubmit(e: React.SyntheticEvent) {
@@ -70,29 +70,14 @@ function SignInContent() {
     }
   }
 
-  const heading = (
-    <h2
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "28px",
-        fontWeight: "700",
-        color: "var(--color-text-primary)",
-        margin: "0 0 30px",
-        textAlign: "center",
-      }}
-    >
-      {challenge ? "Check your email" : "Sign In"}
-    </h2>
-  );
-
   if (challenge) {
     return (
       <div style={{ width: "100%" }}>
-        {heading}
+        <AuthHeading title="Check your email" />
         <CodeEntry
           challenge={challenge}
           email={email}
-          submitLabel="Sign In"
+          submitLabel="Sign in"
           onClosed={() => saveChallenge(storageKey, null)}
           onSubmit={async (challengeToken, code) => {
             await authApi.verifyCode(challengeToken, code);
@@ -119,14 +104,15 @@ function SignInContent() {
 
   return (
     <div style={{ width: "100%" }}>
-      {heading}
+      <AuthHeading title="Welcome back" subtitle="Sign in to your account." />
 
       <form
         onSubmit={handleSubmit}
         noValidate
-        style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+        style={{ display: "flex", flexDirection: "column", gap: "16px" }}
       >
         <Input
+          font="sans"
           label="Email"
           type="email"
           placeholder="you@email.com"
@@ -136,11 +122,15 @@ function SignInContent() {
             setErrors((er) => ({ ...er, email: undefined }));
           }}
           autoComplete="email"
+          autoFocus
           error={errors.email}
           fullWidth
         />
-        <div>
+        {/* The link comes after the field in the DOM, so Tab reaches the
+            password first, and is placed back onto the label row. */}
+        <div style={{ position: "relative" }}>
           <Input
+            font="sans"
             label="Password"
             type="password"
             placeholder="••••••••"
@@ -153,58 +143,38 @@ function SignInContent() {
             error={errors.password}
             fullWidth
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
-            <button
-              type="button"
-              onClick={() => router.push("/forgot-password")}
-              className="link-subtle"
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-              }}
-            >
-              Forgot password?
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/forgot-password")}
+            className="link-subtle"
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              fontFamily: "var(--font-sans)",
+              fontSize: "12px",
+              lineHeight: "16px",
+            }}
+          >
+            Forgot password?
+          </button>
         </div>
-        <Button type="submit" loading={loading} fullWidth>
-          Sign In
+        {errors.form && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "14px",
+              color: "var(--color-danger)",
+              margin: 0,
+            }}
+          >
+            {errors.form}
+          </p>
+        )}
+        <Button type="submit" loading={loading} fullWidth style={{ marginTop: "8px" }}>
+          Sign in
         </Button>
-
-        <div>
-          {errors.form && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "14px",
-                color: "var(--color-danger)",
-              }}
-            >
-              {errors.form}
-            </p>
-          )}
-        </div>
       </form>
-
-      <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "13px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          Don&rsquo;t have an account?{" "}
-        </span>
-        <button
-          type="button"
-          onClick={() => router.push(signUpHref)}
-          className="link-subtle"
-          style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}
-        >
-          Sign up
-        </button>
-      </div>
     </div>
   );
 }

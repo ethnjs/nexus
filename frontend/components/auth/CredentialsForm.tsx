@@ -66,25 +66,30 @@ export function CredentialsForm({
     <form
       onSubmit={handleSubmit}
       noValidate
-      style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
     >
       {showEmail && (
         <Input
+          font="sans"
           label="Email"
           type="email"
+          placeholder="you@email.com"
           value={email}
           onChange={(e) => {
             onEmailChange!(e.target.value);
             setErrors((er) => ({ ...er, email: undefined }));
           }}
           autoComplete="email"
+          autoFocus
           error={errors.email}
           fullWidth
         />
       )}
       <Input
+        font="sans"
         label="Password"
         type="password"
+        placeholder="••••••••"
         value={password}
         onChange={(e) => {
           setPassword(e.target.value);
@@ -92,6 +97,7 @@ export function CredentialsForm({
           setErrors((er) => ({ ...er, password: undefined }));
         }}
         autoComplete="new-password"
+        autoFocus={!showEmail}
         error={errors.password}
         fullWidth
       />
@@ -99,8 +105,10 @@ export function CredentialsForm({
       {password && (
         <>
           <Input
+            font="sans"
             label="Confirm Password"
             type="password"
+            placeholder="••••••••"
             value={confirmPassword}
             onChange={(e) => {
               setConfirmPassword(e.target.value);
@@ -115,23 +123,21 @@ export function CredentialsForm({
         </>
       )}
 
-      <Button type="submit" loading={loading} fullWidth>
+      {formError && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-danger)",
+            margin: 0,
+          }}
+        >
+          {formError}
+        </p>
+      )}
+      <Button type="submit" loading={loading} fullWidth style={{ marginTop: "8px" }}>
         {submitLabel}
       </Button>
-
-      <div>
-        {formError && (
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "14px",
-              color: "var(--color-danger)",
-            }}
-          >
-            {formError}
-          </p>
-        )}
-      </div>
     </form>
   );
 }

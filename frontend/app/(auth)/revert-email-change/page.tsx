@@ -2,15 +2,16 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CredentialsForm } from "@/components/auth/CredentialsForm";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, authApi } from "@/lib/api";
 
 export default function RevertEmailChangePage() {
   return (
-    <Suspense fallback={<Spinner size="lg" />}>
+    <Suspense fallback={<LoadingState context="section" />}>
       <RevertEmailChangeContent />
     </Suspense>
   );
@@ -58,32 +59,14 @@ function RevertEmailChangeContent() {
 
   return (
     <div style={{ width: "100%" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "28px",
-          fontWeight: "700",
-          color: "var(--color-text-primary)",
-          margin: "0 0 10px",
-          textAlign: "center",
-        }}
-      >
-        Secure your account
-      </h2>
-
-      {!success && (
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-            color: "var(--color-text-secondary)",
-            margin: "0 0 30px",
-            textAlign: "center",
-          }}
-        >
-          Choose a new password to undo the email change and secure your account.
-        </p>
-      )}
+      <AuthHeading
+        title="Secure your account"
+        subtitle={
+          success
+            ? undefined
+            : "Choose a new password to undo the email change and secure your account."
+        }
+      />
 
       {success ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>

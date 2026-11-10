@@ -3,6 +3,7 @@
 import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconLock, IconX } from "@/components/ui/Icons";
+import table from "@/components/ui/Table.module.css";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 export type ChipStatus = "default" | "warning" | "error";
@@ -36,6 +37,10 @@ interface ChipInputProps {
   font?: "sans" | "mono";
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
   addButton?: ReactNode;
+  /** `addButton` shows only while the row it's in, or this field, is hovered, or it has focus. */
+  addButtonOnHover?: boolean;
+  /** Shown muted in place of chips when there are none and there's no text field, e.g. "None". */
+  emptyLabel?: string;
   /** Given, a "clear" button sits after `addButton` while there is at least
    *  one chip — for a picker whose chips are unticked one at a time, where
    *  starting over otherwise means as many clicks as there are chips. */
@@ -153,6 +158,8 @@ export function ChipInput({
   size = "md",
   font = "sans",
   addButton,
+  addButtonOnHover,
+  emptyLabel,
   onClear,
   renderChipTrailing,
   autoFocus,
@@ -209,6 +216,7 @@ export function ChipInput({
 
   return (
     <div
+      className={addButtonOnHover ? table.revealHost : undefined}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -360,12 +368,25 @@ export function ChipInput({
         {/* `locked` drops it; `disabled` keeps it visible but inert. The
             wrapper is what makes that work for an arbitrary caller-supplied
             node — a Popover trigger has no `disabled` of its own to set. */}
+        {value.length === 0 && emptyLabel && (disableInput || locked) && (
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            {emptyLabel}
+          </span>
+        )}
         {!locked &&
           addButton &&
           (disabled ? (
             <span aria-disabled style={{ display: "flex", opacity: 0.4, pointerEvents: "none" }}>
               {addButton}
             </span>
+          ) : addButtonOnHover ? (
+            <span className={table.revealOnHover}>{addButton}</span>
           ) : (
             addButton
           ))}

@@ -32,6 +32,8 @@ def compute_reachable_field_ids(fields: list[FormField], answers: dict[str, Any]
         next_field: FormField | None = None
         if current.question_type in BRANCHING_QUESTION_TYPES:
             answer = answers.get(current.id)
+            if isinstance(answer, dict):  # an Other pick
+                answer = answer.get("option_id")
             options = (current.config or {}).get("options", [])
             matched = next((o for o in options if o.get("option_id") == answer), None)
             if matched is not None:
@@ -71,6 +73,38 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
         and (field.config or {}).get("required")
         and _is_blank(answers.get(field.id))
     ]
+
+
+OTHER_TEXT_MAX_LENGTH = 500
+OTHER_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown", "multi_select_checkbox"}
+
+
+def invalid_other_answer_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
+    """field_keys whose answer picks an Other option without typed text (or
+    with too much), or sends text for an option that isn't Other."""
+    offenders = []
+    for field in fields:
+        if field.question_type not in OTHER_QUESTION_TYPES or field.id not in answers:
+            continue
+        value = answers[field.id]
+        items = value if isinstance(value, list) else [value]
+        other_ids = {
+            o.get("option_id") for o in (field.config or {}).get("options", []) if o.get("is_other")
+        }
+        for item in items:
+            if isinstance(item, dict):
+                text = item.get("text")
+                valid = (
+                    item.get("option_id") in other_ids
+                    and isinstance(text, str)
+                    and 0 < len(text.strip()) <= OTHER_TEXT_MAX_LENGTH
+                )
+            else:
+                valid = item not in other_ids
+            if not valid:
+                offenders.append(field.field_key)
+                break
+    return offenders
 
 
 def duplicate_ranked_choice_field_keys(

@@ -9,13 +9,16 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     assign_option_ids,
-    field_key_taken_in_tournament,
     resolve_field_options,
     selected_option_ids,
     slugify,
     snapshot_answer_value,
 )
-from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
+from app.core.form.branching import (
+    duplicate_ranked_choice_field_keys,
+    invalid_other_answer_field_keys,
+    missing_required_field_keys,
+)
 from app.core.form.permissions import (
     require_form_editable,
     require_form_manage_access,
@@ -26,7 +29,6 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
-    LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
     availability_field_track_id,
     collect_active_field_errors,
@@ -37,6 +39,7 @@ from app.core.form.validation import (
     validate_event_preference_options,
     validate_field_config,
     validate_form_for_publish,
+    validate_other_option,
     validate_reserved_field_key,
     validate_tournament_preset,
     validate_track_status_options,
@@ -53,9 +56,14 @@ from app.core.form.write_through import (
     sync_lunch,
     sync_track_statuses,
 )
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
-from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
+from app.core.tournament.form_flow import member_form_flow
+from app.core.tournament.form_prerequisites import (
+    meets_prerequisites,
+    member_meets_form_prerequisites,
+    role_ids_by_user,
+)
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
 from app.core.tournament.onboarding import (
     exempt_from_onboarding,
@@ -73,12 +81,14 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentRole,
-    TournamentShift,
     User,
     utcnow,
 )
 from app.schemas.form import (
     BulkFieldsUpdate,
+    FieldKeyFormRef,
+    FieldKeyUsageRead,
+    FlowStepRead,
     FormCreate,
     FormFieldRead,
     FormListRead,
@@ -88,8 +98,9 @@ from app.schemas.form import (
     FormResponseManagerRead,
     FormResponseRead,
     FormUpdate,
+    MemberFormFlowRead,
     MemberFormRead,
-    TournamentFormPrerequisitesUpdate,
+    TournamentFormPrerequisites,
 )
 from app.schemas.person import PersonRefResponse, PersonRoleRead
 
@@ -195,6 +206,7 @@ def list_tournament_forms(
 ):
     forms = (
         db.query(Form)
+        .options(selectinload(Form.tournament_form))
         .filter(Form.tournament_id == tournament_id, Form.owner_type == "tournament")
         .order_by(Form.updated_at.desc())
         .all()
@@ -272,18 +284,40 @@ def list_my_tournament_forms(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key in use
-# by a live field across this tournament's forms. Lets the builder's field_key
-# Combobox show these before Save, rather than only discovering a collision
-# via the 409 that PUT .../fields/ would otherwise return.
-#
-# Archived fields are excluded deliberately: they don't reserve their keys
-# (see field_key_taken_in_tournament), so listing them here would make the
-# builder block a key the API would happily accept.
+# GET /tournaments/{tournament_id}/forms/flow/?membership_id= — one member's
+# onboarding steps and other forms as a manager previews them, drafts included.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/tournaments/{tournament_id}/forms/flow/",
+    response_model=MemberFormFlowRead,
+    tags=["tournaments"],
+)
+def get_member_form_flow(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    membership = get_scoped_or_404(
+        db, TournamentMembership, membership_id, tournament_id, "Membership"
+    )
+    flow = member_form_flow(db, membership)
+    return MemberFormFlowRead(
+        exempt_from_onboarding=flow.exempt_from_onboarding,
+        held_to_onboarding=flow.held_to_onboarding,
+        onboarding=[FlowStepRead(**vars(step)) for step in flow.onboarding],
+        forms=[FlowStepRead(**vars(step)) for step in flow.forms],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key on a
+# live field of this tournament's forms, with the forms using it, so the
+# builder can suggest reusing one.
 # ---------------------------------------------------------------------------
 @router.get(
     "/tournaments/{tournament_id}/forms/field-keys/",
-    response_model=list[str],
+    response_model=list[FieldKeyUsageRead],
     tags=["tournaments"],
 )
 def list_tournament_field_keys(
@@ -291,14 +325,21 @@ def list_tournament_field_keys(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
-    rows = (
-        db.query(FormField.field_key)
+    forms_by_key: dict[str, dict[str, str]] = {}
+    for field_key, form_id, form_name in (
+        db.query(FormField.field_key, Form.id, Form.name)
         .join(Form, Form.id == FormField.form_id)
         .filter(Form.tournament_id == tournament_id, FormField.is_archived == False)
-        .distinct()
-        .all()
-    )
-    return [r[0] for r in rows]
+        .order_by(FormField.field_key, Form.name)
+    ):
+        forms_by_key.setdefault(field_key, {})[form_id] = form_name
+    return [
+        FieldKeyUsageRead(
+            field_key=key,
+            forms=[FieldKeyFormRef(id=form_id, name=name) for form_id, name in forms.items()],
+        )
+        for key, forms in forms_by_key.items()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -387,13 +428,44 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
         updated_at=form.updated_at,
         response_count=form.response_count,
         prerequisites=form.prerequisites,
+        onboarding_order=form.onboarding_order,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/forms/prerequisites/preview/ — the members
+# a draft set of prerequisites would let through, before the TD saves it.
+# ---------------------------------------------------------------------------
+@router.post(
+    "/tournaments/{tournament_id}/forms/prerequisites/preview/",
+    response_model=list[PersonRefResponse],
+    tags=["tournaments"],
+)
+def preview_tournament_form_prerequisites(
+    tournament_id: int,
+    payload: TournamentFormPrerequisites,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    prerequisites = payload.model_dump()
+    _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
+
+    matching = {
+        user_id
+        for user_id, role_ids in role_ids_by_user(db, tournament_id).items()
+        if meets_prerequisites(prerequisites, role_ids)
+    }
+    refs = resolve_person_refs(db, tournament_id, set(matching))
+    return sorted(
+        (refs[user_id] for user_id in matching),
+        key=lambda ref: ((ref.first_name or "").lower(), (ref.last_name or "").lower()),
     )
 
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/ — replaces
-# prerequisite configuration for one standard tournament form. This stays
-# nested under the tournament so role/shift IDs are unambiguously scoped.
+# one tournament form's prerequisites, onboarding steps included. Nested under
+# the tournament so role IDs are unambiguously scoped.
 # ---------------------------------------------------------------------------
 @router.patch(
     "/tournaments/{tournament_id}/forms/{form_id}/prerequisites/",
@@ -403,7 +475,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
 def update_tournament_form_prerequisites(
     tournament_id: int,
     form_id: str,
-    payload: TournamentFormPrerequisitesUpdate,
+    payload: TournamentFormPrerequisites,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
@@ -425,42 +497,33 @@ def update_tournament_form_prerequisites(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Tournament form not found"
         )
-    if tournament_form.is_onboarding:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Onboarding forms cannot have standard-form prerequisites",
-        )
 
-    prerequisites = payload.model_dump(exclude_none=True)
-    _validate_prerequisite_ids(db, tournament_id, prerequisites)
+    prerequisites = payload.model_dump()
+    _validate_prerequisite_role_ids(db, tournament_id, prerequisites)
     tournament_form.prerequisites = prerequisites
+    if tournament_form.is_onboarding:
+        recompute_onboarding(db, tournament_id)
     db.commit()
     db.refresh(form)
     return form
 
 
-def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: dict) -> None:
-    roles = (prerequisites.get("roles") or {}).get("ids", [])
-    shifts = (prerequisites.get("availability") or {}).get("shift_ids", [])
-
-    def _require_tournament_ids(ids: list[int], model, label: str) -> None:
-        if not ids:
-            return
-        found = {
-            row_id
-            for (row_id,) in db.query(model.id)
-            .filter(model.tournament_id == tournament_id, model.id.in_(ids))
-            .all()
-        }
-        missing = sorted(set(ids) - found)
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"{label} do not belong to this tournament: {missing}",
-            )
-
-    _require_tournament_ids(roles, TournamentRole, "role IDs")
-    _require_tournament_ids(shifts, TournamentShift, "shift IDs")
+def _validate_prerequisite_role_ids(db: Session, tournament_id: int, prerequisites: dict) -> None:
+    ids = {role_id for condition in prerequisites["roles"] for role_id in condition["ids"]}
+    if not ids:
+        return
+    found = {
+        role_id
+        for (role_id,) in db.query(TournamentRole.id).filter(
+            TournamentRole.tournament_id == tournament_id, TournamentRole.id.in_(ids)
+        )
+    }
+    missing = sorted(ids - found)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"role IDs do not belong to this tournament: {missing}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -583,8 +646,8 @@ def update_form(
 # One deliberate exception to Onboarding never being referenced by Forms
 # (Onboarding depends on Forms, never the reverse — see the TournamentForm
 # model docstring): a form still flagged is_onboarding can't be deleted out
-# from under the sequence it's part of. Archiving is fine — onboarding skips
-# any step that isn't published.
+# from under the sequence it's part of. Archiving is fine: members who answered
+# the step keep it on their path, and nobody else is asked for it.
 # ---------------------------------------------------------------------------
 def _reject_if_onboarding(db: Session, form: Form) -> None:
     tf = db.query(TournamentForm).filter(TournamentForm.form_id == form.id).first()
@@ -660,7 +723,7 @@ def bulk_update_fields(
     def _key_taken(field_key: str) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
+            detail=f"field_key '{field_key}' is used twice on this form",
         )
 
     # Keys are checked against the state this save produces, not the rows as
@@ -678,14 +741,6 @@ def bulk_update_fields(
             raise _key_taken(key)
         seen_keys.add(key)
 
-    def _check_field_key_available(field_key: str) -> None:
-        # This form's own keys were just checked against each other; only
-        # another form of the tournament can still hold one.
-        if form.tournament_id is not None and field_key_taken_in_tournament(
-            db, form.tournament_id, field_key, exclude_form_id=form.id
-        ):
-            raise _key_taken(field_key)
-
     def _validate_config(question_type: str, config: dict | None, field_key: str) -> dict:
         # Only structural/self-contained checks run here, before the batch
         # is flushed — next_field_id resolution needs every field (including
@@ -695,6 +750,7 @@ def bulk_update_fields(
         try:
             normalized = validate_field_config(question_type, config)
             validate_reserved_field_key(field_key, question_type)
+            validate_other_option(field_key, normalized)
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(
@@ -713,9 +769,6 @@ def bulk_update_fields(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
             ) from e
         return normalized
-
-    # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
-    lunch_backfills: list[FormField] = []
 
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
     followers = _followers_by_anchor(
@@ -752,29 +805,12 @@ def bulk_update_fields(
     for entry in payload.fields:
         if entry.id is not None:
             field = existing_by_id[entry.id]
-            unarchiving = field.is_archived
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it
             # to slugify('')", which the model's snake_case validator rejects.
             new_field_key = slugify(entry.field_key) if entry.field_key else field.field_key
-            # An archived field doesn't reserve its key, so another question
-            # may have taken it meanwhile — coming back needs the same
-            # availability check as a rename.
-            if new_field_key != field.field_key or unarchiving:
-                _check_field_key_available(new_field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
-
-            # A field that only now became a lunch question: its existing
-            # answers never reached TournamentMembershipLunch, and never will
-            # on their own — write-through only runs on submit. Backfilled
-            # after the loop, once the new key and config are saved.
-            became_lunch = (
-                is_history_preserving
-                and form.owner_type == "tournament"
-                and bool(LUNCH_FIELD_KEY_PATTERN.match(new_field_key))
-                and not LUNCH_FIELD_KEY_PATTERN.match(field.field_key)
-            )
 
             field.is_archived = False
             field.order = order
@@ -784,11 +820,8 @@ def bulk_update_fields(
             field.field_key = new_field_key
             field.config = normalized_config
             flag_modified(field, "config")
-            if became_lunch:
-                lunch_backfills.append(field)
         else:
             field_key = slugify(entry.field_key or "")
-            _check_field_key_available(field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, field_key)
             new_field = FormField(
                 form_id=form.id,
@@ -814,9 +847,6 @@ def bulk_update_fields(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(errors)
         )
-
-    for field in lunch_backfills:
-        _backfill_lunch_write_through(db, form, field)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
@@ -911,7 +941,11 @@ def _stored_answer_option_ids(
 
 
 def _unwrap_snapshot(item):
-    return item.get("option_id") if isinstance(item, dict) and "option_id" in item else item
+    if not isinstance(item, dict) or "option_id" not in item:
+        return item
+    if "text" in item:
+        return {"option_id": item["option_id"], "text": item["text"]}
+    return item["option_id"]
 
 
 def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
@@ -930,6 +964,15 @@ def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
             value = _unwrap_snapshot(value)
         result[answer.field_id] = value
     return result
+
+
+def _require_valid_other_answers(fields: list[FormField], answers: dict) -> None:
+    invalid = invalid_other_answer_field_keys(fields, answers)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Fill in the Other answer for field(s): {sorted(invalid)}",
+        )
 
 
 def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answers: list) -> None:
@@ -997,6 +1040,7 @@ def submit_form_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
+    _require_valid_other_answers(active_fields, answers_by_field)
 
     response = FormResponse(form_id=form.id, user_id=current_user.id)
     db.add(response)
@@ -1080,6 +1124,7 @@ def patch_form_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
+    _require_valid_other_answers(list(fields_by_id.values()), answers_by_field)
 
     db.query(FormAnswer).filter(
         FormAnswer.response_id == response.id, FormAnswer.field_id.in_(patched_ids)
@@ -1280,61 +1325,6 @@ def invalidate_form_field(
 
     form.updated_at = utcnow()
     db.commit()
-
-
-def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> None:
-    """Replays every existing answer to `field` through sync_lunch, for a
-    question that only just became a lunch question.
-
-    Write-through runs at submit time, so answers given while the key was
-    still a plain one produced no TournamentMembershipLunch rows — and after
-    the change they're excluded from custom responses too (which filter out
-    reserved keys), leaving them in neither panel section until each member
-    resubmits.
-
-    **Lunch only, deliberately.** The same replay is unsafe for the other
-    presets:
-      - availability shares one storage pool across every question covering a
-        day (two fields can, via availability_{date}_{suffix}), and
-        sync_availability deletes anything on that track it wasn't handed — so
-        a per-field replay would erase the shifts a sibling question
-        contributed.
-      - track_status upserts without deleting, but replaying a stale answer can
-        still overwrite a status a newer form set (every transition except a
-        demotion to "interested" is permitted).
-      - event_preference is scope-safe, but switching to it blanks each
-        option's entity ids, so there'd be nothing to replay.
-    Lunch is the one case where a field exclusively owns its rows *and* its
-    options survive the key change (they're freeform text, not entity ids).
-    """
-    lunch_track_id, category = parse_lunch_field_key(field.field_key)
-
-    rows = (
-        db.query(FormAnswer.value, TournamentMembership.id)
-        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
-        .join(TournamentMembership, TournamentMembership.user_id == FormResponse.user_id)
-        .filter(
-            FormAnswer.field_id == field.id,
-            TournamentMembership.tournament_id == form.tournament_id,
-        )
-        .all()
-    )
-
-    for value, membership_id in rows:
-        # Stored select answers hold {option_id, value, label} snapshots rather
-        # than bare ids — unwrap to ids first, the same way
-        # _stored_answer_option_ids does when replaying from storage, since
-        # lunch_values_from_answer expects the id form a live submission sends.
-        if field.question_type not in LUNCH_FREE_TEXT_QUESTION_TYPES:
-            items = value if isinstance(value, list) else ([value] if value else [])
-            value = [i.get("option_id") if isinstance(i, dict) else i for i in items]
-        sync_lunch(
-            db,
-            membership_id,
-            lunch_track_id,
-            category,
-            lunch_values_from_answer(field, value),
-        )
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { TabStrip } from "@/components/ui/TabStrip";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
@@ -317,11 +317,7 @@ export default function RoleEditorPage() {
   }, [roles, membershipLoading, canCreateRoles, createDraftRole]);
 
   if (membershipLoading || roles === null || !canManageRoles) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   const activeRole = roles.find((r) => r.id === activeRoleId) ?? null;

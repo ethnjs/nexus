@@ -4,10 +4,12 @@ import { Sidebar, type SidebarItem } from "@/components/layout/Sidebar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import {
   IconAssignments,
+  IconBuilding,
   IconCalendar,
   IconEvents,
   IconForms,
   IconHome,
+  IconLocation,
   IconMembers,
   IconSettings,
 } from "@/components/ui/Icons";
@@ -53,6 +55,13 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
             icon: <IconCalendar size={17} />,
             label: "Shifts",
           },
+          {
+            key: "buildings",
+            href: `${base}/buildings`,
+            icon: <IconBuilding size={17} />,
+            label: "Buildings",
+          },
+          { key: "zones", href: `${base}/zones`, icon: <IconLocation size={17} />, label: "Zones" },
         ]
       : []),
     // Matches the page's own view gate: staffing is part of reading the event

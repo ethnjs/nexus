@@ -25,22 +25,15 @@ export function Card({
   const [hovered, setHovered] = useState(false);
 
   const resolvedBorder =
-    borderColor ??
-    (variant === "danger"
-      ? "var(--color-danger)"
-      : hoverable && hovered
-        ? "var(--color-border-strong)"
-        : "var(--color-border)");
+    borderColor ?? (hoverable && hovered ? "var(--color-border-strong)" : "var(--color-border)");
 
   const outerShadow = shadow
     ? hoverable && hovered
       ? "var(--shadow-md)"
       : "var(--shadow-sm)"
     : undefined;
-  // An inset shadow hugs the element's own box (rectangular corners and all),
-  // unlike radial-gradient which is always circular/elliptical regardless of
-  // shape — so this is what actually reads as "darker at the (square) edges,
-  // white toward the center" instead of a circular vignette.
+  // An inset shadow follows the box's square edges; a radial-gradient would
+  // read as a circular vignette.
   const dangerVignette = "inset 0 0 28px 6px var(--color-danger-subtle)";
 
   return (

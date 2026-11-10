@@ -87,10 +87,17 @@ export interface EventCategory {
   name: string;
 }
 
+export interface RelatedEvent {
+  id: number;
+  name: string;
+}
+
 export interface CanonicalEvent {
   id: number;
   name: string;
   category: EventCategory;
+  // Events on similar topics (Heredity and Designer Genes). Both ways, by name.
+  related_events: RelatedEvent[];
 }
 
 // Writes are admin-only, under /admin/ — GET stays public/unauthenticated.
@@ -109,6 +116,13 @@ export const canonicalEventsApi = {
   update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
     api.patch<CanonicalEvent>(`/admin/events/${id}/`, body),
   delete: (id: number) => api.delete<void>(`/admin/events/${id}/`),
+  /** Relates two events both ways; returns `id`'s event with its new list. */
+  addRelated: (id: number, relatedEventId: number) =>
+    api.post<CanonicalEvent>(`/admin/events/${id}/related/`, {
+      related_event_id: relatedEventId,
+    }),
+  removeRelated: (id: number, relatedEventId: number) =>
+    api.delete<CanonicalEvent>(`/admin/events/${id}/related/${relatedEventId}/`),
 };
 
 // -------------------------------------------------------------------------
@@ -208,6 +222,11 @@ export interface AdminUserSlim extends UserSlim {
   role: ROLE;
   status: USER_STATUS;
 }
+
+// GET /admin/users/ — matches AdminUserListResponse: what the users table reads.
+export interface AdminUserListItem
+  extends AdminUserSlim,
+    Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {}
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends AdminUserSlim {
@@ -439,7 +458,7 @@ export interface AdminSignInCode {
 }
 
 export const adminUsersApi = {
-  list: () => api.get<AdminUserSlim[]>("/admin/users/"),
+  list: () => api.get<AdminUserListItem[]>("/admin/users/"),
   get: (id: number) => api.get<AdminUserFull>(`/admin/users/${id}/`),
   getByEmail: (email: string) =>
     api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
@@ -541,6 +560,8 @@ export interface TournamentTrack {
   // no role picked yet. Every track can carry one, cosmetic or not — Test
   // Writing's is often Test Writer.
   default_role_id: number | null;
+  // What a zone assignment grants when it names no role.
+  zone_default_role_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -557,6 +578,7 @@ export interface TournamentTrackCreate {
   location?: string | null;
   division?: TournamentDivision[] | null;
   default_role_id?: number | null;
+  zone_default_role_id?: number | null;
 }
 
 export type TournamentTrackUpdate = Partial<TournamentTrackCreate> & {
@@ -568,6 +590,15 @@ export type TournamentTrackUpdate = Partial<TournamentTrackCreate> & {
 // What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
 // purged: false means the track is now pending-delete and `blocked_by`
 // names the TD-authored references holding it there.
+/** What turning off is_primary on a track would remove. */
+export interface TrackVenueUsage {
+  buildings: number;
+  /** Of `buildings`, those on no other day, which are deleted with their rooms. */
+  buildings_deleted: number;
+  placed_events: number;
+  zones: number;
+}
+
 export interface TournamentTrackDeleteResult {
   purged: boolean;
   blocked_by: string[];
@@ -605,6 +636,8 @@ export interface TournamentPublic {
 
 export interface Tournament extends TournamentPublic {
   id: number;
+  // Named for the spring it ends in; null until a primary track has dates.
+  season_year: number | null;
   timezone: string;
   is_multi_day: boolean;
   is_public: boolean;
@@ -619,6 +652,7 @@ export interface Tournament extends TournamentPublic {
 // GET /tournaments/me/ — lightweight card view, no roles/owner
 export interface TournamentSummary extends TournamentPublic {
   id: number;
+  season_year: number | null;
   is_public: boolean;
   is_archived: boolean;
   event_count: number;
@@ -767,6 +801,10 @@ export interface TournamentEvent {
   name: string | null;
   division: TournamentDivision | null;
   event_type: "standard" | "trial";
+  // Copied from the season event on creation, then the TD's to change.
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event_id: number | null;
   // Joined canonical event — set only when event_id is set. Carries
   // category, since TournamentEvent has no category field of its own.
@@ -800,30 +838,25 @@ export interface EventStaffingNeedRead extends EventStaffingNeed {
   role_label: string;
 }
 
-/** One track an event runs on, plus where it happens there.
- *
- *  One building and one floor, but many rooms: an event routinely spreads
- *  across 210, 212 and 214, while nothing sensible spreads across two
- *  buildings on one day. A track with no location is an entry whose fields
- *  are all null. */
+/** One track an event runs on, plus where it happens there: its rooms (all
+ *  in one building on that track) and an optional floor override. No rooms
+ *  means not placed yet. */
 export interface EventTrackDetail {
   track_id: number;
-  /** Must be a building tagged with this track — the database enforces it,
-   *  not just the route. */
-  building_id?: number | null;
   floor?: string | null;
-  rooms?: string[];
+  room_ids?: number[];
   needs?: EventStaffingNeed[];
 }
 
-/** The read shape. Carries the building's name because nothing else in an
- *  event response can supply it — unlike a track, which the `tracks` group
- *  already spells out in full. */
+/** The read shape, with the building the rooms are in spelled out. */
 export interface EventTrackDetailRead extends EventTrackDetail {
   building_id: number | null;
   building_name: string | null;
+  building_short_name: string | null;
   floor: string | null;
-  rooms: string[];
+  room_ids: number[];
+  /** Naturally sorted, like `room_ids`. */
+  rooms: TournamentRoom[];
   needs: EventStaffingNeedRead[];
 }
 
@@ -831,6 +864,10 @@ export interface TournamentEventInput {
   name?: string | null;
   division?: TournamentDivision | null;
   event_type?: "standard" | "trial";
+  // Left out on create, these are copied from the matching season event.
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
   event_id?: number | null;
   // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
   // rather than adding to them. Omit either to leave it alone. Setting
@@ -840,7 +877,7 @@ export interface TournamentEventInput {
   // Replaces the old track_ids: a list of ids and a list of ids-with-location
   // are two ways to write the same thing, and the pair would have to define
   // which wins. Whole-set, and whole-set *within* each entry too — an entry
-  // with no `rooms` clears the rooms, an entry with no `needs` clears the
+  // with no `room_ids` clears the rooms, an entry with no `needs` clears the
   // needs, and a track left out is unlinked. Omit the field to leave every
   // track alone; to change one, resend all (see lib/eventTrackDetails).
   track_details?: EventTrackDetail[];
@@ -957,11 +994,22 @@ export const tournamentEventsApi = {
 // Season Events — admin-curated per-year/division active event list, drives
 // tournamentEventsApi.loadDefaults(). GET is public; writes are admin-only.
 // -------------------------------------------------------------------------
+export const EVENT_FORMATS = ["test", "hybrid", "build"] as const;
+export type EventFormat = (typeof EVENT_FORMATS)[number];
+export const EVENT_FORMAT_LABELS: Record<EventFormat, string> = {
+  test: "Test",
+  hybrid: "Hybrid",
+  build: "Build",
+};
+
 export interface SeasonEvent {
   id: number;
   year: number;
   division: TournamentDivision;
   is_active: boolean;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   event: CanonicalEvent;
   created_at: string;
 }
@@ -971,6 +1019,9 @@ export interface SeasonEventInput {
   year: number;
   division: TournamentDivision;
   is_active?: boolean;
+  format?: EventFormat | null;
+  has_impound?: boolean;
+  has_self_schedule?: boolean;
 }
 
 export const seasonEventsApi = {
@@ -1089,13 +1140,11 @@ export interface MembershipEventPreference {
 export interface MembershipCustomAnswer {
   form_title: string;
   field_label: string;
-  // Slug key, not the question's full sentence — what the panel labels by.
+  /** The answer's identity: forms may share a key, and this is the member's
+   *  latest answer to it. Also what the panel labels by. */
   field_key: string;
   question_type: string;
   value: unknown;
-  // Stable id behind the display-config "form_field:{id}" key — the label and
-  // key are both TD-editable, this isn't.
-  field_id: string;
 }
 
 // Matches RoleRead
@@ -1196,11 +1245,18 @@ export type MembershipField =
   | "assignments"
   | "onboarding";
 
-// Live onboarding steps answered out of the live total — skipped (draft or
-// archived) steps count toward neither.
+export interface MembershipOnboardingStep {
+  form_id: string;
+  name: string;
+  status: "published" | "archived";
+  completed: boolean;
+}
+
+/** The steps on this member's onboarding path, in order. */
 export interface MembershipOnboarding {
   completed: number;
   total: number;
+  steps: MembershipOnboardingStep[];
 }
 
 // Matches MembershipBaseResponse — the membership data the member themselves
@@ -1348,8 +1404,12 @@ export interface MemberFilterOptions {
   event_preferences: FilterOptionGroup[];
   competition_events: FilterOptionItem[];
   volunteer_events: FilterOptionItem[];
+  // Schools' short names and employers, merged where they read the same.
+  affiliations: FilterOptionItem[];
   collect_is_over_18: boolean;
   collect_is_over_21: boolean;
+  // Whether there are onboarding steps to filter by.
+  has_onboarding: boolean;
 }
 
 export interface FilterOptionItem {
@@ -1929,6 +1989,8 @@ export interface FormFieldOption {
     | ResolvedEventOption[];
   label: string;
   is_archived?: boolean;
+  /** The respondent types their own answer in place of picking this option's label. */
+  is_other?: boolean;
   // single_select_radio/dropdown only — mutually exclusive with each other.
   next_field_id?: string | null;
   action?: "submit_form" | null;
@@ -1978,6 +2040,8 @@ export interface FormFieldConfig {
   // (always a closed Dropdown control, not a style choice).
   display_style?: "buttons" | "list";
   track_status_enabled?: boolean;
+  /** Availability only: append each option's shift times. Omitted means shown. */
+  show_shift_times?: boolean;
 }
 
 export interface FormField {
@@ -2008,22 +2072,22 @@ export interface FormFieldInput {
   config?: FormFieldConfig | null;
 }
 
-export type PrerequisiteMatch = "any" | "all";
+/** A key live on one or more forms. Forms may share a key; a member's latest answer to it wins. */
+export interface FieldKeyUsage {
+  field_key: string;
+  forms: { id: string; name: string }[];
+}
 
-export interface IdPrerequisite {
+/** Holds any (or all) of `ids`; `inverse` flips the result. */
+export interface RolePrerequisite {
   ids: number[];
-  match: PrerequisiteMatch;
+  match: "any" | "all";
+  inverse: boolean;
 }
 
-export interface AvailabilityPrerequisite {
-  shift_ids: number[];
-  match: PrerequisiteMatch;
-}
-
+/** Every condition must pass. */
 export interface TournamentFormPrerequisites {
-  onboarding_complete: boolean;
-  roles?: IdPrerequisite | null;
-  availability?: AvailabilityPrerequisite | null;
+  roles: RolePrerequisite[];
 }
 
 /** The member-facing event shape (?public=true), and what any response embeds
@@ -2034,6 +2098,9 @@ export interface TournamentEventMember {
   name: string | null;
   division: string | null;
   event_type: string;
+  format: EventFormat | null;
+  has_impound: boolean;
+  has_self_schedule: boolean;
   shifts: TournamentShiftBase[];
 }
 
@@ -2062,6 +2129,24 @@ export interface TournamentTrackRef {
   id: number;
   name: string;
   is_primary: boolean;
+}
+
+export interface FlowStep {
+  form_id: string;
+  name: string;
+  status: FormStatus;
+  completed: boolean;
+  /** Onboarding: on the member's path. Other forms: their roles pass the prerequisites. */
+  applies: boolean;
+}
+
+/** One member's forms as a manager previews them, drafts included. */
+export interface MemberFormFlow {
+  exempt_from_onboarding: boolean;
+  /** Still owes a published onboarding step, so other forms wait. */
+  held_to_onboarding: boolean;
+  onboarding: FlowStep[];
+  forms: FlowStep[];
 }
 
 export interface MemberForm {
@@ -2094,6 +2179,8 @@ export interface Form {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
   fields: FormField[];
   /** null for a chapter form — there's no tournament to be archived. */
   tournament_is_archived: boolean | null;
@@ -2125,6 +2212,8 @@ export interface FormListItem {
   updated_at: string;
   response_count: number;
   prerequisites: TournamentFormPrerequisites | null;
+  /** Step number in the onboarding sequence; null when the form isn't one. */
+  onboarding_order: number | null;
 }
 
 export interface FormCreateInput {
@@ -2191,17 +2280,25 @@ export const formsApi = {
   listMineForTournament: (tournamentId: number) =>
     api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
   listForChapter: (chapterId: number) => api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
-  // Every field_key already in use across this tournament's forms (archived
-  // included — an archived key isn't released for reuse) — the builder's
-  // field_key Combobox shows these as disabled options.
+  // Every live field_key on this tournament's forms, with the forms using it —
+  // the builder's key picker suggests reusing them.
   listFieldKeysForTournament: (tournamentId: number) =>
-    api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+    api.get<FieldKeyUsage[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
   updatePrerequisites: (
     tournamentId: number,
     formId: string,
     prerequisites: TournamentFormPrerequisites,
   ) =>
     api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
+  memberFlow: (tournamentId: number, membershipId: number) =>
+    api.get<MemberFormFlow>(
+      `/tournaments/${tournamentId}/forms/flow/?membership_id=${membershipId}`,
+    ),
+  previewPrerequisites: (tournamentId: number, prerequisites: TournamentFormPrerequisites) =>
+    api.post<PersonRef[]>(
+      `/tournaments/${tournamentId}/forms/prerequisites/preview/`,
+      prerequisites,
+    ),
   createForTournament: (
     tournamentId: number,
     body: { name: string; title?: string | null; description?: string | null },
@@ -2306,14 +2403,22 @@ export const tournamentTracksApi = {
     api.delete<TournamentTrackDeleteResult>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
   restore: (tournamentId: number, trackId: number) =>
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
+  venueUsage: (tournamentId: number, trackId: number) =>
+    api.get<TrackVenueUsage>(`/tournaments/${tournamentId}/tracks/${trackId}/venue-usage/`),
 };
 
 // -------------------------------------------------------------------------
 // Tournament Buildings — nested under /tournaments/{id}/buildings/
 // -------------------------------------------------------------------------
-// A tournament's venue catalog. Floors and rooms stay free text — only the
-// building is a row, because it's the one part worth picking rather than
-// retyping per event. All four routes are gated on manage_events.
+// A tournament's venue catalog: buildings and the rooms inside them. Every
+// route is gated on manage_events.
+
+/** `floor` is an override; null means it comes from the name ("210" -> "2"). */
+export interface TournamentRoom {
+  id: number;
+  name: string;
+  floor: string | null;
+}
 
 /** Ids rather than embedded track rows, unlike TournamentEvent.tracks: every
  *  reader of a building already holds the track catalog, so embedding would
@@ -2322,15 +2427,20 @@ export interface TournamentBuilding {
   id: number;
   tournament_id: number;
   name: string;
-  /** Which tracks this building is in use on. Empty is legal — a building
-   *  entered before the schedule is settled isn't available anywhere yet. */
+  /** What event locations show when set ("RH 210"), else `name`. */
+  short_name: string | null;
+  /** Which tracks this building is in use on; never empty. */
   track_ids: number[];
+  /** Naturally sorted ("9" before "10"). Available on every track above. */
+  rooms: TournamentRoom[];
   created_at: string;
   updated_at: string;
 }
 
 export interface TournamentBuildingInput {
   name: string;
+  /** null or blank clears it. */
+  short_name?: string | null;
   /** Whole-set, like an event's shift_ids: sending it replaces the tags. */
   track_ids?: number[];
 }
@@ -2347,8 +2457,8 @@ export const buildingsApi = {
     api.get<TournamentBuilding[]>(`/tournaments/${tournamentId}/buildings/`),
   create: (tournamentId: number, body: TournamentBuildingInput) =>
     api.post<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/`, body),
-  // Partial: omit a field to leave it alone. `track_ids: []` clears the tags,
-  // which blanks the location of every event placed here on an untagged track.
+  // Partial: omit a field to leave it alone. Untagging a track an event is
+  // placed on in this building is a 409.
   update: (tournamentId: number, buildingId: number, body: Partial<TournamentBuildingInput>) =>
     api.patch<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/${buildingId}/`, body),
   // 200 with a body, not 204 — same as deleting a track.
@@ -2356,45 +2466,60 @@ export const buildingsApi = {
     api.delete<TournamentBuildingDeleteResult>(
       `/tournaments/${tournamentId}/buildings/${buildingId}/`,
     ),
+  /** Names the building already has are skipped. Returns all of its rooms. */
+  addRooms: (tournamentId: number, buildingId: number, names: string[]) =>
+    api.post<TournamentRoom[]>(`/tournaments/${tournamentId}/buildings/${buildingId}/rooms/`, {
+      names,
+    }),
+  /** `floor: null` goes back to deriving it from the name. */
+  updateRoom: (
+    tournamentId: number,
+    buildingId: number,
+    roomId: number,
+    body: { name?: string; floor?: string | null },
+  ) =>
+    api.patch<TournamentRoom>(
+      `/tournaments/${tournamentId}/buildings/${buildingId}/rooms/${roomId}/`,
+      body,
+    ),
+  deleteRoom: (tournamentId: number, buildingId: number, roomId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/buildings/${buildingId}/rooms/${roomId}/`),
 };
 
 // -------------------------------------------------------------------------
 // Tournament Zones — nested under /tournaments/{id}/zones/
 // -------------------------------------------------------------------------
-// A named area of one track that members can be staffed to, primarily for
-// runners. A zone stores *rules*, never an event list: its contents are
-// resolved on read, which is what makes moving an event to a building in
-// another zone move it between zones with no write to either.
+// A named area of one competition day that members can be staffed to,
+// primarily for runners. A zone stores rules, not events: its event list is
+// resolved on read, so an event that moves rooms moves zones.
 
-export type ZoneMemberKind = "building" | "floor" | "event";
+export type ZoneMemberKind = "building" | "floor" | "room" | "event";
 
-/** One rule saying what a zone contains. Which fields are legal depends on
- *  the kind:
+/** One rule saying what a zone contains:
  *
- *      building   building_id only
+ *      building   building_id
  *      floor      building_id and floor
- *      event      tournament_event_id only
- *
- *  Sending the wrong combination is a 422, not a silent correction. */
+ *      room       room_id (the server fills in building_id)
+ *      event      tournament_event_id
+ */
 export interface ZoneMember {
   kind: ZoneMemberKind;
   building_id?: number | null;
   floor?: string | null;
+  room_id?: number | null;
   tournament_event_id?: number | null;
 }
 
 export interface ZoneMemberRead extends ZoneMember {
   id: number;
   building_name: string | null;
+  room_name: string | null;
   event_name: string | null;
 }
 
 export interface ZoneInput {
   track_id: number;
   name: string;
-  /** The role a drag onto this zone staffs someone in. Distinct from the
-   *  track's default role — a zone is usually one job. */
-  default_role_id?: number | null;
   /** Whole-set: sending it replaces the zone's rules. */
   members?: ZoneMember[];
 }
@@ -2404,12 +2529,8 @@ export interface Zone {
   tournament_id: number;
   track_id: number;
   name: string;
-  default_role_id: number | null;
-  default_role_label: string | null;
   members: ZoneMemberRead[];
-  /** Resolved, not stored. Precedence is event > floor > building, so an
-   *  event added explicitly to this zone stays here even when another zone's
-   *  building rule also covers it. */
+  /** Resolved, not stored. Precedence is event > room > floor > building. */
   event_ids: number[];
   created_at: string;
   updated_at: string;
@@ -2431,8 +2552,7 @@ export interface ZoneCoverage {
 export interface ZoneAssignmentInput {
   zone_id: number;
   membership_id: number;
-  /** Omit to use the zone's default_role_id. A role is always required in the
-   *  end — if the zone has no default, this must name one. */
+  /** Omit to use the track's zone_default_role_id; with neither, it's a 422. */
   role_id?: number | null;
 }
 
@@ -2460,6 +2580,9 @@ export const zonesApi = {
   // moving one would mean revalidating every rule against a different venue.
   update: (tournamentId: number, zoneId: number, body: Partial<Omit<ZoneInput, "track_id">>) =>
     api.patch<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/`, body),
+  // Takes the rule from whichever zone on the track held it, atomically.
+  addRule: (tournamentId: number, zoneId: number, rule: ZoneMember) =>
+    api.post<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/rules/`, rule),
   delete: (tournamentId: number, zoneId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/zones/${zoneId}/`),
 };
@@ -2478,7 +2601,7 @@ export const zoneAssignmentsApi = {
 };
 
 // Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
-// "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+// "field_key:{key}" — see backend/app/core/tournament/display_config.py.
 // One panel section, in the order the TD arranged them. Built-in sections
 // carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
 // also carries a title and the custom fields assigned to it.

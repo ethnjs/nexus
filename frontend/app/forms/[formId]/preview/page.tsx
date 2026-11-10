@@ -6,7 +6,7 @@ import { FormFillFlow } from "@/components/forms/FormFillFlow";
 import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { type Form, formsApi } from "@/lib/api";
 import { builderLoadFailure } from "@/lib/forms/builderLoad";
 
@@ -54,11 +54,7 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   }
 
   if (!form) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   function startOver() {

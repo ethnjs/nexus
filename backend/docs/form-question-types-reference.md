@@ -19,10 +19,10 @@ This is the shape of form fields, their `config`, and their answers. Config sche
 ```
 
 - **`question_type`** is structural: how the question renders and what shape its answer has.
-- **`field_key`** is semantic. Every field has one, slugified from a TD-typed name (lowercase letters, digits and underscores). It must be unique among the **live** fields of all of a tournament's forms; an archived field releases its key. A reserved key (below) layers validation and write-through onto an ordinary `question_type`.
+- **`field_key`** is semantic. Every field has one, slugified from a TD-typed name (lowercase letters, digits and underscores). It must be unique among a form's **live** fields; an archived field releases its key, and other forms may reuse it (see [Shared field keys](form-edit-lifecycle.md#shared-field-keys)). A reserved key (below) layers validation and write-through onto an ordinary `question_type`.
 - **`field_id`**, not `field_key`, is the field's identity. Answers and branching reference the id, so renaming a key is free.
 
-Because archived keys can be reused, two different questions may have carried the same key at different times. Answers stay unambiguous (each records its `field_id` and the key it was given under), but a view that groups by key alone merges them.
+Because keys can be reused, two different questions may carry the same key. Answers stay unambiguous (each records its `field_id` and the key it was given under), and member views deliberately merge them, showing the latest answer per key.
 
 ## Options
 
@@ -45,6 +45,8 @@ All config and option schemas use `extra="forbid"`: an unknown key is a validati
 
 An answer to an option-bearing question stores a `{option_id, value, label}` snapshot taken at submission, so later edits to an option's text never change how a past answer reads. A checkbox answer stores a list of snapshots and a ranked answer stores `{rank: snapshot}`.
 
+An Other pick is submitted as `{"option_id": ..., "text": "..."}` in place of the bare `option_id` and stored as `{option_id, value, label, text}`, with the typed text in both `value` and `text`. Anything that displays `value` therefore shows what the respondent typed.
+
 Availability answers stored bare `option_id`s until revision 17852c91b77c, which copied in each option as it stood then. An id whose option was already gone from the config stays bare.
 
 ## Question types
@@ -52,15 +54,22 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 | `question_type` | `config` | Answer | Branching |
 |---|---|---|---|
 | `acknowledgment` | `required`, `confirm_label` | `true` | no |
-| `single_select_radio` | `required`, `options`, `display_style` (`"list"` or `"buttons"`), `track_status_enabled` | one snapshot | yes |
+| `single_select_radio` | `required`, `options`, `display_style` (`"list"` or `"buttons"`), `track_status_enabled`, `show_shift_times` | one snapshot | yes |
 | `single_select_dropdown` | `required`, `options` | one snapshot | yes |
-| `multi_select_checkbox` | `required`, `options`, `display_style`, `track_status_enabled` | list of snapshots | no |
+| `multi_select_checkbox` | `required`, `options`, `display_style`, `track_status_enabled`, `show_shift_times` | list of snapshots | no |
 | `ranked_choice` | `required`, `options`, `ranks`, `allow_duplicates` | `{"1": snapshot, "2": snapshot}` | no |
 | `short_text`, `long_text` | `required`, `max_length` | string | no |
 
 - `ranks` can't exceed the number of options.
 - With `allow_duplicates: false`, an answer that picks one option at two ranks is rejected with a 400.
 - `track_status_enabled` is valid only on an `availability_*` field.
+- `show_shift_times` (default `true`) is read only on an `availability_*` field: when `false`, respondent views show each option's label without its shift times.
+
+### Other
+
+`single_select_radio`, `single_select_dropdown` and `multi_select_checkbox` may mark one live option `is_other: true`. The respondent types their own answer instead of picking its label, and it branches like any other option. Its `value` is never stored as an answer, so it's exempt from the unique-value check. A preset field (any reserved key, lunch included) can't have one, since its options map to tournament data. A submission that picks Other with blank text (or more than 500 characters), or sends `text` for an option that isn't Other, is rejected with a 400.
+
+A `multi_select_checkbox` answer may hold several Other items, one per typed entry (the respondent adds one with "Add another" or Shift+Enter). **Known gap:** nothing caps how many, on the server or in the form, and the same text can repeat. Each entry is limited to 500 characters, but a single answer can still grow without bound. A cap belongs in `invalid_other_answer_field_keys` (`app/core/form/branching.py`).
 
 ## Branching
 

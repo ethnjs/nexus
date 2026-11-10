@@ -32,6 +32,7 @@ from app.core.tournament.member_filters import (
     apply_member_search,
     build_filter_options,
     filter_age_flags,
+    filter_onboarding,
 )
 from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.memberships import (
@@ -46,7 +47,7 @@ from app.core.tournament.memberships import (
     onboarding_reads,
     resolve_person_refs,
 )
-from app.core.tournament.onboarding import needs_tournament_onboarding
+from app.core.tournament.onboarding import needs_tournament_onboarding, onboarding_paths
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     get_user_permissions,
@@ -204,6 +205,12 @@ def list_memberships(
     shift: list[str] = Query(default=[]),
     # "trackId:assigned|unassigned" — staffed on that track or not.
     assigned: list[str] = Query(default=[]),
+    # A school's short name or an employer, as the column shows it; and
+    # "1".."5", "graduate", "non_student".
+    affiliation: list[str] = Query(default=[]),
+    year_level: list[str] = Query(default=[]),
+    # "not_started", "in_progress", "complete".
+    onboarding: list[str] = Query(default=[]),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -241,6 +248,8 @@ def list_memberships(
         age_flags=age,
         shifts=shift,
         assigned=assigned,
+        affiliations=affiliation,
+        year_levels=year_level,
     )
     query = apply_member_search(
         query,
@@ -251,12 +260,17 @@ def list_memberships(
         max_rank=max_rank,
     )
     memberships = query.order_by(TournamentMembership.id).all()
-    # Age flags are derived, not stored, so they can't be part of the query.
+    # Age flags and onboarding are derived, not stored, so they can't be part
+    # of the query.
     memberships = filter_age_flags(memberships, age)
+    paths = None
+    if onboarding:
+        paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
+        memberships = filter_onboarding(memberships, onboarding, paths)
     responses = [MembershipFullResponse.model_validate(m) for m in memberships]
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    enrich_built_groups(db, tournament, requested, memberships, responses)
+    enrich_built_groups(db, tournament, requested, memberships, responses, onboarding_paths=paths)
     # gate_age_flags per row, exactly as the detail route does: asking for the
     # age group must never override a member's withheld consent.
     exclude = dump_exclude(requested)

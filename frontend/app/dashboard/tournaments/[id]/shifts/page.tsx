@@ -38,11 +38,11 @@ import {
   IconTrash,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
@@ -77,6 +77,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import {
   formatDayLabel,
   formatSpan,
@@ -528,11 +529,7 @@ export default function ShiftsPage() {
   // constraint the flattening had to respect: a gate that returned before
   // them would change the hook order between renders.
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageEvents) {
@@ -554,9 +551,7 @@ export default function ShiftsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Shifts" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }
@@ -760,7 +755,7 @@ export default function ShiftsPage() {
             // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
             onKeyDown={handleGridArrows}
           >
-            <div className={table.header}>
+            <div ref={stickyHeader} className={table.header}>
               <span
                 className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
                 style={{ display: "flex", justifyContent: "center" }}
@@ -808,7 +803,12 @@ export default function ShiftsPage() {
                 selectMode={selectMode}
                 selected={selectedIds.has(shift.id)}
                 selectionLocked={panelDirty}
-                onToggleSelect={() => toggleSelected(shift.id)}
+                onToggleSelect={() =>
+                  toggleSelected(
+                    shift.id,
+                    visibleShifts.map((s) => s.id),
+                  )
+                }
                 edit={editContext}
               />
             ))}
@@ -1054,6 +1054,8 @@ function ShiftRow({
       data-active={highlighted ? "true" : undefined}
       data-pending={track?.is_archived ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { type ButtonHTMLAttributes, forwardRef, useState } from "react";
+import { Spinner } from "@/components/ui/Spinner";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "xs" | "sm" | "md" | "lg";
@@ -155,24 +156,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         }}
         {...props}
       >
-        {loading && (
-          <span
-            style={{
-              width: "14px",
-              height: "14px",
-              border: "2px solid rgba(255,255,255,0.4)",
-              borderTopColor:
-                variant === "primary" || variant === "danger"
-                  ? "var(--color-text-inverse)"
-                  : "var(--color-text-primary)",
-              borderRadius: "50%",
-              display: "inline-block",
-              animation: "btn-spin 600ms linear infinite",
-            }}
-          />
-        )}
+        {loading && <Spinner size="sm" inverse={variant === "primary" || variant === "danger"} />}
         {(!loading || !iconOnly) && children}
-        <style>{`@keyframes btn-spin { to { transform: rotate(360deg); } }`}</style>
       </button>
     );
   },

@@ -31,10 +31,16 @@ interface EditableTextProps {
   /** Offered in a list as you type — free text is still allowed. Use
    *  EditableCombobox, which requires it, rather than passing it here. */
   suggestions?: string[];
+  /** A second line under a suggestion, searched as well, e.g. a full name. */
+  suggestionSubtitle?: (suggestion: string) => string | undefined;
   /** A failed save's message goes to a toast instead of under the field — for
    *  table cells, where text under one row overlaps the next. The field still
    *  stays open with a red underline so the value can be fixed in place. */
   errorToast?: boolean;
+  /** Left out of the Tab order — for a rarely edited field Tab should jump past. */
+  skipTab?: boolean;
+  /** An edit ended without saving: Escape, or leaving it empty or unchanged. */
+  onCancel?: () => void;
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -66,7 +72,10 @@ export function EditableText({
   placeholder,
   allowEmpty = false,
   suggestions,
+  suggestionSubtitle,
   errorToast = false,
+  skipTab = false,
+  onCancel,
 }: EditableTextProps) {
   const { show } = useToast();
   const [editing, setEditing] = useState(startEditing);
@@ -84,7 +93,9 @@ export function EditableText({
   // Combobox mode: which suggestion the arrow keys are on (-1 = none).
   const [highlight, setHighlight] = useState(-1);
   const rows =
-    editing && suggestions ? suggestionRows(suggestions, draft) : { names: [], options: [] };
+    editing && suggestions
+      ? suggestionRows(suggestions, draft, undefined, suggestionSubtitle)
+      : { names: [], options: [] };
   const listOpen = rows.options.length > 0;
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
@@ -123,6 +134,7 @@ export function EditableText({
     const trimmed = text.trim();
     if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false);
+      onCancel?.();
       return;
     }
     inFlight.current = true;
@@ -189,6 +201,7 @@ export function EditableText({
               e.preventDefault();
               refocus.current = true;
               setEditing(false);
+              onCancel?.();
             }
           }}
           disabled={saving}
@@ -246,7 +259,7 @@ export function EditableText({
       ref={restRef}
       onClick={locked ? undefined : startEdit}
       // Reachable by Tab, and Enter starts editing — same as a click.
-      tabIndex={locked ? undefined : 0}
+      tabIndex={locked ? undefined : skipTab ? -1 : 0}
       onKeyDown={
         locked
           ? undefined

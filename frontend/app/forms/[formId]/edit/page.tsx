@@ -8,7 +8,7 @@ import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { CONTENT_MAX_WIDTH, SubHeader } from "@/components/forms/SubHeader";
 import { tournamentAddon } from "@/components/forms/tournament/tournamentAddon";
 import { Banner } from "@/components/ui/Banner";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { type Form, formsApi } from "@/lib/api";
 import { builderLoadFailure } from "@/lib/forms/builderLoad";
 import { FORM_ARCHIVED_REASON } from "@/lib/forms/formStatusActions";
@@ -59,11 +59,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   }
 
   if (!form) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   // This page lives outside the tournament layout, so the archive flag rides

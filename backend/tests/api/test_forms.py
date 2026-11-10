@@ -295,9 +295,7 @@ class TestListForms:
 
 
 class TestListTournamentFieldKeys:
-    def test_lists_distinct_live_keys_across_forms(self, client, db, td_user, td_tournament):
-        """Archived keys are excluded — they're reusable, so listing them
-        would make the builder block a key the API accepts."""
+    def test_lists_live_keys_with_the_forms_using_them(self, client, db, td_user, td_tournament):
         form_a = _make_form(db, td_user, td_tournament, name="A")
         form_b = _make_form(db, td_user, td_tournament, name="B")
         _make_field(db, form_a, field_key="favorite_color")
@@ -308,7 +306,13 @@ class TestListTournamentFieldKeys:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 200
-        assert set(res.json()) == {"favorite_color", "shirt_size"}
+        assert res.json() == [
+            {
+                "field_key": "favorite_color",
+                "forms": [{"id": form_a.id, "name": "A"}, {"id": form_b.id, "name": "B"}],
+            },
+            {"field_key": "shirt_size", "forms": [{"id": form_a.id, "name": "A"}]},
+        ]
 
     def test_excludes_chapter_forms(self, client, db, td_user, td_tournament, chapter):
         form_a = _make_form(db, td_user, td_tournament, name="A")
@@ -319,7 +323,7 @@ class TestListTournamentFieldKeys:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 200
-        assert set(res.json()) == {"favorite_color"}
+        assert [usage["field_key"] for usage in res.json()] == ["favorite_color"]
 
     def test_member_without_manage_forms_forbidden(self, client, db, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")
@@ -330,7 +334,12 @@ class TestListTournamentFieldKeys:
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/
+# POST /tournaments/{tournament_id}/forms/prerequisites/preview/
 # ---------------------------------------------------------------------------
+
+
+def _requires_role(role, *, inverse=False):
+    return {"roles": [{"ids": [role.id], "match": "any", "inverse": inverse}]}
 
 
 class TestTournamentFormPrerequisites:
@@ -344,28 +353,16 @@ class TestTournamentFormPrerequisites:
         self, client, db, td_user, td_tournament
     ):
         form = _make_form(db, td_user, td_tournament)
-        role = (
-            db.query(TournamentRole)
-            .filter(TournamentRole.tournament_id == td_tournament.id)
-            .first()
-        )
-        now = datetime.now(UTC)
-        shift = TournamentShift(
-            tournament_id=td_tournament.id,
-            track_id=primary_track_id(db, td_tournament.id),
-            label="Morning",
-            start=now,
-            end=now + timedelta(hours=2),
-        )
-        db.add(shift)
-        db.commit()
+        runner = _role(db, td_tournament, "Runner")
+        volunteer = _role(db, td_tournament, "Volunteer")
         self._link(db, form, td_tournament)
         login(client, "td@test.com", "tdpass")
 
         payload = {
-            "onboarding_complete": True,
-            "roles": {"ids": [role.id], "match": "all"},
-            "availability": {"shift_ids": [shift.id], "match": "any"},
+            "roles": [
+                {"ids": [runner.id, volunteer.id], "match": "all", "inverse": False},
+                {"ids": [volunteer.id], "match": "any", "inverse": True},
+            ]
         }
         res = client.patch(
             f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=payload
@@ -377,7 +374,19 @@ class TestTournamentFormPrerequisites:
         assert listed.status_code == 200
         assert listed.json()[0]["prerequisites"] == payload
 
-    def test_rejects_role_or_shift_from_another_tournament(
+    def test_onboarding_form_accepts_prerequisites(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament, is_onboarding=True, order=1)
+        login(client, "td@test.com", "tdpass")
+
+        res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json=_requires_role(_role(db, td_tournament, "Runner")),
+        )
+
+        assert res.status_code == 200
+
+    def test_rejects_role_from_another_tournament(
         self, client, db, td_user, td_tournament, other_tournament
     ):
         form = _make_form(db, td_user, td_tournament)
@@ -387,57 +396,162 @@ class TestTournamentFormPrerequisites:
             .filter(TournamentRole.tournament_id == other_tournament.id)
             .first()
         )
-        now = datetime.now(UTC)
-        other_shift = TournamentShift(
-            tournament_id=other_tournament.id,
-            track_id=primary_track_id(db, other_tournament.id),
-            label="Other",
-            start=now,
-            end=now + timedelta(hours=2),
-        )
-        db.add(other_shift)
-        db.commit()
         login(client, "td@test.com", "tdpass")
 
-        role_res = client.patch(
+        res = client.patch(
             f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"roles": {"ids": [other_role.id], "match": "any"}},
-        )
-        shift_res = client.patch(
-            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-            json={"availability": {"shift_ids": [other_shift.id], "match": "all"}},
+            json=_requires_role(other_role),
         )
 
-        assert role_res.status_code == 422
-        assert shift_res.status_code == 422
+        assert res.status_code == 422
 
-    def test_rejects_onboarding_form_and_member_without_manage_forms(
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"roles": [{"ids": [], "match": "any"}]},
+            {"roles": [{"ids": [1], "match": "none"}]},
+            {"roles": {"ids": [1], "match": "any"}},
+            {"availability": {"shift_ids": [1], "match": "any"}},
+            {"onboarding_complete": True},
+        ],
+    )
+    def test_rejects_malformed_or_removed_shapes(self, client, db, td_user, td_tournament, body):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=body
+        )
+
+        assert res.status_code == 422
+
+    def test_member_without_manage_forms_is_forbidden(
         self, client, db, td_user, td_tournament, other_user
     ):
         form = _make_form(db, td_user, td_tournament)
-        self._link(db, form, td_tournament, is_onboarding=True, order=1)
-        login(client, "td@test.com", "tdpass")
-        assert (
-            client.patch(
-                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-                json={"onboarding_complete": True},
-            ).status_code
-            == 409
-        )
-
-        db.query(TournamentForm).filter(TournamentForm.form_id == form.id).update(
-            {TournamentForm.is_onboarding: False, TournamentForm.order: None}
-        )
-        db.commit()
+        self._link(db, form, td_tournament)
         grant_role(db, td_tournament, other_user, "Runner")
         login(client, "other@test.com", "otherpass")
+        body = _requires_role(_role(db, td_tournament, "Runner"))
+
         assert (
             client.patch(
-                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
-                json={"onboarding_complete": True},
+                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=body
             ).status_code
             == 403
         )
+        assert (
+            client.post(
+                f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/", json=body
+            ).status_code
+            == 403
+        )
+
+    def test_preview_lists_matching_members_with_roles(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        runner = _role(db, td_tournament, "Runner")
+        login(client, "td@test.com", "tdpass")
+        url = f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/"
+
+        holders = client.post(url, json=_requires_role(runner))
+        others = client.post(url, json=_requires_role(runner, inverse=True))
+        everyone = client.post(url, json={"roles": []})
+
+        assert holders.status_code == 200
+        assert [m["user_id"] for m in holders.json()] == [other_user.id]
+        assert holders.json()[0]["roles"] == [{"id": runner.id, "label": "Runner"}]
+        assert [m["user_id"] for m in others.json()] == [td_user.id]
+        assert {m["user_id"] for m in everyone.json()} == {td_user.id, other_user.id}
+
+    def test_preview_rejects_role_from_another_tournament(
+        self, client, db, td_tournament, other_tournament
+    ):
+        other_role = (
+            db.query(TournamentRole)
+            .filter(TournamentRole.tournament_id == other_tournament.id)
+            .first()
+        )
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/tournaments/{td_tournament.id}/forms/prerequisites/preview/",
+            json=_requires_role(other_role),
+        )
+
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/flow/?membership_id=
+# ---------------------------------------------------------------------------
+
+
+class TestMemberFormFlow:
+    def _form(
+        self, db, user, tournament, name, *, status="published", order=None, prerequisites=None
+    ):
+        form = _make_form(db, user, tournament, name=name, status=status)
+        db.add(
+            TournamentForm(
+                form_id=form.id,
+                tournament_id=tournament.id,
+                is_onboarding=order is not None,
+                order=order,
+                prerequisites=prerequisites or {},
+            )
+        )
+        db.commit()
+        return form
+
+    def test_lists_onboarding_steps_and_other_forms_for_the_member(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        supervisors = _requires_role(_role(db, td_tournament, "Lead Event Supervisor"))
+        answered = self._form(db, td_user, td_tournament, "Welcome", order=1)
+        draft_step = self._form(db, td_user, td_tournament, "Waiver", status="draft", order=2)
+        excluded_step = self._form(
+            db, td_user, td_tournament, "Briefing", order=3, prerequisites=supervisors
+        )
+        open_form = self._form(db, td_user, td_tournament, "A Lunch")
+        blocked_form = self._form(db, td_user, td_tournament, "B Judges", prerequisites=supervisors)
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        db.add(FormResponse(form_id=answered.id, user_id=other_user.id))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.get(
+            f"/tournaments/{td_tournament.id}/forms/flow/?membership_id={membership.id}"
+        )
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["exempt_from_onboarding"] is False
+        # The draft step isn't owed yet and the excluded one isn't theirs.
+        assert body["held_to_onboarding"] is False
+        assert [(s["form_id"], s["completed"], s["applies"]) for s in body["onboarding"]] == [
+            (answered.id, True, True),
+            (draft_step.id, False, True),
+            (excluded_step.id, False, False),
+        ]
+        assert [(f["form_id"], f["applies"]) for f in body["forms"]] == [
+            (open_form.id, True),
+            (blocked_form.id, False),
+        ]
+
+    def test_is_scoped_and_manage_forms_gated(
+        self, client, db, td_user, td_tournament, other_user, other_tournament
+    ):
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        db.commit()
+        query = f"/forms/flow/?membership_id={membership.id}"
+
+        login(client, "td@test.com", "tdpass")
+        assert client.get(f"/tournaments/{other_tournament.id}{query}").status_code in (403, 404)
+        login(client, "other@test.com", "otherpass")
+        assert client.get(f"/tournaments/{td_tournament.id}{query}").status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +591,10 @@ class TestMyTournamentForms:
         completed_archived = self._form(db, td_user, td_tournament, status="archived")
         waiting_standard = self._form(db, td_user, td_tournament)
         blocked_standard = self._form(
-            db, td_user, td_tournament, prerequisites={"onboarding_complete": True}
+            db,
+            td_user,
+            td_tournament,
+            prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
         )
         completed_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=1)
         next_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=2)
@@ -730,7 +847,7 @@ class TestRespondentNotFound:
             TournamentForm(
                 form_id=form.id,
                 tournament_id=td_tournament.id,
-                prerequisites={"onboarding_complete": True},
+                prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
             )
         )
         db.add(FormResponse(form_id=form.id, user_id=other_user.id))
@@ -788,13 +905,13 @@ class TestUpdateArchiveDeleteForm:
     def test_member_cannot_view_standard_form_without_prerequisites(
         self, client, db, td_user, td_tournament, other_user
     ):
-        membership = grant_role(db, td_tournament, other_user, "Runner")
+        grant_role(db, td_tournament, other_user, "Runner")
         form = _make_form(db, td_user, td_tournament, status="published")
         db.add(
             TournamentForm(
                 form_id=form.id,
                 tournament_id=td_tournament.id,
-                prerequisites={"onboarding_complete": True},
+                prerequisites=_requires_role(_role(db, td_tournament, "Volunteer")),
             )
         )
         db.commit()
@@ -802,8 +919,7 @@ class TestUpdateArchiveDeleteForm:
 
         assert client.get(f"/forms/{form.id}/").status_code == 403
         assert client.post(f"/forms/{form.id}/responses/", json={"answers": []}).status_code == 403
-        membership.onboarded_at = utcnow()
-        db.commit()
+        grant_role(db, td_tournament, other_user, "Volunteer")
         assert client.get(f"/forms/{form.id}/").status_code == 200
 
     def test_patch_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):
@@ -1227,9 +1343,9 @@ class TestBulkUpdateFieldsPublished:
             json={"fields": [self._keyed_entry(first.id, "a"), self._keyed_entry(second.id, "a")]},
         )
         assert res.status_code == 409
-        assert "field_key 'a' is already in use" in res.json()["detail"]
+        assert "field_key 'a' is used twice on this form" in res.json()["detail"]
 
-    def test_key_used_on_another_form_rejected(self, client, db, td_user, td_tournament):
+    def test_key_used_on_another_form_allowed(self, client, db, td_user, td_tournament):
         other = _make_form(db, td_user, td_tournament, name="Other")
         _make_field(db, other, field_key="taken")
         form = _make_form(db, td_user, td_tournament)
@@ -1247,7 +1363,53 @@ class TestBulkUpdateFieldsPublished:
             f"/forms/{form.id}/fields/",
             json={"fields": [self._keyed_entry(field.id, "taken")]},
         )
-        assert res.status_code == 409
+        assert res.status_code == 200, res.json()
+        assert res.json()[0]["field_key"] == "taken"
+
+    def test_shared_key_shows_the_latest_answer(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """Editing the older form's answer makes it the latest again."""
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        first = _make_form(db, td_user, td_tournament, name="First", status="published")
+        second = _make_form(db, td_user, td_tournament, name="Second", status="published")
+        text = {"required": False, "max_length": 50}
+        first_field = _make_field(
+            db, first, field_key="shirt_size", question_type="short_text", config=text
+        )
+        second_field = _make_field(
+            db, second, field_key="shirt_size", question_type="short_text", config=text
+        )
+        for form in (first, second):
+            db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id))
+        first.allow_response_edits = True
+        db.commit()
+
+        def shown():
+            login(client, "td@test.com", "tdpass")
+            custom = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()[
+                "custom_responses"
+            ]
+            return [(a["field_key"], a["value"]) for a in custom]
+
+        login(client, "other@test.com", "otherpass")
+        client.post(
+            f"/forms/{first.id}/responses/",
+            json={"answers": [{"field_id": first_field.id, "value": "S"}]},
+        )
+        client.post(
+            f"/forms/{second.id}/responses/",
+            json={"answers": [{"field_id": second_field.id, "value": "M"}]},
+        )
+        assert shown() == [("shirt_size", "M")]
+
+        login(client, "other@test.com", "otherpass")
+        res = client.patch(
+            f"/forms/{first.id}/responses/me/",
+            json={"answers": [{"field_id": first_field.id, "value": "L"}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert shown() == [("shirt_size", "L")]
 
     def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -1706,8 +1868,8 @@ class TestBulkUpdateFieldsPublished:
         assert (a.order, c.order, b.order) == (1, 2, 3)
 
     def test_unarchiving_rejected_when_key_was_claimed(self, client, db, td_user, td_tournament):
-        """An archived field doesn't reserve its key, so the name may be gone
-        by the time the TD wants the question back."""
+        """An archived field doesn't reserve its key, so another question on
+        the same form may hold it by the time the TD wants it back."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
             db,
@@ -2636,6 +2798,137 @@ class TestAnswerSnapshotting:
 # ---------------------------------------------------------------------------
 
 
+class TestOtherOption:
+    """An is_other option takes the respondent's typed text as the answer."""
+
+    OPTIONS = [
+        {"option_id": "opt_red", "value": "red", "label": "Red"},
+        {"option_id": "opt_other", "value": "Other", "label": "Other", "is_other": True},
+    ]
+
+    def _form(self, db, td_user, td_tournament, question_type="single_select_radio", **config):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db,
+            form,
+            question_type=question_type,
+            config={"required": True, "options": self.OPTIONS, **config},
+        )
+        db.commit()
+        return form, field
+
+    def _submit(self, client, form, field, value):
+        return client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": value}]},
+        )
+
+    def test_typed_text_is_stored_as_the_answer(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament, question_type="multi_select_checkbox")
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(
+            client, form, field, ["opt_red", {"option_id": "opt_other", "text": " Teal "}]
+        )
+        assert res.status_code == 200, res.json()
+        assert res.json()["answers"][0]["value"] == [
+            {"option_id": "opt_red", "value": "red", "label": "Red"},
+            {"option_id": "opt_other", "value": "Teal", "label": "Other", "text": "Teal"},
+        ]
+
+    def test_checkbox_takes_several_other_entries(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament, question_type="multi_select_checkbox")
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(
+            client,
+            form,
+            field,
+            [
+                {"option_id": "opt_other", "text": "Teal"},
+                {"option_id": "opt_other", "text": "Gold"},
+            ],
+        )
+        assert res.status_code == 200, res.json()
+        assert [item["text"] for item in res.json()["answers"][0]["value"]] == ["Teal", "Gold"]
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            {"option_id": "opt_other", "text": "  "},
+            "opt_other",
+            {"option_id": "opt_red", "text": "Teal"},
+        ],
+    )
+    def test_other_without_text_or_text_on_a_regular_option_rejected(
+        self, client, db, td_user, td_tournament, value
+    ):
+        form, field = self._form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        res = self._submit(client, form, field, value)
+        assert res.status_code == 400
+        assert "Other" in res.json()["detail"]
+
+    def test_other_follows_its_branch(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament)
+        _make_field(
+            db, form, order=2, field_key="skipped", config={**field.config, "required": True}
+        )
+        last = _make_field(db, form, order=3, field_key="last")
+        field.config = {
+            "required": True,
+            "options": [
+                self.OPTIONS[0],
+                {**self.OPTIONS[1], "next_field_id": last.id},
+            ],
+        }
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        # `skipped` is required, so a 200 means Other's jump took the walk past it.
+        res = self._submit(client, form, field, {"option_id": "opt_other", "text": "Teal"})
+        assert res.status_code == 200, res.json()
+        assert {a["field_id"] for a in res.json()["answers"]} == {field.id}
+
+    def test_patch_replays_a_stored_other_answer(self, client, db, td_user, td_tournament):
+        form, field = self._form(db, td_user, td_tournament)
+        form.allow_response_edits = True
+        second = _make_field(db, form, order=2, field_key="second")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        submitted = self._submit(client, form, field, {"option_id": "opt_other", "text": "Teal"})
+        assert submitted.status_code == 200, submitted.json()
+
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": second.id, "value": "opt_2"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+    def test_preset_field_cannot_have_other(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        track_id = primary_track_id(db, td_tournament.id)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "label": "Lunch",
+                        "field_key": f"lunch_{track_id}_main",
+                        "question_type": "single_select_radio",
+                        "config": {"required": False, "options": self.OPTIONS},
+                    }
+                ]
+            },
+        )
+        assert res.status_code == 422
+        assert "Other" in res.json()["detail"]
+
+
 class TestWriteThroughOnSubmit:
     def test_availability_write_through_on_tournament_form(
         self, client, db, td_user, td_tournament
@@ -3481,13 +3774,10 @@ class TestWriteThroughOnSubmit:
         assert rows[0].category == "protein"
         assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
-    def test_key_change_to_lunch_backfills_existing_answers(
+    def test_key_change_to_lunch_does_not_replay_existing_answers(
         self, client, db, td_user, td_tournament
     ):
-        """Answers given while the key was a plain one never reached
-        TournamentMembershipLunch, and the key change also drops them from
-        custom responses — so the switch replays them rather than stranding
-        them until every member resubmits."""
+        """Write-through only runs forward, lunch included."""
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
             db,
@@ -3498,16 +3788,10 @@ class TestWriteThroughOnSubmit:
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
-            ).status_code
-            == 200
+        client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
         )
-        # Plain key: nothing written through yet.
-        assert db.query(TournamentMembershipLunch).count() == 0
 
         res = client.put(
             f"/forms/{form.id}/fields/",
@@ -3523,107 +3807,9 @@ class TestWriteThroughOnSubmit:
                 ]
             },
         )
+
         assert res.status_code == 200, res.json()
-
-        row = db.query(TournamentMembershipLunch).one()
-        assert row.value == "Vegan cheese only"
-        assert row.category == "special_requests"
-        assert row.track_id == primary_track_id(db, td_tournament.id)
-
-    def test_key_change_to_lunch_backfills_option_answers(self, client, db, td_user, td_tournament):
-        """A select question's stored answer is an {option_id, value, label}
-        snapshot — the backfill unwraps it and resolves against the new
-        config, whose freeform option values survive the key change."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        options = [
-            {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
-            {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
-        ]
-        field = _make_field(
-            db,
-            form,
-            field_key="protein_choice",
-            question_type="single_select_radio",
-            config={"required": False, "options": options},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
-            ).status_code
-            == 200
-        )
         assert db.query(TournamentMembershipLunch).count() == 0
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                        "label": "Protein",
-                        "question_type": "single_select_radio",
-                        "config": {"required": False, "options": options},
-                    }
-                ]
-            },
-        )
-        assert res.status_code == 200, res.json()
-
-        row = db.query(TournamentMembershipLunch).one()
-        assert row.value == "tofu"
-        assert row.label == "Tofu"
-        assert row.category == "protein"
-
-    def test_key_change_between_lunch_keys_does_not_backfill(
-        self, client, db, td_user, td_tournament
-    ):
-        """Only a non-preset -> lunch transition backfills. Editing a key that
-        was already lunch leaves the old rows to _clear/-resubmit handling
-        rather than silently writing the new (date, category)."""
-        form = _make_form(db, td_user, td_tournament, status="published")
-        field = _make_field(
-            db,
-            form,
-            field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-            question_type="short_text",
-            config={"required": False},
-        )
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert (
-            client.post(
-                f"/forms/{form.id}/responses/",
-                json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
-            ).status_code
-            == 200
-        )
-        assert db.query(TournamentMembershipLunch).count() == 1
-
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id,
-                        "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
-                        "label": "Protein",
-                        "question_type": "short_text",
-                        "config": {"required": False, "max_length": 200},
-                    }
-                ]
-            },
-        )
-        assert res.status_code == 200, res.json()
-
-        rows = db.query(TournamentMembershipLunch).all()
-        assert len(rows) == 1
-        assert rows[0].track_id == primary_track_id(db, td_tournament.id)
 
     def test_lunch_free_text_write_through_on_tournament_form(
         self, client, db, td_user, td_tournament

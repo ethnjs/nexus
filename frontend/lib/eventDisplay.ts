@@ -38,10 +38,18 @@ export function eventNameWithDivision(e: NameableEvent & { division: string | nu
  * comparator is numeric-aware (101 before 1001).
  */
 export function trackLocationLabel(
-  detail: { building_name: string | null; rooms: string[] } | null | undefined,
+  detail:
+    | {
+        building_name: string | null;
+        building_short_name?: string | null;
+        rooms: { name: string }[];
+      }
+    | null
+    | undefined,
 ): string | null {
-  if (!detail?.building_name) return null;
-  return [detail.building_name, detail.rooms.join(", ")].filter(Boolean).join(" ");
+  const building = detail?.building_short_name || detail?.building_name;
+  if (!detail || !building) return null;
+  return [building, detail.rooms.map((room) => room.name).join(", ")].filter(Boolean).join(" ");
 }
 
 // The first day an event runs. An event has no dates of its own — its

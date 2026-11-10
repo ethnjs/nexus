@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/Button";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
-import { Spinner } from "@/components/ui/Spinner";
 import { EVENT_PANEL } from "@/lib/displayConfigSurfaces";
 import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
 
@@ -48,9 +48,7 @@ export function EventPanelConfigModal({
   return (
     <Modal title="Configure event panel" onClose={onClose} width={420}>
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-          <Spinner size="md" />
-        </div>
+        <LoadingState context="section" />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <span

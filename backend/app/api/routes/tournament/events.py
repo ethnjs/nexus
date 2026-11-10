@@ -17,13 +17,15 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import (
+    SEASON_FIELDS,
+    Event,
     SeasonEvent,
     TournamentBuilding,
-    TournamentBuildingTrack,
     TournamentEvent,
     TournamentEventStaffingNeed,
     TournamentEventTrack,
     TournamentRole,
+    TournamentRoom,
     TournamentShift,
     TournamentTrack,
     User,
@@ -53,6 +55,22 @@ def _validate_division(division: str | None, tournament) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"division must be one of the tournament's divisions: {tournament.division}",
         )
+
+
+def _season_event(
+    db: Session, tournament, event_id: int | None, division: str | None
+) -> SeasonEvent | None:
+    if event_id is None or division is None or tournament.season_year is None:
+        return None
+    return (
+        db.query(SeasonEvent)
+        .filter(
+            SeasonEvent.event_id == event_id,
+            SeasonEvent.division == division,
+            SeasonEvent.year == tournament.season_year,
+        )
+        .first()
+    )
 
 
 # There is no bounds check on an event any more. An event has no times of its
@@ -121,6 +139,7 @@ def _apply_shifts_and_tracks(
     # which is what a track inherited from a shift, or one already held on an
     # untouched PATCH, should get.
     wanted: dict[int, EventTrackDetail | None] = {}
+    rooms_by_id: dict[int, TournamentRoom] = {}
 
     if track_details is not None:
         wanted = {detail.track_id: detail for detail in track_details}
@@ -130,7 +149,7 @@ def _apply_shifts_and_tracks(
                 detail="track_details must not name the same track twice",
             )
         _validate_tracks(db, event, tournament_id, list(wanted))
-        _validate_buildings(db, tournament_id, track_details)
+        rooms_by_id = _resolve_rooms(db, tournament_id, track_details)
         _validate_need_roles(db, tournament_id, track_details)
     else:
         wanted = {detail.track_id: None for detail in event.track_details}
@@ -161,11 +180,9 @@ def _apply_shifts_and_tracks(
             row = TournamentEventTrack(track_id=track_id)
             event.track_details.append(row)
         if detail is not None:
-            row.building_id = detail.building_id
-            row.floor = detail.floor
-            # [] and None both mean "no rooms"; storing None keeps one answer
-            # in the column rather than two that render identically.
-            row.rooms = detail.rooms or None
+            row.rooms = [rooms_by_id[room_id] for room_id in detail.room_ids]
+            # A floor with no room to be on is not a location.
+            row.floor = detail.floor if row.rooms else None
             _set_needs(row, detail.needs)
 
 
@@ -209,46 +226,47 @@ def _validate_tracks(
         )
 
 
-def _validate_buildings(
+def _resolve_rooms(
     db: Session,
     tournament_id: int,
     details: list[EventTrackDetail],
-) -> None:
-    """Each named building belongs to this tournament and is tagged with the
-    track it is being used on.
-
-    The composite foreign key enforces this too, but an IntegrityError reaches
-    the caller as a 500 with nothing actionable in it. This turns the same
-    rule into a 422 that names the pair.
-    """
-    pairs = {
-        (detail.building_id, detail.track_id)
-        for detail in details
-        if detail.building_id is not None
+) -> dict[int, TournamentRoom]:
+    """The named rooms by id, or a 422 naming what's wrong: a room that isn't
+    in this tournament, rooms in two buildings for one track, or a building
+    that isn't on the track."""
+    wanted = {room_id for detail in details for room_id in detail.room_ids}
+    if not wanted:
+        return {}
+    rooms = {
+        room.id: room
+        for room in db.query(TournamentRoom)
+        .join(TournamentBuilding, TournamentBuilding.id == TournamentRoom.building_id)
+        .options(selectinload(TournamentRoom.building).selectinload(TournamentBuilding.tracks))
+        .filter(TournamentRoom.id.in_(wanted), TournamentBuilding.tournament_id == tournament_id)
     }
-    if not pairs:
-        return
-
-    valid = set(
-        db.query(TournamentBuildingTrack.building_id, TournamentBuildingTrack.track_id)
-        .join(TournamentBuilding, TournamentBuilding.id == TournamentBuildingTrack.building_id)
-        .filter(
-            TournamentBuilding.tournament_id == tournament_id,
-            TournamentBuildingTrack.building_id.in_({b for b, _ in pairs}),
-        )
-        .all()
-    )
-
-    bad = sorted(pairs - valid)
-    if bad:
-        building_id, track_id = bad[0]
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"Building {building_id} is not available on track {track_id}; "
-                f"tag it with that track first"
-            ),
-        )
+    for detail in details:
+        missing = [room_id for room_id in detail.room_ids if room_id not in rooms]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unknown room {missing[0]}",
+            )
+        buildings = {rooms[room_id].building for room_id in detail.room_ids}
+        if len(buildings) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"An event's rooms on track {detail.track_id} must be in one building",
+            )
+        for building in buildings:
+            if detail.track_id not in {track.id for track in building.tracks}:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"{building.name} is not available on track {detail.track_id}; "
+                        f"tag it with that track first"
+                    ),
+                )
+    return rooms
 
 
 def _set_needs(row: TournamentEventTrack, needs: list[EventStaffingNeed]) -> None:
@@ -343,14 +361,18 @@ def list_events(
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)
 
-    query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
+    query = db.query(TournamentEvent)
     if public:
+        query = query.options(joinedload(TournamentEvent.event))
         # The member shape carries shifts now (see EventMemberRead), but not
         # their event_count — so a plain load, without the extra hop the staff
         # shape needs to compute it.
         query = query.options(selectinload(TournamentEvent.shifts))
     else:
-        query = query.options(*loader_options(requested))
+        query = query.options(
+            *Event.load_related_events(joinedload(TournamentEvent.event)),
+            *loader_options(requested),
+        )
     events = (
         query.filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
@@ -414,6 +436,11 @@ def create_event(
     _validate_division(payload.division, tournament)
 
     data = payload.model_dump()
+    season_event = _season_event(db, tournament, payload.event_id, payload.division)
+    if season_event is not None:
+        for field in SEASON_FIELDS:
+            if field not in payload.model_fields_set:
+                data[field] = getattr(season_event, field)
     shift_ids = data.pop("shift_ids")
     # From the payload, not the dump: model_dump would hand back plain dicts,
     # and the link writer works in EventTrackDetail.
@@ -500,8 +527,8 @@ def delete_event(
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/events/load-defaults/ — manage_events
-# Bulk-creates TournamentEvent rows from every active SeasonEvent whose
-# division the tournament supports.
+# Bulk-creates TournamentEvent rows from every active SeasonEvent in the
+# tournament's season whose division the tournament supports.
 # ---------------------------------------------------------------------------
 @router.post(
     "/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED
@@ -513,11 +540,17 @@ def load_default_events(
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
+    if tournament.season_year is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Set the tournament's dates first. Its season decides which events load.",
+        )
 
     active_season_events = (
         db.query(SeasonEvent)
-        .options(joinedload(SeasonEvent.event))
+        .options(*Event.load_related_events(joinedload(SeasonEvent.event)))
         .filter(
+            SeasonEvent.year == tournament.season_year,
             SeasonEvent.is_active.is_(True),
             SeasonEvent.division.in_(tournament.division or []),
         )
@@ -554,6 +587,7 @@ def load_default_events(
             event_id=season_event.event_id,
             division=season_event.division,
             name=season_event.event.name,
+            **{field: getattr(season_event, field) for field in SEASON_FIELDS},
         )
         db.add(event)
         created.append(event)

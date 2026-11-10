@@ -42,6 +42,7 @@ class _TrackFields(BaseModel):
     # Not part of the primary/cosmetic invariant below — every track, cosmetic
     # or not, can carry a default role (Test Writing's is often Test Writer).
     default_role_id: int | None = None
+    zone_default_role_id: int | None = None
 
     @field_validator("division")
     @classmethod
@@ -127,6 +128,7 @@ class TournamentTrackUpdate(BaseModel):
     location: str | None = None
     division: list[str] | None = None
     default_role_id: int | None = None
+    zone_default_role_id: int | None = None
     # Also move this track's bars whose only role is the old default to the
     # new one, in the same transaction. Needs manage_members as well.
     reassign_assignments: bool = False
@@ -169,6 +171,7 @@ class TournamentTrackRead(BaseModel):
     location: str | None = None
     division: list[str] | None = None
     default_role_id: int | None = None
+    zone_default_role_id: int | None = None
     # Pending delete — see the model. Only ever true in the tournament
     # settings listing; every other audience filters these out.
     is_archived: bool
@@ -210,6 +213,17 @@ class MembershipTrackStatusRead(BaseModel):
             status=row.status,
             updated_at=row.updated_at,
         )
+
+
+class TrackVenueUsage(BaseModel):
+    """What turning off competition day on a track removes: the track from
+    `buildings` buildings (deleting `buildings_deleted` of them, which are on no
+    other day), the rooms of `placed_events` events, and `zones` zones."""
+
+    buildings: int
+    buildings_deleted: int
+    placed_events: int
+    zones: int
 
 
 class TournamentTrackDeleteResult(BaseModel):

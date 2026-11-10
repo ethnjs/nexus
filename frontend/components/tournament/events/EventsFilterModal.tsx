@@ -12,15 +12,20 @@ import {
 } from "@/components/ui/FilterModal";
 import type { Assignment, TournamentEvent } from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
+import { formatOptions, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
 
 // Shared by the events table and the assignments board — same keys, same
 // meaning, same predicate (eventPassesFilters) on both.
 export const EVENTS_FILTER_KEYS = [
   "division",
   "type",
+  "format",
+  "impound",
+  "self_schedule",
   "category",
   "track",
   "building",
+  "placement",
   "shifts",
   "shift",
   "staffing",
@@ -60,6 +65,8 @@ export const EVENT_TYPE_OPTIONS: FilterOption[] = [
   { value: "trial", label: "Trial" },
 ];
 
+const FORMAT_OPTIONS = formatOptions(EVENT_FILTER_UNSET);
+
 // Not a partition: an event passes if it matches *any* picked value, and
 // "Nobody assigned" is a sharper cut of "Short" worth picking on its own.
 const STAFFING_OPTIONS: FilterOption[] = [
@@ -69,6 +76,12 @@ const STAFFING_OPTIONS: FilterOption[] = [
   { value: "no_needs", label: "No needs" },
 ];
 const STAFFING_VALUES = new Set(STAFFING_OPTIONS.map((o) => o.value));
+
+// Placed means in at least one room on a competition day that counts.
+const PLACEMENT_OPTIONS: FilterOption[] = [
+  { value: "placed", label: "Placed" },
+  { value: "unplaced", label: "Unplaced" },
+];
 
 const SHIFTS_OPTIONS: FilterOption[] = [
   { value: "has", label: "Has shifts" },
@@ -176,6 +189,9 @@ export function eventPassesFilters(
 ): boolean {
   if (!filterAllows(filters.division, event.division ?? EVENT_FILTER_UNSET)) return false;
   if (!filterAllows(filters.type, event.event_type)) return false;
+  if (!filterAllows(filters.format, event.format ?? EVENT_FILTER_UNSET)) return false;
+  if (!filterAllows(filters.impound, yesNo(event.has_impound))) return false;
+  if (!filterAllows(filters.self_schedule, yesNo(event.has_self_schedule))) return false;
   if (!filterAllows(filters.category, eventCategoryKey(event))) return false;
   if (
     !allowsAny(
@@ -196,6 +212,16 @@ export function eventPassesFilters(
             : [],
       );
     if (!allowsAny(filters.building, buildings)) return false;
+  }
+  if (filters.placement.size > 0) {
+    const placements = event.track_details
+      .filter(
+        (d) =>
+          ctx.showsTrack(d.track_id) &&
+          event.tracks.some((t) => t.id === d.track_id && t.is_primary),
+      )
+      .map((d) => (d.room_ids.length > 0 ? "placed" : "unplaced"));
+    if (!allowsAny(filters.placement, placements)) return false;
   }
   if (!filterAllows(filters.shifts, event.shifts.length > 0 ? "has" : "none")) return false;
   if (
@@ -250,6 +276,8 @@ interface EventsFilterModalProps {
   trackOptions?: FilterOption[];
   buildingOptions: FilterOption[];
   shiftOptions: FilterOption[];
+  /** Off where assignments aren't loaded, so staffing can't be judged. */
+  showStaffing?: boolean;
   filters: EventsFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: EventsFilterState) => void;
@@ -266,6 +294,7 @@ export function EventsFilterModal({
   trackOptions,
   buildingOptions,
   shiftOptions,
+  showStaffing = true,
   filters,
   onApply,
   onClose,
@@ -273,6 +302,9 @@ export function EventsFilterModal({
   const sections: FilterSectionConfig<EventsFilterKey>[] = [
     { key: "division", title: "Division", options: divisionOptions, control: "divisions" },
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
+    { key: "format", title: "Format", options: FORMAT_OPTIONS, control: "buttons" },
+    { key: "impound", title: "Impound", options: YES_NO_OPTIONS, control: "buttons" },
+    { key: "self_schedule", title: "Self-schedule", options: YES_NO_OPTIONS, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
     {
       key: "track",
@@ -288,7 +320,14 @@ export function EventsFilterModal({
       control: "chips",
       hidden: buildingOptions.length === 0,
     },
-    { key: "staffing", title: "Staffing", options: STAFFING_OPTIONS, control: "buttons" },
+    { key: "placement", title: "Placement", options: PLACEMENT_OPTIONS, control: "buttons" },
+    {
+      key: "staffing",
+      title: "Staffing",
+      options: STAFFING_OPTIONS,
+      control: "buttons",
+      hidden: !showStaffing,
+    },
     { key: "shifts", title: "Shifts", options: SHIFTS_OPTIONS, control: "buttons" },
     {
       key: "shift",

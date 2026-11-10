@@ -6,26 +6,25 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
+from app.schemas.tournament.building import TournamentRoomRead, blank_to_none, sorted_rooms
 from app.schemas.tournament.shift import TournamentShiftBase, TournamentShiftRead
 from app.schemas.tournament.track import TournamentTrackRead
 
 VALID_EVENT_TYPES = {"standard", "trial"}
+VALID_EVENT_FORMATS = {"test", "hybrid", "build"}
 
 
-def _clean_rooms(value: list[str]) -> list[str]:
-    """Trimmed, blank-free, deduplicated, order preserved.
+def validate_event_format(v: str | None) -> str | None:
+    if v is not None and v not in VALID_EVENT_FORMATS:
+        raise ValueError(f"format must be one of: {VALID_EVENT_FORMATS}")
+    return v
 
-    Order is the TD's: "210, 212, 214" is how they think of the space, and
-    sorting would renumber it for them. Blanks are dropped rather than
-    rejected — a room list is edited as a row of tags, and an empty one is a
-    tag the TD cleared, not an error worth a 422.
-    """
-    seen: list[str] = []
-    for room in value:
-        room = room.strip()
-        if room and room not in seen:
-            seen.append(room)
-    return seen
+
+def reject_null[T](v: T | None) -> T:
+    """For an update field whose None means "not sent": an explicit null can't be stored."""
+    if v is None:
+        raise ValueError("can't be null")
+    return v
 
 
 class EventStaffingNeed(BaseModel):
@@ -61,30 +60,18 @@ class EventStaffingNeedRead(EventStaffingNeed):
 
 
 class EventTrackDetail(BaseModel):
-    """One track an event runs on, plus where it happens there.
-
-    Replaces the old `track_ids` outright rather than sitting beside it: a
-    list of ids and a list of ids-with-location are two ways to write the
-    same thing, and the pair would have to define which wins. A track with no
-    location is simply a detail whose fields are all None.
-
-    One building and one floor, but many rooms — an event routinely spreads
-    across 210, 212 and 214, while nothing sensible spreads across two
-    buildings on one day. The link table's primary key already enforces the
-    singular half; nothing needs to enforce it here.
-    """
+    """One track an event runs on, plus where it happens there: its rooms,
+    all in one building on that track, and an optional floor override. No
+    rooms means not placed yet."""
 
     model_config = ConfigDict(extra="forbid")
 
     track_id: int
-    building_id: int | None = None
     floor: str | None = None
-    rooms: list[str] = []
-    # Whole-set within the entry, like every other field here: an entry states
-    # what the event's arrangement on that track *is*. Sending an entry with
-    # no `needs` therefore clears them, exactly as sending one with no
-    # `building_id` unplaces it. Leave the track out of `track_details`
-    # entirely to keep what it already has.
+    room_ids: list[int] = []
+    # Whole-set within the entry: sending one with no `needs` clears them, and
+    # one with no `room_ids` unplaces it. Leave the track out of
+    # `track_details` entirely to keep what it already has.
     needs: list[EventStaffingNeed] = []
 
     @field_validator("needs")
@@ -98,32 +85,34 @@ class EventTrackDetail(BaseModel):
     @field_validator("floor")
     @classmethod
     def _clean_floor(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        return v.strip() or None
+        return blank_to_none(v)
 
-    @field_validator("rooms")
+    @field_validator("room_ids")
     @classmethod
-    def _check_rooms(cls, v: list[str]) -> list[str]:
-        return _clean_rooms(v)
+    def _dedupe_room_ids(cls, v: list[int]) -> list[int]:
+        return list(dict.fromkeys(v))
 
 
 class EventTrackDetailRead(EventTrackDetail):
-    """The read shape. Carries the building's name because nothing else in an
-    event response can supply it — unlike a track, which the `tracks` group
-    already spells out in full."""
+    """The read shape, with the building the rooms are in spelled out."""
 
+    building_id: int | None = None
     building_name: str | None = None
+    building_short_name: str | None = None
+    rooms: list[TournamentRoomRead] = []
     needs: list[EventStaffingNeedRead] = []  # ty: ignore[invalid-attribute-override]
 
     @classmethod
     def from_row(cls, detail) -> EventTrackDetailRead:
+        rooms = sorted_rooms(detail.rooms)
         return cls(
             track_id=detail.track_id,
-            building_id=detail.building_id,
+            building_id=detail.building.id if detail.building else None,
             building_name=detail.building.name if detail.building else None,
+            building_short_name=detail.building.short_name if detail.building else None,
             floor=detail.floor,
-            rooms=detail.rooms or [],
+            room_ids=[room.id for room in rooms],
+            rooms=rooms,
             needs=[EventStaffingNeedRead.from_row(need) for need in detail.needs],
         )
 
@@ -140,6 +129,11 @@ class EventBase(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str = "standard"
+    # Left out on create, these are copied from the season event matching the
+    # catalog event, division and the tournament's season (see the route).
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     event_id: int | None = None
     # An event's schedule *is* its shifts, and the tracks it runs on are
     # stated outright. Both are whole-set: a PATCH sending shift_ids replaces
@@ -163,6 +157,8 @@ class EventBase(BaseModel):
             raise ValueError(f"event_type must be one of: {VALID_EVENT_TYPES}")
         return v
 
+    _validate_format = field_validator("format")(validate_event_format)
+
     @model_validator(mode="after")
     def validate_name_or_event_id(self) -> EventBase:
         if self.name is None and self.event_id is None:
@@ -184,6 +180,9 @@ class EventUpdate(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str | None = None
+    format: str | None = None
+    has_impound: bool | None = None
+    has_self_schedule: bool | None = None
     event_id: int | None = None
     # Whole-set, like on create. None means "not sent"; [] means "clear".
     shift_ids: list[int] | None = None
@@ -203,6 +202,9 @@ class EventUpdate(BaseModel):
             raise ValueError(f"event_type must be one of: {VALID_EVENT_TYPES}")
         return v
 
+    _validate_format = field_validator("format")(validate_event_format)
+    _reject_null_flags = field_validator("has_impound", "has_self_schedule")(reject_null)
+
 
 class EventRead(BaseModel):
     id: int
@@ -210,6 +212,9 @@ class EventRead(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     event_id: int | None = None
     # Joined canonical event — set only when event_id is set. Carries
     # category, since TournamentEvent no longer has its own category field.
@@ -270,14 +275,17 @@ class EventMemberRead(BaseModel):
     schedule the TD hadn't committed to. That no longer holds: members already
     answer availability questions built from these exact shifts, so the
     schedule is not a secret being leaked — it is the thing they were asked
-    about. `event_type` joins it because "trial" is something a member should
-    be able to see before signing up for an event.
+    about. `event_type`, `format` and the impound and self-schedule flags join
+    it because a member should know what kind of event they're signing up for.
     """
 
     id: int
     name: str | None = None
     division: str | None = None
     event_type: str = "standard"
+    format: str | None = None
+    has_impound: bool = False
+    has_self_schedule: bool = False
     shifts: list[TournamentShiftBase] = []
 
     @classmethod
@@ -289,6 +297,9 @@ class EventMemberRead(BaseModel):
             name=event.display_name,
             division=event.division,
             event_type=event.event_type,
+            format=event.format,
+            has_impound=event.has_impound,
+            has_self_schedule=event.has_self_schedule,
             shifts=[TournamentShiftBase.model_validate(s) for s in event.shifts],
         )
 

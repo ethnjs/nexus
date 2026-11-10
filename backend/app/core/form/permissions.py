@@ -8,7 +8,8 @@ from app.core.tournament.form_prerequisites import member_meets_form_prerequisit
 from app.core.tournament.memberships import get_membership_by_user, has_any_membership
 from app.core.tournament.onboarding import (
     needs_tournament_onboarding,
-    next_required_onboarding_form_id,
+    next_step,
+    onboarding_paths,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, get_user_permissions, has_permission
 from app.db.session import get_db
@@ -77,6 +78,13 @@ def _form_not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
 
 
+def _prerequisites_not_met() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not meet this form's prerequisites",
+    )
+
+
 def _onboarding_required(tournament_id: int, is_onboarding: bool) -> HTTPException:
     """The frontend can't load the form, so the detail says whose sequence to
     send the member into and whether to come back after: a step of that
@@ -137,16 +145,22 @@ def require_form_view_access(
         if tournament_form.is_onboarding:
             # Their current step, or one they already completed — a finished
             # step stays reachable so its response can be read and revised
-            # (flagged updates, allow_response_edits).
-            if not responded and next_required_onboarding_form_id(db, membership) != form.id:
-                raise _onboarding_required(form.tournament_id, is_onboarding=True)
+            # (flagged updates, allow_response_edits). A step their roles keep
+            # off their path is a plain no; sending them into the sequence
+            # would find nothing for them there.
+            if not responded:
+                path = onboarding_paths(db, form.tournament_id, [current_user.id])[current_user.id]
+                # The form is published here, so it's on the path exactly when
+                # the member passes its prerequisites.
+                if all(step.form_id != form.id for step in path):
+                    raise _prerequisites_not_met()
+                step = next_step(path)
+                if step is None or step.form_id != form.id:
+                    raise _onboarding_required(form.tournament_id, is_onboarding=True)
         elif needs_tournament_onboarding(db, membership, permissions):
             raise _onboarding_required(form.tournament_id, is_onboarding=False)
         elif not member_meets_form_prerequisites(db, membership, tournament_form):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not meet this form's prerequisites",
-            )
+            raise _prerequisites_not_met()
     else:
         if (
             current_user.role != "admin"

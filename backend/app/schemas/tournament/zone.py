@@ -4,8 +4,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.tournament.zones import KIND_BUILDING, KIND_EVENT, KIND_FLOOR, VALID_KINDS
+from app.core.tournament.zones import KIND_BUILDING, KIND_EVENT, KIND_FLOOR, KIND_ROOM, VALID_KINDS
 from app.schemas.person import PersonNameRef, PersonRoleRead
+from app.schemas.tournament.building import blank_to_none
 
 
 def _validate_name(value: str) -> str:
@@ -16,16 +17,13 @@ def _validate_name(value: str) -> str:
 
 
 class ZoneMember(BaseModel):
-    """One rule saying what a zone contains.
+    """One rule saying what a zone contains. Which fields are legal depends on
+    the kind, mirroring ck_zone_member_shape:
 
-    Three kinds, and which columns are legal depends on which:
-
-        building   building_id only
+        building   building_id
         floor      building_id and floor
-        event      tournament_event_id only
-
-    The same shape the database CheckConstraint enforces, restated here so a
-    malformed rule is a 422 naming the problem rather than an IntegrityError.
+        room       room_id; building_id is filled in from the room
+        event      tournament_event_id
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -33,6 +31,7 @@ class ZoneMember(BaseModel):
     kind: str
     building_id: int | None = None
     floor: str | None = None
+    room_id: int | None = None
     tournament_event_id: int | None = None
 
     @field_validator("kind")
@@ -45,16 +44,18 @@ class ZoneMember(BaseModel):
     @field_validator("floor")
     @classmethod
     def _clean_floor(cls, v: str | None) -> str | None:
-        return (v.strip() or None) if v is not None else None
+        return blank_to_none(v)
 
     @model_validator(mode="after")
     def _check_shape(self) -> ZoneMember:
         if self.kind == KIND_BUILDING:
-            wanted, forbidden = ("building_id",), ("floor", "tournament_event_id")
+            wanted, forbidden = ("building_id",), ("floor", "room_id", "tournament_event_id")
         elif self.kind == KIND_FLOOR:
-            wanted, forbidden = ("building_id", "floor"), ("tournament_event_id",)
+            wanted, forbidden = ("building_id", "floor"), ("room_id", "tournament_event_id")
+        elif self.kind == KIND_ROOM:
+            wanted, forbidden = ("room_id",), ("floor", "tournament_event_id")
         else:
-            wanted, forbidden = ("tournament_event_id",), ("building_id", "floor")
+            wanted, forbidden = ("tournament_event_id",), ("building_id", "floor", "room_id")
 
         missing = [name for name in wanted if getattr(self, name) is None]
         if missing:
@@ -65,22 +66,21 @@ class ZoneMember(BaseModel):
         return self
 
     def dedupe_key(self) -> tuple:
-        """What makes two rules the same rule, for rejecting a payload that
-        repeats one. Mirrors the three partial unique indexes."""
+        """What makes two rules the same rule. Mirrors the partial unique
+        indexes."""
         if self.kind == KIND_BUILDING:
             return (KIND_BUILDING, self.building_id)
         if self.kind == KIND_FLOOR:
             return (KIND_FLOOR, self.building_id, self.floor)
+        if self.kind == KIND_ROOM:
+            return (KIND_ROOM, self.room_id)
         return (KIND_EVENT, self.tournament_event_id)
 
 
 class ZoneMemberRead(ZoneMember):
-    """A rule, plus what it names. Carries the building and event names for
-    the same reason a track detail carries its building's — nothing else in a
-    zone response can supply them."""
-
     id: int
     building_name: str | None = None
+    room_name: str | None = None
     event_name: str | None = None
 
     @classmethod
@@ -91,6 +91,8 @@ class ZoneMemberRead(ZoneMember):
             building_id=row.building_id,
             building_name=row.building.name if row.building else None,
             floor=row.floor,
+            room_id=row.room_id,
+            room_name=row.room.name if row.room else None,
             tournament_event_id=row.tournament_event_id,
             event_name=(row.tournament_event.display_name if row.tournament_event else None),
         )
@@ -101,10 +103,6 @@ class ZoneCreate(BaseModel):
 
     track_id: int
     name: str = Field(max_length=255)
-    # The role a drag onto this zone grants. Distinct from the track's default
-    # — a competition day defaults to a general volunteer role, a zone on that
-    # day almost always wants Runner.
-    default_role_id: int | None = None
     members: list[ZoneMember] = []
 
     @field_validator("name")
@@ -120,7 +118,6 @@ class ZoneUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=255)
-    default_role_id: int | None = None
     members: list[ZoneMember] | None = None
 
     @field_validator("name")
@@ -130,21 +127,13 @@ class ZoneUpdate(BaseModel):
 
 
 class ZoneRead(BaseModel):
-    """A zone's rules *and* its contents, which are different things.
-
-    `members` is what the TD drew — the rules. `event_ids` is what those rules
-    currently resolve to, recomputed on every read (see
-    core/tournament/zones.py). Nothing stores the second, and a client that
-    treats `members` as the contents will be wrong the moment an event moves
-    buildings.
-    """
+    """`members` are the zone's rules; `event_ids` are the events those rules
+    currently resolve to, recomputed on every read."""
 
     id: int
     tournament_id: int
     track_id: int
     name: str
-    default_role_id: int | None = None
-    default_role_label: str | None = None
     members: list[ZoneMemberRead] = []
     event_ids: list[int] = []
     created_at: datetime
@@ -157,8 +146,6 @@ class ZoneRead(BaseModel):
             tournament_id=row.tournament_id,
             track_id=row.track_id,
             name=row.name,
-            default_role_id=row.default_role_id,
-            default_role_label=row.default_role.label if row.default_role else None,
             members=[ZoneMemberRead.from_row(m) for m in row.members],
             event_ids=event_ids,
             created_at=row.created_at,
@@ -167,19 +154,13 @@ class ZoneRead(BaseModel):
 
 
 class ZoneCoverageRead(BaseModel):
-    """One track's zones plus what they miss.
-
-    A single response rather than a zones list and two more endpoints: the
-    page needs all three at once, and the gaps are the point of looking.
-    """
+    """One track's zones plus the events they miss."""
 
     track_id: int
     zones: list[ZoneRead] = []
-    # Placed somewhere, but no rule reaches it — draw a rule.
     unzoned_event_ids: list[int] = []
-    # No building at all — a buildings-page problem, not a zones one. Overlaps
-    # the list above without being contained by it: an explicit event rule
-    # zones an unplaced event just fine.
+    # No room at all. Not a subset of unzoned_event_ids: an explicit event
+    # rule zones an unplaced event.
     unplaced_event_ids: list[int] = []
 
 
@@ -187,14 +168,8 @@ class ZoneCoverageRead(BaseModel):
 # Zone assignments
 # ---------------------------------------------------------------------------
 class ZoneAssignmentCreate(BaseModel):
-    """`role_id` is optional, unlike an event assignment's.
-
-    Omitting it takes the zone's own `default_role_id`, which is what a drag
-    onto a zone sends — the TD picked the role once when they made the zone.
-    A zone with no default and no role_id is a 422: the row must name a role,
-    because a zone assignment with no role is a person standing somewhere for
-    no stated reason.
-    """
+    """Omitting `role_id` takes the track's `zone_default_role_id`; with
+    neither, the request is a 422."""
 
     model_config = ConfigDict(extra="forbid")
 

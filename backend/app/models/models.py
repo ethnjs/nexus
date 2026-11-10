@@ -19,12 +19,14 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    func,
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload, validates
 
 from app.core.age import meets_age_requirement
+from app.core.rooms import derived_floor, room_sort_key
 from app.db.session import Base
 
 
@@ -193,13 +195,66 @@ class Event(Base):
         foreign_keys="UserVolunteerExperience.event_id",
         passive_deletes=True,
     )
+    # The two halves of related_events, one per column of the stored pair.
+    _related_higher: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.event_id",
+        secondaryjoin="Event.id == EventRelationship.related_event_id",
+        viewonly=True,
+    )
+    _related_lower: Mapped[list["Event"]] = relationship(
+        "Event",
+        secondary="event_relationships",
+        primaryjoin="Event.id == EventRelationship.related_event_id",
+        secondaryjoin="Event.id == EventRelationship.event_id",
+        viewonly=True,
+    )
+
+    @property
+    def related_events(self) -> list["Event"]:
+        return sorted(self._related_lower + self._related_higher, key=lambda e: e.name)
+
+    @classmethod
+    def load_related_events(cls, base: Any = None) -> list:
+        """Loader options for related_events, which is lazy, chained off `base` when given.
+        A query that serializes many events needs them to avoid two queries per event."""
+        halves = [selectinload(cls._related_lower), selectinload(cls._related_higher)]
+        return halves if base is None else [base.options(*halves)]
+
+
+# ---------------------------------------------------------------------------
+# EventRelationship — two catalog events that cover similar topics (Heredity
+# and Designer Genes, Solar System and Astronomy). Symmetric, so each pair is
+# stored once with the lower id first; see Event.related_events.
+# ---------------------------------------------------------------------------
+class EventRelationship(Base):
+    __tablename__ = "event_relationships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    related_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "related_event_id", name="uq_event_relationship"),
+        CheckConstraint("event_id < related_event_id", name="ck_event_relationship_order"),
+    )
 
 
 # ---------------------------------------------------------------------------
 # SeasonEvent — admin-curated "this canonical event, in this division, is
 # active this year" list. Drives the tournament events bulk-load default
 # list (see TournamentEvent); independent of any single tournament.
+#
+# format/has_impound/has_self_schedule live here rather than on Event because
+# the rules change between seasons. TournamentEvent copies them on creation.
 # ---------------------------------------------------------------------------
+SEASON_FIELDS = ("format", "has_impound", "has_self_schedule")
+
+
 class SeasonEvent(Base):
     __tablename__ = "season_events"
 
@@ -208,6 +263,9 @@ class SeasonEvent(Base):
     year: Mapped[int] = mapped_column(Integer)
     division: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     event: Mapped["Event"] = relationship("Event")
@@ -577,6 +635,16 @@ class Tournament(Base):
         return days[-1] if days else None
 
     @property
+    def season_year(self) -> int | None:
+        """The Science Olympiad season this tournament runs in, named for the
+        spring it ends in: a tournament from August 2026 on is in 2027, the
+        same number SeasonEvent.year holds."""
+        day = self.first_day
+        if day is None:
+            return None
+        return day.year + 1 if day.month >= 8 else day.year
+
+    @property
     def division(self) -> list[str]:
         return sorted({d for t in self.primary_tracks for d in (t.division or [])})
 
@@ -635,13 +703,9 @@ class TournamentMembership(Base):
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL")
     )
 
-    # Set once this member has answered every currently-onboarding-flagged,
-    # published TournamentForm for this tournament. Permanent once set —
-    # later removing/archiving an onboarding form never unsets it (a
-    # shrinking requirement can only help stragglers finish, never un-onboard
-    # someone already done). Adding a *new* onboarding form is the one
-    # requirement change allowed to null this back out — see the
-    # onboarding-forms POST route, which clears it tournament-wide.
+    # When the member finished their onboarding path (core/tournament/onboarding.py).
+    # A snapshot nothing gates on: sequence changes recompute it, role changes
+    # only catch up at the next progress call.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # null = unanswered, "consented" covers both is_over_18 and is_over_21.
@@ -657,7 +721,7 @@ class TournamentMembership(Base):
     # viewer, not per tournament: two coordinators looking at the same roster
     # each keep their own columns, filters and sort order instead of
     # overwriting each other. Hidden-item strings are namespaced (track:,
-    # lunch_category:, event_pref:, form_field:) so one list covers all four
+    # lunch_category:, event_pref:, field_key:) so one list covers all four
     # kinds. No search/filtering on this, so a JSON column beats a table.
     # Unknown surface keys and unknown namespaces are ignored on read, never
     # an error — a deleted track leaves a dangling "track:3" behind and that
@@ -998,6 +1062,10 @@ class TournamentEvent(Base):
     name: Mapped[str | None] = mapped_column(String(255))
     division: Mapped[str | None] = mapped_column(String(4))  # "A" | "B" | "C"
     event_type: Mapped[str] = mapped_column(String(32), default="standard")  # "standard" | "trial"
+    # Copied from the matching SeasonEvent on creation, then the TD's to edit.
+    format: Mapped[str | None] = mapped_column(String(16))  # "test" | "hybrid" | "build"
+    has_impound: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_self_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Canonical event table link — SET NULL on delete so custom (event_id-less)
     # events are just the default, not a broken reference.
@@ -1213,6 +1281,11 @@ class TournamentTrack(Base):
     default_role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
     )
+    # The role a zone assignment grants when none is named. Separate from
+    # default_role_id, which is for placing someone on the track itself.
+    zone_default_role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -1220,7 +1293,12 @@ class TournamentTrack(Base):
 
     tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="tracks")
     university: Mapped["University | None"] = relationship("University", back_populates="tracks")
-    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
+    default_role: Mapped["TournamentRole | None"] = relationship(
+        "TournamentRole", foreign_keys=[default_role_id]
+    )
+    zone_default_role: Mapped["TournamentRole | None"] = relationship(
+        "TournamentRole", foreign_keys=[zone_default_role_id]
+    )
     shifts: Mapped[list["TournamentShift"]] = relationship(
         "TournamentShift", back_populates="track", cascade="all, delete-orphan"
     )
@@ -1273,11 +1351,6 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
 # its buildings once; one running Day 1 at UCI and Day 2 at Northwood tags
 # each building with the day it belongs to, and nothing can put a Day 1 event
 # in a Northwood-only building.
-#
-# There is deliberately no rooms table. A room is free text on the
-# event<->track link: rooms are typed once, read by humans, and carry no data
-# of their own, so a catalog would be a second thing to keep in sync for no
-# question it alone could answer.
 # ---------------------------------------------------------------------------
 class TournamentBuilding(Base):
     __tablename__ = "tournament_buildings"
@@ -1289,6 +1362,8 @@ class TournamentBuilding(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(255))
+    # What event locations show when set ("RH 210"); the name otherwise.
+    short_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -1304,6 +1379,14 @@ class TournamentBuilding(Base):
         back_populates="buildings",
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
+    # Unordered here: SQL can't sort "9" before "10". Readers sort with
+    # room_sort_key.
+    rooms: Mapped[list["TournamentRoom"]] = relationship(
+        "TournamentRoom",
+        back_populates="building",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_building_name"),
@@ -1311,13 +1394,48 @@ class TournamentBuilding(Base):
 
 
 # ---------------------------------------------------------------------------
+# TournamentRoom — a room inside a building.
+#
+# Belongs to the building, not to a track: a room is available on every track
+# its building is tagged with.
+# ---------------------------------------------------------------------------
+class TournamentRoom(Base):
+    __tablename__ = "tournament_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    building_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_buildings.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    # Null means derive it from the name; set for a room whose number doesn't
+    # start with its floor.
+    floor: Mapped[str | None] = mapped_column(String(64))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    building: Mapped["TournamentBuilding"] = relationship(
+        "TournamentBuilding", back_populates="rooms"
+    )
+
+    @property
+    def effective_floor(self) -> str | None:
+        return self.floor or derived_floor(self.name)
+
+    # Case-insensitive, so "Lab" and "lab" can't both exist; imports match
+    # rooms by name regardless of case.
+    __table_args__ = (
+        Index("uq_tournament_room_name", "building_id", func.lower(name), unique=True),
+    )
+
+
+# ---------------------------------------------------------------------------
 # TournamentBuildingTrack — bridge table: TournamentBuilding <-> TournamentTrack.
 #
-# Which days a building is in use on. Its (building_id, track_id) primary key
-# is also a foreign-key target: an event's location names both, so pointing a
-# composite FK here is what makes "you cannot put a Day 1 event in a
-# Day 2-only building" a fact the database enforces rather than a check a
-# route can forget — the same device as uq_tournament_shift_id_track.
+# Which days a building is in use on. An event can only be placed in its
+# rooms on these tracks; the event write route checks that.
 # ---------------------------------------------------------------------------
 class TournamentBuildingTrack(Base):
     __tablename__ = "tournament_building_tracks"
@@ -1369,38 +1487,27 @@ class TournamentEventTrack(Base):
         Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
     )
 
-    # -----------------------------------------------------------------------
-    # Where the event physically happens on this track.
-    #
-    # All nullable: most of planning has no answer yet, and an event can be on
-    # a track long before anyone decides which room it lands in.
-    #
-    # "One building and one floor per event per track" needs no constraint —
-    # these are plain columns on a table already keyed by (event, track), so
-    # the invariant is structural. Rooms are the exception that has to be a
-    # list: one event routinely spreads across 210, 212 and 214.
-    # -----------------------------------------------------------------------
-    #
-    # No inline ForeignKey on building_id. The composite constraint in
-    # __table_args__ is this column's FK, pairing it with track_id so the
-    # database — not each write path — is what stops a Day 1 event being put
-    # in a building only Day 2 uses. Same device as the assignment's
-    # shift/track pairing.
-    building_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # Where the event happens on this track: its rooms, which name the
+    # building. The event write route keeps them in one building that is on
+    # this track. No rooms means not placed yet.
+    rooms: Mapped[list["TournamentRoom"]] = relationship(
+        "TournamentRoom", secondary="tournament_event_track_rooms"
+    )
     # An override: null means "derive it from the rooms" (see effective_floor).
-    # Kept as a column for the building whose numbering doesn't follow the rule.
     floor: Mapped[str | None] = mapped_column(String(64))
-    rooms: Mapped[list[str] | None] = mapped_column(JSON)  # list of str
+
+    @property
+    def building(self) -> "TournamentBuilding | None":
+        return self.rooms[0].building if self.rooms else None
 
     @property
     def effective_floor(self) -> str | None:
-        """The floor this event is on: the TD's override if set, otherwise the
-        first character of its first room ("210" -> "2") — room numbers lead
-        with the floor almost everywhere, so typing the room is enough."""
+        """The TD's override if set, otherwise the floor of the first room in
+        natural order."""
         if self.floor:
             return self.floor
-        first = next((room.strip() for room in (self.rooms or []) if room and room.strip()), None)
-        return first[0] if first else None
+        rooms = sorted(self.rooms, key=lambda room: room_sort_key(room.name))
+        return rooms[0].effective_floor if rooms else None
 
     tournament_event: Mapped["TournamentEvent"] = relationship(
         "TournamentEvent", back_populates="track_details"
@@ -1408,18 +1515,6 @@ class TournamentEventTrack(Base):
     # lazy="joined" like TournamentTrackAssignment.role: every
     # reader of a link row renders the track's name alongside it.
     track: Mapped["TournamentTrack"] = relationship("TournamentTrack", lazy="joined")
-    # Read-only, and explicitly joined: building_id's only foreign key is the
-    # composite one below, which points at the building<->track bridge rather
-    # than at tournament_buildings, so SQLAlchemy cannot infer this on its
-    # own. Writers set building_id directly — they deal in ids from the
-    # payload anyway.
-    building: Mapped["TournamentBuilding | None"] = relationship(
-        "TournamentBuilding",
-        primaryjoin="TournamentEventTrack.building_id == TournamentBuilding.id",
-        foreign_keys="TournamentEventTrack.building_id",
-        viewonly=True,
-    )
-
     # How many of each role this event wants on this track. Ordered by role
     # so a needs list renders the same way twice running.
     needs: Mapped[list["TournamentEventStaffingNeed"]] = relationship(
@@ -1429,16 +1524,25 @@ class TournamentEventTrack(Base):
         order_by="TournamentEventStaffingNeed.role_id",
     )
 
+
+# ---------------------------------------------------------------------------
+# TournamentEventTrackRoom — bridge table: TournamentEventTrack <-> TournamentRoom.
+# ---------------------------------------------------------------------------
+class TournamentEventTrackRoom(Base):
+    __tablename__ = "tournament_event_track_rooms"
+
+    tournament_event_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    track_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_rooms.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+
     __table_args__ = (
-        # RESTRICT, not SET NULL: track_id is half this table's primary key
-        # and can't be nulled, so the pair can't be cleared by the database.
-        # Deleting a building, or untagging it from a track, therefore has to
-        # clear the locations pointing at it first — see the buildings routes.
         ForeignKeyConstraint(
-            ["building_id", "track_id"],
-            ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
-            name="fk_event_track_building",
-            ondelete="RESTRICT",
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_event_track_room_link",
+            ondelete="CASCADE",
         ),
     )
 
@@ -1508,8 +1612,9 @@ class TournamentEventStaffingNeed(Base):
 # TournamentZone — a named area of one track that members can be staffed to.
 #
 # Built for runners, who cover a wing of a venue rather than an event. Scoped
-# to a track because "the north wing on Day 1" and "the north wing on Day 2"
-# are staffed separately even when they describe the same corridor.
+# to one competition-day track: "the north wing" on Day 1 and on Day 2 are
+# staffed separately. A zone assignment with no role named takes the track's
+# zone_default_role_id.
 #
 # A zone carries no shifts and no staffing targets: a zone assignment covers
 # the track's whole day, and how many runners an area wants is a judgement
@@ -1531,21 +1636,12 @@ class TournamentZone(Base):
     track_id: Mapped[int] = mapped_column(Integer, index=True)
     name: Mapped[str] = mapped_column(String(255))
 
-    # The role a drag onto this zone grants, distinct from the track's
-    # default: a competition day defaults to a general volunteer role, while
-    # a zone on that same day almost always wants Runner. SET NULL rather
-    # than a blocking FK, matching TournamentTrack.default_role_id.
-    default_role_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL")
-    )
-
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
     track: Mapped["TournamentTrack"] = relationship("TournamentTrack")
-    default_role: Mapped["TournamentRole | None"] = relationship("TournamentRole")
     members: Mapped[list["TournamentZoneMember"]] = relationship(
         "TournamentZoneMember",
         back_populates="zone",
@@ -1578,38 +1674,35 @@ class TournamentZone(Base):
 # ---------------------------------------------------------------------------
 # TournamentZoneMember — one rule saying what a zone contains.
 #
-# A zone is *not* a stored list of events. It holds rules — a whole building,
-# or one floor of one — plus events added by hand, and its event list is
-# computed on read (see core/tournament/zones.py). That is what makes moving
-# an event to a building in another zone move it between zones with no edit
-# to either: the rules still describe the space, and the space is where the
-# event now is.
-#
-# Three kinds, and the shape check below is what keeps each honest:
+# A zone stores rules, not events; its event list is resolved on read (see
+# core/tournament/zones.py), so an event that moves rooms moves zones with no
+# edit to either zone.
 #
 #   building   every room of a building
 #   floor      one (building, floor) pair
-#   event      one event, wherever it happens to be
+#   room       one room; building_id is copied from it
+#   event      one event, wherever it is
 #
-# An explicit `event` member outranks both rules, which is why no "exclude"
-# kind exists: pulling one event out of a building-wide zone means adding it
-# to the zone it should be in instead. The cost, accepted when this was
-# designed: an event inside a rule'd building cannot be made zone-less.
+# Precedence is event > room > floor > building, which is why there is no
+# "exclude" kind: an event inside a rule'd building cannot be made zone-less.
 # ---------------------------------------------------------------------------
 class TournamentZoneMember(Base):
     __tablename__ = "tournament_zone_members"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     zone_id: Mapped[int] = mapped_column(Integer, index=True)
-    # Copied from the zone so the three partial unique indexes below can be
-    # expressed at all — they are what makes "one zone per event per track" a
-    # database guarantee rather than a route check two writers can race past.
+    # Copied from the zone so the partial unique indexes below can exist.
     track_id: Mapped[int] = mapped_column(Integer, index=True)
 
-    kind: Mapped[str] = mapped_column(String(16))  # building | floor | event
+    kind: Mapped[str] = mapped_column(String(16))  # building | floor | room | event
 
+    # Set on a room rule too, so untagging the building from the track
+    # cascades the rule away through fk_zone_member_building.
     building_id: Mapped[int | None] = mapped_column(Integer, index=True)
     floor: Mapped[str | None] = mapped_column(String(64))
+    room_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournament_rooms.id", ondelete="CASCADE"), index=True
+    )
     tournament_event_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1621,6 +1714,7 @@ class TournamentZoneMember(Base):
         foreign_keys="TournamentZoneMember.building_id",
         viewonly=True,
     )
+    room: Mapped["TournamentRoom | None"] = relationship("TournamentRoom", viewonly=True)
     tournament_event: Mapped["TournamentEvent | None"] = relationship(
         "TournamentEvent",
         primaryjoin="TournamentZoneMember.tournament_event_id == TournamentEvent.id",
@@ -1635,11 +1729,8 @@ class TournamentZoneMember(Base):
             name="fk_zone_member_zone",
             ondelete="CASCADE",
         ),
-        # A building rule names a building available on this track; an event
-        # rule names an event that runs on it. Both CASCADE: untagging the
-        # building or taking the event off the track removes a rule that has
-        # stopped describing anything. Unlike an event's own location, a rule
-        # is not something a TD typed in and would mourn.
+        # Untagging the building or taking the event off the track removes
+        # the rules that named it.
         ForeignKeyConstraint(
             ["building_id", "track_id"],
             ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
@@ -1654,16 +1745,17 @@ class TournamentZoneMember(Base):
         ),
         CheckConstraint(
             "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
-            "  AND tournament_event_id IS NULL) OR "
+            "  AND room_id IS NULL AND tournament_event_id IS NULL) OR "
             "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
-            "  AND tournament_event_id IS NULL) OR "
+            "  AND room_id IS NULL AND tournament_event_id IS NULL) OR "
+            "(kind = 'room' AND building_id IS NOT NULL AND room_id IS NOT NULL "
+            "  AND floor IS NULL AND tournament_event_id IS NULL) OR "
             "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
-            "  AND floor IS NULL)",
+            "  AND floor IS NULL AND room_id IS NULL)",
             name="ck_zone_member_shape",
         ),
-        # One zone per thing per track — the constraint the whole precedence
-        # rule rests on. Partial, because each kind uses different columns and
-        # a NULL in a plain unique index would let duplicates through.
+        # One zone per thing per track; partial because each kind keys on
+        # different columns.
         Index(
             "uq_zone_member_building",
             "track_id",
@@ -1678,6 +1770,13 @@ class TournamentZoneMember(Base):
             "floor",
             unique=True,
             postgresql_where=text("kind = 'floor'"),
+        ),
+        Index(
+            "uq_zone_member_room",
+            "track_id",
+            "room_id",
+            unique=True,
+            postgresql_where=text("kind = 'room'"),
         ),
         Index(
             "uq_zone_member_event",
@@ -2020,6 +2119,12 @@ class Form(Base):
         """TournamentForm configuration exposed on generic form responses."""
         return self.tournament_form.prerequisites if self.tournament_form else None
 
+    @property
+    def onboarding_order(self) -> int | None:
+        """This form's step number in the onboarding sequence; None if it isn't one."""
+        tf = self.tournament_form
+        return tf.order if tf is not None and tf.is_onboarding else None
+
 
 # ---------------------------------------------------------------------------
 # TournamentForm — 1:1 companion row every tournament-scoped Form gets at
@@ -2029,14 +2134,10 @@ class Form(Base):
 #
 # is_onboarding + order together define the onboarding step sequence for the
 # tournament (order is only meaningful — and set — for is_onboarding=True
-# rows). Standard, non-onboarding tournament forms leave order null; the
-# eventual prerequisite/visibility mechanism for those is a later phase, not
-# built yet.
+# rows). Standard, non-onboarding tournament forms leave order null.
 #
-# A form linked here with is_onboarding=True cannot be archived or deleted —
-# see the guard in api/routes/forms.py's update_form/archive_form/
-# delete_form — it must be removed from onboarding (is_onboarding flipped
-# back to False) first.
+# A form with is_onboarding=True can't be deleted until it's removed from
+# onboarding (see _reject_if_onboarding in api/routes/forms.py).
 #
 # form_id is this row's own primary key, not a separate surrogate id — the
 # relationship is strictly 1:1, so there's no "which TournamentForm" beyond
@@ -2055,10 +2156,8 @@ class TournamentForm(Base):
     )
     is_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int | None] = mapped_column(Integer)
-    # Optional member-visibility requirements for standard tournament forms.
-    # Shape and referenced-id validation live with the manager API; evaluation
-    # lives in core/tournament/form_prerequisites.py so every future caller
-    # (member form list, rendering, and submission) shares one rule.
+    # Role conditions a member must pass to see the form; shape and evaluation
+    # are in core/tournament/form_prerequisites.py.
     prerequisites: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -2086,10 +2185,9 @@ class FormField(Base):
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
 
-    # Dashboard lookup key — slugified from the TD-typed label at create
-    # time (see app/core/form.slugify) and stable afterward, even if the
-    # label is later edited. Unique per tournament, not just per form (see
-    # app/core/form.check_field_key_available_in_tournament).
+    # Dashboard lookup key, slugified from the label at create time and stable
+    # afterward. Unique among a form's live fields; other forms may reuse it,
+    # and a member's latest answer to a key is the one shown.
     field_key: Mapped[str] = mapped_column(String(64))
 
     config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -2110,10 +2208,8 @@ class FormField(Base):
     answer: Mapped[list["FormAnswer"]] = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
-        # Live fields only. An archived field doesn't reserve its key — see
-        # field_key_taken_in_tournament — so an archived question and the one
-        # replacing it can share a name. A plain UniqueConstraint here would
-        # block that at the DB even though the application allows it.
+        # Live fields only, so an archived question and the one replacing it
+        # can share a key.
         Index(
             "uq_form_field_key",
             "form_id",
@@ -2180,6 +2276,9 @@ class FormAnswer(Base):
     # predating this column; always written on new answers.
     question_type: Mapped[str | None] = mapped_column(String(32))
     field_key: Mapped[str | None] = mapped_column(String(64))
+    # Decides which answer wins when forms share a key. The response's
+    # updated_at can't: editing one answer bumps it for all of them.
+    answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     response: Mapped["FormResponse"] = relationship("FormResponse", back_populates="answers")
     field: Mapped["FormField"] = relationship("FormField", back_populates="answer")

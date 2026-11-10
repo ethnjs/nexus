@@ -8,7 +8,10 @@ from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.memberships import get_membership_by_user, resolve_person_refs
-from app.core.tournament.onboarding import advance_onboarding_progress, recompute_onboarding
+from app.core.tournament.onboarding import (
+    advance_onboarding_progress,
+    recompute_onboarding,
+)
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentForm, User
@@ -86,9 +89,9 @@ def list_onboarding_forms(
 # alongside the Form itself, see create_tournament_form in forms.py) — this
 # never inserts a new row, only flips one.
 #
-# Recomputes onboarded_at tournament-wide: adding a step expands what
-# "onboarded" requires, so anyone who hasn't answered it goes back to pending —
-# but someone who already did (it was a standalone form first) stays onboarded.
+# Recomputes onboarded_at tournament-wide: adding a published step expands
+# what "onboarded" requires, so anyone it applies to who hasn't answered it goes
+# back to pending. A draft is skipped until it's published.
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=OnboardingFormRead, status_code=status.HTTP_201_CREATED)
 def add_onboarding_form(
@@ -113,13 +116,10 @@ def add_onboarding_form(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding"
         )
-    # An onboarding step must be immediately answerable. In particular,
-    # accepting a draft here would invalidate existing completions before the
-    # new requirement could actually be satisfied.
-    if tf.form.status != "published":
+    if tf.form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Only published forms can be added to onboarding",
+            detail="Archived forms can't be added to onboarding",
         )
 
     max_order = (

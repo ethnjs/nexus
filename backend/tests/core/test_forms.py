@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from app.core.form import (
-    field_key_taken_in_tournament,
     resolve_field_options,
     slugify,
 )
@@ -605,11 +604,11 @@ class TestResolveEventPreferenceOptions:
 
 
 # ---------------------------------------------------------------------------
-# slugify / field_key_taken_in_tournament
+# slugify
 # ---------------------------------------------------------------------------
 
 
-class TestSlugifyAndUniqueness:
+class TestSlugify:
     def test_slugify_lowercases_and_strips_punctuation(self):
         assert slugify("Test Writing Interest!") == "test_writing_interest"
 
@@ -618,46 +617,6 @@ class TestSlugifyAndUniqueness:
 
     def test_slugify_truncates_to_max_len(self):
         assert len(slugify("x" * 100, max_len=10)) == 10
-
-    def test_field_key_taken_true_across_different_forms_in_same_tournament(
-        self, db, td_user, td_tournament
-    ):
-        form_a = _make_form(db, td_user, td_tournament, name="Form A")
-        form_b = _make_form(db, td_user, td_tournament, name="Form B")
-        _make_field(db, form_a, field_key="shared")
-        db.commit()
-
-        assert field_key_taken_in_tournament(db, td_tournament.id, "shared") is True
-        # form_b hasn't used the key itself, but it's still blocked tournament-wide
-        assert db.query(FormField).filter(FormField.form_id == form_b.id).count() == 0
-
-    def test_field_key_taken_false_for_different_tournament(
-        self, db, td_user, td_tournament, other_user, other_tournament
-    ):
-        form = _make_form(db, td_user, td_tournament)
-        _make_field(db, form, field_key="only_here")
-        db.commit()
-
-        assert field_key_taken_in_tournament(db, other_tournament.id, "only_here") is False
-
-    def test_field_key_released_when_archived(self, db, td_user, td_tournament):
-        """A key is a display name, not an identity — retiring a question
-        frees its name, so a TD who deletes one by mistake can add it back."""
-        form = _make_form(db, td_user, td_tournament)
-        _make_field(db, form, field_key="was_used", is_archived=True)
-        db.commit()
-
-        assert field_key_taken_in_tournament(db, td_tournament.id, "was_used") is False
-
-    def test_field_key_taken_when_live_field_shares_key_with_archived(
-        self, db, td_user, td_tournament
-    ):
-        form = _make_form(db, td_user, td_tournament)
-        _make_field(db, form, field_key="reused", is_archived=True)
-        _make_field(db, form, order=2, field_key="reused")
-        db.commit()
-
-        assert field_key_taken_in_tournament(db, td_tournament.id, "reused") is True
 
 
 # ---------------------------------------------------------------------------

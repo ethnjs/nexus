@@ -162,45 +162,7 @@ def delete_tournament_form_responses(db: Session, tournament_id: int, user_id: i
 def get_custom_form_answers(
     db: Session, tournament_id: int, user_id: int
 ) -> list[MembershipCustomAnswerRead]:
-    """This user's answers to non-reserved fields on published,
-    tournament-owned forms in `tournament_id`. 'Custom' = field_key matches
-    none of the availability_/event_preference_/lunch_/track_status_
-    presets — those already have dedicated structural fields elsewhere on
-    MembershipFullResponse. FormResponse is keyed by user_id, not
-    membership_id (see TASK.md's known pre-existing issue note), so this
-    joins on the user directly rather than through the membership."""
-    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
-    from app.models.models import Form, FormAnswer, FormField, FormResponse
-    from app.schemas.tournament.membership import MembershipCustomAnswerRead
-
-    rows = (
-        db.query(FormAnswer, FormField, Form)
-        .join(FormField, FormAnswer.field_id == FormField.id)
-        .join(Form, FormField.form_id == Form.id)
-        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
-        .filter(
-            FormResponse.user_id == user_id,
-            Form.owner_type == "tournament",
-            Form.tournament_id == tournament_id,
-            Form.status == "published",
-        )
-        .all()
-    )
-
-    return [
-        MembershipCustomAnswerRead(
-            form_title=form.title or form.name,
-            field_label=field.label,
-            field_key=field.field_key,
-            question_type=field.question_type,
-            value=answer.value,
-            field_id=field.id,
-        )
-        for answer, field, form in rows
-        if not any(
-            pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
-        )
-    ]
+    return get_custom_form_answers_bulk(db, tournament_id, [user_id]).get(user_id, [])
 
 
 def build_event_preferences(
@@ -241,9 +203,9 @@ def build_event_preferences(
             Form.tournament_id == membership.tournament_id,
             FormField.field_key.in_({f"event_preference_{tid}" for tid in track_ids}),
         )
-        # Live fields first so a live option wins the mapping over an archived
-        # field that shares the key — an archived field doesn't reserve its
-        # key, so both can exist at once.
+        # Forms may share the key, and only the first field's option claims
+        # an event: live before archived, then oldest. The builder warns TDs
+        # to group events the same way on every form.
         .order_by(FormField.is_archived, FormField.id)
         .all()
     )
@@ -353,10 +315,10 @@ def lunch_question_types(db: Session, tournament_id: int, field_keys: set[str]) 
             FormField.field_key.in_(field_keys),
         )
         # Live fields first, then setdefault, so a live question wins over an
-        # archived one sharing its key — an archived field doesn't reserve its
-        # key, so both can exist at once, and question_type decides whether a
-        # row renders as free text or a badge. Same idiom as
-        # build_event_preferences.
+        # archived one sharing its key; question_type decides whether a row
+        # renders as free text or a badge. Live fields on different forms can
+        # share a key with different types, and the row doesn't record which
+        # one wrote it, so the first live field wins.
         .order_by(FormField.is_archived, FormField.id)
     ):
         type_by_key.setdefault(field_key, question_type)
@@ -455,11 +417,10 @@ def get_custom_form_answers_bulk(
     tournament_id: int,
     user_ids: list[int],
 ) -> dict[int, list[MembershipCustomAnswerRead]]:
-    """get_custom_form_answers for many users in one query.
-
-    The per-user version issued a query per row when the roster asked for
-    custom answers, which is the one thing a roster route must never do.
-    Same filtering, keyed by user_id; users with no answers are absent.
+    """Each user's answers to non-reserved fields on the tournament's published
+    forms, one per field_key: forms may share a key, and the latest answer wins.
+    Reserved keys (availability_, lunch_, ...) are left out; they have their
+    own structural fields. Users with no answers are absent.
     """
     from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.models.models import Form, FormAnswer, FormField, FormResponse
@@ -479,56 +440,66 @@ def get_custom_form_answers_bulk(
             Form.tournament_id == tournament_id,
             Form.status == "published",
         )
+        .order_by(FormAnswer.answered_at)
         .all()
     )
 
-    by_user: dict[int, list] = {}
+    by_user: dict[int, dict[str, MembershipCustomAnswerRead]] = {}
     for answer, field, form, user_id in rows:
         if any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
             continue
-        by_user.setdefault(user_id, []).append(
-            MembershipCustomAnswerRead(
-                form_title=form.title or form.name,
-                field_label=field.label,
-                field_key=field.field_key,
-                question_type=field.question_type,
-                value=answer.value,
-                field_id=field.id,
-            )
+        by_user.setdefault(user_id, {})[field.field_key] = MembershipCustomAnswerRead(
+            form_title=form.title or form.name,
+            field_label=field.label,
+            field_key=field.field_key,
+            question_type=field.question_type,
+            value=answer.value,
         )
-    return by_user
+    return {user_id: list(latest.values()) for user_id, latest in by_user.items()}
 
 
-def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list:
+def onboarding_reads(
+    db: Session, tournament_id: int, memberships: list, paths: dict | None = None
+) -> list:
     """One MembershipOnboardingRead (or None) per membership, in order —
-    shared by the roster and the detail route so both count the same way."""
-    from app.core.tournament.onboarding import onboarding_progress_bulk
-    from app.schemas.tournament.membership import MembershipOnboardingRead
+    shared by the roster and the detail route so both count the same way.
+    Pass `paths` when the caller already has them."""
+    from app.core.tournament.onboarding import onboarding_paths
+    from app.schemas.tournament.membership import (
+        MembershipOnboardingRead,
+        MembershipOnboardingStepRead,
+    )
 
-    total, completed = onboarding_progress_bulk(db, tournament_id, [m.user_id for m in memberships])
-    if not total:
-        return [None] * len(memberships)
+    if paths is None:
+        paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
     return [
-        MembershipOnboardingRead(completed=completed.get(m.user_id, 0), total=total)
+        MembershipOnboardingRead(
+            completed=sum(step.completed for step in path),
+            total=len(path),
+            steps=[MembershipOnboardingStepRead(**vars(step)) for step in path],
+        )
+        if (path := paths[m.user_id])
+        else None
         for m in memberships
     ]
 
 
 def enrich_built_groups(
-    db: Session, tournament, requested, memberships: list, responses: list
+    db: Session,
+    tournament,
+    requested,
+    memberships: list,
+    responses: list,
+    *,
+    onboarding_paths: dict | None = None,
 ) -> None:
     """Fills the roster's *built* field groups — the ones whose final value
     can't come off the ORM rows alone (see field_groups.FieldGroup.built).
+    Everything else `fields` selects is loaded by field_groups.loader_options.
 
-    Everything else `fields` selects is already handled at the query level by
-    field_groups.loader_options, which is why this no longer reads the
-    display config: what to include is `fields`' answer now, and a surface
-    that wants to narrow says so by resolving to a field set first (see
-    display_config.fields_for_surface).
-
-    A roster is every member in the tournament, so each group is resolved for
-    the whole page in one query and then handed out — never per membership.
-    Mutates `responses` in place, positionally paired with `memberships`.
+    Each group is resolved for the whole page in one query, never per
+    membership. Mutates `responses` in place, positionally paired with
+    `memberships`. Pass `onboarding_paths` when the caller already has them.
     """
     from app.core.tournament.field_groups import CUSTOM, EVENT_PREFS, LUNCH, ONBOARDING, wants
 
@@ -537,7 +508,9 @@ def enrich_built_groups(
 
     if wants(requested, ONBOARDING):
         for response, progress in zip(
-            responses, onboarding_reads(db, tournament.id, memberships), strict=True
+            responses,
+            onboarding_reads(db, tournament.id, memberships, onboarding_paths),
+            strict=True,
         ):
             response.onboarding = progress
 

@@ -15,6 +15,8 @@ It refuses to run unless `APP_ENV` is `development` or `preview`.
 
 For each member it walks each onboarding form from the first field, picks an answer, and recomputes reachability before choosing the next question, so branching and required rules are obeyed. The finished answers go through the same helpers `POST /forms/{id}/responses/` uses (`_store_answers`, `_write_through_reserved_fields`, `advance_onboarding_progress`).
 
+Each member only answers the steps on their own onboarding path, so a step whose role prerequisites they fail is skipped, as the form access check would skip it. Since the seeder assigns no roles, a step that requires holding a role is answered by nobody unless roles were given beforehand.
+
 As a result, editing the onboarding forms needs no seeder changes, and seeded rows carry the same provenance (`source_response_id`, `source_field_id`) as a real submission.
 
 Nothing is hardcoded to a database. Tracks, shifts, events, universities and forms are looked up at runtime, so one command works against dev and preview. Profile dates are anchored to the tournament's own year rather than today, so graduation year, grade and birth date agree with each other.

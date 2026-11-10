@@ -42,6 +42,7 @@ from app.schemas.auth import (
 from app.schemas.session import SessionResponse
 from app.schemas.user import (
     AdminUserFullResponse,
+    AdminUserListResponse,
     AdminUserSlimResponse,
     AdminUserUpdate,
     UserMeFullResponse,
@@ -58,13 +59,18 @@ router = APIRouter(tags=["users"])
 # ---------------------------------------------------------------------------
 # GET /admin/users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/", response_model=list[AdminUserSlimResponse])
+@router.get("/admin/users/", response_model=list[AdminUserListResponse])
 def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Global user list. Admin only."""
-    return db.query(User).order_by(User.last_name, User.first_name).all()
+    """Global user list, with each user's affiliation and year level. Admin only."""
+    return (
+        db.query(User)
+        .options(selectinload(User.university))
+        .order_by(User.last_name, User.first_name)
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +324,16 @@ def get_me(
                 selectinload(User.volunteer_experience)
                 .selectinload(UserVolunteerExperience.event)
                 .selectinload(Event.category),
+                *Event.load_related_events(
+                    selectinload(User.competition_experience).selectinload(
+                        UserCompetitionExperience.event
+                    )
+                ),
+                *Event.load_related_events(
+                    selectinload(User.volunteer_experience).selectinload(
+                        UserVolunteerExperience.event
+                    )
+                ),
             )
             .filter(User.id == current_user.id)
             .first()

@@ -18,10 +18,19 @@ class EventCategoryUpdate(BaseModel):
     name: str
 
 
+class RelatedEventResponse(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class EventResponse(BaseModel):
     id: int
     name: str
     category: EventCategoryResponse
+    # Both directions of the pairs in event_relationships, by name.
+    related_events: list[RelatedEventResponse] = []
 
     model_config = {"from_attributes": True}
 
@@ -29,6 +38,10 @@ class EventResponse(BaseModel):
 class EventCreate(BaseModel):
     name: str
     category_id: int
+
+
+class EventRelationshipCreate(BaseModel):
+    related_event_id: int
 
 
 class EventUpdate(BaseModel):

@@ -1,13 +1,13 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
-import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import {
   type Role,
@@ -19,17 +19,15 @@ import { todayLocalDateString } from "@/lib/date";
 import { formatDayRange, TBD } from "@/lib/tournamentDisplay";
 import type { TrackDraft } from "@/lib/trackDraft";
 
-// Dropdown's value is a string; a track's default_role_id is nullable, so
-// "no default" needs a sentinel rather than an empty string collapsing into
-// the placeholder for every unrelated reason a value could be blank.
+// Dropdown's value is a string and the default roles are nullable, so "None"
+// needs a sentinel rather than an empty string.
 const NO_DEFAULT_ROLE = "__none__";
 
 /**
- * The primary/cosmetic fields, shared by every row. The when/where/what only
- * renders for a competition day — that is what keeps the "only a primary
- * track can have..." 422 unreachable from this UI. Default role is the one
- * field every track carries regardless: a cosmetic track like Test Writing
- * wants its own default just as much as a competition day does.
+ * The primary/cosmetic fields, shared by every row. The when/where/what and
+ * the zone role only render for a competition day, which keeps the "only a
+ * primary track can have..." 422 unreachable from this UI. Default role shows
+ * on every track: Test Writing wants its own default too.
  */
 export function TrackFields({
   draft,
@@ -51,11 +49,6 @@ export function TrackFields({
    *  toggle would offer an action that can only 409. */
   showPrimaryToggle?: boolean;
 }) {
-  // An existing multi-day track shows both inputs on its own; the checkbox
-  // only has to remember the case where the TD is on their way to entering
-  // an end date that doesn't differ from the start yet.
-  const [spansDays, setSpansDays] = useState(false);
-  const multiDay = spansDays || (!!draft.end_date && draft.end_date !== draft.start_date);
   const today = todayLocalDateString();
 
   return (
@@ -76,71 +69,20 @@ export function TrackFields({
       {draft.is_primary && (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "flex", gap: "10px" }}>
-              {/* TBD keeps the field in place reading "TBD" rather than
-                  removing it — the row shouldn't reflow, and the TD should be
-                  able to see what the track will say. `type` swaps to text
-                  because a date input can't display anything but a date. */}
-              <Input
-                label={multiDay && !draft.dates_tbd ? "Start" : "Date"}
-                required
-                type={draft.dates_tbd ? "text" : "date"}
-                fullWidth
-                locked={locked || draft.dates_tbd}
-                min={today}
-                value={draft.dates_tbd ? TBD : draft.start_date}
-                // Single-day tracks keep end_date in step with start_date —
-                // the backend requires both on a competition day, and the TD
-                // has said this one doesn't span days.
-                onChange={(e) =>
-                  onChange(
-                    multiDay
-                      ? { start_date: e.target.value }
-                      : { start_date: e.target.value, end_date: e.target.value },
-                  )
-                }
-                error={errors.start_date}
-              />
-              {multiDay && !draft.dates_tbd && (
-                <Input
-                  label="End"
-                  required
-                  type="date"
-                  fullWidth
-                  locked={locked}
-                  min={draft.start_date || today}
-                  value={draft.end_date}
-                  onChange={(e) => onChange({ end_date: e.target.value })}
-                  error={errors.end_date}
-                />
-              )}
-            </div>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                cursor: locked || draft.dates_tbd ? "default" : "pointer",
-              }}
-            >
-              <Checkbox
-                checked={multiDay && !draft.dates_tbd}
-                locked={locked || draft.dates_tbd}
-                onChange={(checked) => {
-                  setSpansDays(checked);
-                  if (!checked) onChange({ end_date: draft.start_date });
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "13px",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                Runs more than one day
-              </span>
-            </label>
+            {/* TBD keeps the field in place reading "TBD" rather than removing
+                it, so the row doesn't reflow and the TD sees what the track will say. */}
+            <DateRangePicker
+              label="Dates"
+              required
+              fullWidth
+              locked={locked || draft.dates_tbd}
+              min={today}
+              from={draft.dates_tbd ? "" : draft.start_date}
+              to={draft.dates_tbd ? "" : draft.end_date}
+              placeholder={draft.dates_tbd ? TBD : "Pick dates"}
+              onChange={(from, to) => onChange({ start_date: from, end_date: to })}
+              error={errors.start_date ?? errors.end_date}
+            />
             <TbdCheckbox
               label="Date not decided yet"
               checked={draft.dates_tbd}
@@ -148,14 +90,13 @@ export function TrackFields({
               // Clearing the dates is the point: TBD is stored as their
               // absence, so leaving stale values behind would save a date the
               // TD has just said they don't have.
-              onChange={(checked) => {
-                setSpansDays(false);
+              onChange={(checked) =>
                 onChange(
                   checked
                     ? { dates_tbd: true, start_date: "", end_date: "" }
                     : { dates_tbd: false },
-                );
-              }}
+                )
+              }
             />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -170,7 +111,8 @@ export function TrackFields({
               onChange={(text, matched) =>
                 onChange({ location: text, university_id: matched?.id ?? null })
               }
-              placeholder="e.g. UCI"
+              placeholder="UCI"
+              font="sans"
               locked={locked || draft.location_tbd}
               error={errors.location}
             />
@@ -245,6 +187,31 @@ export function TrackFields({
           width={180}
         />
       </FieldRow>
+
+      {draft.is_primary && (
+        <FieldRow
+          label="Zone role"
+          helper="The role someone gets when they're added to a zone on this track."
+        >
+          <Dropdown
+            value={
+              draft.zone_default_role_id === null
+                ? NO_DEFAULT_ROLE
+                : String(draft.zone_default_role_id)
+            }
+            onChange={(v) =>
+              onChange({ zone_default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })
+            }
+            options={[
+              { value: NO_DEFAULT_ROLE, label: "None" },
+              ...roles.map((r) => ({ value: String(r.id), label: r.label })),
+            ]}
+            locked={locked}
+            size="sm"
+            width={180}
+          />
+        </FieldRow>
+      )}
     </div>
   );
 }

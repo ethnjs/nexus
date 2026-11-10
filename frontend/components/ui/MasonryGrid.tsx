@@ -6,6 +6,8 @@ interface MasonryGridProps {
   children: ReactNode;
   /** Narrowest a column may get before the grid drops to fewer columns. */
   minColumnWidth?: number;
+  /** Most columns the grid will make, however wide it gets. */
+  maxColumns?: number;
   gap?: number;
 }
 
@@ -17,7 +19,12 @@ interface MasonryGridProps {
  * Rows are 1px and each child spans its own height in rows; `dense` lets a
  * later card backfill a hole an earlier, wider one left.
  */
-export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: MasonryGridProps) {
+export function MasonryGrid({
+  children,
+  minColumnWidth = 340,
+  maxColumns,
+  gap = 16,
+}: MasonryGridProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -72,7 +79,13 @@ export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: Masonr
       ref={ref}
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minColumnWidth}px), 1fr))`,
+        // With maxColumns, a column's floor is also its share of the width at
+        // that many columns, so auto-fill can never fit one more.
+        gridTemplateColumns: `repeat(auto-fill, minmax(${
+          maxColumns
+            ? `max(min(100%, ${minColumnWidth}px), calc((100% - ${(maxColumns - 1) * gap}px) / ${maxColumns}))`
+            : `min(100%, ${minColumnWidth}px)`
+        }, 1fr))`,
         gridAutoRows: "1px",
         gridAutoFlow: "row dense",
         columnGap: `${gap}px`,

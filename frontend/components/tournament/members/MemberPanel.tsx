@@ -7,7 +7,7 @@ import { MemberPanelConfigModal } from "@/components/tournament/members/MemberPa
 import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   ApiError,
   type DisplayConfigSection,
@@ -171,12 +171,12 @@ export function MemberPanel({
       .catch(() => {});
   }, [tournamentId, membershipId, reloadKey, ownShifts, ownTracks]);
 
-  // "track:3" is the panel surface's own vocabulary for a hidden track — the
-  // same keys the config modal writes.
+  // The Assignments section's own key for a hidden track, apart from the
+  // Membership section's "track:3", which hides only that track's status.
   const hiddenTrackIds = new Set(
     hiddenItems
-      .filter((item) => item.startsWith("track:"))
-      .map((item) => Number(item.slice("track:".length)))
+      .filter((item) => item.startsWith("assignment_track:"))
+      .map((item) => Number(item.slice("assignment_track:".length)))
       .filter((id) => Number.isInteger(id)),
   );
 
@@ -264,9 +264,7 @@ export function MemberPanel({
             {error}
           </p>
         ) : !full ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-            <Spinner size="lg" />
-          </div>
+          <LoadingState />
         ) : (
           <>
             <ProfileHeader user={full.user} />

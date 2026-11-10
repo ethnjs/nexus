@@ -39,11 +39,11 @@ import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconLock, IconMembers, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortableHeader } from "@/components/ui/SortableHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
-import { Spinner } from "@/components/ui/Spinner";
 import {
   ApiError,
   type DisplayConfig,
@@ -63,7 +63,7 @@ import {
   legacyMemberSortRules,
   MEMBER_SORT_TIEBREAK,
   type MemberSortField,
-  memberSortDataKey,
+  memberSortDataMissing,
   memberSortOptions,
   memberSortTiebreak,
   memberSortValue,
@@ -79,6 +79,7 @@ import {
   sortRulesFromStored,
   sortRulesToStored,
 } from "@/lib/sorting";
+import { stickyHeader } from "@/lib/stickyHeader";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
 import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
@@ -210,6 +211,8 @@ const MemberRow = memo(function MemberRow({
       // needs to reach the stylesheet from React.
       data-active={highlighted ? "true" : undefined}
       onClick={handleRowClick}
+      // A Shift-click selects a range of rows, not the text between them.
+      onMouseDown={selectMode ? (e) => e.shiftKey && e.preventDefault() : undefined}
       {...rowActivation(handleRowClick)}
       title={lockedTitle}
       style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
@@ -276,6 +279,8 @@ const MemberRow = memo(function MemberRow({
           locked={locked}
           lockedReason={lockedReason}
           readOnly={rolesReadOnly || panelOpen}
+          emptyLabel="None"
+          addButtonOnHover
           onUpdated={onUpdated}
         />
       </div>
@@ -420,9 +425,11 @@ export default function MembersPage() {
   useEffect(() => {
     selectionRef.current = { focusItem, toggleSelected };
   });
+  // The visible rows in display order, for a Shift range — set once they're sorted below.
+  const visibleOrderRef = useRef<number[]>([]);
   const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
   const toggleSelectedStable = useCallback(
-    (id: number) => selectionRef.current.toggleSelected(id),
+    (id: number) => selectionRef.current.toggleSelected(id, visibleOrderRef.current),
     [],
   );
 
@@ -531,12 +538,7 @@ export default function MembersPage() {
     (next: SortRule<MemberSortField>[]) => {
       setSortRules(next);
       const sample = members?.[0];
-      const missing =
-        !!sample &&
-        next.some((rule) => {
-          const key = memberSortDataKey(rule.field);
-          return key !== null && sample[key] === undefined;
-        });
+      const missing = !!sample && next.some((rule) => memberSortDataMissing(sample, rule.field));
       persistView({ sorts: sortRulesToStored(next), sort: null }).then((saved) => {
         if (saved && missing) setRefreshKey((k) => k + 1);
       });
@@ -604,6 +606,9 @@ export default function MembersPage() {
     });
     return sortRows(filtered, sortRules, memberSortValue, memberSortTiebreak);
   }, [members, search, sortRules]);
+  useEffect(() => {
+    visibleOrderRef.current = visibleMembers.map((m) => m.id);
+  }, [visibleMembers]);
 
   const roleFilterOptions = useMemo(
     () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),
@@ -770,11 +775,7 @@ export default function MembersPage() {
   useEffect(() => () => clearPanel(), [clearPanel]);
 
   if (membershipLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!canManageMembers) {
@@ -796,9 +797,7 @@ export default function MembersPage() {
     return (
       <div>
         <CollapsibleHeader heading="Members" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+        <LoadingState />
       </div>
     );
   }
@@ -936,7 +935,7 @@ export default function MembersPage() {
               data-roles-hidden={rolesLaidOut ? undefined : "true"}
               style={{ gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns) }}
             >
-              <div className={styles.header}>
+              <div ref={stickyHeader} className={styles.header}>
                 <span
                   className={`${styles.collapsible} ${selectMode ? "" : styles.collapsed}`}
                   style={{ display: "flex", justifyContent: "center" }}

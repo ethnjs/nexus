@@ -19,7 +19,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconPlus } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Switch } from "@/components/ui/Switch";
 import {
   ApiError,
@@ -224,11 +224,7 @@ export default function GeneralSettingsPage() {
   }
 
   if (membershipLoading || !selectedTournament || !draft) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (

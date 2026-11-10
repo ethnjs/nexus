@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 // AdminUserFull minus its admin-only extras: UserMeFull is structurally a
 // subtype of that (both extend UserFull, and UserMeSlim extends
 // AdminUserSlim), so one type holds either fetch. Nothing here reads the
@@ -223,11 +223,7 @@ export default function ProfilePage() {
   }
 
   if (authLoading || (!profile && !error)) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (error || !profile) {

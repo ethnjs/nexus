@@ -38,6 +38,16 @@ OPTION_BEARING_TYPES = {
 
 
 def _snapshot_option(options_by_id: dict, option_id) -> dict:
+    if isinstance(option_id, dict) and isinstance(option_id.get("text"), str):
+        # An Other pick, submitted as {option_id, text}: the typed text is the answer.
+        option = options_by_id.get(option_id.get("option_id")) or {}
+        text = option_id["text"].strip()
+        return {
+            "option_id": option_id.get("option_id"),
+            "value": text,
+            "label": option.get("label", "Other"),
+            "text": text,
+        }
     if not isinstance(option_id, str):
         return option_id
     option = options_by_id.get(option_id)
@@ -71,7 +81,7 @@ def snapshot_answer_value(field: FormField, value):
             if isinstance(value, dict)
             else value
         )
-    return _snapshot_option(options_by_id, value) if isinstance(value, str) else value
+    return _snapshot_option(options_by_id, value) if isinstance(value, (str, dict)) else value
 
 
 def selected_option_ids(field: FormField, value) -> set:
@@ -108,32 +118,6 @@ def assign_option_ids(config: dict | None) -> dict | None:
             option["option_id"] = secrets.token_hex(5)
         options.append(option)
     return {**config, "options": options}
-
-
-def field_key_taken_in_tournament(
-    db: Session, tournament_id: int, field_key: str, exclude_form_id: str | None = None
-) -> bool:
-    """True if `field_key` is in use by a **live** FormField on any Form owned
-    by `tournament_id`, other than `exclude_form_id`. field_key is the
-    TD-visible dashboard lookup key, so it's unique tournament-wide, not just
-    per form.
-
-    Archived fields don't reserve their keys: a key is a display name, not an
-    identity (that's field_id), so retiring a question releases its name for
-    reuse — including by the question a TD adds back after deleting one by
-    mistake. An archived field may therefore share a key with a live one."""
-    query = (
-        db.query(FormField)
-        .join(Form, Form.id == FormField.form_id)
-        .filter(
-            Form.tournament_id == tournament_id,
-            FormField.field_key == field_key,
-            FormField.is_archived == False,
-        )
-    )
-    if exclude_form_id is not None:
-        query = query.filter(Form.id != exclude_form_id)
-    return query.first() is not None
 
 
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:

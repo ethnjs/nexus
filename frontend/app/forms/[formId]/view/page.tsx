@@ -2,17 +2,18 @@
 
 import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AuthHeading } from "@/components/auth/AuthHeading";
+import { AuthShell } from "@/components/auth/AuthShell";
 import { type ExistingResponse, FormFillFlow } from "@/components/forms/FormFillFlow";
 import styles from "@/components/forms/FormFlow.module.css";
+import { NoFormAccess } from "@/components/forms/NoFormAccess";
 import { ResponseAnswers, wasEdited } from "@/components/forms/ResponseAnswers";
-import cardStyles from "@/components/layout/CenteredCard.module.css";
-import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormattedText } from "@/components/ui/FormattedText";
 import { IconEdit, IconLock } from "@/components/ui/Icons";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ApiError, type Form, type FormResponse, formsApi } from "@/lib/api";
 import { responseEditLockedReason } from "@/lib/forms/responseEditLock";
@@ -55,34 +56,24 @@ function SignInCard({ formId }: { formId: string }) {
   const redirectParam = `?redirect=${encodeURIComponent(`/forms/${formId}/view`)}`;
 
   return (
-    <div className={cardStyles.page}>
-      <section className={cardStyles.card}>
-        <h1 className={cardStyles.wordmark}>NEXUS</h1>
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "14px",
-            color: "var(--color-text-secondary)",
-            textAlign: "center",
-            marginBottom: "24px",
-          }}
+    <AuthShell>
+      <AuthHeading
+        title="Sign in to continue"
+        subtitle="Sign in or create an account to fill out this form."
+      />
+      <div style={{ width: "100%", display: "flex", gap: "10px" }}>
+        <Button
+          fullWidth
+          variant="secondary"
+          onClick={() => router.push(`/sign-up${redirectParam}`)}
         >
-          Please sign in or create an account to fill out this form.
-        </p>
-        <div style={{ width: "100%", display: "flex", gap: "10px" }}>
-          <Button
-            fullWidth
-            variant="secondary"
-            onClick={() => router.push(`/sign-up${redirectParam}`)}
-          >
-            Create account
-          </Button>
-          <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
-            Sign in
-          </Button>
-        </div>
-      </section>
-    </div>
+          Create account
+        </Button>
+        <Button fullWidth onClick={() => router.push(`/sign-in${redirectParam}`)}>
+          Sign in
+        </Button>
+      </div>
+    </AuthShell>
   );
 }
 
@@ -101,6 +92,7 @@ export default function FormViewPage() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const { user, loading: authLoading } = useAuth();
   const [missing, setMissing] = useState(false);
+  const [noAccess, setNoAccess] = useState(false);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -117,6 +109,8 @@ export default function FormViewPage() {
           router.replace(`/tournaments/${denied.tournament_id}/onboarding${back}`);
         } else if (error instanceof ApiError && error.status === 404) {
           setMissing(true);
+        } else if (error instanceof ApiError && error.status === 403) {
+          setNoAccess(true);
         } else {
           setLoadError(error instanceof ApiError ? error.message : "Failed to load form.");
         }
@@ -185,15 +179,15 @@ export default function FormViewPage() {
   }
 
   if (authLoading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!user) return <SignInCard formId={formId} />;
   if (missing) notFound();
+  if (noAccess)
+    return (
+      <NoFormAccess description="This form is only open to some members. If you think you should have it, contact whoever runs it." />
+    );
 
   if (loadError) {
     return (
@@ -208,11 +202,7 @@ export default function FormViewPage() {
   }
 
   if (!form || !checkedExisting) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (existing && existingResponse && editing) {
@@ -295,20 +285,24 @@ export default function FormViewPage() {
               {wasEdited(existing) && ` · Updated ${formatDateTime(existing.updated_at)}`}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {editLockedReason && (
-              <Tooltip variant="info" message={editLockedReason} showIcon={false}>
-                <Badge variant="removed">
-                  <IconLock size={11} /> Locked
-                </Badge>
-              </Tooltip>
-            )}
+          {editLockedReason ? (
+            <Tooltip variant="info" message={editLockedReason} showIcon={false}>
+              {/* A disabled button swallows hover in some browsers, so the wrapper takes it. */}
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled
+                style={{ pointerEvents: "none" }}
+              >
+                <IconLock size={14} /> Edit response
+              </Button>
+            </Tooltip>
+          ) : (
             <Button
               type="button"
               variant="secondary"
               size="md"
-              disabled={!!editLockedReason}
-              title={editLockedReason}
               onClick={() => {
                 setSavedMessage(null);
                 router.push(`/forms/${formId}/view?edit=true`);
@@ -316,7 +310,7 @@ export default function FormViewPage() {
             >
               <IconEdit size={14} /> Edit response
             </Button>
-          </div>
+          )}
         </Card>
 
         <ResponseAnswers fields={form.fields} answers={existing.answers} />
