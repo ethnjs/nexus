@@ -406,7 +406,17 @@ function CatalogView({
           }
           onDelete={(e) => run(`${e.name} deleted`, () => canonicalEventsApi.delete(e.id))}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={(ids) => onEventsChanged(events.filter((e) => !ids.includes(e.id)))}
+          onDeleted={(ids) =>
+            // The backend drops a deleted event's relationships with it.
+            onEventsChanged(
+              events
+                .filter((e) => !ids.includes(e.id))
+                .map((e) => ({
+                  ...e,
+                  related_events: e.related_events.filter((r) => !ids.includes(r.id)),
+                })),
+            )
+          }
         />
       )}
     </>
