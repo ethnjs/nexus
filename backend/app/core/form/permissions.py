@@ -8,7 +8,8 @@ from app.core.tournament.form_prerequisites import member_meets_form_prerequisit
 from app.core.tournament.memberships import get_membership_by_user, has_any_membership
 from app.core.tournament.onboarding import (
     needs_tournament_onboarding,
-    next_required_onboarding_form_id,
+    next_step,
+    onboarding_paths,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, get_user_permissions, has_permission
 from app.db.session import get_db
@@ -148,9 +149,13 @@ def require_form_view_access(
             # off their path is a plain no; sending them into the sequence
             # would find nothing for them there.
             if not responded:
-                if not member_meets_form_prerequisites(db, membership, tournament_form):
+                path = onboarding_paths(db, form.tournament_id, [current_user.id])[current_user.id]
+                # The form is published here, so it's on the path exactly when
+                # the member passes its prerequisites.
+                if all(step.form_id != form.id for step in path):
                     raise _prerequisites_not_met()
-                if next_required_onboarding_form_id(db, membership) != form.id:
+                step = next_step(path)
+                if step is None or step.form_id != form.id:
                     raise _onboarding_required(form.tournament_id, is_onboarding=True)
         elif needs_tournament_onboarding(db, membership, permissions):
             raise _onboarding_required(form.tournament_id, is_onboarding=False)

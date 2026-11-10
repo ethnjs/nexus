@@ -93,7 +93,7 @@ def onboarding_paths(
     return paths
 
 
-def _next_step(path: list[OnboardingStep]) -> OnboardingStep | None:
+def next_step(path: list[OnboardingStep]) -> OnboardingStep | None:
     return next((step for step in path if step.status == "published" and not step.completed), None)
 
 
@@ -104,7 +104,7 @@ def next_required_onboarding_form_id(
     """The next unanswered published step on the member's path. Reading never
     marks anyone onboarded; ``advance_onboarding_progress`` owns that write."""
     path = onboarding_paths(db, membership.tournament_id, [membership.user_id])[membership.user_id]
-    step = _next_step(path)
+    step = next_step(path)
     return step.form_id if step else None
 
 
@@ -141,7 +141,7 @@ def recompute_onboarding(db: Session, tournament_id: int) -> None:
 
     now = utcnow()
     for membership in memberships:
-        complete = _next_step(paths[membership.user_id]) is None
+        complete = next_step(paths[membership.user_id]) is None
         if complete and membership.onboarded_at is None:
             membership.onboarded_at = now
         elif not complete and membership.onboarded_at is not None:
