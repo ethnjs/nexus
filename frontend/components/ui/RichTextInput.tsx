@@ -22,12 +22,13 @@ import {
   type Schema,
   Slice,
 } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import { type EditorState, TextSelection } from "@tiptap/pm/state";
 import {
   type Editor,
   EditorContent,
   Extension,
   type Extensions,
+  getMarkRange,
   type JSONContent,
   markInputRule,
   markPasteRule,
@@ -55,6 +56,7 @@ import {
   IconUnderline,
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   type Block,
   INLINE_MARKS,
@@ -327,8 +329,26 @@ function clearFormatting(editor: Editor) {
   chain.run();
 }
 
-function linkHrefAt(position: ResolvedPos): string | undefined {
-  return position.marks().find((mark) => mark.type.name === "link")?.attrs.href;
+interface LinkDraft {
+  href: string;
+  text: string;
+  from: number;
+  to: number;
+  /** False when opened by clicking a link, so the caret stays in the text. */
+  autoFocus: boolean;
+}
+
+// Inside a link, the draft covers the whole link rather than the selection.
+function linkDraftAt(state: EditorState, position: ResolvedPos, autoFocus: boolean): LinkDraft {
+  const link = position.marks().find((mark) => mark.type.name === "link");
+  const { from, to } = (link && getMarkRange(position, link.type, link.attrs)) || state.selection;
+  return {
+    href: link?.attrs.href ?? "",
+    text: state.doc.textBetween(from, to, " "),
+    from,
+    to,
+    autoFocus,
+  };
 }
 
 function normalizeHref(input: string): string {
@@ -337,28 +357,41 @@ function normalizeHref(input: string): string {
   return isEmailAddress(href) ? `mailto:${href}` : `https://${href}`;
 }
 
-function applyLink(editor: Editor, href: string) {
+function applyLink(editor: Editor, draft: LinkDraft, href: string, text: string) {
+  const { from, to } = draft;
   const chain = editor.chain().focus();
-  if (editor.isActive("link")) chain.extendMarkRange("link").setLink({ href });
-  else if (editor.state.selection.empty) {
-    chain.insertContent({ type: "text", text: href, marks: [{ type: "link", attrs: { href } }] });
-  } else chain.setLink({ href });
+  // Relinking unchanged text leaves its other formatting alone.
+  if (from !== to && text === draft.text) chain.setTextSelection({ from, to }).setLink({ href });
+  else {
+    const { doc } = editor.state;
+    const marks = (from === to ? doc.resolve(from).marks() : (doc.nodeAt(from)?.marks ?? []))
+      .filter((mark) => mark.type.name !== "link")
+      .map((mark) => mark.toJSON());
+    chain.insertContentAt(
+      { from, to },
+      { type: "text", text: text || href, marks: [...marks, { type: "link", attrs: { href } }] },
+    );
+  }
   chain.run();
 }
 
 function LinkForm({
+  initialText,
   initialHref,
   autoFocus,
   onApply,
   onRemove,
   onCancel,
 }: {
+  initialText: string;
   initialHref: string;
   autoFocus: boolean;
-  onApply: (href: string) => void;
+  /** `text` is empty when the link should show its address. */
+  onApply: (href: string, text: string) => void;
   onRemove?: () => void;
   onCancel: () => void;
 }) {
+  const [text, setText] = useState(initialText);
   const [href, setHref] = useState(initialHref);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -369,7 +402,7 @@ function LinkForm({
       setError("Enter a web address or an email address.");
       return;
     }
-    onApply(normalized);
+    onApply(normalized, text.trim() ? text : "");
   }
 
   return (
@@ -381,16 +414,33 @@ function LinkForm({
       style={{ display: "flex", flexDirection: "column", gap: "10px" }}
     >
       <Input
+        label="Text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        size="sm"
+        font="sans"
+        fullWidth
+        autoFocus={autoFocus && !initialText}
+      />
+      <Textarea
+        label="Link"
         value={href}
         onChange={(e) => {
-          setHref(e.target.value);
+          setHref(e.target.value.replace(/\s*\n\s*/g, ""));
           setError(undefined);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          e.currentTarget.form?.requestSubmit();
         }}
         placeholder="https://"
         size="sm"
+        rows={1}
+        autoGrow
         fullWidth
         error={error}
-        autoFocus={autoFocus}
+        autoFocus={autoFocus && !!initialText}
       />
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
         {onRemove && (
@@ -469,9 +519,8 @@ export function RichTextInput({
   const emitted = useRef(value);
   const focusedRef = useRef(false);
   const [focused, setFocused] = useState(false);
-  // Non-null while the link editor is open. `autoFocus` is false when it was
-  // opened by clicking a link, so the caret stays in the text.
-  const [linkDraft, setLinkDraft] = useState<{ href: string; autoFocus: boolean } | null>(null);
+  // Non-null while the link editor is open.
+  const [linkDraft, setLinkDraft] = useState<LinkDraft | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -496,12 +545,12 @@ export function RichTextInput({
         if (variant !== "rich" || !(event.metaKey || event.ctrlKey) || event.key !== "k") {
           return false;
         }
-        setLinkDraft({ href: linkHrefAt(view.state.selection.$from) ?? "", autoFocus: true });
+        setLinkDraft(linkDraftAt(view.state, view.state.selection.$from, true));
         return true;
       },
       handleClick: (view, pos) => {
-        const href = linkHrefAt(view.state.doc.resolve(pos));
-        if (href !== undefined) setLinkDraft({ href, autoFocus: false });
+        const draft = linkDraftAt(view.state, view.state.doc.resolve(pos), false);
+        if (draft.href) setLinkDraft(draft);
         return false;
       },
     },
@@ -605,7 +654,6 @@ export function RichTextInput({
             color: locked ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
             borderRadius: "var(--radius-md)",
             cursor: locked ? "not-allowed" : "text",
-            overflowWrap: "anywhere",
             ...style,
           }}
         >
@@ -655,10 +703,9 @@ export function RichTextInput({
                       open={linkDraft !== null}
                       onOpenChange={(open) =>
                         open
-                          ? setLinkDraft({
-                              href: linkHrefAt(editor.state.selection.$from) ?? "",
-                              autoFocus: true,
-                            })
+                          ? setLinkDraft(
+                              linkDraftAt(editor.state, editor.state.selection.$from, true),
+                            )
                           : closeLink()
                       }
                       trigger={
@@ -670,10 +717,11 @@ export function RichTextInput({
                       {() =>
                         linkDraft && (
                           <LinkForm
+                            initialText={linkDraft.text}
                             initialHref={linkDraft.href}
                             autoFocus={linkDraft.autoFocus}
-                            onApply={(href) => {
-                              applyLink(editor, href);
+                            onApply={(href, text) => {
+                              applyLink(editor, linkDraft, href, text);
                               setLinkDraft(null);
                             }}
                             onRemove={
