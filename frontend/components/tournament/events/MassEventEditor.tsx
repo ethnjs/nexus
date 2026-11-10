@@ -422,7 +422,9 @@ export function MassEventEditor({
     setSaving(false);
   }
 
-  const seasonEvents = useSeasonEvents(selectedTournament?.season_year ?? null);
+  const { seasonEvents, error: seasonEventsError } = useSeasonEvents(
+    selectedTournament?.season_year ?? null,
+  );
   const anySeasonDefaults =
     !!seasonEvents && events.some((e) => seasonDefaultsFor(e, seasonEvents) !== null);
   const [resetting, setResetting] = useState(false);
@@ -557,8 +559,10 @@ export function MassEventEditor({
             last
           >
             <Tooltip
-              variant="info"
-              message={seasonEvents && !anySeasonDefaults ? NO_SEASON_DEFAULTS : ""}
+              variant={seasonEventsError ? "error" : "info"}
+              message={
+                seasonEventsError ?? (seasonEvents && !anySeasonDefaults ? NO_SEASON_DEFAULTS : "")
+              }
               showIcon={false}
             >
               <Button

@@ -339,7 +339,9 @@ export function EventPanel({
 
   // Matched on the saved event, since the reset saves straight away. The rest
   // of the draft is kept, so an unsaved edit elsewhere survives it.
-  const seasonEvents = useSeasonEvents(selectedTournament?.season_year ?? null);
+  const { seasonEvents, error: seasonEventsError } = useSeasonEvents(
+    selectedTournament?.season_year ?? null,
+  );
   const seasonDefaults = current && seasonEvents ? seasonDefaultsFor(current, seasonEvents) : null;
 
   // A new event shows its season defaults in the fields the TD hasn't set, and saves what it shows.
@@ -642,8 +644,12 @@ export function EventPanel({
               helper="Saves this season's format, impound and self-schedule to the event."
             >
               <Tooltip
-                variant={resetError ? "error" : "info"}
-                message={resetError ?? (seasonEvents && !seasonDefaults ? NO_SEASON_DEFAULTS : "")}
+                variant={resetError || seasonEventsError ? "error" : "info"}
+                message={
+                  resetError ??
+                  seasonEventsError ??
+                  (seasonEvents && !seasonDefaults ? NO_SEASON_DEFAULTS : "")
+                }
                 showIcon={false}
               >
                 <Button
