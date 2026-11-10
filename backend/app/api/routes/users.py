@@ -25,11 +25,13 @@ from app.core.profile_status import (
 from app.core.users import check_if_email_exists, find_user_by_id, require_not_last_admin
 from app.db.session import get_db
 from app.models.models import (
+    EmailCode,
     Event,
     User,
     UserCompetitionExperience,
     UserSession,
     UserVolunteerExperience,
+    VerificationToken,
 )
 from app.schemas.auth import (
     AccountDeactivateRequest,
@@ -113,9 +115,10 @@ def admin_update_user(
     session: UserSession = Depends(get_current_session),
 ):
     """
-    Admin can update a user's role, status, and email. Changing the role needs a code entered
-    in the last 10 minutes; see POST /auth/step-up/. A new email is unverified until the user
-    next signs in with a code sent to it.
+    Admin can update a user's role, status, and email. Changing the role or email needs a code
+    entered in the last 10 minutes; see POST /auth/step-up/. A new email is unverified until the
+    user next signs in with a code sent to it, and codes and links sent to the old one stop
+    working.
 
     Moving a user off status="active" revokes every session they hold. Losing
     access is meant to take effect now, not at their next sign-in — login
@@ -137,9 +140,20 @@ def admin_update_user(
 
     email = updates.pop("email", None)
     if email is not None and email.lower() != user.email:
+        require_recent_code(session)
         check_if_email_exists(db, email, exclude_user_id=user.id)
         user.email = email.lower()
         user.email_verified = False
+        # Codes and links already mailed to the old address stop working.
+        now = datetime.now(UTC)
+        db.query(EmailCode).filter(
+            EmailCode.user_id == user.id,
+            EmailCode.purpose != "admin_sign_in",
+            EmailCode.consumed_at.is_(None),
+        ).update({"consumed_at": now}, synchronize_session=False)
+        db.query(VerificationToken).filter(
+            VerificationToken.user_id == user.id, VerificationToken.used_at.is_(None)
+        ).update({"used_at": now}, synchronize_session=False)
 
     if user.id == current_user.id:
         if updates.get("role") == "user":
@@ -249,17 +263,22 @@ def admin_send_password_reset(
     "/admin/users/{user_id}/sign-in-code/",
     status_code=status.HTTP_201_CREATED,
     response_model=AdminSignInCodeResponse,
-    responses={400: {"description": "User has no password set"}},
+    responses={
+        400: {"description": "User has no password set"},
+        403: {"description": "A fresh code is needed first (detail.code step_up_required)"},
+    },
 )
 def admin_create_sign_in_code(
     user_id: int,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
+    _: UserSession = Depends(require_recent_code),
 ):
     """
     Issues a one-time sign-in code for a user whose emails aren't arriving. They still enter
-    their password, then type this code where the emailed one would go. It works once and
-    expires in 30 minutes. The code appears only in this response.
+    their password, then type this code where the emailed one would go. It works once, expires
+    in 30 minutes, and replaces any earlier one. The code appears only in this response. Needs a
+    code entered in the last 10 minutes; see POST /auth/step-up/.
     """
     user = find_user_by_id(db, user_id)
     if not user.hashed_password:

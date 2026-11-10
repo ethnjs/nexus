@@ -108,16 +108,12 @@ class CodeChallengeResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     """
-    POST /auth/login. When code_required, the challenge fields are set and user is null;
-    otherwise the session cookie is set and user is the signed-in account.
+    POST /auth/login. When code_required, challenge is set and user is null; otherwise the
+    session cookie is set and user is the signed-in account.
     """
 
     code_required: bool
-    challenge_token: str | None = None
-    expires_at: datetime | None = None
-    can_resend_at: datetime | None = None
-    expires_in: int | None = None
-    resend_in: int | None = None
+    challenge: CodeChallengeResponse | None = None
     user: AdminUserSlimResponse | None = None
 
 

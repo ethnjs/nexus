@@ -163,7 +163,7 @@ class TestLogin:
 def _start_sign_in(client, email="td@test.com", password="tdpass") -> str:
     res = client.post("/auth/login/", json={"email": email, "password": password})
     assert res.status_code == 200, res.text
-    return res.json()["challenge_token"]
+    return res.json()["challenge"]["challenge_token"]
 
 
 def _verify(client, token: str, code: str):
@@ -189,9 +189,9 @@ class TestSignInCode:
         data = res.json()
         assert data["code_required"] is True
         assert data["user"] is None
-        assert data["challenge_token"]
-        assert 598 <= data["expires_in"] <= 600
-        assert 58 <= data["resend_in"] <= 60
+        assert data["challenge"]["challenge_token"]
+        assert 598 <= data["challenge"]["expires_in"] <= 600
+        assert 58 <= data["challenge"]["resend_in"] <= 60
         assert "access_token" not in res.cookies
         assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS sign-in code")]
         assert client.get("/users/me/").status_code == 401
@@ -270,6 +270,17 @@ class TestSignInCode:
         res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
         assert res.status_code == 429
 
+    def test_new_login_after_running_out_of_attempts_rate_limited(self, client, db, td_user):
+        token = _start_sign_in(client)
+        code = emailed_code()
+        for _ in range(5):
+            _verify(client, token, _wrong(code))
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+        assert res.status_code == 429
+
+        _age_codes(db, created_at=timedelta(seconds=61))
+        _start_sign_in(client)
+
     def test_resend_waits_a_minute_and_replaces_code(self, client, db, td_user, mock_send_email):
         token = _start_sign_in(client)
         old_code = emailed_code()
@@ -338,6 +349,10 @@ GUARDED_ACTIONS = {
         f"/tournaments/{t}/transfer-ownership/", json={"new_owner_id": u}
     ),
     "change_site_role": lambda c, t, u: c.patch(f"/admin/users/{u}/", json={"role": "admin"}),
+    "change_user_email": lambda c, t, u: c.patch(
+        f"/admin/users/{u}/", json={"email": "renamed@test.com"}
+    ),
+    "create_sign_in_code": lambda c, t, u: c.post(f"/admin/users/{u}/sign-in-code/"),
 }
 
 
@@ -449,7 +464,7 @@ class TestCodesSwitchedOff:
         assert res.status_code == 200
         data = res.json()
         assert data["code_required"] is False
-        assert data["challenge_token"] is None
+        assert data["challenge"] is None
         assert data["user"]["email"] == "td@test.com"
         assert "access_token" in res.cookies
         assert not mock_send_email.called
@@ -651,6 +666,13 @@ class TestRegister:
         db.commit()
         assert _verify(client, token, emailed_code()).status_code == 409
         assert db.query(User).filter_by(email="new@test.com").count() == 1
+
+    def test_email_taken_between_check_and_insert(self, client, db, monkeypatch):
+        token = self._register(client).json()["challenge_token"]
+        db.add(User(email="new@test.com", role="user", status="active"))
+        db.commit()
+        monkeypatch.setattr(auth_routes, "check_if_email_exists", lambda *a, **k: None)
+        assert _verify(client, token, emailed_code()).status_code == 409
 
     def test_register_duplicate_email_rejected(self, client, td_user):
         assert (

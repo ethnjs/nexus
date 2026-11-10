@@ -570,9 +570,9 @@ export default function AdminUsersPage() {
               setEmailSaving(true);
               try {
                 await run("Email updated", () =>
-                  adminUsersApi
-                    .update(pending.user.id, { email: emailDraft.trim() })
-                    .then(replaceRow),
+                  withStepUp(() =>
+                    adminUsersApi.update(pending.user.id, { email: emailDraft.trim() }),
+                  ).then(replaceRow),
                 );
                 setPending(null);
               } catch (err: unknown) {
@@ -628,9 +628,9 @@ export default function AdminUsersPage() {
             </>
           }
           onConfirm={() =>
-            adminUsersApi
-              .createSignInCode(pending.user.id)
-              .then((code) => setIssuedCode({ user: pending.user, code }))
+            withStepUp(() => adminUsersApi.createSignInCode(pending.user.id)).then((code) =>
+              setIssuedCode({ user: pending.user, code }),
+            )
           }
           onClose={() => setPending(null)}
         />

@@ -447,7 +447,10 @@ def login(client: TestClient, email: str, password: str):
         return res
     verify = client.post(
         "/auth/code/verify/",
-        json={"challenge_token": res.json()["challenge_token"], "code": emailed_code()},
+        json={
+            "challenge_token": res.json()["challenge"]["challenge_token"],
+            "code": emailed_code(),
+        },
     )
     # So tests that count sends see only their own.
     email_service._send.reset_mock()  # ty: ignore[unresolved-attribute]

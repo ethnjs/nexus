@@ -46,14 +46,9 @@ function SignInContent() {
 
     try {
       const res = await authApi.login(email, password);
-      if (res.code_required && res.challenge_token && res.expires_at && res.can_resend_at) {
-        const next = {
-          challenge_token: res.challenge_token,
-          expires_at: res.expires_at,
-          can_resend_at: res.can_resend_at,
-        };
-        lastChallenge.current = { email: email.trim().toLowerCase(), challenge: next };
-        setChallenge(next);
+      if (res.challenge) {
+        lastChallenge.current = { email: email.trim().toLowerCase(), challenge: res.challenge };
+        setChallenge(res.challenge);
         return;
       }
       window.location.href = redirect ?? "/dashboard";
@@ -101,6 +96,9 @@ function SignInContent() {
           challenge={challenge}
           email={email}
           submitLabel="Sign In"
+          onClosed={() => {
+            lastChallenge.current = null;
+          }}
           onSubmit={async (challengeToken, code) => {
             await authApi.verifyCode(challengeToken, code);
             window.location.href = redirect ?? "/dashboard";

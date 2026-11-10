@@ -10,6 +10,7 @@ from fastapi import (
     Response,
     status,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -140,8 +141,8 @@ def login(
             detail="Invalid email or password",
         )
     if upgraded_hash:
-        # Legacy bcrypt hash: swap in Argon2. Committed by start_challenge below.
         user.hashed_password = upgraded_hash
+        db.commit()
 
     if not get_settings().login_codes_required:
         raw_token = create_session(
@@ -155,7 +156,7 @@ def login(
 
     raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
     send_in_background(background_tasks, send_sign_in_code_email, user.email, code)
-    return LoginResponse(code_required=True, **_challenge_response(raw_token, row).model_dump())
+    return LoginResponse(code_required=True, challenge=_challenge_response(raw_token, row))
 
 
 @router.post(
@@ -174,14 +175,19 @@ def verify_code(
 ):
     """
     Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here.
-    Sets an httpOnly session cookie on success and marks the email verified. Five wrong codes
-    end the challenge.
+    Sets an httpOnly session cookie on success and marks the email verified. Five wrong guesses
+    at one code end the challenge.
     """
     row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in", "sign_up"))
 
     if row.purpose == "sign_up":
         check_if_email_exists(db, row.email)
-        user = create_user(db, row.email, hashed_password=row.hashed_password)
+        try:
+            user = create_user(db, row.email, hashed_password=row.hashed_password)
+        except IntegrityError:
+            # Another pending sign-up for this email finished between the check and the insert.
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
     else:
         found = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
         if found is None:

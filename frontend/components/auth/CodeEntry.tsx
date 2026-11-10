@@ -13,6 +13,8 @@ interface CodeEntryProps {
   email: string;
   /** Checks the code; throw an ApiError to show its message. */
   onSubmit: (challengeToken: string, code: string) => Promise<void>;
+  /** Called when the backend says the challenge takes no more codes, so it can't be reopened. */
+  onClosed?: () => void;
   submitLabel?: string;
 }
 
@@ -21,6 +23,7 @@ export function CodeEntry({
   challenge: initialChallenge,
   email,
   onSubmit,
+  onClosed,
   submitLabel = "Continue",
 }: CodeEntryProps) {
   const [challenge, setChallenge] = useState(initialChallenge);
@@ -47,8 +50,10 @@ export function CodeEntry({
     if (
       err instanceof ApiError &&
       (err.detail as { code?: unknown } | null)?.code === "code_closed"
-    )
+    ) {
       setClosedByServer(true);
+      onClosed?.();
+    }
     setError(err instanceof ApiError ? err.message : fallback);
   }
 

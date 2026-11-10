@@ -57,11 +57,7 @@ def start_challenge(
     """
     now = datetime.now(UTC)
 
-    query = db.query(EmailCode).filter(
-        EmailCode.purpose == purpose,
-        EmailCode.consumed_at.is_(None),
-        EmailCode.expires_at > now,
-    )
+    query = db.query(EmailCode).filter(EmailCode.purpose == purpose)
     if purpose == "sign_up":
         query = query.filter(EmailCode.email == email)
     elif purpose == "step_up":
@@ -70,9 +66,13 @@ def start_challenge(
     else:
         assert user is not None
         query = query.filter(EmailCode.user_id == user.id)
-    existing = query.all()
+    existing = query.filter(EmailCode.consumed_at.is_(None), EmailCode.expires_at > now).all()
+    # A challenge closed by wrong codes still counts, or starting over would buy 5 free guesses.
+    failed = query.filter(
+        EmailCode.created_at > now - RATE_LIMIT_WINDOW, EmailCode.attempts >= MAX_ATTEMPTS
+    ).first()
 
-    if any(now - row.created_at < RATE_LIMIT_WINDOW for row in existing):
+    if failed or any(now - row.created_at < RATE_LIMIT_WINDOW for row in existing):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "We sent you a code less than a minute ago. Wait a minute before requesting another.",
@@ -100,8 +100,16 @@ def start_challenge(
 
 
 def start_admin_sign_in_code(db: Session, user: User, admin: User) -> tuple[str, EmailCode]:
-    """Commits a one-time code an admin hands to `user`, accepted at the sign-in code step."""
+    """
+    Commits a one-time code an admin hands to `user`, accepted at the sign-in code step.
+    Closes the user's older open admin codes.
+    """
     now = datetime.now(UTC)
+    db.query(EmailCode).filter(
+        EmailCode.purpose == "admin_sign_in",
+        EmailCode.user_id == user.id,
+        EmailCode.consumed_at.is_(None),
+    ).update({"consumed_at": now}, synchronize_session=False)
     code = _generate_code()
     row = EmailCode(
         purpose="admin_sign_in",

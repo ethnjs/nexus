@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
@@ -20,6 +20,9 @@ interface PendingStepUp {
   cancel: () => void;
 }
 
+// Module-wide because the backend's one-a-minute limit is per session, not per component.
+let lastChallenge: CodeChallenge | null = null;
+
 /**
  * Runs a sensitive action, and when the backend answers `step_up_required`, emails a code,
  * asks for it in a modal, and retries. Render `stepUpModal` once in the calling component.
@@ -28,16 +31,15 @@ interface PendingStepUp {
 export function useStepUp() {
   const { user } = useAuth();
   const [pending, setPending] = useState<PendingStepUp | null>(null);
-  const lastChallenge = useRef<CodeChallenge | null>(null);
 
   async function startOrReopen(): Promise<CodeChallenge> {
     try {
-      lastChallenge.current = await authApi.startStepUp();
-      return lastChallenge.current;
+      lastChallenge = await authApi.startStepUp();
+      return lastChallenge;
     } catch (err: unknown) {
       // A 429 means the code sent under a minute ago is still open, so reopen it rather than
-      // making someone who closed the prompt wait. A used-up or expired one gets no 429.
-      const last = lastChallenge.current;
+      // making someone who closed the prompt wait. onClosed forgets one that's out of attempts.
+      const last = lastChallenge;
       const open = last !== null && new Date(last.expires_at).getTime() > Date.now();
       if (err instanceof ApiError && err.status === 429 && open) return last;
       throw err;
@@ -69,6 +71,9 @@ export function useStepUp() {
         challenge={pending.challenge}
         email={user?.email ?? "your email address"}
         submitLabel="Confirm"
+        onClosed={() => {
+          lastChallenge = null;
+        }}
         onSubmit={async (challengeToken, code) => {
           await authApi.verifyStepUp(challengeToken, code);
           setPending(null);

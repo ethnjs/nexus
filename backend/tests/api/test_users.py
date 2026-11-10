@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from app.core.auth import hash_password
+from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
     EmailCode,
     Event,
@@ -476,6 +476,19 @@ class TestAdminEditEmail:
         db.refresh(alice)
         assert alice.email == "alice@example.com"
 
+    def test_old_address_codes_and_links_stop_working(self, client, admin_user, db):
+        alice = _db_user(db)
+        token = _start_sign_in(client)
+        reset = create_verification_token(db, alice.id, "password_reset")
+        login(client, "admin@test.com", "adminpass")
+        client.patch(f"/admin/users/{alice.id}/", json={"email": "alice.new@example.com"})
+
+        db.query(EmailCode).update({"last_sent_at": EmailCode.last_sent_at - timedelta(seconds=61)})
+        db.commit()
+        res = client.post("/auth/code/resend/", json={"challenge_token": token})
+        assert res.json()["detail"]["code"] == "code_closed"
+        assert consume_verification_token(db, reset, "password_reset") is None
+
     def test_new_email_verified_at_next_sign_in(self, client, admin_user, db, mock_send_email):
         alice = _db_user(db)
         login(client, "admin@test.com", "adminpass")
@@ -494,7 +507,7 @@ class TestAdminEditEmail:
 def _start_sign_in(client, email="alice@example.com", password="Password@1") -> str:
     res = client.post("/auth/login/", json={"email": email, "password": password})
     assert res.status_code == 200, res.text
-    return res.json()["challenge_token"]
+    return res.json()["challenge"]["challenge_token"]
 
 
 def _verify(client, token: str, code: str):
@@ -551,6 +564,15 @@ class TestAdminSignInCode:
         alice = _db_user(db)
         login(client, "td@test.com", "tdpass")
         assert client.post(f"/admin/users/{alice.id}/sign-in-code/").status_code == 403
+
+    def test_new_code_replaces_earlier_one(self, client, admin_user, db):
+        alice = _db_user(db)
+        first = self._issue(client, db, alice)
+        second = self._issue(client, db, alice)
+        token = _start_sign_in(client)
+        if first != second:
+            assert _verify(client, token, first).status_code == 400
+        assert _verify(client, token, second).status_code == 200
 
 
 # ---------------------------------------------------------------------------

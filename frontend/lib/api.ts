@@ -301,14 +301,10 @@ interface SecondsLeft {
   resend_in: number;
 }
 
-// Matches LoginResponse. When code_required, the challenge fields are set and user is null.
+// Matches LoginResponse. When code_required, challenge is set and user is null.
 export interface LoginResponse {
   code_required: boolean;
-  challenge_token: string | null;
-  expires_at: string | null;
-  can_resend_at: string | null;
-  expires_in: number | null;
-  resend_in: number | null;
+  challenge: (CodeChallenge & SecondsLeft) | null;
   user: AdminUserSlim | null;
 }
 
@@ -324,12 +320,9 @@ function onLocalClock<T extends SecondsLeft>(challenge: T): T {
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<LoginResponse>("/auth/login/", { email, password }).then((res) => {
-      const { expires_in, resend_in } = res;
-      return expires_in === null || resend_in === null
-        ? res
-        : onLocalClock({ ...res, expires_in, resend_in });
-    }),
+    api
+      .post<LoginResponse>("/auth/login/", { email, password })
+      .then((res) => (res.challenge ? { ...res, challenge: onLocalClock(res.challenge) } : res)),
   logout: () => api.post<void>("/auth/logout/", {}),
   register: (body: AuthRegister) =>
     api.post<CodeChallenge & SecondsLeft>("/auth/register/", body).then(onLocalClock),
