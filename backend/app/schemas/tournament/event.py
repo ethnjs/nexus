@@ -19,6 +19,13 @@ def validate_event_format(v: str | None) -> str | None:
     return v
 
 
+def reject_null(v: bool | None) -> bool:
+    """For an update field whose None means "not sent": an explicit null can't be stored."""
+    if v is None:
+        raise ValueError("must be true or false")
+    return v
+
+
 def _clean_rooms(value: list[str]) -> list[str]:
     """Trimmed, blank-free, deduplicated, order preserved.
 
@@ -221,6 +228,7 @@ class EventUpdate(BaseModel):
         return v
 
     _validate_format = field_validator("format")(validate_event_format)
+    _reject_null_flags = field_validator("has_impound", "has_self_schedule")(reject_null)
 
 
 class EventRead(BaseModel):

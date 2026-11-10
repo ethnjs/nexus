@@ -103,6 +103,13 @@ def test_update_season_event_clears_format(client, admin_user, event):
     assert response.json()["format"] is None
 
 
+def test_update_season_event_rejects_null_flag(client, admin_user, event):
+    _login_admin(client)
+    created = _make_season_event(client, event_id=event.id).json()
+    response = client.patch(f"/admin/season-events/{created['id']}/", json={"has_impound": None})
+    assert response.status_code == 422
+
+
 def test_update_season_event_syncs_other_divisions(client, admin_user, event):
     _login_admin(client)
     b = _make_season_event(client, event_id=event.id, division="B").json()

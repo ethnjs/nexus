@@ -126,6 +126,16 @@ def test_update_event_format_and_flags(client, td_user, td_tournament):
     assert response.json()["has_impound"] is True
 
 
+def test_update_event_rejects_null_flag(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"has_self_schedule": None},
+    )
+    assert response.status_code == 422
+
+
 def test_create_event_without_catalog_link_has_no_category(client, td_user, td_tournament):
     """Custom (event_id-less) events have no category — nothing fabricated."""
     login(client, "td@test.com", "tdpass")

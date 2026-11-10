@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
-from app.schemas.tournament.event import validate_event_format
+from app.schemas.tournament.event import reject_null, validate_event_format
 
 
 class SeasonEventCreate(BaseModel):
@@ -37,6 +37,7 @@ class SeasonEventUpdate(BaseModel):
     has_self_schedule: bool | None = None
 
     _validate_format = field_validator("format")(validate_event_format)
+    _reject_null_flags = field_validator("has_impound", "has_self_schedule")(reject_null)
 
     @field_validator("division")
     @classmethod
