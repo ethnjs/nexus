@@ -58,6 +58,7 @@ export function ToolbarConfigButton({
         title={label}
         aria-label={label}
         onClick={onOpen}
+        style={{ flexShrink: 0 }}
       >
         {icon}
       </Button>
