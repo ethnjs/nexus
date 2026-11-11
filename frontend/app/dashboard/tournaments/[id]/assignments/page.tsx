@@ -120,6 +120,7 @@ import {
 } from "@/lib/sorting";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from "@/lib/usePanelUrl";
@@ -169,6 +170,8 @@ export default function AssignmentsPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
   const { show } = useToast();
+  // Below this the labelled buttons crowd the search box, so they drop to icons.
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(520);
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
@@ -1492,7 +1495,7 @@ export default function AssignmentsPage() {
       {/* Events own the page and its scroll — no inner scroller. */}
       <div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div ref={toolbarRef} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Input
               value={eventQuery}
               onChange={(e) => setEventQuery(e.target.value)}
@@ -1508,11 +1511,13 @@ export default function AssignmentsPage() {
               active={eventFilterActive}
               onOpen={() => setShowEventFilterModal(true)}
               onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+              iconOnly={compactToolbar}
             />
             <SortButton
               active={eventSortActive}
               onOpen={() => setShowEventSortModal(true)}
               onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
+              iconOnly={compactToolbar}
             />
             {/* The belt's member filters and this tab's event filters and track:
                 exports what the board shows. Locked for manage_events-only staff,
@@ -1524,6 +1529,7 @@ export default function AssignmentsPage() {
                 lockedReason={
                   canManageMembers ? null : "Exporting needs the Manage members permission."
                 }
+                iconOnly={compactToolbar}
               />
             )}
           </div>
