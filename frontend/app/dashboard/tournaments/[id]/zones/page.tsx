@@ -432,114 +432,119 @@ export default function ZonesPage() {
     const index = focusedEvent ? panelList.findIndex((e) => e.id === focusedEvent.id) : -1;
     const memberIndex = focusedMember ? belt.findIndex((m) => m.id === focusedMember.id) : -1;
     const detailWidth = focusedMember ? MEMBER_PANEL_WIDTH : focusedEvent ? EVENT_PANEL_WIDTH : 0;
-    setPanel(
-      <div style={{ display: "flex", height: "100%" }}>
-        <DockedPanel
-          width={LIST_PANEL_WIDTH}
-          headerActions={tab === "members" ? beltHeaderActions : undefined}
-        >
-          <ZonePanelDropZone>
-            {canManageMembers && (
-              <div style={{ padding: "12px 12px 0" }}>
-                <TabStrip
-                  tabs={[
-                    { key: "locations", label: "Locations" },
-                    { key: "members", label: "Members" },
-                  ]}
-                  activeKey={tab}
-                  onChange={setSideTab}
-                />
-              </div>
-            )}
-            {tab === "members" ? (
-              renderBelt({ focusedId: focusedMemberId, allShifts, onOpen: openMember })
-            ) : (
-              <ZoneLocationsList
-                trackId={activeTrack.id}
-                buildings={dayBuildings}
-                events={dayEvents}
-                targets={targets}
-                zones={dayCoverage?.zones ?? []}
-                owners={owners}
-                focusedEventId={focusedEventId}
-                locked={isArchived}
-                onOpenEvent={openEvent}
+    const list = (
+      <DockedPanel
+        width={LIST_PANEL_WIDTH}
+        headerActions={tab === "members" ? beltHeaderActions : undefined}
+      >
+        <ZonePanelDropZone>
+          {canManageMembers && (
+            <div style={{ padding: "12px 12px 0" }}>
+              <TabStrip
+                tabs={[
+                  { key: "locations", label: "Locations" },
+                  { key: "members", label: "Members" },
+                ]}
+                activeKey={tab}
+                onChange={setSideTab}
               />
-            )}
-          </ZonePanelDropZone>
-        </DockedPanel>
-        {focusedMember && (
-          <MemberPanel
-            key={focusedMember.id}
-            tournamentId={tournamentId}
-            membershipId={focusedMember.id}
-            allRoles={roles}
-            shifts={allShifts}
-            tracks={tracks}
-            canTouchRole={canTouchRole}
-            canEditMember={canEditMember}
-            collectIsOver18={!!selectedTournament?.collect_is_over_18}
-            collectIsOver21={!!selectedTournament?.collect_is_over_21}
-            isArchived={isArchived}
-            isSelf={currentUser?.id === focusedMember.user.id}
-            onClose={() => setFocusedMemberId(null)}
-            // Roles only: the roles PATCH returns none of the built groups.
-            onUpdated={(updated) =>
-              setMembers((cur) =>
-                cur.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)),
-              )
-            }
-            onAssignmentsChanged={() => {}}
-            onPrev={() => memberIndex > 0 && openMember(belt[memberIndex - 1].id)}
-            onNext={() =>
-              memberIndex >= 0 &&
-              memberIndex < belt.length - 1 &&
-              openMember(belt[memberIndex + 1].id)
-            }
-            hasPrev={memberIndex > 0}
-            hasNext={memberIndex >= 0 && memberIndex < belt.length - 1}
-          />
-        )}
-        {focusedEvent && !focusedMember && (
-          <EventPanel
-            key={focusedEvent.id}
-            tournamentId={tournamentId}
-            event={focusedEvent}
-            locked={isArchived}
-            canonicalEvents={canonicalEvents}
-            allShifts={allShifts}
-            tracks={tracks}
-            buildings={buildings}
-            roles={roles}
-            onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
-            onBuildingSaved={(building) =>
-              setBuildings((cur) =>
-                cur.some((b) => b.id === building.id)
-                  ? cur.map((b) => (b.id === building.id ? building : b))
-                  : [...cur, building],
-              )
-            }
-            onClose={() => setFocusedEventId(null)}
-            onSaved={(next) => {
-              setEvents((cur) => cur.map((e) => (e.id === next.id ? { ...e, ...next } : e)));
-              // A new location can move the event between zones.
-              void reloadCoverage().catch(() => {});
-            }}
-            onDeleted={(id) => {
-              setEvents((cur) => cur.filter((e) => e.id !== id));
-              setFocusedEventId(null);
-              void reloadCoverage().catch(() => {});
-            }}
-            onPrev={() => index > 0 && openEvent(panelList[index - 1].id)}
-            onNext={() =>
-              index >= 0 && index < panelList.length - 1 && openEvent(panelList[index + 1].id)
-            }
-            hasPrev={index > 0}
-            hasNext={index >= 0 && index < panelList.length - 1}
-          />
-        )}
-      </div>,
-      LIST_PANEL_WIDTH + detailWidth,
+            </div>
+          )}
+          {tab === "members" ? (
+            renderBelt({ focusedId: focusedMemberId, allShifts, onOpen: openMember })
+          ) : (
+            <ZoneLocationsList
+              trackId={activeTrack.id}
+              buildings={dayBuildings}
+              events={dayEvents}
+              targets={targets}
+              zones={dayCoverage?.zones ?? []}
+              owners={owners}
+              focusedEventId={focusedEventId}
+              locked={isArchived}
+              onOpenEvent={openEvent}
+            />
+          )}
+        </ZonePanelDropZone>
+      </DockedPanel>
+    );
+    setPanel(
+      detailWidth ? (
+        <>
+          {focusedMember && (
+            <MemberPanel
+              key={focusedMember.id}
+              tournamentId={tournamentId}
+              membershipId={focusedMember.id}
+              allRoles={roles}
+              shifts={allShifts}
+              tracks={tracks}
+              canTouchRole={canTouchRole}
+              canEditMember={canEditMember}
+              collectIsOver18={!!selectedTournament?.collect_is_over_18}
+              collectIsOver21={!!selectedTournament?.collect_is_over_21}
+              isArchived={isArchived}
+              isSelf={currentUser?.id === focusedMember.user.id}
+              onClose={() => setFocusedMemberId(null)}
+              // Roles only: the roles PATCH returns none of the built groups.
+              onUpdated={(updated) =>
+                setMembers((cur) =>
+                  cur.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)),
+                )
+              }
+              onAssignmentsChanged={() => {}}
+              onPrev={() => memberIndex > 0 && openMember(belt[memberIndex - 1].id)}
+              onNext={() =>
+                memberIndex >= 0 &&
+                memberIndex < belt.length - 1 &&
+                openMember(belt[memberIndex + 1].id)
+              }
+              hasPrev={memberIndex > 0}
+              hasNext={memberIndex >= 0 && memberIndex < belt.length - 1}
+            />
+          )}
+          {focusedEvent && !focusedMember && (
+            <EventPanel
+              key={focusedEvent.id}
+              tournamentId={tournamentId}
+              event={focusedEvent}
+              locked={isArchived}
+              canonicalEvents={canonicalEvents}
+              allShifts={allShifts}
+              tracks={tracks}
+              buildings={buildings}
+              roles={roles}
+              onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+              onBuildingSaved={(building) =>
+                setBuildings((cur) =>
+                  cur.some((b) => b.id === building.id)
+                    ? cur.map((b) => (b.id === building.id ? building : b))
+                    : [...cur, building],
+                )
+              }
+              onClose={() => setFocusedEventId(null)}
+              onSaved={(next) => {
+                setEvents((cur) => cur.map((e) => (e.id === next.id ? { ...e, ...next } : e)));
+                // A new location can move the event between zones.
+                void reloadCoverage().catch(() => {});
+              }}
+              onDeleted={(id) => {
+                setEvents((cur) => cur.filter((e) => e.id !== id));
+                setFocusedEventId(null);
+                void reloadCoverage().catch(() => {});
+              }}
+              onPrev={() => index > 0 && openEvent(panelList[index - 1].id)}
+              onNext={() =>
+                index >= 0 && index < panelList.length - 1 && openEvent(panelList[index + 1].id)
+              }
+              hasPrev={index > 0}
+              hasNext={index >= 0 && index < panelList.length - 1}
+            />
+          )}
+        </>
+      ) : null,
+      detailWidth,
+      { content: list, width: LIST_PANEL_WIDTH },
     );
   }, [
     canManageEvents,

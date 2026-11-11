@@ -29,7 +29,7 @@ export function SelectionBar({
     <div
       style={{
         position: "fixed",
-        left: "50%",
+        left: "calc(50% - var(--layout-panel-covered, 0px) / 2)",
         bottom: visible ? "24px" : "-80px",
         transform: "translateX(-50%)",
         // Grows with extra actions rather than squeezing them.
@@ -44,7 +44,7 @@ export function SelectionBar({
         alignItems: "center",
         justifyContent: "space-between",
         gap: "16px",
-        transition: "bottom 0.25s ease",
+        transition: "bottom 0.25s ease, left 220ms ease",
         zIndex: 60,
       }}
     >

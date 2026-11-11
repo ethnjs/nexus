@@ -31,10 +31,8 @@ interface DockedPanelProps {
   nextDisabled?: boolean;
 }
 
-// Modal-free side panel: no portal, no backdrop, no overlay. It's meant to be rendered as a plain flex child of the app shell's
-// top-level row (see useLayoutPanel), so it *takes* horizontal space rather
-// than covering it — the page beside it stays fully interactive, which a
-// modal overlay can't offer.
+// Modal-free side panel: no portal, no backdrop. Rendered through useLayoutPanel,
+// which docks or floats it beside the page, so the page stays interactive.
 export function DockedPanel({
   onClose,
   children,
@@ -68,10 +66,6 @@ export function DockedPanel({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        // No shadow. This panel takes horizontal space rather than covering
-        // anything, so there is no depth for one to describe — and with two
-        // docked side by side it only ever landed on the neighbour. The
-        // borderLeft above is the separation.
       }}
     >
       {/* Same height/background as Topbar so this strip's bottom border lines

@@ -380,8 +380,8 @@ export default function ShiftsPage() {
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // The editor doesn't render here — it's pushed into the layout shell's
-  // docked slot so the panel is a sibling of <main> and shrinks it, leaving
-  // the table clickable.
+  // panel slot, which floats it over <main> without a backdrop, leaving the
+  // table clickable.
   useEffect(() => {
     // Same reason as the fetch above — an effect on this page now runs even
     // when the render below is the no-access card, and that page has no

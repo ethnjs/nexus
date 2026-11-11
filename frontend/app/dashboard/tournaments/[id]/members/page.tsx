@@ -15,7 +15,6 @@ import {
 import styles from "@/components/tournament/members/MembersTable.module.css";
 import {
   COLUMN_WIDTHS,
-  compactTrack,
   type MemberColumn,
   resolveColumns,
 } from "@/components/tournament/members/memberColumns";
@@ -101,32 +100,15 @@ const DEFAULT_TABLE_COLUMNS = ["email", "phone", "account_age", "joined", "metho
 // Select / Name / ...configured columns... / Roles / Actions. Name, roles and
 // actions aren't configurable: they're the row's identity and its controls,
 // not data a TD would turn off.
-//
-// Every track is always present. Select and Roles collapse to zero width
-// rather than dropping out, for the reason SELECT_COLUMN_WIDTH documents
-// above: grid-template-columns interpolates position-by-position, so a list
-// that changes length (or swaps a minmax() for a plain length) can't
-// transition at all and snaps instead. Roles used to drop out, which is why
-// the table jumped while the panel animated open beside it.
-function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberColumn[]) {
-  // With the panel open the table is squeezed, so the tracks that can give
-  // do — see compactTrack. Same track types either way, so the template
-  // still interpolates as the panel slides.
-  const track = (width: string) => (panelOpen ? compactTrack(width) : width);
+function memberColumns(selectMode: boolean, columns: MemberColumn[]) {
   return [
     selectMode ? SELECT_COLUMN_WIDTH : "0px",
-    track(COLUMN_WIDTHS.name),
-    ...columns.map((column) => track(column.width)),
-    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : COLUMN_WIDTHS.roles,
-    // Actions collapses with the panel too: its Remove lives in the panel
-    // header while one is open. Plain length either way so the track still animates.
-    panelOpen ? "0px" : COLUMN_WIDTHS.actions,
+    COLUMN_WIDTHS.name,
+    ...columns.map((column) => column.width),
+    COLUMN_WIDTHS.roles,
+    COLUMN_WIDTHS.actions,
   ].join(" ");
 }
-
-// Matches the column transition, so the Roles chips only come back into
-// layout once the track that holds them has finished widening.
-const ROLES_REVEAL_MS = 220;
 
 const DIRTY_TITLE = "Save or discard your changes first";
 
@@ -158,7 +140,6 @@ const MemberRow = memo(function MemberRow({
   onToggleSelect,
   focused,
   rolesReadOnly,
-  panelOpen,
   columns,
 }: {
   tournamentId: number;
@@ -186,8 +167,6 @@ const MemberRow = memo(function MemberRow({
   focused: boolean;
   /** This row's roles are open in the docked panel — don't offer a second, inline way to edit the same thing. */
   rolesReadOnly: boolean;
-  /** Any docked panel is open — the table is narrower, so the Roles column collapses to give the rest room. */
-  panelOpen: boolean;
   /** The configured columns, already resolved from the saved display config. */
   columns: MemberColumn[];
 }) {
@@ -255,15 +234,8 @@ const MemberRow = memo(function MemberRow({
           {column.render(membership)}
         </div>
       ))}
-      {/* Stays mounted while a panel is open — its track animates to zero
-          width instead of being removed, which is the only way the template
-          can transition. Whether its contents are actually laid out is driven
-          by data-roles-hidden on the table, not from here, so restoring them
-          on close doesn't re-render every row. readOnly while collapsed keeps
-          the Popover (and its scroll/resize listeners) out of the tree.
-          Stops row clicks (select toggle / focus switch) only for a chip, a
-          button or the open picker — the bare space around the chips is still
-          the row's, so a click there opens the panel. */}
+      {/* Stops row clicks only for a chip, a button or the open picker — the
+          bare space around the chips still opens the panel. */}
       <div
         className={styles.rolesCell}
         onClick={(e) => {
@@ -278,14 +250,12 @@ const MemberRow = memo(function MemberRow({
           canTouchRole={canTouchRole}
           locked={locked}
           lockedReason={lockedReason}
-          readOnly={rolesReadOnly || panelOpen}
+          readOnly={rolesReadOnly}
           emptyLabel="None"
           addButtonOnHover
           onUpdated={onUpdated}
         />
       </div>
-      {/* Same collapse treatment as the Roles cell, driven by the same
-          data attribute on the table — see .actionsCell. */}
       <div
         className={styles.actionsCell}
         style={{ display: "flex", justifyContent: "center", gap: "4px" }}
@@ -624,28 +594,6 @@ export default function MembersPage() {
     );
   }, []);
 
-  // Either flow narrows the table for a docked panel — drop the Roles
-  // column to give the rest more room while it's up.
-  const panelOpen = focusedId !== null || massPanelOpen;
-
-  // Whether the Roles chips participate in layout at all (see .rolesCell).
-  // Asymmetric on purpose: they drop out the instant a panel opens, so the
-  // collapsing column never has to wrap them at a few px wide, but they only
-  // come back once the column has finished widening again. Kept as a data
-  // attribute on the single table element rather than a row prop — flipping it
-  // is then a CSS cascade change instead of a re-render of every row.
-  const [prevPanelOpen, setPrevPanelOpen] = useState(panelOpen);
-  const [rolesLaidOut, setRolesLaidOut] = useState(!panelOpen);
-  if (panelOpen !== prevPanelOpen) {
-    setPrevPanelOpen(panelOpen);
-    if (panelOpen) setRolesLaidOut(false);
-  }
-  useEffect(() => {
-    if (panelOpen) return;
-    const timer = setTimeout(() => setRolesLaidOut(true), ROLES_REVEAL_MS);
-    return () => clearTimeout(timer);
-  }, [panelOpen]);
-
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
   const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleMembers, (m) => m.id);
@@ -661,7 +609,7 @@ export default function MembersPage() {
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // The panels don't render here — they're pushed into the layout shell's
-  // docked slot so the panel is a *sibling* of <main> and shrinks it, leaving
+  // panel slot, which floats them over <main> without a backdrop, leaving
   // the table clickable. Re-runs whenever anything the panel is built from
   // changes, so the element never closes over stale props.
   useEffect(() => {
@@ -925,15 +873,11 @@ export default function MembersPage() {
           </div>
 
           <Card radius="lg" className={styles.scroll} style={{ padding: "8px 12px" }}>
-            {/* One grid for the whole table: it owns the column tracks and is
-                the only element that transitions them. Header and rows are
-                subgrids, so resizing (the docked panel sliding open shrinks
-                this container every frame) costs one track resolution instead
-                of one per row. */}
+            {/* One grid for the whole table: header and rows are subgrids, so
+                a resize costs one track resolution instead of one per row. */}
             <div
               className={styles.table}
-              data-roles-hidden={rolesLaidOut ? undefined : "true"}
-              style={{ gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns) }}
+              style={{ gridTemplateColumns: memberColumns(selectMode, tableColumns) }}
             >
               <div ref={stickyHeader} className={styles.header}>
                 <span
@@ -1023,7 +967,6 @@ export default function MembersPage() {
                   // two places at once.
                   columns={tableColumns}
                   rolesReadOnly={focusedId === m.id || (massPanelOpen && selectedIds.has(m.id))}
-                  panelOpen={panelOpen}
                 />
               ))}
             </div>

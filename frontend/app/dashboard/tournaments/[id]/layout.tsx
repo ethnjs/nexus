@@ -140,8 +140,6 @@ function TournamentShell({
         />
         <main className={styles.main}>{children}</main>
       </div>
-      {/* Third flex sibling, not an overlay: it shrinks the column above
-          (Topbar included) instead of covering it, so the page stays live. */}
       <LayoutPanelSlot />
 
       {membership?.needs_age_consent && (

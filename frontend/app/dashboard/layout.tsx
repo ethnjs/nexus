@@ -60,8 +60,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             />
             <main className={styles.main}>{children}</main>
           </div>
-          {/* Third flex sibling, not an overlay: it shrinks the column above
-              instead of covering it, so the table stays live beside it. */}
           <LayoutPanelSlot />
         </div>
       </LayoutPanelProvider>

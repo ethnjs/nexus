@@ -1,51 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { type LayoutPanel, useLayoutPanelContent } from "@/lib/useLayoutPanel";
+import { type CSSProperties, useEffect, useState } from "react";
+import { type LayoutPanelPart, useLayoutPanelContent } from "@/lib/useLayoutPanel";
 
-// Renders whatever a descendant registered via useSetLayoutPanel as a sibling
-// of the Topbar+main column, so it consumes layout width instead of covering
-// the page.
-//
-// mounted lags behind panel on close (stays mounted through the collapse
-// transition instead of vanishing instantly); expanded flips a frame after
-// mount so there's an actual 0 -> full-width transition to animate rather
-// than appearing already-open. Same technique as the shifts page's split-view
-// panel (panelMountedId/panelExpanded there).
-export function LayoutPanelSlot() {
-  const panel = useLayoutPanelContent();
-  const isOpen = panel !== null;
+const TRANSITION = "width 220ms ease, opacity 220ms ease";
 
-  const [mounted, setMounted] = useState<LayoutPanel | null>(panel);
+// mounted lags behind part on close so it stays through the collapse
+// transition; armed flips a frame after mount so there's a real 0 -> full
+// width transition to animate.
+function useSlide(part: LayoutPanelPart | null) {
+  const isOpen = part !== null;
+  const [mounted, setMounted] = useState<LayoutPanelPart | null>(part);
   const [armed, setArmed] = useState(false);
-  const [prev, setPrev] = useState<LayoutPanel | null>(panel);
+  const [prev, setPrev] = useState<LayoutPanelPart | null>(part);
 
-  // React's "adjust state during render" pattern rather than an effect: this
-  // is derived state, and an effect would cost an extra render pass on every
-  // registration.
-  //
-  // Content follows every registration, but the open animation only re-arms
-  // when the panel actually goes from absent to present. A registered panel is
-  // rebuilt whenever the page it came from re-renders (Members re-registers on
-  // every member-list change), and re-arming on that would restart the slide
-  // mid-flight.
-  if (panel !== prev) {
-    const wasOpen = prev !== null;
-    setPrev(panel);
-    if (panel) setMounted(panel);
-    if (isOpen !== wasOpen) setArmed(false);
+  // Content follows every registration, but the slide only re-arms when the
+  // part goes from absent to present: pages re-register on every re-render,
+  // and re-arming then would restart the slide mid-flight.
+  if (part !== prev) {
+    setPrev(part);
+    if (part) setMounted(part);
+    if (isOpen !== (prev !== null)) setArmed(false);
   }
 
-  // Derived, not stored, so closing drops it to 0 in the same render the panel
-  // is unregistered — no effect needed for the close half.
   const expanded = isOpen && armed;
 
   useEffect(() => {
     if (!isOpen) return;
-    // A single rAF often fires before the browser has actually painted
-    // the just-mounted width:0 state, so the width:full flip lands in the
-    // same paint and there's nothing to visibly transition from. Nesting
-    // a second rAF guarantees one real paint happens in between.
+    // One rAF can land before the width:0 state is painted, leaving nothing
+    // to transition from; the second guarantees a paint in between.
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => setArmed(true));
@@ -56,26 +39,91 @@ export function LayoutPanelSlot() {
     };
   }, [isOpen]);
 
-  if (!mounted) return null;
+  const width = expanded && mounted ? mounted.width : 0;
+  const onTransitionEnd = () => {
+    if (!expanded) setMounted(null);
+  };
+  return { mounted, expanded, width, onTransitionEnd };
+}
+
+// Rendered as the last flex sibling of the Topbar+main column. The docked part
+// takes width from the column; the floating part covers the column's right
+// edge, flush against the docked part.
+export function LayoutPanelSlot() {
+  const panel = useLayoutPanelContent();
+  const docked = useSlide(panel?.docked ?? null);
+  const floating = useSlide(panel?.floating ?? null);
+
+  // Lets page-level fixed bars (SelectionBar) center on the uncovered page.
+  const covered = docked.width + floating.width;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--layout-panel-covered", `${covered}px`);
+    return () => {
+      root.style.removeProperty("--layout-panel-covered");
+    };
+  }, [covered]);
+
+  if (!docked.mounted && !floating.mounted) return null;
 
   return (
     <div
-      onTransitionEnd={() => {
-        if (!expanded) setMounted(null);
-      }}
-      style={{
-        width: expanded ? mounted.width : 0,
-        opacity: expanded ? 1 : 0,
-        flexShrink: 0,
-        overflow: "hidden",
-        height: "100%",
-        // Same 220ms/ease as the members table's grid-template-columns
-        // transition, so the table's Roles column collapses in lockstep with
-        // this sliding open rather than finishing 20ms early.
-        transition: "width 220ms ease, opacity 220ms ease",
-      }}
+      style={
+        {
+          position: "relative",
+          flexShrink: 0,
+          height: "100%",
+          "--layout-panel-covered": "0px",
+        } as CSSProperties
+      }
     >
-      <div style={{ width: mounted.width, height: "100%" }}>{mounted.content}</div>
+      {docked.mounted && (
+        <div
+          onTransitionEnd={docked.onTransitionEnd}
+          style={{
+            width: docked.width,
+            opacity: docked.expanded ? 1 : 0,
+            overflow: "hidden",
+            height: "100%",
+            transition: TRANSITION,
+          }}
+        >
+          <div style={{ width: docked.mounted.width, height: "100%" }}>
+            {docked.mounted.content}
+          </div>
+        </div>
+      )}
+      {floating.mounted && (
+        <div
+          data-floating-panel
+          onTransitionEnd={floating.onTransitionEnd}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: "100%",
+            width: floating.width,
+            opacity: floating.expanded ? 1 : 0,
+            overflow: "hidden",
+            boxShadow: "var(--shadow-lg)",
+            // Under the fixed action bars (60) and modals.
+            zIndex: 50,
+            transition: TRANSITION,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              width: floating.mounted.width,
+              height: "100%",
+            }}
+          >
+            {floating.mounted.content}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

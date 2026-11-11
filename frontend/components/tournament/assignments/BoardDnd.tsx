@@ -53,8 +53,21 @@ import {
  */
 const underCursor: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
-  return pointer.length > 0 ? pointer : rectIntersection(args);
+  if (pointer.length === 0) return rectIntersection(args);
+  // Rects ignore stacking, so a board target under a floating panel would
+  // still match; keep only targets in the same layer as what's on top.
+  const at = args.pointerCoordinates;
+  const top = at && document.elementFromPoint(at.x, at.y);
+  if (!top) return pointer;
+  const topLayer = floatingLayer(top);
+  return pointer.filter(
+    ({ id }) =>
+      floatingLayer(args.droppableContainers.find((c) => c.id === id)?.node.current) === topLayer,
+  );
 };
+
+const floatingLayer = (el: Element | null | undefined) =>
+  el?.closest("[data-floating-panel]") ?? null;
 
 /**
  * Pins the overlay's top-left corner to the cursor rather than to wherever

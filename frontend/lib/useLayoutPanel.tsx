@@ -2,14 +2,20 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
-export interface LayoutPanel {
+export interface LayoutPanelPart {
   content: ReactNode;
-  /** Horizontal space the panel claims in the layout row, in px. */
   width: number;
 }
 
+/** `floating` covers the right edge of the page; `docked` takes width from it, so a list the user drags from stays beside the page it drops onto. */
+export interface LayoutPanel {
+  floating: LayoutPanelPart | null;
+  docked: LayoutPanelPart | null;
+}
+
 interface LayoutPanelSetters {
-  setPanel: (content: ReactNode, width: number) => void;
+  /** Pass `null` content for no floating panel (only a docked one). */
+  setPanel: (content: ReactNode, width: number, docked?: LayoutPanelPart) => void;
   clearPanel: () => void;
 }
 
@@ -31,7 +37,7 @@ export function useLayoutPanelContent() {
   return useContext(LayoutPanelContentContext);
 }
 
-/** Register/clear what the layout-level docked panel slot should show. */
+/** Register/clear what the layout-level panel slot should show. */
 export function useSetLayoutPanel() {
   return useContext(LayoutPanelSetContext);
 }
@@ -39,8 +45,11 @@ export function useSetLayoutPanel() {
 export function LayoutPanelProvider({ children }: { children: ReactNode }) {
   const [panel, setPanelState] = useState<LayoutPanel | null>(null);
 
-  const setPanel = useCallback((content: ReactNode, width: number) => {
-    setPanelState({ content, width });
+  const setPanel = useCallback((content: ReactNode, width: number, docked?: LayoutPanelPart) => {
+    setPanelState({
+      floating: content == null ? null : { content, width },
+      docked: docked ?? null,
+    });
   }, []);
   const clearPanel = useCallback(() => setPanelState(null), []);
 

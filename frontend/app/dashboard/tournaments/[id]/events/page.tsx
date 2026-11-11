@@ -656,7 +656,7 @@ export default function EventsPage() {
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // The editors don't render here — they're pushed into the layout shell's
-  // docked slot so the panel is a *sibling* of <main> and shrinks it, leaving
+  // panel slot, which floats them over <main> without a backdrop, leaving
   // the table clickable. Re-runs whenever anything the panel is built from
   // changes, so the element never closes over stale props.
   useEffect(() => {
