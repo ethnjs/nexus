@@ -13,7 +13,7 @@ from app.core.tournament.permissions import (
     require_catalog_read,
     require_permission,
 )
-from app.core.tournament.shifts import require_no_overlap
+from app.core.tournament.shifts import lock_events, require_no_overlap
 from app.db.session import get_db
 from app.models.models import (
     SEASON_FIELDS,
@@ -102,6 +102,7 @@ def _apply_shifts_and_tracks(
     only an explicit track_details entry sets a location.
     """
     if shift_ids is not None:
+        lock_events(db, [event.id])
         shifts = (
             (
                 db.query(TournamentShift)

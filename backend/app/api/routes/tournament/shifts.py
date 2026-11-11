@@ -18,7 +18,7 @@ from app.core.tournament.permissions import (
     require_membership,
     require_permission,
 )
-from app.core.tournament.shifts import require_no_overlap
+from app.core.tournament.shifts import lock_events, require_no_overlap
 from app.core.tournament.tracks import purge_pending_tracks
 from app.db.session import get_db
 from app.models.models import (
@@ -261,7 +261,9 @@ def update_shift(
             detail=f"A shift named '{shift.label}' already exists on '{track.name}'",
         )
     _validate_track_bounds(shift, track, tournament)
-    for event in shift.tournament_events:
+    events = shift.tournament_events
+    lock_events(db, [event.id for event in events])
+    for event in events:
         require_no_overlap(event.shifts, event)
 
     # Moving the shift off a track may have cleared the last reference

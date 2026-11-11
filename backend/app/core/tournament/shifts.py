@@ -3,8 +3,18 @@ from __future__ import annotations
 from itertools import pairwise
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.models.models import TournamentEvent, TournamentShift
+
+
+def lock_events(db: Session, event_ids: list[int]) -> None:
+    """Row-lock events until commit, so two requests changing one event's shifts take
+    turns and the second sees the first's times. Call before reading `event.shifts`."""
+    if event_ids:
+        db.query(TournamentEvent.id).filter(TournamentEvent.id.in_(event_ids)).order_by(
+            TournamentEvent.id
+        ).with_for_update().all()
 
 
 def require_no_overlap(shifts: list[TournamentShift], event: TournamentEvent | None = None) -> None:
