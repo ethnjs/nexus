@@ -130,6 +130,7 @@ import { useTournament } from "@/lib/useTournament";
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340;
+const BOARD_MIN_WIDTH = 720;
 
 /** One open docked panel. At most one of each kind is ever open, which is
  *  what keeps the stack two deep and makes `kind` a usable React key. */
@@ -1557,28 +1558,33 @@ export default function AssignmentsPage() {
             //
             // fit-content, so one very long name wraps at 220px instead of
             // taking the width off every row's timeline.
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "fit-content(220px) 1fr",
-                gap: "8px",
-                minWidth: 0,
-              }}
-            >
-              {visibleEvents.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
-                  roleCatalog={roleCatalog}
-                  flagsFor={flagsFor}
-                  activeTrackId={activeTrackId}
-                  simple={simple}
-                  selected={event.id === focusedEventId}
-                  onOpen={canManageEvents ? openEventPanel : undefined}
-                  handlers={boardHandlers}
-                />
-              ))}
+            //
+            // With the member panels open the page can be ~300px wide, so the
+            // list keeps a readable width and scrolls sideways instead.
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "fit-content(220px) 1fr",
+                  gap: "8px",
+                  minWidth: BOARD_MIN_WIDTH,
+                }}
+              >
+                {visibleEvents.map((event) => (
+                  <EventRow
+                    key={event.id}
+                    event={event}
+                    rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
+                    roleCatalog={roleCatalog}
+                    flagsFor={flagsFor}
+                    activeTrackId={activeTrackId}
+                    simple={simple}
+                    selected={event.id === focusedEventId}
+                    onOpen={canManageEvents ? openEventPanel : undefined}
+                    handlers={boardHandlers}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
