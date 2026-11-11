@@ -120,6 +120,7 @@ import {
 } from "@/lib/sorting";
 import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
+import { useElementNarrowerThan } from "@/lib/useElementNarrowerThan";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { replaceSearchParams, useInitialPanelId, usePanelParamsSync } from "@/lib/usePanelUrl";
@@ -130,6 +131,7 @@ import { useTournament } from "@/lib/useTournament";
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340;
+const BOARD_MIN_WIDTH = 720;
 
 /** One open docked panel. At most one of each kind is ever open, which is
  *  what keeps the stack two deep and makes `kind` a usable React key. */
@@ -168,6 +170,8 @@ export default function AssignmentsPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
   const { show } = useToast();
+  // Below this the labelled buttons crowd the search box, so they drop to icons.
+  const [toolbarRef, compactToolbar] = useElementNarrowerThan<HTMLDivElement>(520);
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
@@ -516,18 +520,6 @@ export default function AssignmentsPage() {
   const eventFilterActive = isEventsFilterActive(eventFilters);
   const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT);
 
-  // Full objects, not shifts derived from them — a cosmetic track (Test
-  // Writing) has no shifts of its own but still belongs on an event and still
-  // carries a default role. See TournamentEvent.tracks.
-  //
-  // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
-  // every row takes flagsFor, so a new Map per event edit re-rendered them all.
-  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]));
-  const eventTrackIds = useMemo(
-    () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
-    [eventTrackKey],
-  );
-
   const divisionOptions = useMemo(() => {
     const options = [...new Set((boardEvents ?? []).map((e) => e.division))]
       .filter((d) => d !== null)
@@ -595,11 +587,9 @@ export default function AssignmentsPage() {
       const id = assignment.member.membership_id;
       const member = id === null ? undefined : memberById.get(id);
       if (!member) return [];
-      return assignmentFlags(assignment, memberFacts(member, perMember.get(member.id) ?? []), {
-        eventTrackIds,
-      });
+      return assignmentFlags(assignment, memberFacts(member, perMember.get(member.id) ?? []));
     };
-  }, [memberById, rows, eventTrackIds]);
+  }, [memberById, rows]);
 
   // ---------------------------------------------------------------------
   // Server sync. Local state moves first; syncPlacements then sends the
@@ -1505,7 +1495,7 @@ export default function AssignmentsPage() {
       {/* Events own the page and its scroll — no inner scroller. */}
       <div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div ref={toolbarRef} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Input
               value={eventQuery}
               onChange={(e) => setEventQuery(e.target.value)}
@@ -1521,11 +1511,13 @@ export default function AssignmentsPage() {
               active={eventFilterActive}
               onOpen={() => setShowEventFilterModal(true)}
               onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+              iconOnly={compactToolbar}
             />
             <SortButton
               active={eventSortActive}
               onOpen={() => setShowEventSortModal(true)}
               onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
+              iconOnly={compactToolbar}
             />
             {/* The belt's member filters and this tab's event filters and track:
                 exports what the board shows. Locked for manage_events-only staff,
@@ -1537,6 +1529,7 @@ export default function AssignmentsPage() {
                 lockedReason={
                   canManageMembers ? null : "Exporting needs the Manage members permission."
                 }
+                iconOnly={compactToolbar}
               />
             )}
           </div>
@@ -1571,28 +1564,33 @@ export default function AssignmentsPage() {
             //
             // fit-content, so one very long name wraps at 220px instead of
             // taking the width off every row's timeline.
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "fit-content(220px) 1fr",
-                gap: "8px",
-                minWidth: 0,
-              }}
-            >
-              {visibleEvents.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
-                  roleCatalog={roleCatalog}
-                  flagsFor={flagsFor}
-                  activeTrackId={activeTrackId}
-                  simple={simple}
-                  selected={event.id === focusedEventId}
-                  onOpen={canManageEvents ? openEventPanel : undefined}
-                  handlers={boardHandlers}
-                />
-              ))}
+            //
+            // With the member panels open the page can be ~300px wide, so the
+            // list keeps a readable width and scrolls sideways instead.
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "fit-content(220px) 1fr",
+                  gap: "8px",
+                  minWidth: BOARD_MIN_WIDTH,
+                }}
+              >
+                {visibleEvents.map((event) => (
+                  <EventRow
+                    key={event.id}
+                    event={event}
+                    rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
+                    roleCatalog={roleCatalog}
+                    flagsFor={flagsFor}
+                    activeTrackId={activeTrackId}
+                    simple={simple}
+                    selected={event.id === focusedEventId}
+                    onOpen={canManageEvents ? openEventPanel : undefined}
+                    handlers={boardHandlers}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>

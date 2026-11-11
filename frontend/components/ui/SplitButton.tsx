@@ -106,7 +106,7 @@ export function SplitButton({
   );
 
   return (
-    <div style={{ display: "inline-flex", alignItems: "stretch" }}>
+    <div style={{ display: "inline-flex", alignItems: "stretch", flexShrink: 0 }}>
       <Button
         variant={variant}
         size={size}

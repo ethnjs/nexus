@@ -18,6 +18,7 @@ from app.core.tournament.permissions import (
     require_membership,
     require_permission,
 )
+from app.core.tournament.shifts import lock_events, require_no_overlap
 from app.core.tournament.tracks import purge_pending_tracks
 from app.db.session import get_db
 from app.models.models import (
@@ -260,6 +261,10 @@ def update_shift(
             detail=f"A shift named '{shift.label}' already exists on '{track.name}'",
         )
     _validate_track_bounds(shift, track, tournament)
+    events = shift.tournament_events
+    lock_events(db, [event.id for event in events])
+    for event in events:
+        require_no_overlap(event.shifts, event)
 
     # Moving the shift off a track may have cleared the last reference
     # keeping a pending-delete track alive. Same transaction as the move, so a
@@ -309,6 +314,5 @@ def delete_shift(
 
 
 # An event's shifts are set through the event itself (EventCreate/EventUpdate's
-# shift_ids), not through attach/detach routes here. They're a property of the
-# event, the same as its tracks — and the overlap check that used to live in
-# _validate_attach moved with them, into events.py's _validate_no_overlap.
+# shift_ids), not through attach/detach routes here. Their overlap check runs there,
+# and in update_shift above when a shift's times change.

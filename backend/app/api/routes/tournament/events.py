@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from itertools import pairwise
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -15,6 +13,7 @@ from app.core.tournament.permissions import (
     require_catalog_read,
     require_permission,
 )
+from app.core.tournament.shifts import lock_events, require_no_overlap
 from app.db.session import get_db
 from app.models.models import (
     SEASON_FIELDS,
@@ -103,6 +102,7 @@ def _apply_shifts_and_tracks(
     only an explicit track_details entry sets a location.
     """
     if shift_ids is not None:
+        lock_events(db, [event.id])
         shifts = (
             (
                 db.query(TournamentShift)
@@ -121,7 +121,7 @@ def _apply_shifts_and_tracks(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown shift {sorted(missing)[0]}",
             )
-        _validate_no_overlap(shifts)
+        require_no_overlap(shifts)
         # Assignments that named a shift being dropped are unpinned, not
         # deleted — see detach_shifts_from_assignments. Done before the set is
         # replaced, while the outgoing ids are still readable.
@@ -315,22 +315,6 @@ def _validate_need_roles(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown role {missing[0]}",
         )
-
-
-def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
-    """Two shifts on one event can't overlap — one person can only staff an
-    event once at a time, which is the rule assignments build on. Adjacent
-    (end == start) is fine; only strict overlap is rejected."""
-    ordered = sorted(shifts, key=lambda s: s.start)
-    for earlier, later in pairwise(ordered):
-        if later.start < earlier.end:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Shift '{later.label}' overlaps '{earlier.label}' "
-                    "— an event's shifts must not overlap"
-                ),
-            )
 
 
 # ---------------------------------------------------------------------------

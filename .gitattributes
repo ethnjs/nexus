@@ -1,11 +1,4 @@
-# Shell scripts must keep LF endings. Git's autocrlf would otherwise check them
-# out with CRLF on Windows, and bash fails on the shebang:
-#   bad interpreter: /usr/bin/env bash^M
-*.sh text eol=lf
-.githooks/* text eol=lf
-
-# Biome formats with LF endings. Checked out with CRLF, as autocrlf
-# does on Windows, every file would differ from Biome's output.
-frontend/** text=auto eol=lf
-biome.jsonc text eol=lf
-.vscode/*.json text eol=lf
+# LF on every checkout, whatever core.autocrlf says (Git for Windows defaults it
+# to true). Bash fails on a CRLF shebang, and Biome and Ruff format with LF.
+# text=auto leaves binaries such as images and videos alone.
+* text=auto eol=lf

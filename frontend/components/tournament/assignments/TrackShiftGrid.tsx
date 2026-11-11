@@ -236,9 +236,17 @@ export function TrackShiftGrid({
 }) {
   const columns = shifts.length;
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`;
-  // One time at every divider, edges included — n shifts have n+1 boundaries,
-  // and each internal one is both a shift's end and the next one's start.
-  const boundaries = [shifts[0].start, ...shifts.map((s) => s.end)];
+  // Starts sit right of their divider and ends left of it. Back-to-back shifts
+  // share one time; a gap between them shows both.
+  const boundaries: { at: string; col: number; side: "start" | "end" }[] = shifts.flatMap(
+    (s, i) => {
+      const start = { at: s.start, col: i, side: "start" as const };
+      const prev = shifts[i - 1];
+      if (!prev || new Date(prev.end).getTime() === new Date(s.start).getTime()) return [start];
+      return [{ at: prev.end, col: i, side: "end" as const }, start];
+    },
+  );
+  boundaries.push({ at: shifts[columns - 1].end, col: columns, side: "end" });
   // The bars area, and every shift on this track with it. The body is where
   // the staffing already is, so "put them on the whole track" is the thing
   // you aim at by default; a single shift is the deliberate, narrower aim.
@@ -286,11 +294,8 @@ export function TrackShiftGrid({
           grid's flow) rather than being cells of it, since a boundary belongs
           to no single column.
 
-          One time per divider — a boundary is shared by the shift before and
-          after it, so printing it once says what two per-column ranges said
-          redundantly. Every time sits to the *right* of its line, so each
-          reads as "this column starts at"; the last boundary has no column
-          after it, so it flips to the left. */}
+          A start reads as "this column starts at" from the right of its line,
+          an end as "the column before ends at" from the left. */}
       <div
         style={{
           position: "relative",
@@ -299,30 +304,28 @@ export function TrackShiftGrid({
           borderBottom: "1px solid var(--color-border)",
         }}
       >
-        {boundaries.map((moment, i) => (
+        {boundaries.map(({ at, col, side }) => (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: boundaries are positional, and adjacent shifts can share a time
-            key={i}
+            key={`${col}-${side}`}
             style={{
               position: "absolute",
-              left: `${(i / columns) * 100}%`,
+              left: `${(col / columns) * 100}%`,
               top: "50%",
               // Out of the way of the header cells below, which are what a
               // drop aims at — a time sits on a divider, so it belongs to
               // neither of the shifts it separates.
               pointerEvents: "none",
-              // translateY centres it against the taller shift name beside it;
-              // the last one also pulls itself back inside the right edge.
-              transform: i === columns ? "translate(-100%, -50%)" : "translateY(-50%)",
-              paddingLeft: i === columns ? 0 : "4px",
-              paddingRight: i === columns ? "4px" : 0,
+              // translateY centres it against the taller shift name beside it.
+              transform: side === "end" ? "translate(-100%, -50%)" : "translateY(-50%)",
+              paddingLeft: side === "end" ? 0 : "4px",
+              paddingRight: side === "end" ? "4px" : 0,
               fontFamily: "var(--font-sans)",
               fontSize: "10px",
               color: "var(--color-text-tertiary)",
               whiteSpace: "nowrap",
             }}
           >
-            {formatTime(moment)}
+            {formatTime(at)}
           </span>
         ))}
         {shifts.map((shift) => (
