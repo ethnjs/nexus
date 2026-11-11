@@ -776,6 +776,52 @@ def test_adjacent_shifts_on_one_event_allowed(client, td_user, td_tournament):
     assert len(response.json()["shifts"]) == 2
 
 
+def _event_with_morning_and_afternoon(client, tournament_id):
+    event = _make_event(client, tournament_id)
+    morning = _make_shift(
+        client,
+        tournament_id,
+        label="Morning",
+        start=EVENT_DATE + "T08:00:00Z",
+        end=EVENT_DATE + "T12:00:00Z",
+    ).json()
+    afternoon = _make_shift(
+        client,
+        tournament_id,
+        label="Afternoon",
+        start=EVENT_DATE + "T13:00:00Z",
+        end=EVENT_DATE + "T16:00:00Z",
+    ).json()
+    response = _set_shifts(client, tournament_id, event["id"], [morning["id"], afternoon["id"]])
+    assert response.status_code == 200
+    return event, morning, afternoon
+
+
+def test_editing_a_shift_into_an_overlap_on_its_event_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    _, _, afternoon = _event_with_morning_and_afternoon(client, td_tournament.id)
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/shifts/{afternoon['id']}/",
+        json={"start": EVENT_DATE + "T11:00:00Z"},
+    )
+
+    assert response.status_code == 409
+    assert "Boomilever" in response.json()["detail"]
+
+
+def test_editing_a_shift_to_touch_its_neighbour_allowed(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    _, _, afternoon = _event_with_morning_and_afternoon(client, td_tournament.id)
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/shifts/{afternoon['id']}/",
+        json={"start": EVENT_DATE + "T12:00:00Z"},
+    )
+
+    assert response.status_code == 200, response.text
+
+
 def test_same_shift_on_multiple_events(client, td_user, td_tournament):
     """Reuse case — a shift isn't scoped to a single event."""
     login(client, "td@test.com", "tdpass")
