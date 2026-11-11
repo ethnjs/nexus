@@ -49,7 +49,7 @@ import {
 } from "@/lib/assignments/lanes";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { byName } from "@/lib/memberSort";
-import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
+import { formatDayLabel, formatTimeRange, toDateInput } from "@/lib/timeFormat";
 import { useToast } from "@/lib/useToast";
 
 interface AssignmentsSectionProps {
@@ -479,6 +479,8 @@ export function AssignmentsSection({
 // ---------------------------------------------------------------------------
 // One competition day
 // ---------------------------------------------------------------------------
+const MIN_SHIFT_COLUMN_WIDTH = 128;
+
 function DayTimeline({
   track,
   shifts,
@@ -513,7 +515,6 @@ function DayTimeline({
   const { lanes } = buildLanes(mine, shiftIds, laneKeyOf, byEventName);
   const columns = shifts.length;
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`;
-  const boundaries = [shifts[0].start, ...shifts.map((s) => s.end)];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
@@ -534,143 +535,141 @@ function DayTimeline({
 
       {/* The header and the bars share one relative box so the dividers can
           run the whole height, from above the shift names to the bottom of
-          the last bar — the way an event row's columns do on the board. A
-          divider that started below the header would leave the names
-          floating over a row they are supposed to label. */}
-      <div style={{ position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            gridTemplateColumns: gridColumns,
-            pointerEvents: "none",
-          }}
-        >
-          {shifts.map((shift, i) => (
-            <div
-              key={shift.id}
-              style={{
-                borderLeft: i === 0 ? "none" : "1px solid var(--color-border)",
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Times and shift names share one line — they name the same axis, and a
-          name is centred in its column while a time sits on the divider
-          between two, so each falls in the other's gap. */}
-        <div
-          style={{
-            position: "relative",
-            display: "grid",
-            gridTemplateColumns: gridColumns,
-            borderBottom: "1px solid var(--color-border)",
-            paddingBottom: "3px",
-          }}
-        >
-          {boundaries.map((moment, i) => (
-            <span
-              // biome-ignore lint/suspicious/noArrayIndexKey: boundaries are positional, and adjacent shifts can share a time
-              key={i}
-              style={{
-                position: "absolute",
-                left: `${(i / columns) * 100}%`,
-                top: "50%",
-                transform: i === columns ? "translate(-100%, -50%)" : "translateY(-50%)",
-                paddingLeft: i === columns ? 0 : "3px",
-                paddingRight: i === columns ? "3px" : 0,
-                fontFamily: "var(--font-sans)",
-                fontSize: "9px",
-                color: "var(--color-text-tertiary)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {formatTime(moment)}
-            </span>
-          ))}
-          {shifts.map((shift) => (
-            <span
-              key={shift.id}
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "10px",
-                fontWeight: 500,
-                color: "var(--color-text-secondary)",
-                textAlign: "center",
-                padding: "0 4px",
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {shift.label}
-            </span>
-          ))}
-        </div>
-
-        <div
-          style={{
-            position: "relative",
-            display: "flex",
-            flexDirection: "column",
-            gap: "2px",
-            padding: "3px 0",
-            minHeight: "34px",
-          }}
-        >
-          {/* Drop targets and availability shading, over the bars' area only —
-            the dividers are their own layer above, since those run through
-            the header too and this must not tint it. */}
+          the last bar. A day can hold every event's shifts, so columns keep a
+          readable width and the day scrolls sideways past it. */}
+      <div style={{ overflowX: "auto" }}>
+        <div style={{ position: "relative", minWidth: columns * MIN_SHIFT_COLUMN_WIDTH }}>
           <div
             style={{
               position: "absolute",
               inset: 0,
               display: "grid",
               gridTemplateColumns: gridColumns,
+              pointerEvents: "none",
             }}
           >
-            {shifts.map((shift) => (
-              <ShiftCell
+            {shifts.map((shift, i) => (
+              <div
                 key={shift.id}
-                shift={shift}
-                trackId={track.id}
-                available={availableShiftIds.has(shift.id)}
-                shade={showAvailability}
-                locked={locked}
+                style={{
+                  borderLeft: i === 0 ? "none" : "1px solid var(--color-border)",
+                }}
               />
             ))}
           </div>
 
-          {lanes.length === 0 && (
-            // Sits above the column layer rather than replacing it, so the
-            // availability shading still reads across an empty day — which is
-            // the day you most want to see it on.
-            <div style={{ position: "relative", pointerEvents: "none" }}>
-              <EmptyState size="sm" transparent title="Nothing this day" />
-            </div>
-          )}
+          {/* Each column names its own shift and times. Columns are every
+              event's shifts for the day, so neighbours can overlap or leave a
+              gap, and a time on the divider between two would be wrong. */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: gridColumns,
+              borderBottom: "1px solid var(--color-border)",
+              paddingBottom: "3px",
+            }}
+          >
+            {shifts.map((shift) => (
+              <div
+                key={shift.id}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  padding: "0 4px",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{
+                    maxWidth: "100%",
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "10px",
+                    fontWeight: 500,
+                    color: "var(--color-text-secondary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {shift.label}
+                </span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "9px",
+                    color: "var(--color-text-tertiary)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {formatTimeRange([shift])}
+                </span>
+              </div>
+            ))}
+          </div>
 
-          {lanes.map((lane) => (
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
+              padding: "3px 0",
+              minHeight: "34px",
+            }}
+          >
+            {/* Drop targets and availability shading, over the bars' area only —
+            the dividers are their own layer above, since those run through
+            the header too and this must not tint it. */}
             <div
-              key={lane.key}
-              data-panel-lane
-              style={{ position: "relative", display: "grid", gridTemplateColumns: gridColumns }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                gridTemplateColumns: gridColumns,
+              }}
             >
-              <EventBar
-                lane={lane}
-                columns={columns}
-                roleCatalog={roleCatalog}
-                flagsFor={flagsFor}
-                locked={locked}
-                onPickRole={onPickRole}
-                onToggleRole={onToggleRole}
-                onRemove={onRemove}
-                onResize={onResize}
-              />
+              {shifts.map((shift) => (
+                <ShiftCell
+                  key={shift.id}
+                  shift={shift}
+                  trackId={track.id}
+                  available={availableShiftIds.has(shift.id)}
+                  shade={showAvailability}
+                  locked={locked}
+                />
+              ))}
             </div>
-          ))}
+
+            {lanes.length === 0 && (
+              // Sits above the column layer rather than replacing it, so the
+              // availability shading still reads across an empty day — which is
+              // the day you most want to see it on.
+              <div style={{ position: "relative", pointerEvents: "none" }}>
+                <EmptyState size="sm" transparent title="Nothing this day" />
+              </div>
+            )}
+
+            {lanes.map((lane) => (
+              <div
+                key={lane.key}
+                data-panel-lane
+                style={{ position: "relative", display: "grid", gridTemplateColumns: gridColumns }}
+              >
+                <EventBar
+                  lane={lane}
+                  columns={columns}
+                  roleCatalog={roleCatalog}
+                  flagsFor={flagsFor}
+                  locked={locked}
+                  onPickRole={onPickRole}
+                  onToggleRole={onToggleRole}
+                  onRemove={onRemove}
+                  onResize={onResize}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
