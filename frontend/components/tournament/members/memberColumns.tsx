@@ -76,11 +76,6 @@ const WIDTHS = {
   // A floor that holds a few chips before they wrap. It no longer gives way
   // as data columns are added — those scroll sideways instead.
   roles: "minmax(240px, 2.6fr)",
-  // The collapsed form of `roles`, for when a docked panel narrows the table.
-  // Deliberately still a minmax(<length>, <flex>): grid-template-columns only
-  // interpolates track-for-track between matching value types, so a bare
-  // "0px" here would make the whole template snap instead of animating.
-  rolesCollapsed: "minmax(0px, 0fr)",
   // One icon button (delete) — the header stays blank, "Actions" wouldn't fit.
   actions: "40px",
 } as const;
@@ -465,23 +460,3 @@ export function resolveColumns(
 }
 
 export const COLUMN_WIDTHS = WIDTHS;
-
-// Narrower floors for when a docked panel is open. The panel takes roughly a
-// third of the window, and the floors above can then add up to more than the
-// table has left — the grid overflows and the last column (Actions) is
-// clipped by the card's edge. Select mode makes it worse by another 28px.
-//
-// Only Name gives: the free-text columns are content-sized so they're never
-// cut off, and a max-content floor can't animate to a px one anyway — the
-// table scrolls sideways while the panel is open instead.
-//
-// Safe by construction: a floor only binds when space is scarce, so this is
-// identical to the full-width table whenever the table actually fits.
-const COMPACT_TRACKS: Record<string, string> = {
-  [WIDTHS.name]: "minmax(132px, 1.4fr)",
-};
-
-/** The panel-open form of a track, or the track itself if it can't give. */
-export function compactTrack(width: string): string {
-  return COMPACT_TRACKS[width] ?? width;
-}

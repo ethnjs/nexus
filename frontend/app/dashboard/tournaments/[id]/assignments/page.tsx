@@ -1040,20 +1040,18 @@ export default function AssignmentsPage() {
   const focusedEvent =
     focusedEventId === null ? null : ((events ?? []).find((e) => e.id === focusedEventId) ?? null);
 
-  // The whole docked column lives in the shell's single slot, since the slot
-  // holds one registration at a time: the belt, then the panel stack beside
-  // it. The board gives back the belt's width plus the widest open panel —
-  // the stack overlaps, so a second panel costs nothing more.
+  // The belt docks beside the board it drags onto; the panel stack floats
+  // over the board's right edge.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshMemberRows, canTouchRole and canEditMember are recreated each render
   useEffect(() => {
     const index = focused ? belt.findIndex((m) => m.id === focused.id) : -1;
     // Through the board's own order, filters and tab included — the arrows
     // walk the list you are looking at, the way the belt's walk the belt.
     const eventIndex = focusedEvent ? visibleEvents.findIndex((e) => e.id === focusedEvent.id) : -1;
-    // The panel on top decides the column's width — not the widest one open.
+    // The panel on top decides the stack's width — not the widest one open.
     // A wider panel underneath is clipped rather than left sticking out as a
     // strip of half-rendered labels, and closing the top one widens the
-    // column back to whatever it uncovers.
+    // stack back to whatever it uncovers.
     const top = panelStack[panelStack.length - 1];
     const stackWidth = top ? PANEL_WIDTH[top.kind] : 0;
 
@@ -1151,46 +1149,44 @@ export default function AssignmentsPage() {
     };
 
     setPanel(
-      <div style={{ display: "flex", height: "100%" }}>
-        {/* No onClose: the belt is the only way onto the board, so a control
-            that hides it would leave the page unable to do its one job. */}
-        <DockedPanel width={BELT_PANEL_WIDTH} headerActions={beltHeaderActions}>
-          {renderBelt({ focusedId, allShifts, onOpen: openMemberPanel })}
-        </DockedPanel>
-
-        {/* The stack itself: one box the width of the widest panel, with
-            each panel pinned to its right edge and ordered back to front.
-            Right-aligned rather than left, so a narrower panel on top leaves
-            the one behind it showing along the inside edge instead of
-            floating over its middle. */}
-        {panelStack.length > 0 && (
-          <div
-            style={{
-              position: "relative",
-              width: stackWidth,
-              height: "100%",
-              overflow: "hidden",
-            }}
-          >
-            {panelStack.map((ref, depth) => (
-              <div
-                key={ref.kind}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  right: 0,
-                  height: "100%",
-                  width: PANEL_WIDTH[ref.kind],
-                  zIndex: depth + 1,
-                }}
-              >
-                {panelFor(ref)}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>,
-      BELT_PANEL_WIDTH + stackWidth,
+      // Each panel is pinned to the right edge and ordered back to front, so a
+      // narrower panel on top leaves the one behind it showing along its edge.
+      panelStack.length > 0 ? (
+        <div
+          style={{
+            position: "relative",
+            width: stackWidth,
+            height: "100%",
+            overflow: "hidden",
+          }}
+        >
+          {panelStack.map((ref, depth) => (
+            <div
+              key={ref.kind}
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                height: "100%",
+                width: PANEL_WIDTH[ref.kind],
+                zIndex: depth + 1,
+              }}
+            >
+              {panelFor(ref)}
+            </div>
+          ))}
+        </div>
+      ) : null,
+      stackWidth,
+      {
+        // No onClose: the belt is the only way onto the board.
+        content: (
+          <DockedPanel width={BELT_PANEL_WIDTH} headerActions={beltHeaderActions}>
+            {renderBelt({ focusedId, allShifts, onOpen: openMemberPanel })}
+          </DockedPanel>
+        ),
+        width: BELT_PANEL_WIDTH,
+      },
     );
   }, [
     panelStack,

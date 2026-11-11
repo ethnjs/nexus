@@ -347,120 +347,121 @@ export default function BuildingsPage() {
   useEffect(() => {
     if (!canManageEvents || activeTrackId === null || days.length === 0) return;
     const index = focusedEvent ? listed.findIndex((e) => e.id === focusedEvent.id) : -1;
+    const list = (
+      <DockedPanel
+        width={LIST_PANEL_WIDTH}
+        headerActions={
+          <>
+            <DisplayButton
+              size="sm"
+              iconOnly
+              label="Configure event cards"
+              active={hiddenFields.size > 0}
+              onOpen={() => setShowDisplayModal(true)}
+              onReset={() => applyHidden(new Set())}
+            />
+            <FilterButton
+              size="sm"
+              iconOnly
+              label="Filter events"
+              active={filterActive}
+              onOpen={() => setShowFilterModal(true)}
+              onClear={() => applyFilters(eventsFilterFromStored(null))}
+            />
+          </>
+        }
+      >
+        <EventListDropZone>
+          <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onClear={() => setQuery("")}
+              placeholder="Search events"
+              icon={<IconSearch />}
+              size="md"
+              variant="secondary"
+              font="sans"
+              fullWidth
+            />
+            <span className={table.headerLabel}>
+              Events — {listed.length}/{dayEvents.length}
+            </span>
+            {listed.length === 0 ? (
+              <Card radius="lg" style={{ padding: "8px" }}>
+                <EmptyState
+                  icon={<IconEvents size={24} />}
+                  title={query || filterActive ? "No events match" : "No events on this day"}
+                  description={query || filterActive ? "Try a wider filter." : undefined}
+                  action={
+                    query || filterActive ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setQuery("");
+                          applyFilters(eventsFilterFromStored(null));
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </Card>
+            ) : (
+              listed.map((event) => (
+                <EventListCard
+                  key={event.id}
+                  event={event}
+                  trackId={activeTrackId}
+                  hidden={hiddenFields}
+                  selected={event.id === focusedEventId}
+                  locked={isArchived}
+                  onOpen={openEvent}
+                />
+              ))
+            )}
+          </div>
+        </EventListDropZone>
+      </DockedPanel>
+    );
     setPanel(
-      <div style={{ display: "flex", height: "100%" }}>
-        <DockedPanel
-          width={LIST_PANEL_WIDTH}
-          headerActions={
-            <>
-              <DisplayButton
-                size="sm"
-                iconOnly
-                label="Configure event cards"
-                active={hiddenFields.size > 0}
-                onOpen={() => setShowDisplayModal(true)}
-                onReset={() => applyHidden(new Set())}
-              />
-              <FilterButton
-                size="sm"
-                iconOnly
-                label="Filter events"
-                active={filterActive}
-                onOpen={() => setShowFilterModal(true)}
-                onClear={() => applyFilters(eventsFilterFromStored(null))}
-              />
-            </>
+      focusedEvent ? (
+        <EventPanel
+          key={focusedEvent.id}
+          tournamentId={tournamentId}
+          event={focusedEvent}
+          locked={isArchived}
+          canonicalEvents={canonicalEvents}
+          allShifts={allShifts}
+          tracks={tracks}
+          buildings={buildings ?? []}
+          roles={roles}
+          onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
+          onBuildingSaved={(building) =>
+            setBuildings((cur) =>
+              (cur ?? []).some((b) => b.id === building.id)
+                ? (cur ?? []).map((b) => (b.id === building.id ? building : b))
+                : [...(cur ?? []), building],
+            )
           }
-        >
-          <EventListDropZone>
-            <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onClear={() => setQuery("")}
-                placeholder="Search events"
-                icon={<IconSearch />}
-                size="md"
-                variant="secondary"
-                font="sans"
-                fullWidth
-              />
-              <span className={table.headerLabel}>
-                Events — {listed.length}/{dayEvents.length}
-              </span>
-              {listed.length === 0 ? (
-                <Card radius="lg" style={{ padding: "8px" }}>
-                  <EmptyState
-                    icon={<IconEvents size={24} />}
-                    title={query || filterActive ? "No events match" : "No events on this day"}
-                    description={query || filterActive ? "Try a wider filter." : undefined}
-                    action={
-                      query || filterActive ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            setQuery("");
-                            applyFilters(eventsFilterFromStored(null));
-                          }}
-                        >
-                          Clear filters
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                </Card>
-              ) : (
-                listed.map((event) => (
-                  <EventListCard
-                    key={event.id}
-                    event={event}
-                    trackId={activeTrackId}
-                    hidden={hiddenFields}
-                    selected={event.id === focusedEventId}
-                    locked={isArchived}
-                    onOpen={openEvent}
-                  />
-                ))
-              )}
-            </div>
-          </EventListDropZone>
-        </DockedPanel>
-        {focusedEvent && (
-          <EventPanel
-            key={focusedEvent.id}
-            tournamentId={tournamentId}
-            event={focusedEvent}
-            locked={isArchived}
-            canonicalEvents={canonicalEvents}
-            allShifts={allShifts}
-            tracks={tracks}
-            buildings={buildings ?? []}
-            roles={roles}
-            onShiftCreated={(shift) => setAllShifts((prev) => [...prev, shift])}
-            onBuildingSaved={(building) =>
-              setBuildings((cur) =>
-                (cur ?? []).some((b) => b.id === building.id)
-                  ? (cur ?? []).map((b) => (b.id === building.id ? building : b))
-                  : [...(cur ?? []), building],
-              )
-            }
-            onClose={() => setFocusedEventId(null)}
-            onSaved={replaceEvent}
-            onDeleted={(id) => {
-              setEvents((prev) => (prev ?? []).filter((e) => e.id !== id));
-              setFocusedEventId(null);
-            }}
-            onPrev={() => index > 0 && setFocusedEventId(listed[index - 1].id)}
-            onNext={() =>
-              index >= 0 && index < listed.length - 1 && setFocusedEventId(listed[index + 1].id)
-            }
-            hasPrev={index > 0}
-            hasNext={index >= 0 && index < listed.length - 1}
-          />
-        )}
-      </div>,
-      LIST_PANEL_WIDTH + (focusedEvent ? EVENT_PANEL_WIDTH : 0),
+          onClose={() => setFocusedEventId(null)}
+          onSaved={replaceEvent}
+          onDeleted={(id) => {
+            setEvents((prev) => (prev ?? []).filter((e) => e.id !== id));
+            setFocusedEventId(null);
+          }}
+          onPrev={() => index > 0 && setFocusedEventId(listed[index - 1].id)}
+          onNext={() =>
+            index >= 0 && index < listed.length - 1 && setFocusedEventId(listed[index + 1].id)
+          }
+          hasPrev={index > 0}
+          hasNext={index >= 0 && index < listed.length - 1}
+        />
+      ) : null,
+      EVENT_PANEL_WIDTH,
+      { content: list, width: LIST_PANEL_WIDTH },
     );
   }, [
     canManageEvents,
