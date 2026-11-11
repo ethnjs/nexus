@@ -165,7 +165,13 @@ export function MassShiftEditor({
             </SettingsRow>
           )}
 
-          <SettingsRow label="Time" helper="Leave either end blank to keep each shift's own." last>
+          <SettingsRow
+            label="Time"
+            helper="Leave either end blank to keep each shift's own."
+            last
+            // The picker's halves are fixed-width, so its label wraps instead.
+            contentStyle={{ minWidth: "min-content" }}
+          >
             <TimeRangePicker
               aria-label="Time"
               openEnds

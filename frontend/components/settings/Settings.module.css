@@ -125,8 +125,9 @@
   border-bottom: none;
 }
 
+/* Shrinks only when a control holds a min-width the row can't otherwise fit. */
 .rowLabel {
-  flex-shrink: 0;
+  min-width: 0;
   max-width: 220px;
 }
 
