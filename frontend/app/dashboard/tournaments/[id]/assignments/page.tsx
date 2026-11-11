@@ -516,18 +516,6 @@ export default function AssignmentsPage() {
   const eventFilterActive = isEventsFilterActive(eventFilters);
   const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT);
 
-  // Full objects, not shifts derived from them — a cosmetic track (Test
-  // Writing) has no shifts of its own but still belongs on an event and still
-  // carries a default role. See TournamentEvent.tracks.
-  //
-  // Keyed on its contents, not on boardEvents: flagsFor depends on this, and
-  // every row takes flagsFor, so a new Map per event edit re-rendered them all.
-  const eventTrackKey = JSON.stringify(boardEvents.map((e) => [e.id, e.tracks.map((t) => t.id)]));
-  const eventTrackIds = useMemo(
-    () => new Map(JSON.parse(eventTrackKey) as [number, number[]][]),
-    [eventTrackKey],
-  );
-
   const divisionOptions = useMemo(() => {
     const options = [...new Set((boardEvents ?? []).map((e) => e.division))]
       .filter((d) => d !== null)
@@ -595,11 +583,9 @@ export default function AssignmentsPage() {
       const id = assignment.member.membership_id;
       const member = id === null ? undefined : memberById.get(id);
       if (!member) return [];
-      return assignmentFlags(assignment, memberFacts(member, perMember.get(member.id) ?? []), {
-        eventTrackIds,
-      });
+      return assignmentFlags(assignment, memberFacts(member, perMember.get(member.id) ?? []));
     };
-  }, [memberById, rows, eventTrackIds]);
+  }, [memberById, rows]);
 
   // ---------------------------------------------------------------------
   // Server sync. Local state moves first; syncPlacements then sends the

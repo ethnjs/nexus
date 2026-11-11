@@ -71,17 +71,6 @@ function overlaps(a: TournamentShiftBase, b: TournamentShiftBase): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
 
-export interface AssignmentFlagOptions {
-  /**
-   * Event id → the track ids that event runs on, from the events read
-   * (`fields=tracks`). Needed only for shiftless assignments: an assignment
-   * normally takes its track from its shift, but a shiftless one (test
-   * writing) has no shift to take it from, and the nested `event` is the
-   * member-facing shape, which carries no tracks.
-   */
-  eventTrackIds?: ReadonlyMap<number, readonly number[]>;
-}
-
 /**
  * Every warning that applies to one assignment.
  *
@@ -89,11 +78,7 @@ export interface AssignmentFlagOptions {
  * shiftless assignment has no time to be unavailable for or to clash with,
  * and an unrequested field group is unknown rather than empty.
  */
-export function assignmentFlags(
-  assignment: Assignment,
-  facts: MemberFacts,
-  options: AssignmentFlagOptions = {},
-): Flag[] {
+export function assignmentFlags(assignment: Assignment, facts: MemberFacts): Flag[] {
   const flags: Flag[] = [];
   const { shift } = assignment;
 
@@ -107,22 +92,14 @@ export function assignmentFlags(
     });
   }
 
-  // A shiftless assignment falls back to the event's own tracks, which only
-  // the caller can supply. With several, an unconfirmed status on any one of
-  // them is worth surfacing.
-  const trackIds = shift
-    ? [shift.track_id]
-    : (options.eventTrackIds?.get(assignment.event.id) ?? []);
-
-  if (facts.trackStatus) {
-    const unconfirmed = trackIds.filter((id) => facts.trackStatus?.get(id) !== "confirmed");
-    if (unconfirmed.length > 0) {
-      flags.push({
-        code: "track_unconfirmed",
-        label: "Unconfirmed",
-        detail: "Has not confirmed for this track.",
-      });
-    }
+  // The row's own track, never the event's: a test writer confirmed for Test
+  // Writing owes nothing to the competition day the same event also runs on.
+  if (facts.trackStatus && facts.trackStatus.get(assignment.track.id) !== "confirmed") {
+    flags.push({
+      code: "track_unconfirmed",
+      label: "Unconfirmed",
+      detail: "Has not confirmed for this track.",
+    });
   }
 
   if (shift) {
