@@ -572,7 +572,15 @@ export default function AssignmentsPage() {
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase();
     const matching = (boardEvents ?? []).filter((event) => {
-      if (text && !eventName(event).toLowerCase().includes(text)) return false;
+      // An event matches by its own name or by anyone on it in this tab.
+      if (
+        text &&
+        !eventName(event).toLowerCase().includes(text) &&
+        !(byEvent.get(event.id) ?? []).some((row) =>
+          fullName(row.member).toLowerCase().includes(text),
+        )
+      )
+        return false;
       return eventPassesFilters(event, eventFilters, {
         assignmentsFor: (id) => byEvent.get(id) ?? [],
         showsTrack,
@@ -1612,7 +1620,7 @@ export default function AssignmentsPage() {
                 value={eventQuery}
                 onChange={(e) => setEventQuery(e.target.value)}
                 onClear={() => setEventQuery("")}
-                placeholder="Search events"
+                placeholder="Search events or members"
                 icon={<IconSearch />}
                 size="md"
                 variant="secondary"
