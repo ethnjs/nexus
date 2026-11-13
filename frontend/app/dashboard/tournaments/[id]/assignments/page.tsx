@@ -424,7 +424,7 @@ export default function AssignmentsPage() {
     // archived track still attached to an event keeps its column until the
     // delete goes through.
     tournamentTracksApi
-      .list(tournamentId)
+      .list(tournamentId, { public: true })
       .then((data) => {
         if (current) setTracks(data.filter((t) => !t.is_archived));
       })
