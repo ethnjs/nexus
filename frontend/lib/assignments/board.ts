@@ -27,6 +27,7 @@ export interface ChipHandlers {
   onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void;
   /** Drops the whole bar — every shift, every role. */
   onRemove: (laneKey: string, eventId: number) => void;
+  onOpenMember: (membershipId: number) => void;
 }
 
 /** Every write an event row can start, chip-level ones included. */

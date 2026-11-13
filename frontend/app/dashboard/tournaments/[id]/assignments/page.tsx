@@ -1017,6 +1017,7 @@ export default function AssignmentsPage() {
       onToggleRole: handleToggleRole,
       onPickRole: handlePickRole,
       onRemove: handleRemove,
+      onOpenMember: openMemberPanel,
       onPickDefaultRole: requestDefaultRoleChange,
     };
   });
@@ -1027,6 +1028,7 @@ export default function AssignmentsPage() {
       onToggleRole: (...args) => latestHandlers.current.onToggleRole(...args),
       onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
       onRemove: (...args) => latestHandlers.current.onRemove(...args),
+      onOpenMember: (...args) => latestHandlers.current.onOpenMember(...args),
       onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
     }),
     [],

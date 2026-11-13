@@ -180,6 +180,7 @@ const MemberChipBody = memo(function MemberChipBody({
   const roles = lane.roles;
   // Memoised so a hover toggle doesn't recompute every row's flags.
   const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor]);
+  const [nameHovered, setNameHovered] = useState(false);
 
   // The edges live inside the chip and sit above the drag listeners.
   // stopPropagation is what keeps a resize from also starting a drag — the
@@ -249,9 +250,18 @@ const MemberChipBody = memo(function MemberChipBody({
           repeating it here would say the same thing twice and cost the width
           that makes the name readable. */}
       <span
+        onClick={() => {
+          const id = assignment.member.membership_id;
+          if (id !== null) handlers.onOpenMember(id);
+        }}
+        onPointerEnter={() => setNameHovered(true)}
+        onPointerLeave={() => setNameHovered(false)}
+        title="Open member"
         style={{
           fontFamily: "var(--font-sans)",
           fontWeight: 500,
+          textDecoration: nameHovered ? "underline" : "none",
+          textUnderlineOffset: "2px",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
