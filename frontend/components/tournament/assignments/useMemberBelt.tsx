@@ -183,13 +183,20 @@ export function useMemberBelt({
    *  and back shows what was just set rather than what was last fetched. */
   const persist = useCallback(
     (patch: Record<string, unknown>) => {
+      // A surface's first save has to carry the card on screen: an absent
+      // `hidden` means the tab defaults, but a stored one is required and
+      // defaults to [], which would read back as every field shown.
+      const full =
+        savedConfig?.[surface] === undefined && !("hidden" in patch)
+          ? { ...patch, hidden: memberDisplayToHidden(display) }
+          : patch;
       setSavedConfig((cur) => ({
         ...(cur ?? {}),
-        [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
+        [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...full },
       }));
-      persistDisplayConfigSurface(tournamentId, surface, patch);
+      persistDisplayConfigSurface(tournamentId, surface, full);
     },
-    [tournamentId, surface],
+    [tournamentId, surface, savedConfig, display],
   );
 
   const applyFilters = useCallback(
