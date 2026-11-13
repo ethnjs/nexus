@@ -8,7 +8,7 @@
  * same way or the write lands on a different bar than the one you dragged.
  */
 
-import type { Assignment, Role, TournamentEvent, TournamentTrack } from "@/lib/api";
+import type { Assignment, TournamentEvent, TournamentTrack } from "@/lib/api";
 import { type AssignmentRole, buildLanes as buildAssignmentLanes } from "@/lib/assignments/lanes";
 import { byName } from "@/lib/memberSort";
 
@@ -41,10 +41,6 @@ export interface BoardHandlers extends ChipHandlers {
    *  than one write per pointermove. `beforeRows` is the lane's rows as of
    *  pointerdown. */
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void;
-  /** Repoints a track's default role, migrating whoever still holds the old
-   *  one on that track. The page owns it: only it holds every track's and
-   *  every assignment's state. */
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>;
   /** Everyone not yet on this track of the event, by name. */
   membersToAdd: (eventId: number, trackId: number) => { id: number; name: string }[];
   /** Places a member on every shift of this track of the event. */

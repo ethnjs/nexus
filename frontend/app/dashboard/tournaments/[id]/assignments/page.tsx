@@ -27,6 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { EventRow } from "@/components/tournament/assignments/EventRow";
+import { TrackSettingsModal } from "@/components/tournament/assignments/TrackSettingsModal";
 import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import {
@@ -49,12 +50,11 @@ import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState } from "@/components/ui/FilterModal";
-import { IconEvents, IconLock, IconSearch } from "@/components/ui/Icons";
+import { IconEvents, IconLock, IconSearch, IconSettings } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { SortButton } from "@/components/ui/SortButton";
@@ -184,6 +184,8 @@ export default function AssignmentsPage() {
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
   const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
+  const canManageTournament = isAdmin || isOwner || hasPermission("manage_tournament");
+  const [showTrackSettings, setShowTrackSettings] = useState(false);
 
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [rows, setRows] = useState<Assignment[]>([]);
@@ -940,74 +942,6 @@ export default function AssignmentsPage() {
     setLaneRoles(laneKey, eventId, () => [role]);
   }
 
-  // A track's default role, changed from its timeline header. Scoped to the
-  // whole track across the tournament — not to the one event the header
-  // happened to be drawn on — since the default role is a track setting, and
-  // "change every Volunteer on Day 1 to Test Writer" means every event on
-  // Day 1, not just this one.
-  const [pendingRoleChange, setPendingRoleChange] = useState<{
-    track: TournamentTrack;
-    oldRole: Role;
-    newRole: Role;
-    affected: Assignment[][];
-    resolve: () => void;
-  } | null>(null);
-
-  async function applyDefaultRoleChange(
-    track: TournamentTrack,
-    newRole: Role,
-    affected: Assignment[][],
-  ) {
-    const updated = await tournamentTracksApi.update(tournamentId, track.id, {
-      default_role_id: newRole.id,
-      reassign_assignments: affected.length > 0,
-    });
-    setTracks((current) => current.map((t) => (t.id === track.id ? updated : t)));
-    // The track headers read each event's own copy of the track, not the
-    // catalog above.
-    setEvents((current) =>
-      current === null
-        ? null
-        : current.map((e) =>
-            e.tracks.some((t) => t.id === track.id)
-              ? {
-                  ...e,
-                  tracks: e.tracks.map((t) =>
-                    t.id === track.id ? { ...t, default_role_id: updated.default_role_id } : t,
-                  ),
-                }
-              : e,
-          ),
-    );
-    if (affected.length > 0) {
-      const nextRole: AssignmentRole = { id: newRole.id, label: newRole.label };
-      const affectedIds = new Set(affected.flat().map((r) => r.id));
-      setRows((current) =>
-        current.map((r) => (affectedIds.has(r.id) ? { ...r, role: nextRole } : r)),
-      );
-      setBoardWriteVersion((v) => v + 1);
-    }
-  }
-
-  /** Picking a new default role for a track. Only bars whose sole role is
-   *  the *old* default move to the new one: a bar holding any other role was
-   *  set up by hand, and its roles are not the same fact as a role inherited
-   *  from the track's default. Nothing to migrate (no default set yet, or no
-   *  such bar) applies immediately with no prompt. */
-  function requestDefaultRoleChange(track: TournamentTrack, newRole: Role): Promise<void> {
-    if (!requireWriteAccess()) return Promise.resolve();
-    if (track.default_role_id === newRole.id) return Promise.resolve();
-    const oldRole =
-      track.default_role_id === null
-        ? null
-        : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
-    const affected = oldRole ? soleRoleBars(rows, track.id, oldRole.id) : [];
-    if (!oldRole || affected.length === 0) return applyDefaultRoleChange(track, newRole, []);
-    return new Promise<void>((resolve) => {
-      setPendingRoleChange({ track, oldRole, newRole, affected, resolve });
-    });
-  }
-
   /** The event as an optimistic row names it, resolved the way the server
    *  does (EventMemberRead sends display_name). */
   function eventRefFor(event: TournamentEvent) {
@@ -1162,7 +1096,6 @@ export default function AssignmentsPage() {
       onAddToTrack: handleAddToTrack,
       membersToAdd,
       onAddMember: handleAddMember,
-      onPickDefaultRole: requestDefaultRoleChange,
     };
   });
   const boardHandlers = useMemo<BoardHandlers>(
@@ -1177,7 +1110,6 @@ export default function AssignmentsPage() {
       onAddToTrack: (...args) => latestHandlers.current.onAddToTrack(...args),
       membersToAdd: (...args) => latestHandlers.current.membersToAdd(...args),
       onAddMember: (...args) => latestHandlers.current.onAddMember(...args),
-      onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
     }),
     [],
   );
@@ -1582,6 +1514,15 @@ export default function AssignmentsPage() {
         activeKey={activeTrackId === null ? "all" : String(activeTrackId)}
         onChange={pickTab}
       />
+      {showTrackSettings && (
+        <TrackSettingsModal
+          tournamentId={tournamentId}
+          locked={isArchived}
+          soleDefaultHolders={(trackId, roleId) => soleRoleBars(rows, trackId, roleId).length}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+          onClose={() => setShowTrackSettings(false)}
+        />
+      )}
 
       {loadError && (
         <p
@@ -1660,6 +1601,16 @@ export default function AssignmentsPage() {
                 onFooterClick={() => setAssignAsRoles([])}
                 locked={isArchived}
               />
+              {canManageTournament && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowTrackSettings(true)}
+                >
+                  <IconSettings size={14} /> Track settings
+                </Button>
+              )}
             </span>
           </div>
 
@@ -1748,36 +1699,6 @@ export default function AssignmentsPage() {
         />
       )}
       {beltModals}
-      {pendingRoleChange && (
-        <ConfirmModal
-          title="Change default role"
-          description={
-            <>
-              {pendingRoleChange.track.name}&rsquo;s default role is changing from{" "}
-              <strong>{pendingRoleChange.oldRole.label}</strong> to{" "}
-              <strong>{pendingRoleChange.newRole.label}</strong>. This will also change{" "}
-              {pendingRoleChange.affected.length}{" "}
-              {pendingRoleChange.affected.length === 1 ? "assignment" : "assignments"} on this track
-              whose only role is {pendingRoleChange.oldRole.label} to{" "}
-              {pendingRoleChange.newRole.label}. Anyone who also holds another role on that event
-              keeps their roles.
-            </>
-          }
-          confirmLabel="Change role"
-          variant="primary"
-          onConfirm={() =>
-            applyDefaultRoleChange(
-              pendingRoleChange.track,
-              pendingRoleChange.newRole,
-              pendingRoleChange.affected,
-            )
-          }
-          onClose={() => {
-            pendingRoleChange.resolve();
-            setPendingRoleChange(null);
-          }}
-        />
-      )}
     </div>
   );
 }
