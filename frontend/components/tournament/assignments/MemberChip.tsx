@@ -5,11 +5,13 @@ import {
   memo,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useMemo,
   useState,
 } from "react";
 
 import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
+import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
 import { IconWarning, IconX } from "@/components/ui/Icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { Assignment, Role } from "@/lib/api";
@@ -142,6 +144,28 @@ export function MemberChip(props: MemberChipProps) {
     data: { kind: "chip", assignment },
   });
   const grab = useGrabCursor(listeners);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenuAt(null), []);
+
+  function menuItems(): ContextMenuItem[] {
+    const { lane, eventId, handlers } = props;
+    const tracks = handlers.tracksToAdd(lane.key, eventId);
+    return [
+      {
+        key: "add-to-track",
+        label: "Add to another track",
+        disabledReason: tracks.length === 0 ? "Already on every track" : undefined,
+        submenu: {
+          title: "Add to another track",
+          items: tracks.map((track) => ({
+            key: String(track.id),
+            label: track.name,
+            onSelect: () => handlers.onAddToTrack(lane.key, eventId, track.id),
+          })),
+        },
+      },
+    ];
+  }
 
   return (
     <div
@@ -151,6 +175,10 @@ export function MemberChip(props: MemberChipProps) {
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onPointerDown={grab.onPointerDown}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuAt({ x: e.clientX, y: e.clientY });
+      }}
       style={{
         minWidth: 0,
         cursor: grab.pressed || isDragging ? "grabbing" : "grab",
@@ -162,6 +190,7 @@ export function MemberChip(props: MemberChipProps) {
       }}
     >
       <MemberChipBody {...props} hovered={hovered} />
+      {menuAt && <ContextMenu at={menuAt} items={menuItems()} onClose={closeMenu} />}
     </div>
   );
 }

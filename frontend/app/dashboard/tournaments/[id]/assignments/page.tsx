@@ -74,6 +74,7 @@ import {
   displayConfigApi,
   type MembershipFull,
   membersApi,
+  type PersonNameRef,
   type Role,
   rolesApi,
   type TournamentBuilding,
@@ -1006,6 +1007,114 @@ export default function AssignmentsPage() {
     });
   }
 
+  /** The event as an optimistic row names it, resolved the way the server
+   *  does (EventMemberRead sends display_name). */
+  function eventRefFor(event: TournamentEvent) {
+    return {
+      id: event.id,
+      name: eventName(event),
+      division: event.division,
+      event_type: event.event_type,
+      format: event.format,
+      has_impound: event.has_impound,
+      has_self_schedule: event.has_self_schedule,
+      shifts: event.shifts,
+    };
+  }
+
+  /**
+   * Places someone new on `shiftIds` of an event, as the Assign as roles or,
+   * with none picked, the track's default role. Returns whether it wrote.
+   */
+  function placeMember(
+    person: PersonNameRef,
+    event: TournamentEvent,
+    trackId: number | undefined,
+    shiftIds: (number | null)[],
+  ): boolean {
+    const defaultRole = defaultRoleFor(event, trackId);
+    const roles = assignAsRoles.length > 0 ? assignAsRoles : defaultRole ? [defaultRole] : [];
+    if (roles.length === 0) {
+      const track = trackForDrop(event, trackId);
+      show(
+        !track
+          ? "This event has no track to look up a default role from."
+          : `No default role set for ${track.name} — set one in tournament settings before assigning from the board.`,
+        "error",
+      );
+      return false;
+    }
+
+    // Every row names its track, so an optimistic one has to as well — it is
+    // what files the chip into a column before the server answers.
+    const trackRef = trackRefFor(event, trackId);
+    if (!trackRef) {
+      show("This drop names no track to assign against.", "error");
+      return false;
+    }
+    const eventRef = eventRefFor(event);
+    const shiftFor = (id: number | null) =>
+      id === null ? null : (event.shifts.find((s) => s.id === id) ?? null);
+    const newRows: Assignment[] = shiftIds.flatMap((shiftId) =>
+      roles.map((role) => ({
+        id: nextLocalId(),
+        event: eventRef,
+        // From the shift, not from the target: an all-shifts drop on an event
+        // running two days writes each row against the day it lands on.
+        track:
+          (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
+        member: person,
+        role,
+        shift: shiftFor(shiftId),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })),
+    );
+    const next = [...rows, ...newRows];
+    setRows(next);
+    syncPlacements(newRows, rows, next);
+    return true;
+  }
+
+  /** The rows of one bar, as a chip names it. */
+  function laneRows(laneKey: string, eventId: number) {
+    return rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
+  }
+
+  function tracksToAdd(laneKey: string, eventId: number): TournamentTrack[] {
+    const sample = laneRows(laneKey, eventId)[0];
+    const event = events?.find((e) => e.id === eventId);
+    if (!sample || !event) return [];
+    const on = new Set(
+      rows
+        .filter(
+          (row) =>
+            row.event.id === eventId && row.member.membership_id === sample.member.membership_id,
+        )
+        .map((row) => row.track.id),
+    );
+    return event.tracks.filter((track) => !on.has(track.id));
+  }
+
+  /** Puts a bar's member on another track of the same event, every shift of it. */
+  function handleAddToTrack(laneKey: string, eventId: number, trackId: number) {
+    if (!requireWriteAccess()) return;
+    const sample = laneRows(laneKey, eventId)[0];
+    // The whole event, not the tab's slice of it: the track being added is
+    // usually one the current tab hides.
+    const event = events?.find((e) => e.id === eventId);
+    if (!sample || !event) return;
+    const onTrack = event.shifts.filter((s) => s.track_id === trackId).map((s) => s.id);
+    const placed = placeMember(
+      sample.member,
+      event,
+      trackId,
+      onTrack.length > 0 ? onTrack : [null],
+    );
+    const track = event.tracks.find((t) => t.id === trackId);
+    if (placed && track) show(`Added ${fullName(sample.member)} to ${track.name}`, "success");
+  }
+
   // Every write a row can start, in one object whose identity never changes,
   // so the rows' memo survives page re-renders. Each method forwards to this
   // render's handler through the ref, so none of them reads stale state.
@@ -1018,6 +1127,8 @@ export default function AssignmentsPage() {
       onPickRole: handlePickRole,
       onRemove: handleRemove,
       onOpenMember: openMemberPanel,
+      tracksToAdd,
+      onAddToTrack: handleAddToTrack,
       onPickDefaultRole: requestDefaultRoleChange,
     };
   });
@@ -1029,6 +1140,8 @@ export default function AssignmentsPage() {
       onPickRole: (...args) => latestHandlers.current.onPickRole(...args),
       onRemove: (...args) => latestHandlers.current.onRemove(...args),
       onOpenMember: (...args) => latestHandlers.current.onOpenMember(...args),
+      tracksToAdd: (...args) => latestHandlers.current.tracksToAdd(...args),
+      onAddToTrack: (...args) => latestHandlers.current.onAddToTrack(...args),
       onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
     }),
     [],
@@ -1258,18 +1371,7 @@ export default function AssignmentsPage() {
     const shiftIds = targetShiftIds(target, event);
     const source = active.data.current;
 
-    const eventRef = {
-      // Resolved the way the server resolves it (EventMemberRead sends
-      // display_name), so an optimistic row names its event like a real one.
-      id: event.id,
-      name: eventName(event),
-      division: event.division,
-      event_type: event.event_type,
-      format: event.format,
-      has_impound: event.has_impound,
-      has_self_schedule: event.has_self_schedule,
-      shifts: event.shifts,
-    };
+    const eventRef = eventRefFor(event);
     const shiftFor = (id: number | null) =>
       id === null ? null : (event.shifts.find((s) => s.id === id) ?? null);
 
@@ -1348,56 +1450,22 @@ export default function AssignmentsPage() {
 
     if (source?.kind === "member") {
       const member = memberById.get(source.membershipId as number);
-      if (!member) return;
-
+      if (!member?.user) return;
       // Which track's default role this drop grants. A cosmetic column says
       // so outright; a shift knows the day it falls on, so a timeline drop
       // answers from the shift rather than from whichever track happened to
       // be listed first on the event.
-      const trackId = trackForDropId(kind, target, event, shiftIds);
-      const defaultRole = defaultRoleFor(event, trackId);
-      const roles = assignAsRoles.length > 0 ? assignAsRoles : defaultRole ? [defaultRole] : [];
-      if (roles.length === 0) {
-        const track = trackForDrop(event, trackId);
-        show(
-          !track
-            ? "This event has no track to look up a default role from."
-            : `No default role set for ${track.name} — set one in tournament settings before assigning from the board.`,
-          "error",
-        );
-        return;
-      }
-
-      // Every row names its track now, so an optimistic one has to as well —
-      // it is what files the chip into a column before the server answers.
-      const trackRef = trackRefFor(event, trackId);
-      if (!trackRef) {
-        show("This drop names no track to assign against.", "error");
-        return;
-      }
-      const newRows: Assignment[] = shiftIds.flatMap((shiftId) =>
-        roles.map((role) => ({
-          id: nextLocalId(),
-          event: eventRef,
-          // From the shift, not from the target: an all-shifts drop on an event
-          // running two days writes each row against the day it lands on.
-          track:
-            (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
-          member: {
-            user_id: member.user!.id,
-            membership_id: member.id,
-            first_name: member.user!.first_name,
-            last_name: member.user!.last_name,
-          },
-          role,
-          shift: shiftFor(shiftId),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })),
+      placeMember(
+        {
+          user_id: member.user.id,
+          membership_id: member.id,
+          first_name: member.user.first_name,
+          last_name: member.user.last_name,
+        },
+        event,
+        trackForDropId(kind, target, event, shiftIds),
+        shiftIds,
       );
-      const next = [...rows, ...newRows];
-      setRows(next);
-      syncPlacements(newRows, rows, next);
     }
   }
 

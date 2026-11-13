@@ -28,6 +28,10 @@ export interface ChipHandlers {
   /** Drops the whole bar — every shift, every role. */
   onRemove: (laneKey: string, eventId: number) => void;
   onOpenMember: (membershipId: number) => void;
+  /** The event's tracks this bar's member isn't on yet. */
+  tracksToAdd: (laneKey: string, eventId: number) => TournamentTrack[];
+  /** Puts this bar's member on every shift of another track of the event. */
+  onAddToTrack: (laneKey: string, eventId: number, trackId: number) => void;
 }
 
 /** Every write an event row can start, chip-level ones included. */
