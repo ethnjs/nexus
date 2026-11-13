@@ -846,6 +846,9 @@ export interface EventTrackDetail {
   floor?: string | null;
   room_ids?: number[];
   needs?: EventStaffingNeed[];
+  /** Across roles, how many assigned people must be 18+ / 21+. Null is none. */
+  over_18_needed?: number | null;
+  over_21_needed?: number | null;
 }
 
 /** The read shape, with the building the rooms are in spelled out. */
@@ -858,6 +861,8 @@ export interface EventTrackDetailRead extends EventTrackDetail {
   /** Naturally sorted, like `room_ids`. */
   rooms: TournamentRoom[];
   needs: EventStaffingNeedRead[];
+  over_18_needed: number | null;
+  over_21_needed: number | null;
 }
 
 export interface TournamentEventInput {

@@ -31,6 +31,8 @@ export function toTrackDetailInput(detail: EventTrackDetailRead): EventTrackDeta
     room_ids: detail.room_ids,
     // Dropped here and the event silently loses its staffing needs on save.
     needs: detail.needs.map((need) => ({ role_id: need.role_id, count: need.count })),
+    over_18_needed: detail.over_18_needed,
+    over_21_needed: detail.over_21_needed,
   };
 }
 
