@@ -25,7 +25,6 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { DockedPanel } from "@/components/layout/DockedPanel";
-
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { EventRow } from "@/components/tournament/assignments/EventRow";
 import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
@@ -51,6 +50,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
 import { emptyFilterState } from "@/components/ui/FilterModal";
@@ -63,6 +63,7 @@ import table from "@/components/ui/Table.module.css";
 import {
   ApiError,
   ASSIGNMENT_CARD_SURFACE,
+  ASSIGNMENTS_BOARD_SURFACE,
   ASSIGNMENTS_EVENTS_SURFACE,
   type Assignment,
   assignmentsApi,
@@ -347,6 +348,16 @@ export default function AssignmentsPage() {
     },
     [tournamentId],
   );
+
+  // A role deleted since it was picked drops out here rather than on save.
+  const assignAsRoles = useMemo(() => {
+    const ids = savedConfig?.[ASSIGNMENTS_BOARD_SURFACE]?.assign_role_ids ?? [];
+    return roleCatalog.filter((role) => ids.includes(role.id));
+  }, [savedConfig, roleCatalog]);
+
+  function setAssignAsRoles(roleIds: number[]) {
+    persistSurface(ASSIGNMENTS_BOARD_SURFACE, { assign_role_ids: roleIds });
+  }
 
   const applyEventFilters = useCallback(
     (next: EventsFilterState) => {
@@ -1344,8 +1355,9 @@ export default function AssignmentsPage() {
       // answers from the shift rather than from whichever track happened to
       // be listed first on the event.
       const trackId = trackForDropId(kind, target, event, shiftIds);
-      const role = defaultRoleFor(event, trackId);
-      if (!role) {
+      const defaultRole = defaultRoleFor(event, trackId);
+      const roles = assignAsRoles.length > 0 ? assignAsRoles : defaultRole ? [defaultRole] : [];
+      if (roles.length === 0) {
         const track = trackForDrop(event, trackId);
         show(
           !track
@@ -1363,24 +1375,26 @@ export default function AssignmentsPage() {
         show("This drop names no track to assign against.", "error");
         return;
       }
-      const newRows: Assignment[] = shiftIds.map((shiftId) => ({
-        id: nextLocalId(),
-        event: eventRef,
-        // From the shift, not from the target: an all-shifts drop on an event
-        // running two days writes each row against the day it lands on.
-        track:
-          (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
-        member: {
-          user_id: member.user!.id,
-          membership_id: member.id,
-          first_name: member.user!.first_name,
-          last_name: member.user!.last_name,
-        },
-        role,
-        shift: shiftFor(shiftId),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      const newRows: Assignment[] = shiftIds.flatMap((shiftId) =>
+        roles.map((role) => ({
+          id: nextLocalId(),
+          event: eventRef,
+          // From the shift, not from the target: an all-shifts drop on an event
+          // running two days writes each row against the day it lands on.
+          track:
+            (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
+          member: {
+            user_id: member.user!.id,
+            membership_id: member.id,
+            first_name: member.user!.first_name,
+            last_name: member.user!.last_name,
+          },
+          role,
+          shift: shiftFor(shiftId),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })),
+      );
       const next = [...rows, ...newRows];
       setRows(next);
       syncPlacements(newRows, rows, next);
@@ -1516,9 +1530,35 @@ export default function AssignmentsPage() {
               />
             )}
           </div>
-          <span className={table.headerLabel}>
-            Events — {visibleEvents.length}/{events.length}
-          </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+            }}
+          >
+            <span className={table.headerLabel}>
+              Events — {visibleEvents.length}/{events.length}
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span className={table.headerLabel}>Assign as</span>
+              <Dropdown
+                multiple
+                values={assignAsRoles.map((role) => String(role.id))}
+                onChangeValues={(ids) => setAssignAsRoles(ids.map(Number))}
+                options={roleCatalog.map((role) => ({ value: String(role.id), label: role.label }))}
+                placeholder="Track default"
+                size="sm"
+                variant="secondary"
+                searchable
+                emptyMessage="No roles yet"
+                footerLabel="Use track default"
+                onFooterClick={() => setAssignAsRoles([])}
+                locked={isArchived}
+              />
+            </span>
+          </div>
 
           {visibleEvents.length === 0 ? (
             <EmptyState

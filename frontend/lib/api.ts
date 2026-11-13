@@ -2643,6 +2643,9 @@ export interface DisplayConfigSurface {
   sorts?: DisplayConfigSort[] | null;
   /** page_header only: the page header is folded into the Topbar. */
   collapsed?: boolean | null;
+  /** assignments_board only: the roles a member placed from the belt gets,
+   *  in place of the track's default role. Empty or null means the default. */
+  assign_role_ids?: number[] | null;
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>;
@@ -2658,6 +2661,8 @@ export type DisplayConfig = Record<string, DisplayConfigSurface>;
 // tab is spelled ":all", and the migration moved existing blobs to it.
 export const ASSIGNMENTS_EVENTS_SURFACE = "assignments_events";
 export const ASSIGNMENT_CARD_SURFACE = "assignment_card";
+// The board's own settings, shared by every tab, so not tab-scoped.
+export const ASSIGNMENTS_BOARD_SURFACE = "assignments_board";
 
 /** The stored key for one tab. Pass no track for the All tab. */
 export function tabSurface(base: string, trackId?: number | null): string {

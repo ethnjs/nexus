@@ -52,7 +52,7 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
-    # `columns`/`sections`/`filters`/`sort`/`sorts`/`collapsed` come back as
+    # Every optional field comes back as
     # None: absent means "use the defaults", which is why they aren't empty.
     assert response.json() == {
         "unknown_surface": {
@@ -63,6 +63,7 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
             "sort": None,
             "sorts": None,
             "collapsed": None,
+            "assign_role_ids": None,
         },
     }
 
@@ -89,6 +90,7 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
             "sort": None,
             "sorts": None,
             "collapsed": None,
+            "assign_role_ids": None,
         }
         for surface, config in payload.items()
     }
@@ -1631,5 +1633,25 @@ def test_collapsed_is_page_header_only(client, td_user, td_tournament):
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"members_table": {"hidden": [], "collapsed": True}},
+    )
+    assert response.status_code == 422
+
+
+def test_assignments_board_saves_assign_role_ids(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_board": {"hidden": [], "assign_role_ids": [3, 7]}},
+    )
+    assert response.status_code == 200, response.json()
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["assignments_board"]["assign_role_ids"] == [3, 7]
+
+
+def test_assign_role_ids_is_assignments_board_only(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card:all": {"hidden": [], "assign_role_ids": [3]}},
     )
     assert response.status_code == 422

@@ -80,6 +80,9 @@ class DisplayConfigSurface(BaseModel):
     sorts: list[DisplayConfigSort] | None = None
     # page_header only: the page header is folded into the Topbar.
     collapsed: bool | None = None
+    # assignments_board only: the roles a member placed from the belt gets,
+    # in place of the track's default role. Empty or absent means the default.
+    assign_role_ids: list[int] | None = None
 
 
 class DisplayConfigCatalogItem(BaseModel):

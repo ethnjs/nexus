@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
+    ASSIGNMENTS_BOARD,
     CUSTOM_SECTION_PREFIX,
     KNOWN_SORT_DIRECTIONS,
     PAGE_HEADER,
@@ -121,6 +122,11 @@ def update_display_config(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Surface '{surface}' cannot be collapsed",
+            )
+        if config.assign_role_ids is not None and surface != ASSIGNMENTS_BOARD:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Surface '{surface}' cannot set assign roles",
             )
         for item in config.hidden:
             if not is_known_hidden_item(surface, item):
