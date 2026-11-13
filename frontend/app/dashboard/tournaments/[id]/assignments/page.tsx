@@ -181,11 +181,6 @@ export default function AssignmentsPage() {
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
   const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
-  // Matches the backend's read gate on GET .../assignments/ (manage_events OR
-  // manage_members — staffing is part of reading the event, deciding it is
-  // member data). Writes need manage_members specifically; see canManageMembers
-  // below, checked at each mutation.
-  const canView = canManageEvents || canManageMembers;
 
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [rows, setRows] = useState<Assignment[]>([]);
@@ -304,7 +299,7 @@ export default function AssignmentsPage() {
   // filter client-side), so the board renders on its defaults and settles onto
   // the saved view when this lands, rather than holding the page on a request.
   useEffect(() => {
-    if (!canView) return;
+    if (!canManageMembers) return;
     let current = true;
     displayConfigApi
       .get(tournamentId)
@@ -319,7 +314,7 @@ export default function AssignmentsPage() {
     return () => {
       current = false;
     };
-  }, [tournamentId, canView]);
+  }, [tournamentId, canManageMembers]);
 
   // Re-derived per tab, so switching tabs swaps the whole view with it.
   const appliedInputs = { savedConfig, eventsSurface };
@@ -388,7 +383,7 @@ export default function AssignmentsPage() {
   }, [rows]);
 
   useEffect(() => {
-    if (!canView) return;
+    if (!canManageMembers) return;
     let current = true;
     tournamentEventsApi
       .list(tournamentId)
@@ -429,10 +424,6 @@ export default function AssignmentsPage() {
         if (current) setTracks(data.filter((t) => !t.is_archived));
       })
       .catch(() => {});
-    // manage_members-gated — a coordinator with only manage_events can view
-    // the board (assignments read is manage_events OR manage_members) but
-    // not the roster, so the belt just degrades to empty for them rather
-    // than the page 403ing outright.
     membersApi
       .list(tournamentId)
       .then((data) => {
@@ -458,7 +449,7 @@ export default function AssignmentsPage() {
     return () => {
       current = false;
     };
-  }, [tournamentId, canView, canManageEvents, refreshKey]);
+  }, [tournamentId, canManageMembers, canManageEvents, refreshKey]);
 
   // Every event with its hidden tracks stripped out — shifts and tracks both.
   // Derived once and read by *everything* downstream, render and handlers
@@ -565,7 +556,7 @@ export default function AssignmentsPage() {
     modals: beltModals,
   } = useMemberBelt({
     tournamentId,
-    enabled: canView,
+    enabled: canManageMembers,
     surface: ASSIGNMENT_CARD_SURFACE,
     tracks,
     activeTrackId,
@@ -596,9 +587,7 @@ export default function AssignmentsPage() {
   // gesture as one request and reconciles.
   // ---------------------------------------------------------------------
 
-  /** Every mutating handler's first line. Matches the backend's write gate
-   *  on the assignments routes (manage_members) — narrower than canView,
-   *  which also admits manage_events alone for reading the board. */
+  /** Every mutating handler's first line. */
   function requireWriteAccess(): boolean {
     if (!canManageMembers) {
       show("You need the manage members permission to edit assignments.", "error");
@@ -1444,7 +1433,7 @@ export default function AssignmentsPage() {
     return <LoadingState />;
   }
 
-  if (!canView) {
+  if (!canManageMembers) {
     return (
       <div>
         <CollapsibleHeader heading="Assignments" />
@@ -1452,7 +1441,7 @@ export default function AssignmentsPage() {
           <EmptyState
             icon={<IconLock size={28} />}
             title="No access"
-            description="You need the manage events or manage members permission to view this page."
+            description="You need the manage members permission to view this page."
           />
         </Card>
       </div>
@@ -1518,15 +1507,11 @@ export default function AssignmentsPage() {
               iconOnly={compactToolbar}
             />
             {/* The belt's member filters and this tab's event filters and track:
-                exports what the board shows. Locked for manage_events-only staff,
-                who can't read the roster an export is built from. */}
+                exports what the board shows. */}
             {selectedTournament && (
               <ExportButton
                 tournament={selectedTournament}
                 trackId={activeTrackId}
-                lockedReason={
-                  canManageMembers ? null : "Exporting needs the Manage members permission."
-                }
                 iconOnly={compactToolbar}
               />
             )}

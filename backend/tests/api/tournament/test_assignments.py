@@ -872,11 +872,9 @@ class TestOverridesAreAllowed:
 
 
 class TestPermissions:
-    def test_manage_events_alone_can_read_but_not_write(
+    def test_manage_events_alone_can_neither_read_nor_write(
         self, client, db, td_tournament, other_user
     ):
-        """The split: staffing is member data, seeing who is staffed is part of
-        reading the event."""
         db.add(
             TournamentRole(
                 tournament_id=td_tournament.id,
@@ -890,7 +888,7 @@ class TestPermissions:
         event = _make_event(db, td_tournament)
         login(client, "other@test.com", "otherpass")
 
-        assert client.get(f"/tournaments/{td_tournament.id}/assignments/").status_code == 200
+        assert client.get(f"/tournaments/{td_tournament.id}/assignments/").status_code == 403
 
         response = _post(
             client,
