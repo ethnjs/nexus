@@ -148,19 +148,9 @@ export function memberDisplayFromHidden(hidden: string[] | null | undefined): Me
       state.hiddenCustom.push(item.slice(CARD_CUSTOM_PREFIX.length));
     }
   }
-  // Views saved when each experience table had a check per column: the table
-  // stays hidden only if every one of its columns was.
-  for (const [table, columns] of LEGACY_EXPERIENCE_COLUMNS) {
-    if (columns.every((column) => fields.has(column))) fields.add(table);
-  }
   state.hiddenFields = [...fields].filter((id): id is MemberFieldId => known.has(id));
   return state;
 }
-
-const LEGACY_EXPERIENCE_COLUMNS: [MemberFieldId, string[]][] = [
-  ["competition_experience", ["competition_school", "competition_event"]],
-  ["volunteer_experience", ["volunteer_tournament", "volunteer_event", "volunteer_role"]],
-];
 
 /** Display state as the stored wire shape — the inverse of the above. */
 export function memberDisplayToHidden(display: MemberDisplayState): string[] {
