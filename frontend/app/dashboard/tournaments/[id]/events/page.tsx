@@ -1100,31 +1100,32 @@ export default function EventsPage() {
                 <span />
               </div>
 
-              {visibleEvents.length === 0 ? (
-                <EmptyState
-                  title="No matching events"
-                  description="Try adjusting your search or filters."
+              {visibleEvents.map((e) => (
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  columns={tableColumns}
+                  canDelete={canManageEvents}
+                  deleteLockedReason={archivedReason}
+                  onFocus={focusEvent}
+                  onDelete={confirmDelete}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(e.id)}
+                  selectionLocked={panelDirty}
+                  onToggleSelect={toggleVisibleEvent}
+                  focused={focusedEventId === e.id}
+                  edit={editContext}
                 />
-              ) : (
-                visibleEvents.map((e) => (
-                  <EventRow
-                    key={e.id}
-                    event={e}
-                    columns={tableColumns}
-                    canDelete={canManageEvents}
-                    deleteLockedReason={archivedReason}
-                    onFocus={focusEvent}
-                    onDelete={confirmDelete}
-                    selectMode={selectMode}
-                    selected={selectedIds.has(e.id)}
-                    selectionLocked={panelDirty}
-                    onToggleSelect={toggleVisibleEvent}
-                    focused={focusedEventId === e.id}
-                    edit={editContext}
-                  />
-                ))
-              )}
+              ))}
             </div>
+
+            {visibleEvents.length === 0 && (
+              <EmptyState
+                icon={<IconEvents size={28} />}
+                title="No matching events"
+                description="Try adjusting your search or filters."
+              />
+            )}
           </Card>
         </>
       )}
