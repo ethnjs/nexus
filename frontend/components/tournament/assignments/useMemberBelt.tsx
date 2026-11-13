@@ -3,13 +3,14 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { MemberCard } from "@/components/tournament/assignments/MemberCard";
 import {
+  anyMemberFieldShown,
   DEFAULT_MEMBER_DISPLAY,
   defaultMemberDisplayForTab,
   MemberDisplayModal,
   type MemberDisplayState,
   memberDisplayFromHidden,
   memberDisplayToHidden,
-  sameMemberDisplay,
+  NO_MEMBER_FIELDS,
 } from "@/components/tournament/assignments/MemberDisplayModal";
 import {
   defaultMemberFiltersForTab,
@@ -24,7 +25,7 @@ import { Button } from "@/components/ui/Button";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, sameFilterState } from "@/components/ui/FilterModal";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconSearch, IconUser } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { SortButton } from "@/components/ui/SortButton";
@@ -228,11 +229,10 @@ export function useMemberBelt({
     [catalog, eventPrefGroups],
   );
 
-  // Against the tab's defaults, not against nothing: a track tab's belt is
-  // always narrowed to its day, so the clear button would otherwise light up
-  // from the first render.
-  const filterActive = !sameFilterState(filters, filterDefaults);
-  const displayActive = !sameMemberDisplay(display, displayDefaults);
+  // Against nothing, not the tab's defaults: those are filters and fields
+  // too, and the toolbar's × is the one-press way to drop them.
+  const filterActive = isFilterActive(filters);
+  const displayActive = anyMemberFieldShown(display);
   const sortActive = !sameSortRules(sort, DEFAULT_BELT_SORT);
 
   // Members matching the filters, from the same server filter the members
@@ -284,7 +284,8 @@ export function useMemberBelt({
           label="Configure member cards"
           active={displayActive}
           onOpen={() => setShowDisplayModal(true)}
-          onReset={() => applyDisplay(displayDefaults)}
+          onReset={() => applyDisplay(NO_MEMBER_FIELDS)}
+          resetLabel="Hide all fields"
         />
         <FilterButton
           size="sm"
@@ -292,9 +293,7 @@ export function useMemberBelt({
           label="Filter members"
           active={filterActive}
           onOpen={() => setShowFilterModal(true)}
-          // Back to the tab's own filters, not to nothing: a track tab's
-          // unfiltered state is the day it shows.
-          onClear={() => applyFilters(filterDefaults)}
+          onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
         />
         <SortButton
           size="sm"
@@ -374,7 +373,7 @@ export function useMemberBelt({
                   variant="secondary"
                   onClick={() => {
                     setQuery("");
-                    applyFilters(filterDefaults);
+                    applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS));
                   }}
                 >
                   Clear filters
@@ -397,7 +396,7 @@ export function useMemberBelt({
         )}
       </div>
     ),
-    [belt, members.length, query, filterActive, display, applyFilters, filterDefaults],
+    [belt, members.length, query, filterActive, display, applyFilters],
   );
 
   const modals = (

@@ -29,21 +29,24 @@ import { IconPlus } from "@/components/ui/Icons";
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 
-export type MemberFieldId =
-  | "roles"
-  | "age"
-  | "onboarding"
-  | "dietary_restriction"
-  | "track_status"
-  | "event_preferences"
-  | "availability"
-  | "lunch"
-  | "custom_fields"
-  | "competition_school"
-  | "competition_event"
-  | "volunteer_tournament"
-  | "volunteer_event"
-  | "volunteer_role";
+const MEMBER_FIELD_IDS = [
+  "roles",
+  "age",
+  "onboarding",
+  "dietary_restriction",
+  "track_status",
+  "event_preferences",
+  "availability",
+  "lunch",
+  "custom_fields",
+  "competition_school",
+  "competition_event",
+  "volunteer_tournament",
+  "volunteer_event",
+  "volunteer_role",
+] as const;
+
+export type MemberFieldId = (typeof MEMBER_FIELD_IDS)[number];
 
 /** The fields that are a per-track list, and so carry their own track chips.
  *  Scoped per field rather than shared: a TD may well want Day 1 preferences
@@ -160,6 +163,17 @@ export function memberDisplayToHidden(display: MemberDisplayState): string[] {
 /** Whether two card views hide the same things. Order is not part of the
  *  state — the lists are built by toggling, so the same view reached two
  *  ways can hold its entries in either order. */
+/** A card showing only the name. */
+export const NO_MEMBER_FIELDS: MemberDisplayState = {
+  hiddenFields: [...MEMBER_FIELD_IDS],
+  hiddenTracks: [],
+  hiddenCustom: [],
+};
+
+export function anyMemberFieldShown(display: MemberDisplayState): boolean {
+  return MEMBER_FIELD_IDS.some((id) => !display.hiddenFields.includes(id));
+}
+
 export function sameMemberDisplay(a: MemberDisplayState, b: MemberDisplayState): boolean {
   return (
     sameEntries(a.hiddenFields, b.hiddenFields) &&
@@ -435,13 +449,18 @@ export function MemberDisplayModal({
       <div
         style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "16px" }}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setDraft(defaults ?? DEFAULT_MEMBER_DISPLAY)}
-        >
-          Reset
-        </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setDraft(defaults ?? DEFAULT_MEMBER_DISPLAY)}
+          >
+            Reset
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setDraft(NO_MEMBER_FIELDS)}>
+            Clear
+          </Button>
+        </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
