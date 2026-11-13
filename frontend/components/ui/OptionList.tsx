@@ -126,6 +126,17 @@ type Pos = { left?: number; right?: number; width: number; maxHeight: number } &
 
 type HoverTip = { text: string; top: number; left: number };
 
+function samePos(a: Pos, b: Pos) {
+  return (
+    a.top === b.top &&
+    a.bottom === b.bottom &&
+    a.left === b.left &&
+    a.right === b.right &&
+    a.width === b.width &&
+    a.maxHeight === b.maxHeight
+  );
+}
+
 interface OptionListProps {
   anchorRef: RefObject<HTMLElement | null>;
   options: ListOption[];
@@ -187,6 +198,7 @@ export function OptionList({
   const rowsRef = useRef<HTMLDivElement>(null);
   const sizing = SIZES[size];
 
+  const placeRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const update = () => {
       const r = anchorRef.current?.getBoundingClientRect();
@@ -202,17 +214,19 @@ export function OptionList({
           ? { right: Math.round(document.documentElement.clientWidth - r.right) }
           : { left: Math.round(align === "right" ? r.right - (width ?? 0) : r.left) };
       const maxHeight = Math.round((flip ? above : below) - VIEWPORT_MARGIN);
-      setPos(
-        flip
-          ? {
-              bottom: Math.round(window.innerHeight - r.top + PANEL_GAP),
-              ...x,
-              width: r.width,
-              maxHeight,
-            }
-          : { top: Math.round(r.bottom + PANEL_GAP), ...x, width: r.width, maxHeight },
-      );
+      const next: Pos = flip
+        ? {
+            bottom: Math.round(window.innerHeight - r.top + PANEL_GAP),
+            ...x,
+            width: r.width,
+            maxHeight,
+          }
+        : { top: Math.round(r.bottom + PANEL_GAP), ...x, width: r.width, maxHeight };
+      // The same object back when nothing moved, so a re-place after every
+      // render (below) doesn't re-render forever.
+      setPos((prev) => (prev && samePos(prev, next) ? prev : next));
     };
+    placeRef.current = update;
     update();
     window.addEventListener("resize", update);
     if (!followAnchor) return () => window.removeEventListener("resize", update);
@@ -226,6 +240,12 @@ export function OptionList({
       observer.disconnect();
     };
   }, [anchorRef, followAnchor, width, align]);
+
+  // After any render, too: what moves the anchor is often the caller's own
+  // update (a pick that adds a row above the field), which no observer sees.
+  useLayoutEffect(() => {
+    if (followAnchor) placeRef.current();
+  });
 
   // Keep the highlighted row on screen. Its wrapper holds any group heading
   // above it, so stepping into a group brings the heading along.

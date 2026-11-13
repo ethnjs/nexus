@@ -112,6 +112,7 @@ import {
   eventSortValue,
   isEventSortField,
 } from "@/lib/eventSort";
+import { byName } from "@/lib/memberSort";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import {
   type SortRule,
@@ -1076,6 +1077,36 @@ export default function AssignmentsPage() {
     return true;
   }
 
+  function membersToAdd(eventId: number, trackId: number) {
+    const on = new Set(
+      rows
+        .filter((row) => row.event.id === eventId && row.track.id === trackId)
+        .map((row) => row.member.membership_id),
+    );
+    return members
+      .filter((member) => member.user && !on.has(member.id))
+      .map((member) => ({ id: member.id, name: fullName(member.user!) }))
+      .sort((a, b) => byName(a.name, b.name));
+  }
+
+  function handleAddMember(eventId: number, trackId: number, membershipId: number) {
+    if (!requireWriteAccess()) return;
+    const member = memberById.get(membershipId);
+    const event = events?.find((e) => e.id === eventId);
+    if (!member?.user || !event) return;
+    placeMember(
+      {
+        user_id: member.user.id,
+        membership_id: member.id,
+        first_name: member.user.first_name,
+        last_name: member.user.last_name,
+      },
+      event,
+      trackId,
+      trackShiftIds(event, trackId),
+    );
+  }
+
   /** The rows of one bar, as a chip names it. */
   function laneRows(laneKey: string, eventId: number) {
     return rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey);
@@ -1096,6 +1127,12 @@ export default function AssignmentsPage() {
     return event.tracks.filter((track) => !on.has(track.id));
   }
 
+  /** Every shift of one track of an event, or the track unpinned if it has none. */
+  function trackShiftIds(event: TournamentEvent, trackId: number): (number | null)[] {
+    const onTrack = event.shifts.filter((s) => s.track_id === trackId).map((s) => s.id);
+    return onTrack.length > 0 ? onTrack : [null];
+  }
+
   /** Puts a bar's member on another track of the same event, every shift of it. */
   function handleAddToTrack(laneKey: string, eventId: number, trackId: number) {
     if (!requireWriteAccess()) return;
@@ -1104,13 +1141,7 @@ export default function AssignmentsPage() {
     // usually one the current tab hides.
     const event = events?.find((e) => e.id === eventId);
     if (!sample || !event) return;
-    const onTrack = event.shifts.filter((s) => s.track_id === trackId).map((s) => s.id);
-    const placed = placeMember(
-      sample.member,
-      event,
-      trackId,
-      onTrack.length > 0 ? onTrack : [null],
-    );
+    const placed = placeMember(sample.member, event, trackId, trackShiftIds(event, trackId));
     const track = event.tracks.find((t) => t.id === trackId);
     if (placed && track) show(`Added ${fullName(sample.member)} to ${track.name}`, "success");
   }
@@ -1129,6 +1160,8 @@ export default function AssignmentsPage() {
       onOpenMember: openMemberPanel,
       tracksToAdd,
       onAddToTrack: handleAddToTrack,
+      membersToAdd,
+      onAddMember: handleAddMember,
       onPickDefaultRole: requestDefaultRoleChange,
     };
   });
@@ -1142,6 +1175,8 @@ export default function AssignmentsPage() {
       onOpenMember: (...args) => latestHandlers.current.onOpenMember(...args),
       tracksToAdd: (...args) => latestHandlers.current.tracksToAdd(...args),
       onAddToTrack: (...args) => latestHandlers.current.onAddToTrack(...args),
+      membersToAdd: (...args) => latestHandlers.current.membersToAdd(...args),
+      onAddMember: (...args) => latestHandlers.current.onAddMember(...args),
       onPickDefaultRole: (...args) => latestHandlers.current.onPickDefaultRole(...args),
     }),
     [],

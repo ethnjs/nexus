@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { type PointerEvent as ReactPointerEvent, useState } from "react";
+import { type ReactNode, type PointerEvent as ReactPointerEvent, useState } from "react";
 
 import { useBoardDragLabel } from "@/components/tournament/assignments/BoardDnd";
 import { MemberChip } from "@/components/tournament/assignments/MemberChip";
@@ -223,6 +223,7 @@ export function TrackShiftGrid({
   roleCatalog,
   flagsFor,
   handlers,
+  emptyAction,
 }: {
   eventId: number;
   /** The track these shifts belong to — what a body drop bills "all shifts"
@@ -233,6 +234,8 @@ export function TrackShiftGrid({
   roleCatalog: Role[];
   flagsFor: (a: Assignment) => Flag[];
   handlers: BoardHandlers;
+  /** The empty state's action while nobody is on these shifts. */
+  emptyAction?: ReactNode;
 }) {
   const columns = shifts.length;
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`;
@@ -361,7 +364,12 @@ export function TrackShiftGrid({
           // the body — which is why it lights up rather than the box around
           // it.
           <div style={{ position: "relative" }}>
-            <EmptyState size="sm" title="Nobody assigned" active={overAllShifts} />
+            <EmptyState
+              size="sm"
+              title="Nobody assigned"
+              active={overAllShifts}
+              action={emptyAction}
+            />
           </div>
         ) : (
           lanes.map((lane) => (

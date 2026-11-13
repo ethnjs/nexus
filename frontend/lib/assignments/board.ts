@@ -45,6 +45,10 @@ export interface BoardHandlers extends ChipHandlers {
    *  one on that track. The page owns it: only it holds every track's and
    *  every assignment's state. */
   onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>;
+  /** Everyone not yet on this track of the event, by name. */
+  membersToAdd: (eventId: number, trackId: number) => { id: number; name: string }[];
+  /** Places a member on every shift of this track of the event. */
+  onAddMember: (eventId: number, trackId: number, membershipId: number) => void;
 }
 
 export function fullName(member: { first_name: string | null; last_name: string | null }) {

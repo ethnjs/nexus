@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import type { ReactNode } from "react";
 
+import { AddMemberChip } from "@/components/tournament/assignments/AddMemberChip";
 import { MemberChip } from "@/components/tournament/assignments/MemberChip";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
 import { TrackShiftGrid } from "@/components/tournament/assignments/TrackShiftGrid";
@@ -140,6 +141,13 @@ export function TrackSection({
     ? `${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`
     : null;
   const needs = detail?.needs ?? [];
+  const addChip = (trigger: "row" | "icon" | "button") => (
+    <AddMemberChip
+      candidates={() => handlers.membersToAdd(event.id, track.id)}
+      onAdd={(membershipId) => handlers.onAddMember(event.id, track.id, membershipId)}
+      trigger={trigger}
+    />
+  );
 
   return (
     <div
@@ -229,6 +237,7 @@ export function TrackSection({
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             handlers={handlers}
+            emptyAction={addChip("button")}
           />
           {/* Detaching a shift unpins its people without dropping them (see
               detach_shifts_from_assignments), so a track with columns can
@@ -270,6 +279,7 @@ export function TrackSection({
               ))}
             </div>
           )}
+          {pinnedLanes.length > 0 && addChip("row")}
         </>
       ) : unpinnedLanes.length === 0 ? (
         // Kept on screen rather than hidden: this box is the only way onto a
@@ -278,9 +288,9 @@ export function TrackSection({
         // thing in the box it carries the drop highlight itself — it is what
         // the eye is on, and tinting the box behind it as well would say the
         // same thing twice.
-        <EmptyState size="sm" title="Nobody assigned" active={isOver} />
+        <EmptyState size="sm" title="Nobody assigned" active={isOver} action={addChip("button")} />
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
           {unpinnedLanes.map((lane) => (
             <MemberChip
               key={lane.key}
@@ -291,6 +301,7 @@ export function TrackSection({
               handlers={handlers}
             />
           ))}
+          {addChip("icon")}
         </div>
       )}
     </div>
