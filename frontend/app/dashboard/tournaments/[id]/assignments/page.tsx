@@ -1693,23 +1693,25 @@ export default function AssignmentsPage() {
             </div>
 
             {visibleEvents.length === 0 ? (
-              <EmptyState
-                icon={<IconEvents size={24} />}
-                title="No events match"
-                description="Try a wider search or filter."
-                action={
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setEventQuery("");
-                      applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
-                    }}
-                  >
-                    Clear
-                  </Button>
-                }
-              />
+              <Card radius="lg" style={{ padding: "8px" }}>
+                <EmptyState
+                  icon={<IconEvents size={28} />}
+                  title="No events match"
+                  description="Try a wider search or filter."
+                  action={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setEventQuery("");
+                        applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  }
+                />
+              </Card>
             ) : (
               // The whole list is one grid, and each row a subgrid of it, so
               // the name column is exactly as wide as the longest name on
