@@ -100,7 +100,7 @@ export default function MemberPage() {
       .then(setShifts)
       .catch(() => setShifts([]));
     tournamentTracksApi
-      .list(tournamentId)
+      .list(tournamentId, { public: true })
       .then(setTracks)
       .catch(() => setTracks([]));
   }, [

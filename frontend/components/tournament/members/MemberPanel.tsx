@@ -157,7 +157,7 @@ export function MemberPanel({
         .catch(() => {});
     if (ownTracks)
       tournamentTracksApi
-        .list(tournamentId)
+        .list(tournamentId, { public: true })
         .then((data) => startTransition(() => setTracks(data)))
         .catch(() => {});
     displayConfigApi
