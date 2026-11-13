@@ -354,16 +354,12 @@ export function FilterModal<K extends string>({
 
   // Every section's key, not just the draft's: a key the caller's state
   // predates is still one this modal shows, and so one Clear all must clear.
-  //
-  // Given defaults, it clears *to* them rather than to nothing — a surface
-  // whose unfiltered state is a choice of its own (the board's belt, scoped
-  // to the day being staffed) has no use for a button that undoes it and no
-  // way back to it once pressed.
-  function clearAll() {
+  // Given defaults, Reset returns to them and Clear all still empties.
+  function fillAll(from: FilterState<K> | undefined) {
     setDraft((prev) => {
       const next = { ...prev };
       for (const section of sections) {
-        next[section.key] = new Set(defaults?.[section.key] ?? []);
+        next[section.key] = new Set(from?.[section.key] ?? []);
       }
       return next;
     });
@@ -419,9 +415,16 @@ export function FilterModal<K extends string>({
       <div
         style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "4px" }}
       >
-        <Button type="button" variant="ghost" onClick={clearAll}>
-          {defaults ? "Reset" : "Clear all"}
-        </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {defaults && (
+            <Button type="button" variant="ghost" onClick={() => fillAll(defaults)}>
+              Reset
+            </Button>
+          )}
+          <Button type="button" variant="ghost" onClick={() => fillAll(undefined)}>
+            Clear all
+          </Button>
+        </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

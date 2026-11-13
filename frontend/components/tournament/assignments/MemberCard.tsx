@@ -33,6 +33,7 @@ import { formatAnswer } from "@/components/tournament/members/memberColumns";
 import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
 import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
 import { Badge } from "@/components/ui/Badge";
+import { Checkbox } from "@/components/ui/Checkbox";
 import type {
   MembershipAvailability,
   MembershipEventPreference,
@@ -41,6 +42,7 @@ import type {
   TournamentShift,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { unslug } from "@/lib/textFormat";
 import { formatDayLabel, toDateInput } from "@/lib/timeFormat";
 
@@ -162,6 +164,20 @@ function OnboardingField({ member }: FieldProps) {
         <Muted>No steps</Muted>
       )}
     </Field>
+  );
+}
+
+function AffiliationField({ member }: FieldProps) {
+  const text = member.user ? userAffiliation(member.user) : null;
+  return (
+    <Field label="Affiliation">{text ? <Value>{text}</Value> : <Muted>None given</Muted>}</Field>
+  );
+}
+
+function YearLevelField({ member }: FieldProps) {
+  const text = member.user ? userYearLevel(member.user) : null;
+  return (
+    <Field label="Year Level">{text ? <Value>{text}</Value> : <Muted>None given</Muted>}</Field>
   );
 }
 
@@ -440,60 +456,38 @@ function MiniTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
   );
 }
 
-function CompetitionField({ member, display }: FieldProps) {
-  const showSchool = fieldShown(display, "competition_school");
-  const showEvent = fieldShown(display, "competition_event");
+function CompetitionField({ member }: FieldProps) {
   const rows = member.user?.competition_experience ?? [];
-
-  if (!showSchool && !showEvent) return null;
-
-  const columns = [...(showEvent ? ["Event"] : []), ...(showSchool ? ["School"] : [])];
-
   return (
     <Field label="Competition Experience">
       {rows.length === 0 ? (
         <Muted>No info yet</Muted>
       ) : (
         <MiniTable
-          columns={columns}
-          rows={rows.map((row) => [
-            ...(showEvent ? [row.event.name] : []),
-            ...(showSchool ? [row.school] : []),
-          ])}
+          columns={["Event", "School"]}
+          rows={rows.map((row) => [row.event.name, row.school])}
         />
       )}
     </Field>
   );
 }
 
-function VolunteerField({ member, display }: FieldProps) {
-  const showWhere = fieldShown(display, "volunteer_tournament");
-  const showEvent = fieldShown(display, "volunteer_event");
-  const showRole = fieldShown(display, "volunteer_role");
+function VolunteerField({ member }: FieldProps) {
   const rows = member.user?.volunteer_experience ?? [];
-
-  if (!showWhere && !showEvent && !showRole) return null;
-
-  const columns = [
-    ...(showWhere ? ["Tournament"] : []),
-    ...(showEvent ? ["Event"] : []),
-    ...(showRole ? ["Role"] : []),
-  ];
-
   return (
     <Field label="Volunteer Experience">
       {rows.length === 0 ? (
         <Muted>No info yet</Muted>
       ) : (
         <MiniTable
-          columns={columns}
+          columns={["Tournament", "Event", "Role"]}
           rows={rows.map((row) => [
             // Year and tournament are one column: two columns of four
             // characters and forty would waste the card's whole width on the
             // year's gutter.
-            ...(showWhere ? [`'${String(row.year).slice(2)} ${row.tournament_name}`] : []),
-            ...(showEvent ? [row.event?.name ?? "—"] : []),
-            ...(showRole ? [row.role] : []),
+            `'${String(row.year).slice(2)} ${row.tournament_name}`,
+            row.event?.name ?? "—",
+            row.role,
           ])}
         />
       )}
@@ -728,11 +722,7 @@ function AvailabilityField({ member, display, allShifts }: FieldProps) {
 // ---------------------------------------------------------------------------
 // The card
 // ---------------------------------------------------------------------------
-/**
- * Card order, fixed. Each entry names the config field that has to be on for
- * it to render; the two experience tables test all of their columns, since
- * they show whenever any one is on and there is no section switch to consult.
- */
+/** Card order, fixed. Each entry names the config field that has to be on for it to render. */
 const FIELDS: {
   key: string;
   shownWhen: (display: MemberDisplayState) => boolean;
@@ -740,6 +730,12 @@ const FIELDS: {
 }[] = [
   { key: "roles", shownWhen: (d) => fieldShown(d, "roles"), render: RolesField },
   { key: "age", shownWhen: (d) => fieldShown(d, "age"), render: AgeField },
+  {
+    key: "affiliation",
+    shownWhen: (d) => fieldShown(d, "affiliation"),
+    render: AffiliationField,
+  },
+  { key: "year_level", shownWhen: (d) => fieldShown(d, "year_level"), render: YearLevelField },
   { key: "onboarding", shownWhen: (d) => fieldShown(d, "onboarding"), render: OnboardingField },
   {
     key: "track_status",
@@ -768,15 +764,12 @@ const FIELDS: {
   },
   {
     key: "competition",
-    shownWhen: (d) => fieldShown(d, "competition_school") || fieldShown(d, "competition_event"),
+    shownWhen: (d) => fieldShown(d, "competition_experience"),
     render: CompetitionField,
   },
   {
     key: "volunteer",
-    shownWhen: (d) =>
-      fieldShown(d, "volunteer_tournament") ||
-      fieldShown(d, "volunteer_event") ||
-      fieldShown(d, "volunteer_role"),
+    shownWhen: (d) => fieldShown(d, "volunteer_experience"),
     render: VolunteerField,
   },
   {
@@ -824,9 +817,12 @@ export const MemberCard = memo(function MemberCard({
   display,
   allShifts,
   onOpen,
+  selecting = false,
 }: {
   member: MembershipFull;
   selected: boolean;
+  /** Select mode: a click ticks the card (through `onOpen`) and it can't be dragged. */
+  selecting?: boolean;
   display: MemberDisplayState;
   /** Every shift the tournament offers — sets each availability bar's window,
    *  so hours the member was offered but declined read as unavailable rather
@@ -838,6 +834,7 @@ export const MemberCard = memo(function MemberCard({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `member:${member.id}`,
     data: { kind: "member", membershipId: member.id },
+    disabled: selecting,
   });
   const [pressed, setPressed] = useState(false);
 
@@ -867,19 +864,26 @@ export const MemberCard = memo(function MemberCard({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
-        padding: "10px",
+        gap: "6px",
+        padding: "8px",
         borderRadius: "var(--radius-md)",
         border: "1px solid var(--color-border)",
         // The tint alone marks the open card. An accent border on top of it
         // draws a hard edge around one card in a scrolling column, which
         // reads as an error state rather than as "this is the one you opened".
         background: selected ? "var(--color-accent-subtle)" : "var(--color-surface)",
-        cursor: pressed || isDragging ? "grabbing" : "grab",
+        position: "relative",
+        cursor: selecting ? "pointer" : pressed || isDragging ? "grabbing" : "grab",
         opacity: isDragging ? 0.4 : 1,
         outline: "none",
       }}
     >
+      {selecting && (
+        // Drawn only: the card's own click is what toggles it.
+        <span style={{ position: "absolute", top: "8px", right: "8px", pointerEvents: "none" }}>
+          <Checkbox checked={selected} onChange={() => {}} />
+        </span>
+      )}
       <MemberCardBody member={member} display={display} allShifts={allShifts} />
     </div>
   );

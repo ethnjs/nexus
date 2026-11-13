@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
+import { TabStrip } from "@/components/ui/TabStrip";
 import {
   ApiError,
   type Role,
@@ -58,8 +59,10 @@ export interface TrackEditor {
   addRow: () => number;
   discardRow: (key: number) => void;
   reset: () => void;
-  /** Creates and updates every pending row. Returns an error, or null. */
-  save: () => Promise<string | null>;
+  /** Creates and updates every pending row. Returns an error, or null.
+   *  `reassignTrackIds` also move those tracks' old-default assignments to
+   *  their new default role (see reassign_assignments). */
+  save: (reassignTrackIds?: ReadonlySet<number>) => Promise<string | null>;
   onReplaced: (track: TournamentTrack) => void;
   onDeleted: (trackId: number, result: TournamentTrackDeleteResult) => void;
 }
@@ -151,70 +154,72 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
     setErrors({});
   }, [tracks]);
 
-  const save = useCallback(async (): Promise<string | null> => {
-    const live = tracks ?? [];
-    const edited = live.filter(
-      (track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(trackToDraft(track)),
-    );
-    if (edited.length === 0 && newRows.length === 0) return null;
-
-    // Names are checked against the other *drafts*, not the saved rows: two
-    // new rows both called "Day 1" have to collide here, since neither
-    // exists server-side yet for the other to conflict with.
-    const allKeys = [...live.map((t) => t.id), ...newRows.map((r) => r.key)];
-    const fieldErrors: Record<number, Record<string, string>> = {};
-    for (const key of [...edited.map((t) => t.id), ...newRows.map((r) => r.key)]) {
-      const found = validateTrackDraft(
-        drafts[key],
-        allKeys.filter((k) => k !== key).map((k) => drafts[k]?.name ?? ""),
+  const save = useCallback(
+    async (reassignTrackIds?: ReadonlySet<number>): Promise<string | null> => {
+      const live = tracks ?? [];
+      const edited = live.filter(
+        (track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(trackToDraft(track)),
       );
-      if (Object.keys(found).length > 0) fieldErrors[key] = found;
-    }
-    if (Object.keys(fieldErrors).length > 0) {
-      setErrors(fieldErrors);
-      return "Some tracks need fixing before this can be saved.";
-    }
-    setErrors({});
+      if (edited.length === 0 && newRows.length === 0) return null;
 
-    try {
-      // Sequential, not Promise.all: each write re-runs the "at least one
-      // live primary track" guard against the rows already committed, and
-      // firing them together makes which one sees which state a race.
-      const saved = new Map<number, TournamentTrack>();
-      for (const track of edited) {
-        saved.set(
-          track.id,
-          await tournamentTracksApi.update(
-            tournamentId,
+      // Names are checked against the other *drafts*, not the saved rows: two
+      // new rows both called "Day 1" have to collide here, since neither
+      // exists server-side yet for the other to conflict with.
+      const allKeys = [...live.map((t) => t.id), ...newRows.map((r) => r.key)];
+      const fieldErrors: Record<number, Record<string, string>> = {};
+      for (const key of [...edited.map((t) => t.id), ...newRows.map((r) => r.key)]) {
+        const found = validateTrackDraft(
+          drafts[key],
+          allKeys.filter((k) => k !== key).map((k) => drafts[k]?.name ?? ""),
+        );
+        if (Object.keys(found).length > 0) fieldErrors[key] = found;
+      }
+      if (Object.keys(fieldErrors).length > 0) {
+        setErrors(fieldErrors);
+        return "Some tracks need fixing before this can be saved.";
+      }
+      setErrors({});
+
+      try {
+        // Sequential, not Promise.all: each write re-runs the "at least one
+        // live primary track" guard against the rows already committed, and
+        // firing them together makes which one sees which state a race.
+        const saved = new Map<number, TournamentTrack>();
+        for (const track of edited) {
+          saved.set(
             track.id,
-            trackDraftPayload(drafts[track.id]),
-          ),
-        );
-      }
-      const created: TournamentTrack[] = [];
-      for (const row of newRows) {
-        created.push(
-          await tournamentTracksApi.create(tournamentId, trackDraftPayload(drafts[row.key])),
-        );
-      }
+            await tournamentTracksApi.update(tournamentId, track.id, {
+              ...trackDraftPayload(drafts[track.id]),
+              ...(reassignTrackIds?.has(track.id) ? { reassign_assignments: true } : null),
+            }),
+          );
+        }
+        const created: TournamentTrack[] = [];
+        for (const row of newRows) {
+          created.push(
+            await tournamentTracksApi.create(tournamentId, trackDraftPayload(drafts[row.key])),
+          );
+        }
 
-      setTracks((current) => [
-        ...(current ?? []).map((track) => saved.get(track.id) ?? track),
-        ...created,
-      ]);
-      setDrafts((current) => {
-        const next = { ...current };
-        for (const row of newRows) delete next[row.key];
-        for (const track of [...saved.values(), ...created]) next[track.id] = trackToDraft(track);
-        return next;
-      });
-      setNewRows([]);
-      onChanged();
-      return null;
-    } catch (err: unknown) {
-      return err instanceof ApiError ? err.message : "Failed to save tracks.";
-    }
-  }, [tournamentId, tracks, newRows, drafts, onChanged]);
+        setTracks((current) => [
+          ...(current ?? []).map((track) => saved.get(track.id) ?? track),
+          ...created,
+        ]);
+        setDrafts((current) => {
+          const next = { ...current };
+          for (const row of newRows) delete next[row.key];
+          for (const track of [...saved.values(), ...created]) next[track.id] = trackToDraft(track);
+          return next;
+        });
+        setNewRows([]);
+        onChanged();
+        return null;
+      } catch (err: unknown) {
+        return err instanceof ApiError ? err.message : "Failed to save tracks.";
+      }
+    },
+    [tournamentId, tracks, newRows, drafts, onChanged],
+  );
 
   const onReplaced = useCallback(
     (track: TournamentTrack) => {
@@ -265,9 +270,13 @@ export function TracksSection({
   editor,
   locked,
   autoExpandKey,
+  layout = "accordion",
 }: {
   editor: TrackEditor;
   locked: boolean;
+  /** `tabs` shows one track at a time under a tab per track, with no
+   *  settings card around it — for a modal with its own frame. */
+  layout?: "accordion" | "tabs";
   /** A row added from outside this section — the simple-mode "Add track"
    *  button, whose click is what made this section render at all. Without it
    *  the TD lands on a collapsed row they have to open themselves. */
@@ -325,6 +334,100 @@ export function TracksSection({
     ...(tracks ?? []).map((track) => ({ key: track.id, track })),
     ...newRows.map((row) => ({ key: row.key, track: null })),
   ];
+
+  const confirms = (
+    <>
+      {deleteTarget && (
+        <DeleteTrackModal
+          track={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDone={(result) => editor.onDeleted(deleteTarget.id, result)}
+        />
+      )}
+      {demoteTarget && (
+        <ConfirmModal
+          title="Turn off competition day"
+          description={demoteDescription(demoteTarget.track, demoteTarget.usage)}
+          confirmLabel="Turn off"
+          onConfirm={async () => editor.setDraft(demoteTarget.track.id, { is_primary: false })}
+          onClose={() => setDemoteTarget(null)}
+        />
+      )}
+    </>
+  );
+
+  function trackRow(row: (typeof rows)[number], i: number, panel: boolean) {
+    return (
+      <TrackRow
+        key={row.key}
+        track={row.track}
+        draft={drafts[row.key] ?? EMPTY_TRACK_DRAFT}
+        errors={errors[row.key] ?? {}}
+        universities={universities}
+        roles={roles}
+        locked={locked}
+        // The backend refuses to leave a tournament with no live
+        // primary track; greying the control says so before the 409.
+        isOnlyPrimary={!!row.track?.is_primary && !row.track.is_archived && livePrimaryCount === 1}
+        isLast={i === rows.length - 1}
+        expanded={panel || expandedKey === row.key}
+        panel={panel}
+        scrollIntoView={!panel && scrollToKey === row.key}
+        onToggleExpanded={() => setExpandedKey((cur) => (cur === row.key ? null : row.key))}
+        onDraftChange={(updates) => void changeDraft(row.key, row.track, updates)}
+        onRestored={editor.onReplaced}
+        onDelete={() => (row.track ? setDeleteTarget(row.track) : editor.discardRow(row.key))}
+      />
+    );
+  }
+
+  if (layout === "tabs") {
+    const active = rows.find((row) => row.key === expandedKey) ?? rows[0];
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TabStrip
+              tabs={rows.map((row) => ({
+                key: String(row.key),
+                label: row.track?.name ?? (drafts[row.key]?.name.trim() || "Untitled track"),
+              }))}
+              activeKey={active ? String(active.key) : ""}
+              onChange={(key) => setExpandedKey(Number(key))}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={locked}
+            onClick={handleAdd}
+            style={{ flexShrink: 0, marginTop: "6px" }}
+          >
+            <IconPlus size={14} /> Add track
+          </Button>
+        </div>
+        {loadError && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+              margin: "0 0 12px",
+            }}
+          >
+            {loadError}
+          </p>
+        )}
+        {tracks === null ? (
+          <LoadingState context="section" />
+        ) : (
+          active && trackRow(active, rows.indexOf(active), true)
+        )}
+        {confirms}
+      </div>
+    );
+  }
 
   return (
     <SettingsSection title="Tracks">
@@ -389,51 +492,12 @@ export function TracksSection({
               overflow: "hidden",
             }}
           >
-            {rows.map((row, i) => (
-              <TrackRow
-                key={row.key}
-                track={row.track}
-                draft={drafts[row.key] ?? EMPTY_TRACK_DRAFT}
-                errors={errors[row.key] ?? {}}
-                universities={universities}
-                roles={roles}
-                locked={locked}
-                // The backend refuses to leave a tournament with no live
-                // primary track; greying the control says so before the 409.
-                isOnlyPrimary={
-                  !!row.track?.is_primary && !row.track.is_archived && livePrimaryCount === 1
-                }
-                isLast={i === rows.length - 1}
-                expanded={expandedKey === row.key}
-                scrollIntoView={scrollToKey === row.key}
-                onToggleExpanded={() => setExpandedKey((cur) => (cur === row.key ? null : row.key))}
-                onDraftChange={(updates) => void changeDraft(row.key, row.track, updates)}
-                onRestored={editor.onReplaced}
-                onDelete={() =>
-                  row.track ? setDeleteTarget(row.track) : editor.discardRow(row.key)
-                }
-              />
-            ))}
+            {rows.map((row, i) => trackRow(row, i, false))}
           </div>
         )
       )}
 
-      {deleteTarget && (
-        <DeleteTrackModal
-          track={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDone={(result) => editor.onDeleted(deleteTarget.id, result)}
-        />
-      )}
-      {demoteTarget && (
-        <ConfirmModal
-          title="Turn off competition day"
-          description={demoteDescription(demoteTarget.track, demoteTarget.usage)}
-          confirmLabel="Turn off"
-          onConfirm={async () => editor.setDraft(demoteTarget.track.id, { is_primary: false })}
-          onClose={() => setDemoteTarget(null)}
-        />
-      )}
+      {confirms}
     </SettingsSection>
   );
 }
@@ -488,6 +552,7 @@ function TrackRow({
   isOnlyPrimary,
   isLast,
   expanded,
+  panel,
   scrollIntoView,
   onToggleExpanded,
   onDraftChange,
@@ -503,6 +568,8 @@ function TrackRow({
   isOnlyPrimary: boolean;
   isLast: boolean;
   expanded: boolean;
+  /** Alone under its own tab: no toggle and no row chrome. */
+  panel: boolean;
   scrollIntoView?: boolean;
   onToggleExpanded: () => void;
   onDraftChange: (updates: Partial<TrackDraft>) => void;
@@ -539,79 +606,97 @@ function TrackRow({
   }
 
   return (
-    <div ref={rowRef} style={{ borderBottom: isLast ? "none" : "1px solid var(--color-border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px" }}>
-        <button
-          type="button"
-          onClick={onToggleExpanded}
-          aria-label={expanded ? `Collapse ${name}` : `Edit ${name}`}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            flex: 1,
-            minWidth: 0,
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-          <span
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "14px",
-              fontWeight: 500,
-              color:
-                isNew || track?.is_archived
-                  ? "var(--color-text-tertiary)"
-                  : "var(--color-text-primary)",
-            }}
-          >
-            {name}
-          </span>
-          <span
+    <div
+      ref={rowRef}
+      style={{ borderBottom: isLast || panel ? "none" : "1px solid var(--color-border)" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: panel ? "flex-end" : undefined,
+          gap: "10px",
+          padding: panel ? "0 0 12px" : "10px 12px",
+        }}
+      >
+        {!panel && (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-label={expanded ? `Collapse ${name}` : `Edit ${name}`}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "10px",
+              gap: "8px",
+              flex: 1,
               minWidth: 0,
-              fontFamily: "var(--font-sans)",
-              fontSize: "12px",
-              color: "var(--color-text-tertiary)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              textAlign: "left",
             }}
           >
-            {place && (
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <IconLocation />
-                {place}
-              </span>
-            )}
-            {dates && (
-              <span
-                style={{ display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}
-              >
-                <IconCalendar />
-                {dates}
-              </span>
-            )}
-            {track?.division?.map((d) => (
-              <Badge key={d}>{d}</Badge>
-            ))}
-          </span>
-        </button>
+            {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "14px",
+                fontWeight: 500,
+                color:
+                  isNew || track?.is_archived
+                    ? "var(--color-text-tertiary)"
+                    : "var(--color-text-primary)",
+              }}
+            >
+              {name}
+            </span>
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                minWidth: 0,
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              {place && (
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <IconLocation />
+                  {place}
+                </span>
+              )}
+              {dates && (
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <IconCalendar />
+                  {dates}
+                </span>
+              )}
+              {track?.division?.map((d) => (
+                <Badge key={d}>{d}</Badge>
+              ))}
+            </span>
+          </button>
+        )}
 
         {isNew && <Badge>Unsaved</Badge>}
         {track?.is_primary && <Badge>Competition day</Badge>}
@@ -660,7 +745,7 @@ function TrackRow({
       {expanded && (
         <div
           style={{
-            padding: "4px 12px 16px 34px",
+            padding: panel ? 0 : "4px 12px 16px 34px",
             display: "flex",
             flexDirection: "column",
             gap: "14px",

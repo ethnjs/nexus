@@ -5,11 +5,14 @@ import {
   memo,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useMemo,
   useState,
 } from "react";
 
+import { useBoardSelection } from "@/components/tournament/assignments/BoardSelection";
 import { RolePillMenu } from "@/components/tournament/assignments/RolePillMenu";
+import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
 import { IconWarning, IconX } from "@/components/ui/Icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { Assignment, Role } from "@/lib/api";
@@ -137,11 +140,37 @@ interface MemberChipProps {
 export function MemberChip(props: MemberChipProps) {
   const [hovered, setHovered] = useState(false);
   const assignment = props.lane.assignments[0];
+  const selection = useBoardSelection();
+  const memberId = assignment.member.membership_id;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip:${assignment.id}`,
     data: { kind: "chip", assignment },
+    // Frozen while selecting, so a click can't turn into a move.
+    disabled: selection.active,
   });
   const grab = useGrabCursor(listeners);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenuAt(null), []);
+
+  function menuItems(): ContextMenuItem[] {
+    const { lane, eventId, handlers } = props;
+    const tracks = handlers.tracksToAdd(lane.key, eventId);
+    return [
+      {
+        key: "add-to-track",
+        label: "Add to another track",
+        disabledReason: tracks.length === 0 ? "Already on every track" : undefined,
+        submenu: {
+          title: "Add to another track",
+          items: tracks.map((track) => ({
+            key: String(track.id),
+            label: track.name,
+            onSelect: () => handlers.onAddToTrack(lane.key, eventId, track.id),
+          })),
+        },
+      },
+    ];
+  }
 
   return (
     <div
@@ -151,9 +180,16 @@ export function MemberChip(props: MemberChipProps) {
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onPointerDown={grab.onPointerDown}
+      onClick={() => {
+        if (selection.active && memberId !== null) selection.toggle(memberId);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuAt({ x: e.clientX, y: e.clientY });
+      }}
       style={{
         minWidth: 0,
-        cursor: grab.pressed || isDragging ? "grabbing" : "grab",
+        cursor: selection.active ? "pointer" : grab.pressed || isDragging ? "grabbing" : "grab",
         opacity: isDragging ? 0.4 : 1,
         // dnd-kit makes a draggable focusable, so grabbing one paints the
         // browser's default focus ring — the black outline. Dragging already
@@ -161,7 +197,14 @@ export function MemberChip(props: MemberChipProps) {
         outline: "none",
       }}
     >
-      <MemberChipBody {...props} hovered={hovered} />
+      <MemberChipBody
+        {...props}
+        onResizeStart={selection.active ? undefined : props.onResizeStart}
+        hovered={hovered}
+        selecting={selection.active}
+        picked={memberId !== null && selection.ids.has(memberId)}
+      />
+      {menuAt && <ContextMenu at={menuAt} items={menuItems()} onClose={closeMenu} />}
     </div>
   );
 }
@@ -175,11 +218,14 @@ const MemberChipBody = memo(function MemberChipBody({
   onResizeStart,
   resizingEdge,
   hovered,
-}: MemberChipProps & { hovered: boolean }) {
+  selecting,
+  picked,
+}: MemberChipProps & { hovered: boolean; selecting: boolean; picked: boolean }) {
   const assignment = lane.assignments[0];
   const roles = lane.roles;
   // Memoised so a hover toggle doesn't recompute every row's flags.
   const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor]);
+  const [nameHovered, setNameHovered] = useState(false);
 
   // The edges live inside the chip and sit above the drag listeners.
   // stopPropagation is what keeps a resize from also starting a drag — the
@@ -236,8 +282,18 @@ const MemberChipBody = memo(function MemberChipBody({
         // under a hit zone on a chip narrowed to a single shift.
         padding: "4px 14px",
         borderRadius: "var(--radius-md)",
-        border: `1px solid ${flags.length ? "var(--color-warning)" : "var(--color-border)"}`,
-        background: flags.length ? "var(--color-warning-subtle)" : "var(--color-surface)",
+        border: `1px solid ${
+          picked
+            ? "var(--color-border-strong)"
+            : flags.length
+              ? "var(--color-warning)"
+              : "var(--color-border)"
+        }`,
+        background: picked
+          ? "var(--color-accent-subtle)"
+          : flags.length
+            ? "var(--color-warning-subtle)"
+            : "var(--color-surface)",
         fontSize: "12px",
         // No `overflow: hidden` here — it clipped the warning tooltip, which
         // renders inside the chip. The name below does its own truncating.
@@ -249,9 +305,19 @@ const MemberChipBody = memo(function MemberChipBody({
           repeating it here would say the same thing twice and cost the width
           that makes the name readable. */}
       <span
+        // While selecting, the click falls through to the chip and ticks it.
+        onClick={() => {
+          const id = assignment.member.membership_id;
+          if (!selecting && id !== null) handlers.onOpenMember(id);
+        }}
+        onPointerEnter={() => setNameHovered(true)}
+        onPointerLeave={() => setNameHovered(false)}
+        title="Open member"
         style={{
           fontFamily: "var(--font-sans)",
           fontWeight: 500,
+          textDecoration: nameHovered && !selecting ? "underline" : "none",
+          textUnderlineOffset: "2px",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -266,6 +332,7 @@ const MemberChipBody = memo(function MemberChipBody({
           narrowed to one shift eats into the name instead of the control. */}
       <span
         onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         style={{ display: "flex", flexShrink: 0, cursor: "default" }}
       >
         <RolePillMenu

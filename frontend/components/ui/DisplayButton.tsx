@@ -8,8 +8,10 @@ interface DisplayButtonProps {
   active: boolean;
   /** Opens the display config modal. */
   onOpen: () => void;
-  /** Puts the view back to its default in one press. */
+  /** The right segment's action, in one press. */
   onReset: () => void;
+  /** Tooltip on that segment. */
+  resetLabel?: string;
   size?: "sm" | "md";
   /** Eye only, no label — for a panel header. */
   iconOnly?: boolean;
@@ -33,13 +35,14 @@ export function DisplayButton({
   size = "md",
   iconOnly = false,
   label = "Display",
+  resetLabel = "Reset display",
 }: DisplayButtonProps) {
   return (
     <ToolbarConfigButton
       active={active}
       icon={<IconEye size={size === "sm" ? 14 : 16} />}
       label={label}
-      actionLabel="Reset display"
+      actionLabel={resetLabel}
       onOpen={onOpen}
       onClear={onReset}
       size={size}

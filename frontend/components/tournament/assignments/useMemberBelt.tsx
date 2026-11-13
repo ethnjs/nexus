@@ -3,13 +3,14 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { MemberCard } from "@/components/tournament/assignments/MemberCard";
 import {
+  anyMemberFieldShown,
   DEFAULT_MEMBER_DISPLAY,
   defaultMemberDisplayForTab,
   MemberDisplayModal,
   type MemberDisplayState,
   memberDisplayFromHidden,
   memberDisplayToHidden,
-  sameMemberDisplay,
+  NO_MEMBER_FIELDS,
 } from "@/components/tournament/assignments/MemberDisplayModal";
 import {
   defaultMemberFiltersForTab,
@@ -24,7 +25,7 @@ import { Button } from "@/components/ui/Button";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, sameFilterState } from "@/components/ui/FilterModal";
+import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconSearch, IconUser } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { SortButton } from "@/components/ui/SortButton";
@@ -79,6 +80,8 @@ interface MemberBeltOptions {
   /** Changes whenever assignments are written, so the server-side filters re-run. */
   refetchKey: unknown;
   roleCatalog: Role[];
+  /** Given, the header grows a Select toggle that turns select mode on and off. */
+  selectMode?: { active: boolean; onToggle: () => void };
 }
 
 /**
@@ -97,6 +100,7 @@ export function useMemberBelt({
   members,
   refetchKey,
   roleCatalog,
+  selectMode,
 }: MemberBeltOptions) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS));
@@ -179,13 +183,20 @@ export function useMemberBelt({
    *  and back shows what was just set rather than what was last fetched. */
   const persist = useCallback(
     (patch: Record<string, unknown>) => {
+      // A surface's first save has to carry the card on screen: an absent
+      // `hidden` means the tab defaults, but a stored one is required and
+      // defaults to [], which would read back as every field shown.
+      const full =
+        savedConfig?.[surface] === undefined && !("hidden" in patch)
+          ? { ...patch, hidden: memberDisplayToHidden(display) }
+          : patch;
       setSavedConfig((cur) => ({
         ...(cur ?? {}),
-        [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...patch },
+        [surface]: { hidden: [], ...(cur?.[surface] ?? {}), ...full },
       }));
-      persistDisplayConfigSurface(tournamentId, surface, patch);
+      persistDisplayConfigSurface(tournamentId, surface, full);
     },
-    [tournamentId, surface],
+    [tournamentId, surface, savedConfig, display],
   );
 
   const applyFilters = useCallback(
@@ -225,11 +236,10 @@ export function useMemberBelt({
     [catalog, eventPrefGroups],
   );
 
-  // Against the tab's defaults, not against nothing: a track tab's belt is
-  // always narrowed to its day, so the clear button would otherwise light up
-  // from the first render.
-  const filterActive = !sameFilterState(filters, filterDefaults);
-  const displayActive = !sameMemberDisplay(display, displayDefaults);
+  // Against nothing, not the tab's defaults: those are filters and fields
+  // too, and the toolbar's × is the one-press way to drop them.
+  const filterActive = isFilterActive(filters);
+  const displayActive = anyMemberFieldShown(display);
   const sortActive = !sameSortRules(sort, DEFAULT_BELT_SORT);
 
   // Members matching the filters, from the same server filter the members
@@ -281,7 +291,8 @@ export function useMemberBelt({
           label="Configure member cards"
           active={displayActive}
           onOpen={() => setShowDisplayModal(true)}
-          onReset={() => applyDisplay(displayDefaults)}
+          onReset={() => applyDisplay(NO_MEMBER_FIELDS)}
+          resetLabel="Hide all fields"
         />
         <FilterButton
           size="sm"
@@ -289,9 +300,7 @@ export function useMemberBelt({
           label="Filter members"
           active={filterActive}
           onOpen={() => setShowFilterModal(true)}
-          // Back to the tab's own filters, not to nothing: a track tab's
-          // unfiltered state is the day it shows.
-          onClear={() => applyFilters(filterDefaults)}
+          onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
         />
         <SortButton
           size="sm"
@@ -301,9 +310,20 @@ export function useMemberBelt({
           onOpen={openSortModal}
           onReset={() => applySort(DEFAULT_BELT_SORT)}
         />
+        {selectMode && (
+          <Button
+            type="button"
+            variant={selectMode.active ? "primary" : "secondary"}
+            size="sm"
+            onClick={selectMode.onToggle}
+          >
+            Select
+          </Button>
+        )}
       </>
     ),
     [
+      selectMode,
       displayActive,
       filterActive,
       sortActive,
@@ -322,10 +342,14 @@ export function useMemberBelt({
       focusedId,
       allShifts,
       onOpen,
+      selectedIds,
     }: {
       focusedId: number | null;
       allShifts: TournamentShift[];
+      /** In select mode, toggles the card's tick instead. */
       onOpen: (membershipId: number) => void;
+      /** Given, the belt is in select mode and these cards are ticked. */
+      selectedIds?: ReadonlySet<number>;
     }): ReactNode => (
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
         {/* secondary = white. primary is the same light grey as the page
@@ -356,7 +380,7 @@ export function useMemberBelt({
                   variant="secondary"
                   onClick={() => {
                     setQuery("");
-                    applyFilters(filterDefaults);
+                    applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS));
                   }}
                 >
                   Clear filters
@@ -369,7 +393,8 @@ export function useMemberBelt({
             <MemberCard
               key={member.id}
               member={member}
-              selected={focusedId === member.id}
+              selected={selectedIds ? selectedIds.has(member.id) : focusedId === member.id}
+              selecting={!!selectedIds}
               display={display}
               allShifts={allShifts}
               onOpen={onOpen}
@@ -378,7 +403,7 @@ export function useMemberBelt({
         )}
       </div>
     ),
-    [belt, members.length, query, filterActive, display, applyFilters, filterDefaults],
+    [belt, members.length, query, filterActive, display, applyFilters],
   );
 
   const modals = (

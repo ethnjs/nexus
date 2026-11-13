@@ -38,6 +38,10 @@ interface ComboboxProps<T> {
   /** Keep the list open after a pick, for a field that clears itself to take another. */
   stayOpenOnSelect?: boolean;
   onBlur?: () => void;
+  autoFocus?: boolean;
+  /** Fires on a pick from the list only, never on typing that happens to
+   *  match an option exactly. */
+  onSelect?: (option: T) => void;
 }
 
 const CUSTOM_THRESHOLD = 3;
@@ -65,6 +69,8 @@ export function Combobox<T>({
   emptyMessage,
   stayOpenOnSelect = false,
   onBlur,
+  autoFocus,
+  onSelect,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false);
   // Whether the text has been edited since the field took focus. Until it
@@ -154,6 +160,7 @@ export function Combobox<T>({
   function handleSelect(option: T) {
     if (getDisabled?.(option)) return;
     onChange(getLabel(option), option);
+    onSelect?.(option);
     if (stayOpenOnSelect) {
       setTyped(false);
       setActive(-1);
@@ -202,6 +209,7 @@ export function Combobox<T>({
         font={font}
         variant={variant}
         locked={locked}
+        autoFocus={autoFocus}
         fullWidth
       />
       {dropdownOpen && !locked && (

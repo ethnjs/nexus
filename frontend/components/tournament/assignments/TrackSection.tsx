@@ -3,12 +3,12 @@
 import { useDroppable } from "@dnd-kit/core";
 import type { ReactNode } from "react";
 
+import { AddMemberChip } from "@/components/tournament/assignments/AddMemberChip";
 import { MemberChip } from "@/components/tournament/assignments/MemberChip";
 import { StaffingNeedLine } from "@/components/tournament/assignments/StaffingNeedLine";
 import { TrackShiftGrid } from "@/components/tournament/assignments/TrackShiftGrid";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconBuilding, IconClock, IconLocation } from "@/components/ui/Icons";
-import { PillMenu } from "@/components/ui/PillMenu";
 import type {
   Assignment,
   Role,
@@ -39,41 +39,6 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
       {icon}
       {children}
     </span>
-  );
-}
-
-/** A track's default role, as a pill menu — picking a new role hands the
- *  change to the caller rather than writing anything itself, since only the
- *  page knows who holds the old default and has to confirm moving them.
- *  Shared by the timeline header and a cosmetic
- *  track's column header — same field, same control, wherever it shows. */
-function DefaultRolePillMenu({
-  track,
-  roleCatalog,
-  onPickDefaultRole,
-}: {
-  track: TournamentTrack;
-  roleCatalog: Role[];
-  onPickDefaultRole: (track: TournamentTrack, role: Role) => Promise<void>;
-}) {
-  const role =
-    track.default_role_id === null
-      ? null
-      : (roleCatalog.find((r) => r.id === track.default_role_id) ?? null);
-  return (
-    <PillMenu
-      label={role ? role.label : "No default role"}
-      tone={role ? "default" : "muted"}
-      items={roleCatalog}
-      getKey={(r) => r.id}
-      renderLabel={(r) => r.label}
-      searchable
-      getSearchText={(r) => r.label}
-      isSelected={(r) => role !== null && role.id === r.id}
-      onSelect={(r) => onPickDefaultRole(track, r)}
-      width={180}
-      align="left"
-    />
   );
 }
 
@@ -140,6 +105,13 @@ export function TrackSection({
     ? `${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`
     : null;
   const needs = detail?.needs ?? [];
+  const addChip = (trigger: "row" | "icon" | "button") => (
+    <AddMemberChip
+      candidates={() => handlers.membersToAdd(event.id, track.id)}
+      onAdd={(membershipId) => handlers.onAddMember(event.id, track.id, membershipId)}
+      trigger={trigger}
+    />
+  );
 
   return (
     <div
@@ -191,11 +163,7 @@ export function TrackSection({
         {/* Shown even when the label is hidden — a track tab names the track,
             not where it runs. */}
         {venue && <MetaLine icon={<IconLocation size={12} />}>{venue}</MetaLine>}
-        <DefaultRolePillMenu
-          track={track}
-          roleCatalog={roleCatalog}
-          onPickDefaultRole={handlers.onPickDefaultRole}
-        />
+
         {span && <MetaLine icon={<IconClock size={12} />}>{span}</MetaLine>}
         {/* Always shown on a competition day, so a missing room reads as
             missing rather than as a line that isn't there. */}
@@ -229,6 +197,7 @@ export function TrackSection({
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             handlers={handlers}
+            emptyAction={addChip("button")}
           />
           {/* Detaching a shift unpins its people without dropping them (see
               detach_shifts_from_assignments), so a track with columns can
@@ -270,6 +239,7 @@ export function TrackSection({
               ))}
             </div>
           )}
+          {pinnedLanes.length > 0 && addChip("row")}
         </>
       ) : unpinnedLanes.length === 0 ? (
         // Kept on screen rather than hidden: this box is the only way onto a
@@ -278,9 +248,9 @@ export function TrackSection({
         // thing in the box it carries the drop highlight itself — it is what
         // the eye is on, and tinting the box behind it as well would say the
         // same thing twice.
-        <EmptyState size="sm" title="Nobody assigned" active={isOver} />
+        <EmptyState size="sm" title="Nobody assigned" active={isOver} action={addChip("button")} />
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
           {unpinnedLanes.map((lane) => (
             <MemberChip
               key={lane.key}
@@ -291,6 +261,7 @@ export function TrackSection({
               handlers={handlers}
             />
           ))}
+          {addChip("icon")}
         </div>
       )}
     </div>

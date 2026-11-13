@@ -11,9 +11,7 @@ from app.core.tournament.assignments import (
     validate_shift_on_event,
 )
 from app.core.tournament.permissions import (
-    MANAGE_EVENTS,
     MANAGE_MEMBERS,
-    require_any_permission,
     require_permission,
 )
 from app.db.session import get_db
@@ -89,11 +87,7 @@ def _flush_or_conflict(db: Session) -> None:
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/assignments/ — manage_events OR manage_members
-#
-# Looser than the writes below on purpose: who is staffing an event is part of
-# reading the event, while deciding who staffs it is member data. See the
-# MANAGE_EVENTS/MANAGE_MEMBERS split in core/tournament/permissions.py.
+# GET /tournaments/{tournament_id}/assignments/ — manage_members
 #
 # Both filters are optional and compose — the board reads the whole tournament,
 # a member panel reads one person, an event drawer reads one event. That's a
@@ -105,7 +99,7 @@ def list_assignments(
     event_id: int | None = Query(default=None),
     membership_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_EVENTS, MANAGE_MEMBERS)),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
 

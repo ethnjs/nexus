@@ -36,6 +36,8 @@ MEMBER_CARD_SURFACES = frozenset({ASSIGNMENT_CARD, ZONES_MEMBERS})
 # setting for every page of the tournament, so it is a surface of its own
 # that holds only `collapsed` rather than a field repeated on each table's.
 PAGE_HEADER = "page_header"
+# The assignments board's own settings, one for every tab: `assign_role_ids`.
+ASSIGNMENTS_BOARD = "assignments_board"
 
 FLAT_SURFACES = frozenset(
     {
@@ -46,6 +48,7 @@ FLAT_SURFACES = frozenset(
         EVENT_PANEL,
         SHIFTS_TABLE,
         PAGE_HEADER,
+        ASSIGNMENTS_BOARD,
     }
 )
 
@@ -424,11 +427,10 @@ ASSIGNMENT_CARD_FIELDS = frozenset(
         "event_preferences",
         "availability",
         "lunch",
-        "competition_school",
-        "competition_event",
-        "volunteer_tournament",
-        "volunteer_event",
-        "volunteer_role",
+        "affiliation",
+        "year_level",
+        "competition_experience",
+        "volunteer_experience",
         "custom_fields",
     }
 )

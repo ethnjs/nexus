@@ -64,9 +64,7 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
           { key: "zones", href: `${base}/zones`, icon: <IconLocation size={17} />, label: "Zones" },
         ]
       : []),
-    // Matches the page's own view gate: staffing is part of reading the event
-    // (manage_events) or deciding who does it (manage_members).
-    ...(canManageEvents || canManageMembers
+    ...(canManageMembers
       ? [
           {
             key: "assignments",

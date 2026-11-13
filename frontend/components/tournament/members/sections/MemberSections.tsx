@@ -139,6 +139,7 @@ const RENDERERS: Record<
       hiddenTrackIds={p.hiddenTrackIds}
       showAvailability={!hiddenFields.has("availability")}
       locked={p.rolesLocked}
+      lockedReason={p.rolesLockedReason}
       onChanged={p.onAssignmentsChanged}
     />
   ),

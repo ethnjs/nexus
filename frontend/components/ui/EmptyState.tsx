@@ -10,7 +10,8 @@ interface EmptyStateProps {
    * `sm` is a one-line strip that fills its container's width and takes only
    * the height it needs — for an empty slot *inside* a populated page, like
    * an unstaffed row on a board, where the tall box would dwarf the rows
-   * around it and repeat down the page.
+   * around it and repeat down the page. Given an `action`, it stacks the
+   * title over it instead.
    */
   size?: "sm" | "md";
   /**
@@ -38,16 +39,17 @@ export function EmptyState({
   active = false,
 }: EmptyStateProps) {
   const compact = size === "sm";
+  const stacked = !compact || !!action;
   return (
     <div
       style={{
         display: "flex",
-        flexDirection: compact ? "row" : "column",
+        flexDirection: stacked ? "column" : "row",
         alignItems: "center",
         justifyContent: "center",
         height: compact ? undefined : "240px",
         padding: compact ? "10px 12px" : undefined,
-        gap: compact ? "8px" : "12px",
+        gap: compact ? (stacked ? "6px" : "8px") : "12px",
         textAlign: "center",
         border: `1px dashed ${active ? "var(--color-border-strong)" : "var(--color-border)"}`,
         borderRadius: compact ? "var(--radius-md)" : "var(--radius-lg)",

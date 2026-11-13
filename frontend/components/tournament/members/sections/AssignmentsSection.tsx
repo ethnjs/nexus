@@ -68,6 +68,8 @@ interface AssignmentsSectionProps {
   /** The "Availability shading" field of this section. */
   showAvailability: boolean;
   locked: boolean;
+  /** Given while locked, Add event stays on screen disabled, saying why. */
+  lockedReason?: string;
   /** Fires after every successful write, so the panel can re-read the member. */
   onChanged?: () => void;
 }
@@ -103,6 +105,7 @@ export function AssignmentsSection({
   hiddenTrackIds,
   showAvailability,
   locked,
+  lockedReason,
   onChanged,
 }: AssignmentsSectionProps) {
   const { show } = useToast();
@@ -386,7 +389,15 @@ export function AssignmentsSection({
       <SectionHeading
         title="Assignments"
         action={
-          !locked && (
+          locked ? (
+            lockedReason && (
+              <Tooltip variant="info" message={lockedReason} showIcon={false}>
+                <Button type="button" variant="secondary" size="sm" disabled>
+                  <IconPlus size={12} /> Add event
+                </Button>
+              </Tooltip>
+            )
+          ) : (
             <Popover
               trigger={
                 <Button type="button" variant="secondary" size="sm">

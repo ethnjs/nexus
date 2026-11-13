@@ -34,14 +34,16 @@ function flatOptions(items: DropdownItem[]): DropdownOption[] {
   return items.flatMap((item) => (isGroup(item) ? item.options : [item]));
 }
 
-function toListOption(opt: DropdownOption, value: string): ListOption {
+function toListOption(opt: DropdownOption, picked: string[], multiple: boolean): ListOption {
   return {
     key: opt.value,
     label: opt.label,
     subtitle: opt.subtitle,
     badge: opt.badge,
     disabled: opt.disabled,
-    selected: opt.value === value,
+    ...(multiple
+      ? { checked: picked.includes(opt.value) }
+      : { selected: picked.includes(opt.value) }),
   };
 }
 
@@ -66,9 +68,17 @@ function filterItems(items: DropdownItem[], query: string): DropdownItem[] {
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-interface DropdownProps {
-  value: string;
-  onChange: (value: string) => void;
+type SelectionProps =
+  | { multiple?: false; value: string; onChange: (value: string) => void }
+  | {
+      /** Checklist rows; picking toggles one and leaves the panel open. The
+       *  trigger shows the first picked label and "+N" for the rest. */
+      multiple: true;
+      values: string[];
+      onChangeValues: (values: string[]) => void;
+    };
+
+type DropdownProps = SelectionProps & {
   options: DropdownItem[];
   label?: string;
   placeholder?: string;
@@ -105,7 +115,7 @@ interface DropdownProps {
   footerLabel?: string;
   footerIcon?: ReactNode;
   onFooterClick?: () => void;
-}
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -132,29 +142,29 @@ function focusOnMount(el: HTMLInputElement | null) {
   el?.focus();
 }
 
-export function Dropdown({
-  value,
-  onChange,
-  options,
-  label,
-  placeholder = "Select...",
-  error,
-  helper,
-  locked = false,
-  fullWidth = false,
-  required = false,
-  size = "md",
-  minWidth,
-  width,
-  fitContent = false,
-  variant = "primary",
-  id,
-  emptyMessage,
-  searchable = false,
-  footerLabel,
-  footerIcon,
-  onFooterClick,
-}: DropdownProps) {
+export function Dropdown(props: DropdownProps) {
+  const {
+    options,
+    label,
+    placeholder = "Select...",
+    error,
+    helper,
+    locked = false,
+    fullWidth = false,
+    required = false,
+    size = "md",
+    minWidth,
+    width,
+    fitContent = false,
+    variant = "primary",
+    id,
+    emptyMessage,
+    searchable = false,
+    footerLabel,
+    footerIcon,
+    onFooterClick,
+  } = props;
+  const picked = props.multiple ? props.values : [props.value];
   const generatedId = useId();
   const triggerId = id ?? generatedId;
   const [open, setOpen] = useState(false);
@@ -177,20 +187,41 @@ export function Dropdown({
     : options;
   const flat = flatOptions(visibleOptions);
   const flatAll = flatOptions(options);
-  const selected = flatAll.find((o) => o.value === value);
+  const pickedOptions = flatAll.filter((o) => picked.includes(o.value));
+  const selected = pickedOptions[0];
+  const multiple = !!props.multiple;
   const listOptions: ListOption[] = visibleOptions.flatMap((item) =>
     isGroup(item)
-      ? item.options.map((o) => ({ ...toListOption(o, value), group: item.group }))
-      : [toListOption(item, value)],
+      ? item.options.map((o) => ({ ...toListOption(o, picked, multiple), group: item.group }))
+      : [toListOption(item, picked, multiple)],
   );
-  const displayLabel = selected?.label ?? placeholder;
+  const displayLabel = !selected
+    ? placeholder
+    : pickedOptions.length > 1
+      ? `${selected.label} +${pickedOptions.length - 1}`
+      : selected.label;
+
+  /** Picks one option: replaces the value, or toggles it in multiple mode. */
+  function pick(opt: DropdownOption) {
+    if (props.multiple) {
+      const next = picked.includes(opt.value)
+        ? picked.filter((v) => v !== opt.value)
+        : [...picked, opt.value];
+      // Kept in option order, so the trigger names the same role first
+      // whichever was ticked first.
+      props.onChangeValues(flatAll.filter((o) => next.includes(o.value)).map((o) => o.value));
+    } else {
+      props.onChange(opt.value);
+      setOpen(false);
+    }
+  }
 
   // Opening starts on the current value; closing clears the search.
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      const idx = flat.findIndex((o) => o.value === value);
+      const idx = flat.findIndex((o) => picked.includes(o.value));
       setActiveIdx(idx >= 0 ? idx : 0);
     } else {
       setSearchQuery("");
@@ -223,10 +254,7 @@ export function Dropdown({
 
   function selectActive() {
     const opt = flat[activeIdx];
-    if (opt && !opt.disabled) {
-      onChange(opt.value);
-      setOpen(false);
-    }
+    if (opt && !opt.disabled) pick(opt);
   }
 
   // Trigger button: Enter/Space both open the panel and (once open) confirm
@@ -416,8 +444,7 @@ export function Dropdown({
             active={activeIdx}
             onActiveChange={setActiveIdx}
             onPick={(i) => {
-              onChange(flat[i].value);
-              setOpen(false);
+              pick(flat[i]);
             }}
             size={size}
             matchWidth
