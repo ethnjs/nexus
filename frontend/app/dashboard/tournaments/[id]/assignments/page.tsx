@@ -25,7 +25,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { DockedPanel } from "@/components/layout/DockedPanel";
+import { AssignToModal } from "@/components/tournament/assignments/AssignToModal";
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
+import { BoardSelectionContext } from "@/components/tournament/assignments/BoardSelection";
 import { EventRow } from "@/components/tournament/assignments/EventRow";
 import { TrackSettingsModal } from "@/components/tournament/assignments/TrackSettingsModal";
 import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
@@ -57,6 +59,7 @@ import { emptyFilterState } from "@/components/ui/FilterModal";
 import { IconEvents, IconLock, IconSearch, IconSettings } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { SelectionBar } from "@/components/ui/SelectionBar";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import table from "@/components/ui/Table.module.css";
@@ -186,6 +189,31 @@ export default function AssignmentsPage() {
   const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
   const canManageTournament = isAdmin || isOwner || hasPermission("manage_tournament");
   const [showTrackSettings, setShowTrackSettings] = useState(false);
+
+  // Select mode: tick belt cards and board chips, then assign them together.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
+  const [showAssignTo, setShowAssignTo] = useState(false);
+  const toggleSelected = useCallback((membershipId: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(membershipId)) next.delete(membershipId);
+      else next.add(membershipId);
+      return next;
+    });
+  }, []);
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((on) => !on);
+    setSelectedIds(new Set());
+  }, []);
+  const beltSelectMode = useMemo(
+    () => ({ active: selectMode, onToggle: toggleSelectMode }),
+    [selectMode, toggleSelectMode],
+  );
+  const boardSelection = useMemo(
+    () => ({ active: selectMode, ids: selectedIds, toggle: toggleSelected }),
+    [selectMode, selectedIds, toggleSelected],
+  );
 
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [rows, setRows] = useState<Assignment[]>([]);
@@ -578,6 +606,7 @@ export default function AssignmentsPage() {
     members,
     refetchKey: `${boardWriteVersion}:${refreshKey}`,
     roleCatalog,
+    selectMode: beltSelectMode,
   });
 
   const flagsFor = useMemo(() => {
@@ -942,6 +971,47 @@ export default function AssignmentsPage() {
     setLaneRoles(laneKey, eventId, () => [role]);
   }
 
+  function personOf(member: MembershipFull & { user: NonNullable<MembershipFull["user"]> }) {
+    return {
+      user_id: member.user.id,
+      membership_id: member.id,
+      first_name: member.user.first_name,
+      last_name: member.user.last_name,
+    };
+  }
+
+  /** Puts everyone selected on every shift of one track of an event, skipping
+   *  whoever is already on it. */
+  function handleAssignSelection(eventId: number, trackId: number) {
+    if (!requireWriteAccess()) return;
+    const event = events?.find((e) => e.id === eventId);
+    const track = event?.tracks.find((t) => t.id === trackId);
+    if (!event || !track) return;
+    const on = new Set(
+      rows
+        .filter((row) => row.event.id === eventId && row.track.id === trackId)
+        .map((row) => row.member.membership_id),
+    );
+    const picked = [...selectedIds].flatMap((id) => {
+      const member = memberById.get(id);
+      return member?.user ? [{ ...member, user: member.user }] : [];
+    });
+    const fresh = picked.filter((member) => !on.has(member.id));
+    const skipped = picked.length - fresh.length;
+    const where =
+      event.tracks.length > 1 ? `${eventName(event)} (${track.name})` : eventName(event);
+    if (fresh.length === 0) {
+      show(`Everyone selected is already on ${where}`, "error");
+      return;
+    }
+    if (!placeMembers(fresh.map(personOf), event, trackId, trackShiftIds(event, trackId))) return;
+    const added = `Added ${fresh.length} ${fresh.length === 1 ? "member" : "members"} to ${where}`;
+    show(
+      skipped > 0 ? `${added}. ${skipped} ${skipped === 1 ? "was" : "were"} already on it.` : added,
+      "success",
+    );
+  }
+
   /** The event as an optimistic row names it, resolved the way the server
    *  does (EventMemberRead sends display_name). */
   function eventRefFor(event: TournamentEvent) {
@@ -958,11 +1028,12 @@ export default function AssignmentsPage() {
   }
 
   /**
-   * Places someone new on `shiftIds` of an event, as the Assign as roles or,
-   * with none picked, the track's default role. Returns whether it wrote.
+   * Places people new to it on `shiftIds` of an event, as the Assign as roles
+   * or, with none picked, the track's default role. One write for everyone,
+   * since each call builds on `rows`. Returns whether it wrote.
    */
-  function placeMember(
-    person: PersonNameRef,
+  function placeMembers(
+    people: PersonNameRef[],
     event: TournamentEvent,
     trackId: number | undefined,
     shiftIds: (number | null)[],
@@ -990,20 +1061,22 @@ export default function AssignmentsPage() {
     const eventRef = eventRefFor(event);
     const shiftFor = (id: number | null) =>
       id === null ? null : (event.shifts.find((s) => s.id === id) ?? null);
-    const newRows: Assignment[] = shiftIds.flatMap((shiftId) =>
-      roles.map((role) => ({
-        id: nextLocalId(),
-        event: eventRef,
-        // From the shift, not from the target: an all-shifts drop on an event
-        // running two days writes each row against the day it lands on.
-        track:
-          (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
-        member: person,
-        role,
-        shift: shiftFor(shiftId),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })),
+    const newRows: Assignment[] = people.flatMap((person) =>
+      shiftIds.flatMap((shiftId) =>
+        roles.map((role) => ({
+          id: nextLocalId(),
+          event: eventRef,
+          // From the shift, not from the target: an all-shifts drop on an event
+          // running two days writes each row against the day it lands on.
+          track:
+            (shiftId === null ? null : trackRefFor(event, shiftFor(shiftId)?.track_id)) ?? trackRef,
+          member: person,
+          role,
+          shift: shiftFor(shiftId),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })),
+      ),
     );
     const next = [...rows, ...newRows];
     setRows(next);
@@ -1028,17 +1101,7 @@ export default function AssignmentsPage() {
     const member = memberById.get(membershipId);
     const event = events?.find((e) => e.id === eventId);
     if (!member?.user || !event) return;
-    placeMember(
-      {
-        user_id: member.user.id,
-        membership_id: member.id,
-        first_name: member.user.first_name,
-        last_name: member.user.last_name,
-      },
-      event,
-      trackId,
-      trackShiftIds(event, trackId),
-    );
+    placeMembers([personOf(member)], event, trackId, trackShiftIds(event, trackId));
   }
 
   /** The rows of one bar, as a chip names it. */
@@ -1075,7 +1138,7 @@ export default function AssignmentsPage() {
     // usually one the current tab hides.
     const event = events?.find((e) => e.id === eventId);
     if (!sample || !event) return;
-    const placed = placeMember(sample.member, event, trackId, trackShiftIds(event, trackId));
+    const placed = placeMembers([sample.member], event, trackId, trackShiftIds(event, trackId));
     const track = event.tracks.find((t) => t.id === trackId);
     if (placed && track) show(`Added ${fullName(sample.member)} to ${track.name}`, "success");
   }
@@ -1264,7 +1327,12 @@ export default function AssignmentsPage() {
         // No onClose: the belt is the only way onto the board.
         content: (
           <DockedPanel width={BELT_PANEL_WIDTH} headerActions={beltHeaderActions}>
-            {renderBelt({ focusedId, allShifts, onOpen: openMemberPanel })}
+            {renderBelt({
+              focusedId,
+              allShifts,
+              onOpen: selectMode ? toggleSelected : openMemberPanel,
+              selectedIds: selectMode ? selectedIds : undefined,
+            })}
           </DockedPanel>
         ),
         width: BELT_PANEL_WIDTH,
@@ -1281,6 +1349,9 @@ export default function AssignmentsPage() {
     allShifts,
     beltHeaderActions,
     renderBelt,
+    selectMode,
+    selectedIds,
+    toggleSelected,
     panelAssignmentsVersion,
     canonicalEvents,
     buildings,
@@ -1422,13 +1493,8 @@ export default function AssignmentsPage() {
       // so outright; a shift knows the day it falls on, so a timeline drop
       // answers from the shift rather than from whichever track happened to
       // be listed first on the event.
-      placeMember(
-        {
-          user_id: member.user.id,
-          membership_id: member.id,
-          first_name: member.user.first_name,
-          last_name: member.user.last_name,
-        },
+      placeMembers(
+        [personOf(member)],
         event,
         trackForDropId(kind, target, event, shiftIds),
         shiftIds,
@@ -1504,201 +1570,223 @@ export default function AssignmentsPage() {
   return (
     // No padding or max-width of its own: the shell's <main> already supplies
     // 22px/24px, and a centred max-width fought the docked panels for space.
-    <div>
-      {/* Tabs are hidden in simple mode: with one track, All is the only
+    <BoardSelectionContext.Provider value={boardSelection}>
+      <div>
+        {/* Tabs are hidden in simple mode: with one track, All is the only
           tab there could be — so the header collapses to the title alone,
           which is what the bar then shows. */}
-      <CollapsibleHeader
-        heading="Assignments"
-        tabs={simple ? undefined : headerTabs}
-        activeKey={activeTrackId === null ? "all" : String(activeTrackId)}
-        onChange={pickTab}
-      />
-      {showTrackSettings && (
-        <TrackSettingsModal
-          tournamentId={tournamentId}
-          locked={isArchived}
-          soleDefaultHolders={(trackId, roleId) => soleRoleBars(rows, trackId, roleId).length}
-          onChanged={() => setRefreshKey((k) => k + 1)}
-          onClose={() => setShowTrackSettings(false)}
+        <CollapsibleHeader
+          heading="Assignments"
+          tabs={simple ? undefined : headerTabs}
+          activeKey={activeTrackId === null ? "all" : String(activeTrackId)}
+          onChange={pickTab}
         />
-      )}
+        {showTrackSettings && (
+          <TrackSettingsModal
+            tournamentId={tournamentId}
+            locked={isArchived}
+            soleDefaultHolders={(trackId, roleId) => soleRoleBars(rows, trackId, roleId).length}
+            onChanged={() => setRefreshKey((k) => k + 1)}
+            onClose={() => setShowTrackSettings(false)}
+          />
+        )}
 
-      {loadError && (
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "13px",
-            color: "var(--color-danger)",
-            marginBottom: "10px",
-          }}
-        >
-          {loadError}
-        </p>
-      )}
-
-      {/* Events own the page and its scroll — no inner scroller. */}
-      <div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
-          <div ref={toolbarRef} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Input
-              value={eventQuery}
-              onChange={(e) => setEventQuery(e.target.value)}
-              onClear={() => setEventQuery("")}
-              placeholder="Search events"
-              icon={<IconSearch />}
-              size="md"
-              variant="secondary"
-              font="sans"
-              fullWidth
-            />
-            <FilterButton
-              active={eventFilterActive}
-              onOpen={() => setShowEventFilterModal(true)}
-              onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
-              iconOnly={compactToolbar}
-            />
-            <SortButton
-              active={eventSortActive}
-              onOpen={() => setShowEventSortModal(true)}
-              onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
-              iconOnly={compactToolbar}
-            />
-            {/* The belt's member filters and this tab's event filters and track:
-                exports what the board shows. */}
-            {selectedTournament && (
-              <ExportButton
-                tournament={selectedTournament}
-                trackId={activeTrackId}
-                iconOnly={compactToolbar}
-              />
-            )}
-          </div>
-          <div
+        {loadError && (
+          <p
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "8px",
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-danger)",
+              marginBottom: "10px",
             }}
           >
-            <span className={table.headerLabel}>
-              Events — {visibleEvents.length}/{events.length}
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span className={table.headerLabel}>Assign as</span>
-              <Dropdown
-                multiple
-                values={assignAsRoles.map((role) => String(role.id))}
-                onChangeValues={(ids) => setAssignAsRoles(ids.map(Number))}
-                options={roleCatalog.map((role) => ({ value: String(role.id), label: role.label }))}
-                placeholder="Track default"
-                size="sm"
-                variant="secondary"
-                searchable
-                emptyMessage="No roles yet"
-                footerLabel="Use track default"
-                onFooterClick={() => setAssignAsRoles([])}
-                locked={isArchived}
-              />
-              {canManageTournament && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowTrackSettings(true)}
-                >
-                  <IconSettings size={14} /> Track settings
-                </Button>
-              )}
-            </span>
-          </div>
+            {loadError}
+          </p>
+        )}
 
-          {visibleEvents.length === 0 ? (
-            <EmptyState
-              icon={<IconEvents size={24} />}
-              title="No events match"
-              description="Try a wider search or filter."
-              action={
-                <Button
+        {/* Events own the page and its scroll — no inner scroller. */}
+        <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
+            <div ref={toolbarRef} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Input
+                value={eventQuery}
+                onChange={(e) => setEventQuery(e.target.value)}
+                onClear={() => setEventQuery("")}
+                placeholder="Search events"
+                icon={<IconSearch />}
+                size="md"
+                variant="secondary"
+                font="sans"
+                fullWidth
+              />
+              <FilterButton
+                active={eventFilterActive}
+                onOpen={() => setShowEventFilterModal(true)}
+                onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+                iconOnly={compactToolbar}
+              />
+              <SortButton
+                active={eventSortActive}
+                onOpen={() => setShowEventSortModal(true)}
+                onReset={() => applyEventSort(DEFAULT_EVENT_SORT)}
+                iconOnly={compactToolbar}
+              />
+              {/* The belt's member filters and this tab's event filters and track:
+                exports what the board shows. */}
+              {selectedTournament && (
+                <ExportButton
+                  tournament={selectedTournament}
+                  trackId={activeTrackId}
+                  iconOnly={compactToolbar}
+                />
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+              }}
+            >
+              <span className={table.headerLabel}>
+                Events — {visibleEvents.length}/{events.length}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span className={table.headerLabel}>Assign as</span>
+                <Dropdown
+                  multiple
+                  values={assignAsRoles.map((role) => String(role.id))}
+                  onChangeValues={(ids) => setAssignAsRoles(ids.map(Number))}
+                  options={roleCatalog.map((role) => ({
+                    value: String(role.id),
+                    label: role.label,
+                  }))}
+                  placeholder="Track default"
                   size="sm"
                   variant="secondary"
-                  onClick={() => {
-                    setEventQuery("");
-                    applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                  searchable
+                  emptyMessage="No roles yet"
+                  footerLabel="Use track default"
+                  onFooterClick={() => setAssignAsRoles([])}
+                  locked={isArchived}
+                />
+                {canManageTournament && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowTrackSettings(true)}
+                  >
+                    <IconSettings size={14} /> Track settings
+                  </Button>
+                )}
+              </span>
+            </div>
+
+            {visibleEvents.length === 0 ? (
+              <EmptyState
+                icon={<IconEvents size={24} />}
+                title="No events match"
+                description="Try a wider search or filter."
+                action={
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setEventQuery("");
+                      applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                    }}
+                  >
+                    Clear
+                  </Button>
+                }
+              />
+            ) : (
+              // The whole list is one grid, and each row a subgrid of it, so
+              // the name column is exactly as wide as the longest name on
+              // screen and every timeline still starts on the same line. A
+              // per-row `auto` column would fit each name and leave the rows
+              // ragged; a fixed one aligns them and pads most rows with air.
+              //
+              // fit-content, so one very long name wraps at 220px instead of
+              // taking the width off every row's timeline.
+              //
+              // With the member panels open the page can be ~300px wide, so the
+              // list keeps a readable width and scrolls sideways instead.
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "fit-content(220px) 1fr",
+                    gap: "8px",
+                    minWidth: BOARD_MIN_WIDTH,
                   }}
                 >
-                  Clear
-                </Button>
-              }
-            />
-          ) : (
-            // The whole list is one grid, and each row a subgrid of it, so
-            // the name column is exactly as wide as the longest name on
-            // screen and every timeline still starts on the same line. A
-            // per-row `auto` column would fit each name and leave the rows
-            // ragged; a fixed one aligns them and pads most rows with air.
-            //
-            // fit-content, so one very long name wraps at 220px instead of
-            // taking the width off every row's timeline.
-            //
-            // With the member panels open the page can be ~300px wide, so the
-            // list keeps a readable width and scrolls sideways instead.
-            <div style={{ overflowX: "auto", minWidth: 0 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "fit-content(220px) 1fr",
-                  gap: "8px",
-                  minWidth: BOARD_MIN_WIDTH,
-                }}
-              >
-                {visibleEvents.map((event) => (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
-                    roleCatalog={roleCatalog}
-                    flagsFor={flagsFor}
-                    activeTrackId={activeTrackId}
-                    simple={simple}
-                    selected={event.id === focusedEventId}
-                    onOpen={canManageEvents ? openEventPanel : undefined}
-                    handlers={boardHandlers}
-                  />
-                ))}
+                  {visibleEvents.map((event) => (
+                    <EventRow
+                      key={event.id}
+                      event={event}
+                      rowAssignments={byEvent.get(event.id) ?? NO_ASSIGNMENTS}
+                      roleCatalog={roleCatalog}
+                      flagsFor={flagsFor}
+                      activeTrackId={activeTrackId}
+                      simple={simple}
+                      selected={event.id === focusedEventId}
+                      onOpen={canManageEvents ? openEventPanel : undefined}
+                      handlers={boardHandlers}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
-      {showEventFilterModal && (
-        <EventsFilterModal
-          divisionOptions={divisionOptions}
-          typeOptions={EVENT_TYPE_OPTIONS}
-          categoryOptions={categoryOptions}
-          // The tab already picked a track; only the All tab offers the choice.
-          trackOptions={activeTrackId === null ? trackOptions : undefined}
-          buildingOptions={buildingOptions}
-          shiftOptions={shiftOptions}
-          filters={eventFilters}
-          onApply={applyEventFilters}
-          onClose={() => setShowEventFilterModal(false)}
+        {showEventFilterModal && (
+          <EventsFilterModal
+            divisionOptions={divisionOptions}
+            typeOptions={EVENT_TYPE_OPTIONS}
+            categoryOptions={categoryOptions}
+            // The tab already picked a track; only the All tab offers the choice.
+            trackOptions={activeTrackId === null ? trackOptions : undefined}
+            buildingOptions={buildingOptions}
+            shiftOptions={shiftOptions}
+            filters={eventFilters}
+            onApply={applyEventFilters}
+            onClose={() => setShowEventFilterModal(false)}
+          />
+        )}
+        {showEventSortModal && (
+          <SortModal
+            title="Sort events"
+            fields={EVENT_SORT_OPTIONS}
+            rules={eventSort}
+            defaults={DEFAULT_EVENT_SORT}
+            tiebreakLabel={EVENT_SORT_TIEBREAK}
+            onApply={(next) => applyEventSort(next as SortRule<EventSortField>[])}
+            onClose={() => setShowEventSortModal(false)}
+          />
+        )}
+        {beltModals}
+        <SelectionBar
+          visible={selectMode}
+          count={selectedIds.size}
+          editLabel="Assign to…"
+          onEdit={() => setShowAssignTo(true)}
+          onCancel={toggleSelectMode}
         />
-      )}
-      {showEventSortModal && (
-        <SortModal
-          title="Sort events"
-          fields={EVENT_SORT_OPTIONS}
-          rules={eventSort}
-          defaults={DEFAULT_EVENT_SORT}
-          tiebreakLabel={EVENT_SORT_TIEBREAK}
-          onApply={(next) => applyEventSort(next as SortRule<EventSortField>[])}
-          onClose={() => setShowEventSortModal(false)}
-        />
-      )}
-      {beltModals}
-    </div>
+        {showAssignTo && (
+          <AssignToModal
+            count={selectedIds.size}
+            tracks={tracks}
+            initialTrackId={activeTrackId}
+            events={events ?? []}
+            onAssign={handleAssignSelection}
+            onClose={() => setShowAssignTo(false)}
+          />
+        )}
+      </div>
+    </BoardSelectionContext.Provider>
   );
 }

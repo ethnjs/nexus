@@ -33,6 +33,7 @@ import { formatAnswer } from "@/components/tournament/members/memberColumns";
 import { OnboardingProgress } from "@/components/tournament/members/OnboardingProgress";
 import { AgeFlagsBadges } from "@/components/tournament/members/sections/AgeFlagsBadges";
 import { Badge } from "@/components/ui/Badge";
+import { Checkbox } from "@/components/ui/Checkbox";
 import type {
   MembershipAvailability,
   MembershipEventPreference,
@@ -824,9 +825,12 @@ export const MemberCard = memo(function MemberCard({
   display,
   allShifts,
   onOpen,
+  selecting = false,
 }: {
   member: MembershipFull;
   selected: boolean;
+  /** Select mode: a click ticks the card (through `onOpen`) and it can't be dragged. */
+  selecting?: boolean;
   display: MemberDisplayState;
   /** Every shift the tournament offers — sets each availability bar's window,
    *  so hours the member was offered but declined read as unavailable rather
@@ -838,6 +842,7 @@ export const MemberCard = memo(function MemberCard({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `member:${member.id}`,
     data: { kind: "member", membershipId: member.id },
+    disabled: selecting,
   });
   const [pressed, setPressed] = useState(false);
 
@@ -875,11 +880,18 @@ export const MemberCard = memo(function MemberCard({
         // draws a hard edge around one card in a scrolling column, which
         // reads as an error state rather than as "this is the one you opened".
         background: selected ? "var(--color-accent-subtle)" : "var(--color-surface)",
-        cursor: pressed || isDragging ? "grabbing" : "grab",
+        position: "relative",
+        cursor: selecting ? "pointer" : pressed || isDragging ? "grabbing" : "grab",
         opacity: isDragging ? 0.4 : 1,
         outline: "none",
       }}
     >
+      {selecting && (
+        // Drawn only: the card's own click is what toggles it.
+        <span style={{ position: "absolute", top: "10px", right: "10px", pointerEvents: "none" }}>
+          <Checkbox checked={selected} onChange={() => {}} />
+        </span>
+      )}
       <MemberCardBody member={member} display={display} allShifts={allShifts} />
     </div>
   );

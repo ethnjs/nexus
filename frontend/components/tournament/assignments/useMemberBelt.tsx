@@ -79,6 +79,8 @@ interface MemberBeltOptions {
   /** Changes whenever assignments are written, so the server-side filters re-run. */
   refetchKey: unknown;
   roleCatalog: Role[];
+  /** Given, the header grows a Select toggle that turns select mode on and off. */
+  selectMode?: { active: boolean; onToggle: () => void };
 }
 
 /**
@@ -97,6 +99,7 @@ export function useMemberBelt({
   members,
   refetchKey,
   roleCatalog,
+  selectMode,
 }: MemberBeltOptions) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS));
@@ -301,9 +304,20 @@ export function useMemberBelt({
           onOpen={openSortModal}
           onReset={() => applySort(DEFAULT_BELT_SORT)}
         />
+        {selectMode && (
+          <Button
+            type="button"
+            variant={selectMode.active ? "primary" : "secondary"}
+            size="sm"
+            onClick={selectMode.onToggle}
+          >
+            Select
+          </Button>
+        )}
       </>
     ),
     [
+      selectMode,
       displayActive,
       filterActive,
       sortActive,
@@ -322,10 +336,14 @@ export function useMemberBelt({
       focusedId,
       allShifts,
       onOpen,
+      selectedIds,
     }: {
       focusedId: number | null;
       allShifts: TournamentShift[];
+      /** In select mode, toggles the card's tick instead. */
       onOpen: (membershipId: number) => void;
+      /** Given, the belt is in select mode and these cards are ticked. */
+      selectedIds?: ReadonlySet<number>;
     }): ReactNode => (
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
         {/* secondary = white. primary is the same light grey as the page
@@ -369,7 +387,8 @@ export function useMemberBelt({
             <MemberCard
               key={member.id}
               member={member}
-              selected={focusedId === member.id}
+              selected={selectedIds ? selectedIds.has(member.id) : focusedId === member.id}
+              selecting={!!selectedIds}
               display={display}
               allShifts={allShifts}
               onOpen={onOpen}

@@ -77,6 +77,7 @@ export function ContextMenu({
       ref={panelRef}
       role="menu"
       onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
