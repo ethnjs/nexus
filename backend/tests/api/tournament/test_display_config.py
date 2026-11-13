@@ -478,6 +478,22 @@ def test_put_assignment_card_rejects_unknown_field(client, td_user, td_tournamen
     assert response.status_code == 422
 
 
+def test_put_assignment_card_accepts_user_fields(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    hidden = [
+        "card_field:affiliation",
+        "card_field:year_level",
+        "card_field:competition_experience",
+        "card_field:volunteer_experience",
+    ]
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card:all": {"hidden": hidden}},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["assignment_card:all"]["hidden"] == hidden
+
+
 def test_put_assignment_card_rejects_track_slice_of_scalar_field(client, td_user, td_tournament):
     """`age` is one value, not a per-track list, so it has no track slices."""
     login(client, "td@test.com", "tdpass")

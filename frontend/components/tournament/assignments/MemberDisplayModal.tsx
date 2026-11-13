@@ -39,11 +39,10 @@ const MEMBER_FIELD_IDS = [
   "availability",
   "lunch",
   "custom_fields",
-  "competition_school",
-  "competition_event",
-  "volunteer_tournament",
-  "volunteer_event",
-  "volunteer_role",
+  "affiliation",
+  "year_level",
+  "competition_experience",
+  "volunteer_experience",
 ] as const;
 
 export type MemberFieldId = (typeof MEMBER_FIELD_IDS)[number];
@@ -80,11 +79,10 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
   // a question you ask about one person, not about the row you are staffing.
   hiddenFields: [
     "availability",
-    "competition_school",
-    "competition_event",
-    "volunteer_tournament",
-    "volunteer_event",
-    "volunteer_role",
+    "affiliation",
+    "year_level",
+    "competition_experience",
+    "volunteer_experience",
     // Off until asked for, same reasoning: background, not staffing.
     "onboarding",
     "dietary_restriction",
@@ -138,18 +136,31 @@ export function memberDisplayFromHidden(hidden: string[] | null | undefined): Me
   // (everything shown), and it must not spring back to the default.
   if (!Array.isArray(hidden)) return DEFAULT_MEMBER_DISPLAY;
   const state: MemberDisplayState = { hiddenFields: [], hiddenTracks: [], hiddenCustom: [] };
+  const known = new Set<string>(MEMBER_FIELD_IDS);
+  const fields = new Set<string>();
   for (const item of hidden) {
     if (typeof item !== "string") continue;
     if (item.startsWith(CARD_FIELD_PREFIX)) {
-      state.hiddenFields.push(item.slice(CARD_FIELD_PREFIX.length) as MemberFieldId);
+      fields.add(item.slice(CARD_FIELD_PREFIX.length));
     } else if (item.startsWith(CARD_TRACK_PREFIX)) {
       state.hiddenTracks.push(item.slice(CARD_TRACK_PREFIX.length));
     } else if (item.startsWith(CARD_CUSTOM_PREFIX)) {
       state.hiddenCustom.push(item.slice(CARD_CUSTOM_PREFIX.length));
     }
   }
+  // Views saved when each experience table had a check per column: the table
+  // stays hidden only if every one of its columns was.
+  for (const [table, columns] of LEGACY_EXPERIENCE_COLUMNS) {
+    if (columns.every((column) => fields.has(column))) fields.add(table);
+  }
+  state.hiddenFields = [...fields].filter((id): id is MemberFieldId => known.has(id));
   return state;
 }
+
+const LEGACY_EXPERIENCE_COLUMNS: [MemberFieldId, string[]][] = [
+  ["competition_experience", ["competition_school", "competition_event"]],
+  ["volunteer_experience", ["volunteer_tournament", "volunteer_event", "volunteer_role"]],
+];
 
 /** Display state as the stored wire shape — the inverse of the above. */
 export function memberDisplayToHidden(display: MemberDisplayState): string[] {
@@ -417,22 +428,16 @@ export function MemberDisplayModal({
           </div>
         </FieldGroup>
 
+        <FieldGroup label="User">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
+            {check("affiliation", "Affiliation")}
+            {check("year_level", "Year level")}
+            {check("competition_experience", "Competition experience")}
+            {check("volunteer_experience", "Volunteer experience")}
+          </div>
+        </FieldGroup>
+
         {TRACK_SCOPED_FIELDS.map(({ id, label }) => trackGroup(id, label))}
-
-        <FieldGroup label="Competition experience">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
-            {check("competition_school", "School")}
-            {check("competition_event", "Event")}
-          </div>
-        </FieldGroup>
-
-        <FieldGroup label="Volunteer experience">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
-            {check("volunteer_tournament", "Year & tournament")}
-            {check("volunteer_event", "Event")}
-            {check("volunteer_role", "Role")}
-          </div>
-        </FieldGroup>
 
         {chipGroup(
           "custom_fields",

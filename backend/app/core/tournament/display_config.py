@@ -427,11 +427,10 @@ ASSIGNMENT_CARD_FIELDS = frozenset(
         "event_preferences",
         "availability",
         "lunch",
-        "competition_school",
-        "competition_event",
-        "volunteer_tournament",
-        "volunteer_event",
-        "volunteer_role",
+        "affiliation",
+        "year_level",
+        "competition_experience",
+        "volunteer_experience",
         "custom_fields",
     }
 )
