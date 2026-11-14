@@ -84,15 +84,16 @@ export function derivedFloor(rooms: readonly TournamentRoom[]): string | null {
 /** What one track asks for in people: its role needs and the any-role age rules. */
 export type TrackStaffing = Pick<EventTrackDetail, "needs" | "over_18_needed" | "over_21_needed">;
 
+/** `flag` is the assigned member's field that counts toward the rule. */
 export const AGE_RULES = [
-  { key: "over_18_needed", label: "18+" },
-  { key: "over_21_needed", label: "21+" },
+  { key: "over_18_needed", label: "18+", flag: "is_over_18" },
+  { key: "over_21_needed", label: "21+", flag: "is_over_21" },
 ] as const;
 
 /** One thing a track's staffing can ask for: a role, or an age in any role. */
 export type StaffingOption =
   | { kind: "role"; id: number; label: string }
-  | { kind: "age"; key: (typeof AGE_RULES)[number]["key"]; label: string };
+  | ({ kind: "age" } & (typeof AGE_RULES)[number]);
 
 export const staffingKey = (o: StaffingOption) => (o.kind === "role" ? `role:${o.id}` : o.key);
 

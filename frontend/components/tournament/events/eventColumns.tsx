@@ -21,7 +21,7 @@ import {
   type TournamentEvent,
   type TournamentTrack,
 } from "@/lib/api";
-import { staffedCount } from "@/lib/assignments/staffing";
+import { ageStaffedCount, staffedCount } from "@/lib/assignments/staffing";
 import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import type { EventSortField } from "@/lib/eventSort";
 import {
@@ -300,12 +300,11 @@ function renderTrackCell(
           count: need.count,
           filled: staffedCount(rows, need.role_id, track.id) as number | null,
         })),
-        // Age flags aren't on assignment rows yet, so an age rule shows its count alone.
         ...AGE_RULES.filter((rule) => staffing[rule.key] != null).map((rule) => ({
           key: rule.key,
           label: rule.label,
           count: staffing[rule.key] ?? 0,
-          filled: null,
+          filled: ageStaffedCount(rows, rule.flag, track.id) as number | null,
         })),
       ];
       const display =

@@ -16,7 +16,7 @@ import type {
   TournamentBuilding,
   TournamentTrack,
 } from "@/lib/api";
-import { staffedCount } from "@/lib/assignments/staffing";
+import { staffingFilled } from "@/lib/assignments/staffing";
 import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
 import {
   chosenStaffing,
@@ -362,11 +362,9 @@ function StaffingTable({
           </div>
           {chosen.map((option) => {
             const count = countOf(option);
-            // Age flags aren't on assignment rows yet, so an age rule has no Staffed count.
-            const filled =
-              assignments && option.kind === "role"
-                ? staffedCount(assignments, option.id, detail.track_id)
-                : null;
+            const filled = assignments
+              ? staffingFilled(assignments, option, detail.track_id)
+              : null;
             const key = staffingKey(option);
             return (
               <div key={key} className={table.row}>

@@ -1,4 +1,5 @@
 import type { Assignment, TournamentEvent } from "@/lib/api";
+import type { StaffingOption } from "@/lib/eventTrackDetails";
 
 /**
  * How many distinct members hold one role on one track — never a row count.
@@ -40,4 +41,30 @@ export function unfilledCount(
     }
   }
   return unfilled;
+}
+
+/** How many distinct members on one track are known to be 18+ / 21+. A
+ *  member whose flag is withheld or not collected doesn't count. */
+export function ageStaffedCount(
+  rows: readonly Assignment[],
+  flag: "is_over_18" | "is_over_21",
+  trackId: number,
+): number {
+  const members = new Set<number | null>();
+  for (const row of rows) {
+    if (row.track.id === trackId && row.member[flag] === true)
+      members.add(row.member.membership_id);
+  }
+  return members.size;
+}
+
+/** Distinct members on one track counting toward one staffing option. */
+export function staffingFilled(
+  rows: readonly Assignment[],
+  option: StaffingOption,
+  trackId: number,
+): number {
+  return option.kind === "role"
+    ? staffedCount(rows, option.id, trackId)
+    : ageStaffedCount(rows, option.flag, trackId);
 }

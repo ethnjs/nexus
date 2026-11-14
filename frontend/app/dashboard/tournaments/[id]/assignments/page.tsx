@@ -69,6 +69,7 @@ import {
   ASSIGNMENTS_BOARD_SURFACE,
   ASSIGNMENTS_EVENTS_SURFACE,
   type Assignment,
+  type AssignmentMemberRef,
   assignmentsApi,
   buildingsApi,
   type CanonicalEvent,
@@ -77,7 +78,6 @@ import {
   displayConfigApi,
   type MembershipFull,
   membersApi,
-  type PersonNameRef,
   type Role,
   rolesApi,
   type TournamentBuilding,
@@ -979,12 +979,17 @@ export default function AssignmentsPage() {
     setLaneRoles(laneKey, eventId, () => [role]);
   }
 
-  function personOf(member: MembershipFull & { user: NonNullable<MembershipFull["user"]> }) {
+  function personOf(
+    member: MembershipFull & { user: NonNullable<MembershipFull["user"]> },
+  ): AssignmentMemberRef {
     return {
       user_id: member.user.id,
       membership_id: member.id,
       first_name: member.user.first_name,
       last_name: member.user.last_name,
+      // Already gated the same way server-side; absent means withheld.
+      is_over_18: member.is_over_18 ?? null,
+      is_over_21: member.is_over_21 ?? null,
     };
   }
 
@@ -1041,7 +1046,7 @@ export default function AssignmentsPage() {
    * since each call builds on `rows`. Returns whether it wrote.
    */
   function placeMembers(
-    people: PersonNameRef[],
+    people: AssignmentMemberRef[],
     event: TournamentEvent,
     trackId: number | undefined,
     shiftIds: (number | null)[],

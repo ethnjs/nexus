@@ -2109,13 +2109,21 @@ export interface TournamentEventMember {
   shifts: TournamentShiftBase[];
 }
 
+/** The assigned member, plus what an event's 18+ / 21+ staffing needs. Each
+ *  flag is null unless the tournament collects it and the member consented —
+ *  null is unknown, never "under". */
+export interface AssignmentMemberRef extends PersonNameRef {
+  is_over_18: boolean | null;
+  is_over_21: boolean | null;
+}
+
 /** One member staffing one event in one role, optionally within one shift.
  *  The same shape from the assignments collection, from a write, and nested
  *  on a membership under `fields=assignments`. */
 export interface Assignment {
   id: number;
   event: TournamentEventMember;
-  member: PersonNameRef;
+  member: AssignmentMemberRef;
   /** PersonRole, not the full role: permissions and rank are the tournament's
    *  authorization model and have no business on a staffing chip. */
   role: PersonRole;
