@@ -19,7 +19,7 @@ import type {
 import type { BoardHandlers } from "@/lib/assignments/board";
 import type { Flag } from "@/lib/assignments/flags";
 import type { Lane } from "@/lib/assignments/lanes";
-import { staffedCount } from "@/lib/assignments/staffing";
+import { staffingLines } from "@/lib/assignments/staffing";
 import { trackLocationLabel } from "@/lib/eventDisplay";
 import { formatTime } from "@/lib/timeFormat";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
@@ -104,7 +104,7 @@ export function TrackSection({
   const span = hasShifts
     ? `${formatTime(shifts[0].start)} – ${formatTime(shifts[shifts.length - 1].end)}`
     : null;
-  const needs = detail?.needs ?? [];
+  const lines = staffingLines(detail, rowAssignments);
   const addChip = (trigger: "row" | "icon" | "button") => (
     <AddMemberChip
       candidates={() => handlers.membersToAdd(event.id, track.id)}
@@ -175,14 +175,10 @@ export function TrackSection({
       {/* Across, not down: a track wants a handful of roles at most, and a
           row of them reads as one progress line for the track rather than as
           a list of separate facts. */}
-      {needs.length > 0 && (
+      {lines.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 14px" }}>
-          {needs.map((need) => (
-            <StaffingNeedLine
-              key={need.role_id}
-              need={need}
-              filled={staffedCount(rowAssignments, need.role_id, track.id)}
-            />
+          {lines.map(({ key, ...line }) => (
+            <StaffingNeedLine key={key} {...line} />
           ))}
         </div>
       )}

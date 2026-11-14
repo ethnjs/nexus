@@ -40,7 +40,6 @@ import {
 } from "@/components/tournament/events/EventsFilterModal";
 import { TrackSummary } from "@/components/tournament/TrackSummary";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
@@ -388,27 +387,26 @@ export default function BuildingsPage() {
               Events — {listed.length}/{dayEvents.length}
             </span>
             {listed.length === 0 ? (
-              <Card radius="lg" style={{ padding: "8px" }}>
-                <EmptyState
-                  icon={<IconEvents size={24} />}
-                  title={query || filterActive ? "No events match" : "No events on this day"}
-                  description={query || filterActive ? "Try a wider filter." : undefined}
-                  action={
-                    query || filterActive ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setQuery("");
-                          applyFilters(eventsFilterFromStored(null));
-                        }}
-                      >
-                        Clear filters
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              </Card>
+              <EmptyState
+                card
+                icon={<IconEvents size={24} />}
+                title={query || filterActive ? "No events match" : "No events on this day"}
+                description={query || filterActive ? "Try a wider filter." : undefined}
+                action={
+                  query || filterActive ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setQuery("");
+                        applyFilters(eventsFilterFromStored(null));
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : (
               listed.map((event) => (
                 <EventListCard
@@ -671,13 +669,12 @@ export default function BuildingsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Buildings" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage events permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage events permission to view this page."
+        />
       </div>
     );
   }
@@ -686,13 +683,12 @@ export default function BuildingsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Buildings" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconBuilding size={28} />}
-            title="No competition days"
-            description="Add a competition day in settings before adding buildings."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconBuilding size={28} />}
+          title="No competition days"
+          description="Add a competition day in settings before adding buildings."
+        />
       </div>
     );
   }
@@ -761,47 +757,46 @@ export default function BuildingsPage() {
             )}
           </div>
 
-          {onTab.length === 0 && (
-            <Card radius="lg" style={{ padding: "8px" }}>
-              {hasBuildings ? (
-                <EmptyState
-                  icon={<IconBuilding size={28} />}
-                  title="No buildings on this day"
-                  description="Add one, or turn this day on for a building from another day."
-                />
-              ) : (
-                <EmptyState
-                  icon={<IconBuilding size={28} />}
-                  title="No buildings yet"
-                  description="Import a list of buildings and rooms, or add them one at a time."
-                  action={
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        onClick={() => setImporting(true)}
-                        disabled={isArchived}
-                        title={archivedReason}
-                      >
-                        <IconUpload size={12} /> Import
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setAdding(true)}
-                        disabled={isArchived}
-                        title={archivedReason}
-                      >
-                        <IconPlus size={12} /> Add building
-                      </Button>
-                    </div>
-                  }
-                />
-              )}
-            </Card>
-          )}
+          {onTab.length === 0 &&
+            (hasBuildings ? (
+              <EmptyState
+                card
+                icon={<IconBuilding size={28} />}
+                title="No buildings on this day"
+                description="Add one, or turn this day on for a building from another day."
+              />
+            ) : (
+              <EmptyState
+                card
+                icon={<IconBuilding size={28} />}
+                title="No buildings yet"
+                description="Import a list of buildings and rooms, or add them one at a time."
+                action={
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setImporting(true)}
+                      disabled={isArchived}
+                      title={archivedReason}
+                    >
+                      <IconUpload size={12} /> Import
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setAdding(true)}
+                      disabled={isArchived}
+                      title={archivedReason}
+                    >
+                      <IconPlus size={12} /> Add building
+                    </Button>
+                  </div>
+                }
+              />
+            ))}
 
           {onTab.length > 0 && (
             <MasonryGrid minColumnWidth={460} gap={16}>

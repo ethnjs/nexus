@@ -1,37 +1,39 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import styles from "@/components/settings/Settings.module.css";
+import { staffingColor } from "@/components/tournament/assignments/StaffingNeedLine";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ChipInput } from "@/components/ui/ChipInput";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { EditableCombobox, EditableText } from "@/components/ui/EditableText";
-import { IconLocation, IconPlus, IconTrash } from "@/components/ui/Icons";
-import { Input } from "@/components/ui/Input";
+import { EditableCombobox, EditableSelect, EditableText } from "@/components/ui/EditableText";
+import { IconLocation, IconMinus, IconPlus, IconX } from "@/components/ui/Icons";
+import { ProgressRing } from "@/components/ui/ProgressRing";
 import table from "@/components/ui/Table.module.css";
 import type {
-  EventStaffingNeed,
+  Assignment,
   EventTrackDetail,
   Role,
   TournamentBuilding,
   TournamentTrack,
 } from "@/lib/api";
+import { staffingFilled } from "@/lib/assignments/staffing";
 import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
-import { roomFloor } from "@/lib/eventTrackDetails";
+import {
+  chosenStaffing,
+  roomFloor,
+  type StaffingOption,
+  staffingCount,
+  staffingGroup,
+  staffingKey,
+  staffingOptions,
+  withStaffingCount,
+} from "@/lib/eventTrackDetails";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
- * Where an event happens and how many of each role it wants, per track.
- *
- * One block per track the event runs on, because that is how both are stored:
- * an event on two days holds a different building and a different staffing
- * need on each, and a single set of fields would have to pick one day and
- * quietly misreport the other.
- *
- * Editing is local — the caller folds these into its own draft and save bar,
- * so a location change is saved by the same button as a name change rather
- * than committing under the TD's hands.
+ * Where an event happens and who it needs, per track — that is how both are
+ * stored, since an event on two days has a different room and staffing on
+ * each.
  */
 /** A track detail as the panel edits it: a building (picked, or a name not
  *  yet created) and room names, which become room ids on save — see
@@ -42,206 +44,127 @@ export type DraftTrackDetail = Omit<EventTrackDetail, "room_ids"> & {
   room_names: string[];
 };
 
-export function EventTrackDetails({
-  details,
-  hiddenTrackIds,
-  tracks,
-  buildings,
-  roles,
-  locked,
-  simple,
-  onChange,
-}: {
+type TrackEntry = { track: TournamentTrack; detail: DraftTrackDetail };
+
+interface SectionProps {
   details: DraftTrackDetail[];
-  /** Tracks this viewer hid from the section (the event_panel display
-   *  config). Their details are still in `details` and still saved — only
-   *  the block is dropped from view. */
+  /** Tracks this viewer hid from the panel (the event_panel display config).
+   *  Their details are still in `details` and still saved — only the rows
+   *  are dropped from view. */
   hiddenTrackIds: Set<number>;
-  /** The full track catalog — used for names and to order the blocks. */
+  /** The full track catalog — used for names and to order the rows. */
   tracks: TournamentTrack[];
-  buildings: TournamentBuilding[];
-  roles: Role[];
   locked: boolean;
-  /** One track: its name is the tournament's, so a heading per block would
-   *  be repeating something the TD already knows. */
+  /** One track: its name is the tournament's, so a Track column would be
+   *  repeating something the TD already knows. */
   simple: boolean;
   onChange: (details: DraftTrackDetail[]) => void;
-}) {
-  function patchTrack(trackId: number, updates: Partial<DraftTrackDetail>) {
-    onChange(details.map((d) => (d.track_id === trackId ? { ...d, ...updates } : d)));
-  }
+}
 
-  // Catalog order, not the order the links came back in — so the blocks read
-  // Day 1, Day 2 rather than by whenever each link happened to be created.
-  const ordered = tracks
+/** Catalog order, not the order the links came back in — so rows read Day 1,
+ *  Day 2 rather than by whenever each link happened to be created. */
+function visibleEntries({ details, hiddenTrackIds, tracks }: SectionProps): TrackEntry[] {
+  return tracks
+    .filter((track) => !hiddenTrackIds.has(track.id))
     .map((track) => ({ track, detail: details.find((d) => d.track_id === track.id) }))
-    .filter(
-      (entry): entry is { track: TournamentTrack; detail: DraftTrackDetail } => !!entry.detail,
-    );
-  const visible = ordered.filter(({ track }) => !hiddenTrackIds.has(track.id));
+    .filter((entry): entry is TrackEntry => !!entry.detail);
+}
 
-  if (ordered.length === 0) {
-    return (
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "13px",
-          color: "var(--color-text-tertiary)",
-          margin: "12px 0",
-        }}
-      >
-        Add a track above to say where this event happens and who it needs.
-      </p>
-    );
+function patcher({ details, onChange }: SectionProps) {
+  return (trackId: number, updates: Partial<DraftTrackDetail>) =>
+    onChange(details.map((d) => (d.track_id === trackId ? { ...d, ...updates } : d)));
+}
+
+function SectionNote({ children }: { children: ReactNode }) {
+  return (
+    <p
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "13px",
+        color: "var(--color-text-tertiary)",
+        margin: "12px 0",
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Where the event happens, per competition day it runs on. Editing is local —
+ * the caller folds it into its own draft and save bar.
+ */
+export function EventLocations(props: SectionProps & { buildings: TournamentBuilding[] }) {
+  if (props.details.length === 0) {
+    return <SectionNote>Add a track above to say where this event happens.</SectionNote>;
   }
-
   // Only competition days hold a place: buildings are tagged with those alone.
-  const placeable = visible.filter(({ track }) => track.is_primary);
-
+  const placeable = visibleEntries(props).filter(({ track }) => track.is_primary);
+  if (placeable.length === 0) {
+    return <SectionNote>Only competition days have a location.</SectionNote>;
+  }
   return (
     <div style={{ padding: "4px 0 8px" }}>
-      {placeable.length > 0 && (
-        <LocationTable
-          rows={placeable}
-          buildings={buildings}
-          locked={locked}
-          showTrack={!simple}
-          onPatch={patchTrack}
-        />
-      )}
-      {visible.map(({ track, detail }, index) => {
-        const needs = detail.needs ?? [];
-        const usedRoleIds = new Set(needs.map((n) => n.role_id));
-        const spare = roles.filter((r) => !usedRoleIds.has(r.id));
-
-        function setNeeds(next: EventStaffingNeed[]) {
-          patchTrack(track.id, { needs: next });
-        }
-
-        // The track's campus, as context for the building picked below.
-        // A cosmetic (non-competition-day) track has no place to show.
-        const venue = track.is_primary ? placeOfTrack(track) : null;
-
-        return (
-          <div
-            key={track.id}
-            style={{
-              padding: "14px 0",
-              // A rule between tracks, not between fields: the track is the
-              // unit a TD reads, so that is where the eye needs the break.
-              borderTop: index === 0 ? "none" : "1px solid var(--color-border)",
-            }}
-          >
-            {!simple && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                  marginBottom: "4px",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.07em",
-                    color: "var(--color-text-tertiary)",
-                  }}
-                >
-                  {track.name}
-                </span>
-                {venue && (
-                  <span
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "11px",
-                      color: "var(--color-text-tertiary)",
-                    }}
-                  >
-                    <IconLocation size={12} />
-                    {venue}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <DetailRow label="Staffing">
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                  alignItems: "flex-end",
-                }}
-              >
-                {needs.map((need, i) => (
-                  <div
-                    key={need.role_id}
-                    style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%" }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Dropdown
-                        value={String(need.role_id)}
-                        onChange={(v) =>
-                          setNeeds(
-                            needs.map((n, j) => (j === i ? { ...n, role_id: Number(v) } : n)),
-                          )
-                        }
-                        // The role it already holds, plus the unused ones —
-                        // the same role twice on one track is a 422.
-                        options={roles
-                          .filter((r) => r.id === need.role_id || !usedRoleIds.has(r.id))
-                          .map((r) => ({ value: String(r.id), label: r.label }))}
-                        locked={locked}
-                        size="sm"
-                        fullWidth
-                      />
-                    </div>
-                    <CountInput
-                      value={need.count}
-                      locked={locked}
-                      onCommit={(count) =>
-                        setNeeds(needs.map((n, j) => (j === i ? { ...n, count } : n)))
-                      }
-                    />
-                    {!locked && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        iconOnly
-                        aria-label="Remove"
-                        onClick={() => setNeeds(needs.filter((_, j) => j !== i))}
-                      >
-                        <IconTrash style={{ color: "var(--color-danger)" }} />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                {!locked && spare.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="xs"
-                    style={{ whiteSpace: "nowrap" }}
-                    onClick={() => setNeeds([...needs, { role_id: spare[0].id, count: 1 }])}
-                  >
-                    <IconPlus size={12} /> Add role
-                  </Button>
-                )}
-              </div>
-            </DetailRow>
-          </div>
-        );
-      })}
+      <LocationTable
+        rows={placeable}
+        buildings={props.buildings}
+        locked={props.locked}
+        showTrack={!props.simple}
+        onPatch={patcher(props)}
+      />
     </div>
+  );
+}
+
+/**
+ * How many of each role, and how many 18+ / 21+ in any role, the event wants
+ * on each track it runs on, beside how many it has. Editing is local, like
+ * EventLocations.
+ */
+export function EventStaffing(
+  props: SectionProps & {
+    roles: Role[];
+    /** The event's assignments, for the Staffed column. Null while loading
+     *  or for an event not yet created. */
+    assignments: Assignment[] | null;
+  },
+) {
+  if (props.details.length === 0) {
+    return <SectionNote>Add a track above to say who this event needs.</SectionNote>;
+  }
+  const patch = patcher(props);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "8px 0 16px" }}>
+      {visibleEntries(props).map(({ track, detail }) => (
+        <div key={track.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          {!props.simple && <TrackHeading>{track.name}</TrackHeading>}
+          <StaffingTable
+            detail={detail}
+            roles={props.roles}
+            assignments={props.assignments}
+            locked={props.locked}
+            onPatch={(updates) => patch(track.id, updates)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrackHeading({ children }: { children: ReactNode }) {
+  return (
+    <span
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "11px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.07em",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -271,7 +194,7 @@ function LocationTable({
     <div
       className={table.table}
       style={{
-        gridTemplateColumns: `${showTrack ? "minmax(0, 1fr) " : ""}minmax(0, 1.2fr) 56px minmax(0, 2fr)`,
+        gridTemplateColumns: `${showTrack ? "minmax(0, 1fr) " : ""}minmax(0, 1.2fr) 56px minmax(0, 1fr)`,
         marginBottom: "4px",
       }}
     >
@@ -289,8 +212,30 @@ function LocationTable({
         return (
           <div key={track.id} className={table.row}>
             {showTrack && (
-              <span style={{ ...CELL_TEXT, color: "var(--color-text-secondary)" }}>
-                {track.name}
+              <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <span style={{ ...CELL_TEXT, color: "var(--color-text-secondary)" }}>
+                  {track.name}
+                </span>
+                {/* The track's campus, as context for the building beside it. */}
+                {placeOfTrack(track, { short: true }) && (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "11px",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
+                    <IconLocation size={11} style={{ flexShrink: 0 }} />
+                    <span
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {placeOfTrack(track, { short: true })}
+                    </span>
+                  </span>
+                )}
               </span>
             )}
             <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
@@ -359,66 +304,219 @@ function LocationTable({
 }
 
 /**
- * A staffing count. Holds its own text so the field can be empty mid-edit:
- * clamping on every keystroke snapped a cleared "1" straight back to "1", so
- * there was no way to type a "2" over it. Only a valid count (1 or more)
- * reaches the draft; blurring an empty field restores the last one.
+ * One track's staffing: a row per need, a role's or an any-role age rule's.
+ * Role, Needed and removal are edited in place; Add staffing starts a blank
+ * row whose role is picked first.
  */
-function CountInput({
-  value,
+function StaffingTable({
+  detail,
+  roles,
+  assignments,
   locked,
-  onCommit,
+  onPatch,
 }: {
-  value: number;
+  detail: DraftTrackDetail;
+  roles: Role[];
+  assignments: Assignment[] | null;
   locked: boolean;
-  onCommit: (count: number) => void;
+  onPatch: (updates: Partial<DraftTrackDetail>) => void;
 }) {
-  const [text, setText] = useState(String(value));
-  // Adopt a new value from outside (Cancel, a refetch) during render rather
-  // than in an effect — the pattern React recommends for derived state.
-  const [seen, setSeen] = useState(value);
-  if (value !== seen) {
-    setSeen(value);
-    setText(String(value));
+  // The row just added, so its Needed cell opens ready to type.
+  const [justAdded, setJustAdded] = useState<string | null>(null);
+  // A blank row waiting for its role. Nothing is in the draft until one is picked.
+  const [adding, setAdding] = useState(false);
+  const options = staffingOptions(roles);
+  const chosen = chosenStaffing(detail, roles);
+  const isChosen = (o: StaffingOption) => chosen.some((c) => staffingKey(c) === staffingKey(o));
+  const countOf = (option: StaffingOption) => staffingCount(detail, option);
+
+  function setCount(option: StaffingOption, count: number | null) {
+    onPatch(withStaffingCount(detail, option, count));
   }
 
-  return (
-    <Input
-      size="sm"
-      charset="numeric"
-      locked={locked}
-      value={text}
-      onChange={(e) => {
-        setText(e.target.value);
-        const next = Number(e.target.value);
-        if (next >= 1) onCommit(next);
-      }}
-      onBlur={() => {
-        if (!(Number(text) >= 1)) setText(String(value));
-      }}
-      style={{ width: "56px" }}
-    />
-  );
-}
+  function replace(option: StaffingOption, next: StaffingOption) {
+    if (staffingKey(next) === staffingKey(option)) return;
+    onPatch(withStaffingCount(withStaffingCount(detail, option, null), next, countOf(option)));
+  }
 
-/**
- * The Details section's own row, minus its rule. Built from the same classes
- * as SettingsRow so the labels match it in weight and the controls start on
- * the same column — only the border differs, since rules here go between
- * tracks rather than between fields.
- */
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  /** What a role cell can pick: anything not on this track yet, plus its own. */
+  function choicesFor(ownKey: string | null) {
+    return options
+      .filter((o) => !isChosen(o) || staffingKey(o) === ownKey)
+      .map((o) => ({ label: o.label, group: staffingGroup(o) }));
+  }
+  const canAdd = options.some((o) => !isChosen(o));
+
   return (
-    <div className={`${styles.row} ${styles.rowLast}`} style={{ padding: "8px 0" }}>
-      <div className={styles.rowLabel}>
-        <div className={styles.rowLabelText}>{label}</div>
-      </div>
-      <div className={styles.rowControl}>{children}</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {(chosen.length > 0 || adding) && (
+        <div
+          className={table.table}
+          style={{ gridTemplateColumns: "minmax(0, 1fr) 72px 104px 24px" }}
+        >
+          <div className={table.header} style={{ position: "static" }}>
+            <span>Role</span>
+            <span>Staffed</span>
+            <span>Needed</span>
+            <span />
+          </div>
+          {chosen.map((option) => {
+            const count = countOf(option);
+            const filled = assignments
+              ? staffingFilled(assignments, option, detail.track_id)
+              : null;
+            const key = staffingKey(option);
+            return (
+              <div key={key} className={table.row}>
+                <span style={{ display: "flex", alignItems: "baseline", gap: "6px", minWidth: 0 }}>
+                  <EditableSelect
+                    value={option.label}
+                    choices={choicesFor(key)}
+                    onSave={(label) => {
+                      const next = options.find((o) => o.label === label);
+                      if (next) replace(option, next);
+                    }}
+                    textStyle={CELL_TEXT}
+                    locked={locked}
+                    title="Change the role"
+                  />
+                  {option.kind === "age" && (
+                    <span
+                      style={{ ...CELL_TEXT, fontWeight: 400, color: "var(--color-text-tertiary)" }}
+                    >
+                      any role
+                    </span>
+                  )}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {filled === null ? (
+                    <span style={{ ...DATA_TEXT, color: "var(--color-text-tertiary)" }}>—</span>
+                  ) : (
+                    <>
+                      <ProgressRing
+                        completed={filled}
+                        total={count}
+                        size={12}
+                        strokeWidth={16}
+                        color={staffingColor(filled, count)}
+                      />
+                      <span style={DATA_TEXT}>{filled}</span>
+                    </>
+                  )}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <EditableText
+                    value={String(count)}
+                    startEditing={justAdded === key}
+                    onSave={(text) => {
+                      const next = Number(text.trim());
+                      if (!Number.isInteger(next) || next < 1) {
+                        throw new Error("Enter a whole number, 1 or more");
+                      }
+                      setJustAdded(null);
+                      setCount(option, next);
+                    }}
+                    onCancel={() => setJustAdded(null)}
+                    textStyle={DATA_TEXT}
+                    locked={locked}
+                    title={`${option.label} needed`}
+                    errorToast
+                  />
+                  {!locked && (
+                    <span className={table.revealOnHover} style={{ gap: "2px" }}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        iconOnly
+                        aria-label={`One fewer ${option.label}`}
+                        disabled={count <= 1}
+                        onClick={() => setCount(option, count - 1)}
+                      >
+                        <IconMinus size={12} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        iconOnly
+                        aria-label={`One more ${option.label}`}
+                        onClick={() => setCount(option, count + 1)}
+                      >
+                        <IconPlus size={12} />
+                      </Button>
+                    </span>
+                  )}
+                </span>
+                {locked ? (
+                  <span />
+                ) : (
+                  <span className={table.revealOnHover}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      iconOnly
+                      aria-label={`Remove ${option.label}`}
+                      onClick={() => setCount(option, null)}
+                    >
+                      <IconX size={12} />
+                    </Button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {adding && (
+            <div className={table.row}>
+              <EditableSelect
+                value=""
+                placeholder="Role"
+                startEditing
+                choices={choicesFor(null)}
+                onSave={(label) => {
+                  const next = options.find((o) => o.label === label);
+                  setAdding(false);
+                  if (!next) return;
+                  setJustAdded(staffingKey(next));
+                  setCount(next, 1);
+                }}
+                onCancel={() => setAdding(false)}
+                textStyle={CELL_TEXT}
+                title="Pick a role"
+              />
+              <span style={{ ...DATA_TEXT, color: "var(--color-text-tertiary)" }}>—</span>
+              <span style={{ ...DATA_TEXT, color: "var(--color-text-tertiary)" }}>—</span>
+              <span />
+            </div>
+          )}
+        </div>
+      )}
+      {locked
+        ? chosen.length === 0 && (
+            <span style={{ ...CELL_TEXT, fontWeight: 400, color: "var(--color-text-tertiary)" }}>
+              No staffing
+            </span>
+          )
+        : !adding && (
+            <Button
+              type="button"
+              variant="dashed"
+              size="xs"
+              fullWidth
+              disabled={!canAdd}
+              title={canAdd ? undefined : "Every role is already on this track"}
+              onClick={() => setAdding(true)}
+            >
+              <IconPlus size={11} /> Add staffing
+            </Button>
+          )}
     </div>
   );
 }
 
 const CELL_TEXT = { fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 } as const;
+const DATA_TEXT = { fontFamily: "var(--font-mono)", fontSize: "13px" } as const;
 
 /** The floor the server will derive: the first room's, using the building's
  *  override for a room it already has. */

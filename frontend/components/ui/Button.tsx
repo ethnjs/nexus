@@ -3,7 +3,8 @@
 import { type ButtonHTMLAttributes, forwardRef, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+// "dashed" is the full-width button under a list or table that adds a row to it.
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "dashed";
 type Size = "xs" | "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -53,6 +54,13 @@ const variantStyles: Record<Variant, React.CSSProperties> = {
     borderStyle: "solid",
     borderColor: "var(--color-danger)",
   },
+  dashed: {
+    backgroundColor: "transparent",
+    color: "var(--color-text-secondary)",
+    borderWidth: "1px",
+    borderStyle: "dashed",
+    borderColor: "var(--color-border-strong)",
+  },
 };
 
 // Every hover token gets an explicit var() fallback to the variant's own
@@ -70,6 +78,7 @@ const variantHoverBg: Record<Variant, string> = {
   secondary: "var(--color-accent-subtle, var(--color-surface))",
   ghost: "var(--color-accent-subtle, transparent)",
   danger: "var(--color-danger-hover, var(--color-danger))",
+  dashed: "var(--color-accent-subtle, transparent)",
 };
 
 /** Border color applied on hover (null = no change) */
@@ -78,6 +87,7 @@ const variantHoverBorderColor: Record<Variant, string | null> = {
   secondary: "var(--color-border-strong, var(--color-border))",
   ghost: null,
   danger: "var(--color-danger-hover, var(--color-danger))",
+  dashed: null,
 };
 
 const sizeStyles: Record<Size, React.CSSProperties> = {

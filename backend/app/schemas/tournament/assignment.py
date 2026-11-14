@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.core.tournament.memberships import gate_age_flags
 from app.schemas.person import PersonNameRef, PersonRoleRead
 from app.schemas.tournament.event import EventMemberRead
 from app.schemas.tournament.shift import TournamentShiftBase
@@ -64,6 +65,27 @@ class AssignmentPlacement(BaseModel):
     cells: list[PlacementCell]
 
 
+class AssignmentMemberRef(PersonNameRef):
+    """The assigned member, plus what an event's 18+ / 21+ staffing counts
+    need. Each flag is null unless the tournament collects it and the member
+    consented (see gate_age_flags) — null is unknown, never "under"."""
+
+    is_over_18: bool | None = None
+    is_over_21: bool | None = None
+
+    @classmethod
+    def from_membership(cls, membership) -> AssignmentMemberRef:
+        ages = gate_age_flags(
+            membership,
+            {"is_over_18": membership.is_over_18, "is_over_21": membership.is_over_21},
+        )
+        return cls(
+            **PersonNameRef.from_membership(membership).model_dump(),
+            is_over_18=ages.get("is_over_18"),
+            is_over_21=ages.get("is_over_21"),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Read schema
 #
@@ -84,8 +106,8 @@ class AssignmentRead(BaseModel):
     # of the room/staffing detail the board's chips don't show.
     event: EventMemberRead
     # Not PersonRefResponse — the assignment names its own role just below, so
-    # the member's full role list would be noise. See PersonNameRef.
-    member: PersonNameRef
+    # the member's full role list would be noise.
+    member: AssignmentMemberRef
     # PersonRoleRead, not RoleRead: `permissions` and `rank` are the
     # tournament's authorization model and have no business on a staffing chip.
     role: PersonRoleRead
@@ -106,7 +128,7 @@ class AssignmentRead(BaseModel):
         return cls(
             id=row.id,
             event=EventMemberRead.from_row(row.tournament_event),
-            member=PersonNameRef.from_membership(row.membership),
+            member=AssignmentMemberRef.from_membership(row.membership),
             role=PersonRoleRead(id=row.role_id, label=row.role.label),
             shift=(
                 TournamentShiftBase.model_validate(row.tournament_shift)

@@ -1511,6 +1511,38 @@ def test_an_entry_without_needs_clears_them(client, db, td_user, td_tournament):
     assert _details(body)[track_id]["needs"] == []
 
 
+def test_age_counts_are_set_per_track_and_cleared_by_an_entry_without_them(
+    client, db, td_user, td_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    created = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[{"track_id": track_id, "over_18_needed": 4, "over_21_needed": 2}],
+    ).json()
+    detail = _details(created)[track_id]
+    assert (detail["over_18_needed"], detail["over_21_needed"]) == (4, 2)
+
+    body = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"track_details": [{"track_id": track_id}]},
+    ).json()
+    detail = _details(body)[track_id]
+    assert (detail["over_18_needed"], detail["over_21_needed"]) == (None, None)
+
+
+def test_an_age_count_below_one_is_rejected(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    res = _make_event(
+        client,
+        td_tournament.id,
+        track_details=[{"track_id": track_id, "over_21_needed": 0}],
+    )
+    assert res.status_code == 422
+
+
 def test_leaving_a_track_out_of_a_patch_keeps_its_needs(client, db, td_user, td_tournament):
     """The other half of the rule: omit the track entirely and nothing about
     it changes."""

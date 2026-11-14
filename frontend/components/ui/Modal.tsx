@@ -1,9 +1,9 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
-import { IconChevronLeft } from "@/components/ui/Icons";
+import { IconChevronLeft, IconX } from "@/components/ui/Icons";
 import { useExitAnimation } from "@/lib/useExitAnimation";
 import { useIsClient } from "@/lib/useIsClient";
 
@@ -23,6 +23,10 @@ interface ModalProps {
   /** Shows a back chevron before the title, for a modal with steps — so the
    *  footer can keep Cancel on every one of them. */
   onBack?: () => void;
+  /** An × at the title row's right end — for a large modal with no footer. */
+  showClose?: boolean;
+  /** Controls on the title row's right end, before the × — e.g. a Display button. */
+  headerActions?: ReactNode;
 }
 
 export function Modal({
@@ -35,15 +39,23 @@ export function Modal({
   variant = "normal",
   contentStyle,
   onBack,
+  showClose = false,
+  headerActions,
 }: ModalProps) {
+  const modalId = useId();
   // Close on Escape key
   useEffect(() => {
+    // Only the topmost modal answers, so Escape on one opened over another
+    // doesn't close both. A closing modal's ghost copy doesn't count.
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      const open = document.querySelectorAll<HTMLElement>(".modal-overlay:not(.modal-closing)");
+      if (open[open.length - 1]?.dataset.modalId !== modalId) return;
+      onClose();
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  }, [onClose, modalId]);
 
   const exitRef = useExitAnimation<HTMLDivElement>();
 
@@ -59,6 +71,7 @@ export function Modal({
   return createPortal(
     <div
       ref={exitRef}
+      data-modal-id={modalId}
       className="modal-overlay"
       style={{
         position: "fixed",
@@ -139,6 +152,25 @@ export function Modal({
             >
               {title}
             </h2>
+            {(headerActions || showClose) && (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}
+              >
+                {headerActions}
+                {showClose && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    title="Close"
+                    onClick={onClose}
+                  >
+                    <IconX size={14} />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
         {children}

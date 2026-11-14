@@ -816,13 +816,12 @@ export default function EventsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Events" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage events permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage events permission to view this page."
+        />
       </div>
     );
   }
@@ -878,59 +877,59 @@ export default function EventsPage() {
       <PendingTrackBanner tracks={eventTracks} subject="events" />
 
       {events.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          {canManageEvents && !isArchived && !hasDivisions ? (
-            <EmptyState
-              icon={<IconWarning size={28} />}
-              title="No divisions assigned"
-              description="This tournament has no divisions assigned yet. Assign at least one before loading default events."
-              action={
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() =>
-                    router.push(`/dashboard/tournaments/${tournamentId}/settings/general`)
-                  }
-                >
-                  Go to settings
-                </Button>
-              }
-            />
-          ) : (
-            <EmptyState
-              icon={<IconEvents size={28} />}
-              title="No events yet"
-              description="Load this tournament's default events, or add them one at a time."
-              action={
-                canManageEvents ? (
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      onClick={() => setShowLoadModal(true)}
-                      disabled={isArchived}
-                      title={archivedReason}
-                    >
-                      Load default events
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleAddEvent}
-                      disabled={isArchived}
-                      title={archivedReason}
-                    >
-                      <IconPlus size={12} /> Add event
-                    </Button>
-                  </div>
-                ) : undefined
-              }
-            />
-          )}
-        </Card>
+        canManageEvents && !isArchived && !hasDivisions ? (
+          <EmptyState
+            card
+            icon={<IconWarning size={28} />}
+            title="No divisions assigned"
+            description="This tournament has no divisions assigned yet. Assign at least one before loading default events."
+            action={
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  router.push(`/dashboard/tournaments/${tournamentId}/settings/general`)
+                }
+              >
+                Go to settings
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            card
+            icon={<IconEvents size={28} />}
+            title="No events yet"
+            description="Load this tournament's default events, or add them one at a time."
+            action={
+              canManageEvents ? (
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setShowLoadModal(true)}
+                    disabled={isArchived}
+                    title={archivedReason}
+                  >
+                    Load default events
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAddEvent}
+                    disabled={isArchived}
+                    title={archivedReason}
+                  >
+                    <IconPlus size={12} /> Add event
+                  </Button>
+                </div>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <>
           <div
@@ -1100,31 +1099,32 @@ export default function EventsPage() {
                 <span />
               </div>
 
-              {visibleEvents.length === 0 ? (
-                <EmptyState
-                  title="No matching events"
-                  description="Try adjusting your search or filters."
+              {visibleEvents.map((e) => (
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  columns={tableColumns}
+                  canDelete={canManageEvents}
+                  deleteLockedReason={archivedReason}
+                  onFocus={focusEvent}
+                  onDelete={confirmDelete}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(e.id)}
+                  selectionLocked={panelDirty}
+                  onToggleSelect={toggleVisibleEvent}
+                  focused={focusedEventId === e.id}
+                  edit={editContext}
                 />
-              ) : (
-                visibleEvents.map((e) => (
-                  <EventRow
-                    key={e.id}
-                    event={e}
-                    columns={tableColumns}
-                    canDelete={canManageEvents}
-                    deleteLockedReason={archivedReason}
-                    onFocus={focusEvent}
-                    onDelete={confirmDelete}
-                    selectMode={selectMode}
-                    selected={selectedIds.has(e.id)}
-                    selectionLocked={panelDirty}
-                    onToggleSelect={toggleVisibleEvent}
-                    focused={focusedEventId === e.id}
-                    edit={editContext}
-                  />
-                ))
-              )}
+              ))}
             </div>
+
+            {visibleEvents.length === 0 && (
+              <EmptyState
+                icon={<IconEvents size={28} />}
+                title="No matching events"
+                description="Try adjusting your search or filters."
+              />
+            )}
           </Card>
         </>
       )}

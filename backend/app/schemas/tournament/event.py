@@ -73,6 +73,16 @@ class EventTrackDetail(BaseModel):
     # one with no `room_ids` unplaces it. Leave the track out of
     # `track_details` entirely to keep what it already has.
     needs: list[EventStaffingNeed] = []
+    # Across roles, how many assigned people must be 18+ / 21+. Null is none.
+    over_18_needed: int | None = None
+    over_21_needed: int | None = None
+
+    @field_validator("over_18_needed", "over_21_needed")
+    @classmethod
+    def _check_age_counts(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("must be at least 1, or null for no requirement")
+        return v
 
     @field_validator("needs")
     @classmethod
@@ -114,6 +124,8 @@ class EventTrackDetailRead(EventTrackDetail):
             room_ids=[room.id for room in rooms],
             rooms=rooms,
             needs=[EventStaffingNeedRead.from_row(need) for need in detail.needs],
+            over_18_needed=detail.over_18_needed,
+            over_21_needed=detail.over_21_needed,
         )
 
 

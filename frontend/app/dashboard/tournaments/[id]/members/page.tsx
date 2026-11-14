@@ -730,13 +730,12 @@ export default function MembersPage() {
     return (
       <div>
         <CollapsibleHeader heading="Members" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage members permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage members permission to view this page."
+        />
       </div>
     );
   }
@@ -795,13 +794,12 @@ export default function MembersPage() {
       )}
 
       {total === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconMembers size={28} />}
-            title="No members yet"
-            description="Members who join this tournament will show up here."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconMembers size={28} />}
+          title="No members yet"
+          description="Members who join this tournament will show up here."
+        />
       ) : (
         <>
           <div

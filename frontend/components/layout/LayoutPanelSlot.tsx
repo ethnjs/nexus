@@ -111,11 +111,13 @@ export function LayoutPanelSlot() {
             transition: TRANSITION,
           }}
         >
+          {/* Pinned to the growing left edge, so the content slides in with
+              it rather than being uncovered in place. */}
           <div
             style={{
               position: "absolute",
               top: 0,
-              right: 0,
+              left: 0,
               width: floating.mounted.width,
               height: "100%",
             }}

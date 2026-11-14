@@ -42,7 +42,7 @@ const SIZE_STYLE: Record<PillSize, { padding: string; fontSize: string; chevron:
   md: { padding: "3px 9px", fontSize: "12px", chevron: 10 },
 };
 
-function pillStyle(tone: PillTone, size: PillSize): CSSProperties {
+export function pillStyle(tone: PillTone, size: PillSize): CSSProperties {
   const t = TONE_STYLE[tone];
   const s = SIZE_STYLE[size];
   return {

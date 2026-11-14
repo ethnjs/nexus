@@ -22,7 +22,6 @@ import {
   zoneDragId,
 } from "@/components/tournament/zones/zoneDnd";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -645,13 +644,12 @@ export default function ZonesPage() {
     return (
       <div>
         <CollapsibleHeader heading="Zones" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage events permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage events permission to view this page."
+        />
       </div>
     );
   }
@@ -660,13 +658,12 @@ export default function ZonesPage() {
     return (
       <div>
         <CollapsibleHeader heading="Zones" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLocation size={28} />}
-            title="No competition days"
-            description="Add a competition day in settings before adding zones."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLocation size={28} />}
+          title="No competition days"
+          description="Add a competition day in settings before adding zones."
+        />
       </div>
     );
   }
@@ -744,25 +741,24 @@ export default function ZonesPage() {
       {dayCoverage === null && !loadError ? (
         <LoadingState />
       ) : zones.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLocation size={28} />}
-            title="No zones yet"
-            description="Group buildings, floors, rooms and events into zones, then add the members who cover them."
-            action={
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={() => setAdding(true)}
-                disabled={isArchived}
-                title={archivedReason}
-              >
-                <IconPlus size={12} /> New zone
-              </Button>
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLocation size={28} />}
+          title="No zones yet"
+          description="Group buildings, floors, rooms and events into zones, then add the members who cover them."
+          action={
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setAdding(true)}
+              disabled={isArchived}
+              title={archivedReason}
+            >
+              <IconPlus size={12} /> New zone
+            </Button>
+          }
+        />
       ) : (
         <MasonryGrid minColumnWidth={360} maxColumns={2} gap={16}>
           {zones.map((zone) => {

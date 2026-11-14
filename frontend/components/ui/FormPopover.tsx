@@ -163,8 +163,11 @@ export function FormPopover({
   // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is recreated each render
   useEffect(() => {
     if (!open || !closeOnOutsideClick) return;
+    // The path, not the target: picking from a Dropdown inside the panel
+    // unmounts the row on this same mousedown, so by now the target is
+    // detached and `contains` would call it outside.
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !e.composedPath().includes(ref.current)) setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);

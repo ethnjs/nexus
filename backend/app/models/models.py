@@ -1523,6 +1523,19 @@ class TournamentEventTrack(Base):
         cascade="all, delete-orphan",
         order_by="TournamentEventStaffingNeed.role_id",
     )
+    # How many assigned people, in any role, must be at least 18 / 21 on this
+    # track. Null means no requirement. Someone 21+ counts toward both.
+    over_18_needed: Mapped[int | None] = mapped_column(Integer)
+    over_21_needed: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        CheckConstraint(
+            "over_18_needed IS NULL OR over_18_needed >= 1", name="ck_event_track_over_18_positive"
+        ),
+        CheckConstraint(
+            "over_21_needed IS NULL OR over_21_needed >= 1", name="ck_event_track_over_21_positive"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

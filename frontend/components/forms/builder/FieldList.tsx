@@ -24,7 +24,6 @@ import { type ActivePopover, FieldToolbar } from "@/components/forms/builder/Fie
 import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
@@ -604,25 +603,24 @@ function FieldListBody({ form, lockedReason }: { form: Form; lockedReason?: stri
         }}
       >
         {fields.length === 0 ? (
-          <Card radius="lg" style={{ padding: "8px" }}>
-            <EmptyState
-              icon={<IconForms size={28} />}
-              title="No fields yet"
-              description="Add a field to start building this form."
-              action={
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => addField()}
-                  disabled={locked}
-                  title={lockedReason}
-                >
-                  <IconPlus size={14} /> Add field
-                </Button>
-              }
-            />
-          </Card>
+          <EmptyState
+            card
+            icon={<IconForms size={28} />}
+            title="No fields yet"
+            description="Add a field to start building this form."
+            action={
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => addField()}
+                disabled={locked}
+                title={lockedReason}
+              >
+                <IconPlus size={14} /> Add field
+              </Button>
+            }
+          />
         ) : (
           <DndContext
             sensors={sensors}

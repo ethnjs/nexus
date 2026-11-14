@@ -931,6 +931,46 @@ class TestListRoute:
         assert len(client.get(f"{url}?event_id={anatomy.id}").json()) == 1
         assert len(client.get(f"{url}?membership_id={membership_id}").json()) == 2
 
+    def _member_on_event(self, client, db, tournament, user, *, consented):
+        grant_role(db, tournament, user, "Test Writer")
+        user.date_of_birth = date(1980, 1, 1)
+        membership = (
+            db.query(TournamentMembership)
+            .filter(
+                TournamentMembership.tournament_id == tournament.id,
+                TournamentMembership.user_id == user.id,
+            )
+            .one()
+        )
+        membership.age_disclosure = "consented" if consented else None
+        tournament.collect_is_over_18 = False
+        tournament.collect_is_over_21 = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        _post(
+            client,
+            db,
+            tournament,
+            tournament_event_id=_make_event(db, tournament).id,
+            membership_id=membership.id,
+            role_id=_role_id(db, tournament, "Test Writer"),
+        )
+        return client.get(f"/tournaments/{tournament.id}/assignments/").json()[0]["member"]
+
+    def test_a_member_carries_only_the_age_flags_collected_and_consented_to(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        member = self._member_on_event(client, db, td_tournament, other_user, consented=True)
+        assert member["is_over_21"] is True
+        assert member["is_over_18"] is None
+
+    def test_a_member_who_did_not_consent_carries_no_age_flags(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        member = self._member_on_event(client, db, td_tournament, other_user, consented=False)
+        assert member["is_over_18"] is None
+        assert member["is_over_21"] is None
+
 
 class TestUpdateAndDeleteRoutes:
     def _existing(self, client, db, tournament, user):

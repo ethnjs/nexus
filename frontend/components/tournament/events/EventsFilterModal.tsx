@@ -11,7 +11,7 @@ import {
   isFilterActive,
 } from "@/components/ui/FilterModal";
 import type { Assignment, TournamentEvent } from "@/lib/api";
-import { staffedCount } from "@/lib/assignments/staffing";
+import { trackShortfalls } from "@/lib/assignments/staffing";
 import { formatOptions, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
 
 // Shared by the events table and the assignments board — same keys, same
@@ -165,18 +165,18 @@ function staffingValues(
   rows: readonly Assignment[],
   showsTrack: (id: number) => boolean,
 ): string[] {
-  let needed = 0;
-  let unfilled = 0;
+  // Every need is its own line, role or age rule: short if any line is.
+  let lines = 0;
+  let short = false;
   for (const detail of event.track_details) {
     if (!showsTrack(detail.track_id)) continue;
-    for (const need of detail.needs ?? []) {
-      needed += need.count;
-      unfilled += Math.max(0, need.count - staffedCount(rows, need.role_id, detail.track_id));
-    }
+    const { roles, ages } = trackShortfalls(detail, rows);
+    lines += roles.length + ages.length;
+    if ([...roles, ...ages].some((gap) => gap > 0)) short = true;
   }
   const values: string[] = [];
-  if (needed === 0) values.push("no_needs");
-  else values.push(unfilled === 0 ? "full" : "short");
+  if (lines === 0) values.push("no_needs");
+  else values.push(short ? "short" : "full");
   if (!rows.some((a) => showsTrack(a.track.id))) values.push("empty");
   return values;
 }

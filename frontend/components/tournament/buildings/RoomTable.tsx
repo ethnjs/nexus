@@ -355,16 +355,16 @@ export function RoomTable({
         <Button
           ref={dropOnContainer ? undefined : setNewRoomDropRef}
           type="button"
-          variant="ghost"
+          variant="dashed"
           size="xs"
+          fullWidth
           onClick={() => setAdding(true)}
           style={{
-            width: "100%",
             marginTop: "8px",
-            border: `1px ${overNewRoom ? "solid" : "dashed"} var(--color-border-strong)`,
-            background: overNewRoom ? "var(--color-accent-subtle)" : undefined,
-            color:
-              overNewRoom || dragging ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+            ...(overNewRoom
+              ? { borderStyle: "solid", backgroundColor: "var(--color-accent-subtle)" }
+              : {}),
+            ...(overNewRoom || dragging ? { color: "var(--color-text-primary)" } : {}),
           }}
         >
           <IconPlus size={11} /> {dragging ? "Drop for a new room" : "Add room"}

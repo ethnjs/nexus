@@ -184,6 +184,8 @@ def _apply_shifts_and_tracks(
             # A floor with no room to be on is not a location.
             row.floor = detail.floor if row.rooms else None
             _set_needs(row, detail.needs)
+            row.over_18_needed = detail.over_18_needed
+            row.over_21_needed = detail.over_21_needed
 
 
 def _validate_tracks(

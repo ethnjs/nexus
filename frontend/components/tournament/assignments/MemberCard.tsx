@@ -788,7 +788,7 @@ const FIELDS: {
  * however many cards are in the belt. The hook stays in the shell; the
  * expensive half lives here, behind props that don't move during a drag.
  */
-const MemberCardBody = memo(function MemberCardBody({
+export const MemberCardBody = memo(function MemberCardBody({
   member,
   display,
   allShifts,

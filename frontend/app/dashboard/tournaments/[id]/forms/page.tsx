@@ -302,13 +302,12 @@ export default function FormsPage() {
 
   if (!canManageForms) {
     return (
-      <Card radius="lg" style={{ padding: "8px" }}>
-        <EmptyState
-          icon={<IconLock size={28} />}
-          title="No access"
-          description="You need the manage forms permission to view this page."
-        />
-      </Card>
+      <EmptyState
+        card
+        icon={<IconLock size={28} />}
+        title="No access"
+        description="You need the manage forms permission to view this page."
+      />
     );
   }
 
@@ -392,25 +391,24 @@ export default function FormsPage() {
       )}
 
       {forms.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconForms size={28} />}
-            title="No forms yet"
-            description="Create a form to start collecting responses from members."
-            action={
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={() => setCreating(true)}
-                disabled={isArchived}
-                title={archivedReason}
-              >
-                <IconPlus size={14} /> New Form
-              </Button>
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconForms size={28} />}
+          title="No forms yet"
+          description="Create a form to start collecting responses from members."
+          action={
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setCreating(true)}
+              disabled={isArchived}
+              title={archivedReason}
+            >
+              <IconPlus size={14} /> New Form
+            </Button>
+          }
+        />
       ) : (
         <FormTable
           forms={forms}
