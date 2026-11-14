@@ -247,6 +247,25 @@ export function OptionList({
     if (followAnchor) placeRef.current();
   });
 
+  // Slides the drawn panel sideways to keep it inside the viewport. A panel
+  // sized by its rows has no width until it's drawn, so this measures after
+  // the fact and writes straight to the panel's style.
+  useLayoutEffect(() => {
+    const panel = rowsRef.current?.closest<HTMLElement>('[role="listbox"]');
+    if (!panel) return;
+    const box = panel.getBoundingClientRect();
+    const shift = Number(panel.dataset.shiftX ?? 0);
+    const viewport = document.documentElement.clientWidth;
+    const left = box.left - shift;
+    const right = box.right - shift;
+    let next = 0;
+    if (right > viewport - VIEWPORT_MARGIN) next = viewport - VIEWPORT_MARGIN - right;
+    if (left + next < VIEWPORT_MARGIN) next = VIEWPORT_MARGIN - left;
+    if (next === shift) return;
+    panel.dataset.shiftX = String(next);
+    panel.style.transform = next ? `translateX(${next}px)` : "";
+  });
+
   // Keep the highlighted row on screen. Its wrapper holds any group heading
   // above it, so stepping into a group brings the heading along.
   useEffect(() => {
