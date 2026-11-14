@@ -28,6 +28,7 @@ import { DockedPanel } from "@/components/layout/DockedPanel";
 import { AssignToModal } from "@/components/tournament/assignments/AssignToModal";
 import { useRegisterBoardDnd } from "@/components/tournament/assignments/BoardDnd";
 import { BoardSelectionContext } from "@/components/tournament/assignments/BoardSelection";
+import { CompareMembersModal } from "@/components/tournament/assignments/CompareMembersModal";
 import { EventRow } from "@/components/tournament/assignments/EventRow";
 import { TrackSettingsModal } from "@/components/tournament/assignments/TrackSettingsModal";
 import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
@@ -154,6 +155,8 @@ const PANEL_WIDTH: Record<PanelKind, number> = {
  *  within its own row makes the row the click's common ancestor, so the drop
  *  would otherwise open the panel it landed on. */
 const CLICK_AFTER_DRAG_MS = 250;
+// Wider than four columns stops fitting a laptop screen side by side.
+const MAX_COMPARE = 4;
 /** An event with only the shifts and tracks the current tab shows. */
 function filterEventTracks(
   event: TournamentEvent,
@@ -194,6 +197,7 @@ export default function AssignmentsPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
   const [showAssignTo, setShowAssignTo] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const toggleSelected = useCallback((membershipId: number) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -605,6 +609,8 @@ export default function AssignmentsPage() {
     headerActions: beltHeaderActions,
     renderList: renderBelt,
     modals: beltModals,
+    display: beltDisplay,
+    displayButton: beltDisplayButton,
   } = useMemberBelt({
     tournamentId,
     enabled: canManageMembers,
@@ -993,9 +999,9 @@ export default function AssignmentsPage() {
     };
   }
 
-  /** Puts everyone selected on every shift of one track of an event, skipping
+  /** Puts these members on every shift of one track of an event, skipping
    *  whoever is already on it. */
-  function handleAssignSelection(eventId: number, trackId: number) {
+  function assignMembers(membershipIds: Iterable<number>, eventId: number, trackId: number) {
     if (!requireWriteAccess()) return;
     const event = events?.find((e) => e.id === eventId);
     const track = event?.tracks.find((t) => t.id === trackId);
@@ -1005,7 +1011,7 @@ export default function AssignmentsPage() {
         .filter((row) => row.event.id === eventId && row.track.id === trackId)
         .map((row) => row.member.membership_id),
     );
-    const picked = [...selectedIds].flatMap((id) => {
+    const picked = [...membershipIds].flatMap((id) => {
       const member = memberById.get(id);
       return member?.user ? [{ ...member, user: member.user }] : [];
     });
@@ -1014,7 +1020,12 @@ export default function AssignmentsPage() {
     const where =
       event.tracks.length > 1 ? `${eventName(event)} (${track.name})` : eventName(event);
     if (fresh.length === 0) {
-      show(`Everyone selected is already on ${where}`, "error");
+      show(
+        picked.length === 1
+          ? `${fullName(picked[0].user)} is already on ${where}`
+          : `Everyone selected is already on ${where}`,
+        "error",
+      );
       return;
     }
     if (!placeMembers(fresh.map(personOf), event, trackId, trackShiftIds(event, trackId))) return;
@@ -1790,6 +1801,24 @@ export default function AssignmentsPage() {
           editLabel="Assign to…"
           onEdit={() => setShowAssignTo(true)}
           onCancel={toggleSelectMode}
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={selectedIds.size < 2 || selectedIds.size > MAX_COMPARE}
+              title={
+                selectedIds.size > MAX_COMPARE
+                  ? `Compare up to ${MAX_COMPARE} at a time`
+                  : selectedIds.size < 2
+                    ? "Select at least 2 to compare"
+                    : undefined
+              }
+              onClick={() => setShowCompare(true)}
+            >
+              Compare
+            </Button>
+          }
         />
         {showAssignTo && (
           <AssignToModal
@@ -1797,8 +1826,23 @@ export default function AssignmentsPage() {
             tracks={tracks}
             initialTrackId={activeTrackId}
             events={events ?? []}
-            onAssign={handleAssignSelection}
+            onAssign={(eventId, trackId) => assignMembers(selectedIds, eventId, trackId)}
             onClose={() => setShowAssignTo(false)}
+          />
+        )}
+        {showCompare && (
+          <CompareMembersModal
+            members={[...selectedIds].flatMap((id) => memberById.get(id) ?? [])}
+            display={beltDisplay}
+            displayButton={beltDisplayButton}
+            allShifts={allShifts}
+            tracks={tracks}
+            initialTrackId={activeTrackId}
+            events={events ?? []}
+            onAssign={(membershipId, eventId, trackId) =>
+              assignMembers([membershipId], eventId, trackId)
+            }
+            onClose={() => setShowCompare(false)}
           />
         )}
       </div>

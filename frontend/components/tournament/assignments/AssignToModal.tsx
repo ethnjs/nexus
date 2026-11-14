@@ -11,6 +11,7 @@ import { eventNameWithDivision } from "@/lib/eventDisplay";
 /** Picks the track, then the event on it, that a board selection goes onto. */
 export function AssignToModal({
   count,
+  title,
   tracks,
   initialTrackId,
   events,
@@ -18,6 +19,8 @@ export function AssignToModal({
   onClose,
 }: {
   count: number;
+  /** In place of "Assign N members" — e.g. the one member's name. */
+  title?: string;
   tracks: TournamentTrack[];
   /** The track picked on open — the tab showing, when it is one. */
   initialTrackId: number | null;
@@ -33,7 +36,7 @@ export function AssignToModal({
 
   return (
     <Modal
-      title={`Assign ${count} ${count === 1 ? "member" : "members"}`}
+      title={title ?? `Assign ${count} ${count === 1 ? "member" : "members"}`}
       onClose={onClose}
       width={420}
       footer={

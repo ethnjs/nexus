@@ -282,18 +282,26 @@ export function useMemberBelt({
     return sortRows(matching, sort, memberSortValue, memberSortTiebreak);
   }, [filterMatchIds, members, query, sort]);
 
+  // Also offered beside cards shown elsewhere (the compare modal), which read `display` too.
+  const displayButton = useMemo(
+    () => (
+      <DisplayButton
+        size="sm"
+        iconOnly
+        label="Configure member cards"
+        active={displayActive}
+        onOpen={() => setShowDisplayModal(true)}
+        onReset={() => applyDisplay(NO_MEMBER_FIELDS)}
+        resetLabel="Hide all fields"
+      />
+    ),
+    [displayActive, applyDisplay],
+  );
+
   const headerActions = useMemo(
     () => (
       <>
-        <DisplayButton
-          size="sm"
-          iconOnly
-          label="Configure member cards"
-          active={displayActive}
-          onOpen={() => setShowDisplayModal(true)}
-          onReset={() => applyDisplay(NO_MEMBER_FIELDS)}
-          resetLabel="Hide all fields"
-        />
+        {displayButton}
         <FilterButton
           size="sm"
           iconOnly
@@ -324,7 +332,7 @@ export function useMemberBelt({
     ),
     [
       selectMode,
-      displayActive,
+      displayButton,
       filterActive,
       sortActive,
       applyDisplay,
@@ -448,5 +456,5 @@ export function useMemberBelt({
     </>
   );
 
-  return { belt, headerActions, renderList, modals };
+  return { belt, headerActions, renderList, modals, display, displayButton };
 }
