@@ -18,7 +18,16 @@ import type {
 } from "@/lib/api";
 import { staffedCount } from "@/lib/assignments/staffing";
 import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
-import { roomFloor } from "@/lib/eventTrackDetails";
+import {
+  chosenStaffing,
+  roomFloor,
+  type StaffingOption,
+  staffingCount,
+  staffingGroup,
+  staffingKey,
+  staffingOptions,
+  withStaffingCount,
+} from "@/lib/eventTrackDetails";
 import { placeOfTrack } from "@/lib/tournamentDisplay";
 
 /**
@@ -294,35 +303,6 @@ function LocationTable({
   );
 }
 
-const AGE_RULES = [
-  { key: "over_18_needed", label: "18+" },
-  { key: "over_21_needed", label: "21+" },
-] as const;
-
-type StaffingOption =
-  | { kind: "role"; id: number; label: string }
-  | { kind: "age"; key: (typeof AGE_RULES)[number]["key"]; label: string };
-
-const optionKey = (o: StaffingOption) => (o.kind === "role" ? `role:${o.id}` : o.key);
-
-/** `detail` with one option's count set, or removed when null. */
-function withCount(
-  detail: DraftTrackDetail,
-  option: StaffingOption,
-  count: number | null,
-): DraftTrackDetail {
-  if (option.kind === "age") return { ...detail, [option.key]: count };
-  const needs = (detail.needs ?? []).filter((n) => n.role_id !== option.id);
-  const at = (detail.needs ?? []).findIndex((n) => n.role_id === option.id);
-  if (count === null) return { ...detail, needs };
-  // Keeps a changed count in its row's place.
-  const next = { role_id: option.id, count };
-  return {
-    ...detail,
-    needs: at === -1 ? [...needs, next] : [...needs.slice(0, at), next, ...needs.slice(at)],
-  };
-}
-
 /**
  * One track's staffing: a row per need, a role's or an any-role age rule's.
  * Role, Needed and removal are edited in place; Add staffing starts a blank
@@ -345,44 +325,25 @@ function StaffingTable({
   const [justAdded, setJustAdded] = useState<string | null>(null);
   // A blank row waiting for its role. Nothing is in the draft until one is picked.
   const [adding, setAdding] = useState(false);
-  const needs = detail.needs ?? [];
-  const options: StaffingOption[] = [
-    ...roles.map((r) => ({ kind: "role" as const, id: r.id, label: r.label })),
-    ...AGE_RULES.map((rule) => ({ kind: "age" as const, ...rule })),
-  ];
-  const chosen: StaffingOption[] = [
-    ...needs.map((n) => ({
-      kind: "role" as const,
-      id: n.role_id,
-      label: roles.find((r) => r.id === n.role_id)?.label ?? "Role",
-    })),
-    ...AGE_RULES.filter((rule) => detail[rule.key] != null).map((rule) => ({
-      kind: "age" as const,
-      ...rule,
-    })),
-  ];
-  const isChosen = (o: StaffingOption) => chosen.some((c) => optionKey(c) === optionKey(o));
-
-  function countOf(option: StaffingOption): number {
-    return option.kind === "role"
-      ? (needs.find((n) => n.role_id === option.id)?.count ?? 1)
-      : (detail[option.key] ?? 1);
-  }
+  const options = staffingOptions(roles);
+  const chosen = chosenStaffing(detail, roles);
+  const isChosen = (o: StaffingOption) => chosen.some((c) => staffingKey(c) === staffingKey(o));
+  const countOf = (option: StaffingOption) => staffingCount(detail, option);
 
   function setCount(option: StaffingOption, count: number | null) {
-    onPatch(withCount(detail, option, count));
+    onPatch(withStaffingCount(detail, option, count));
   }
 
   function replace(option: StaffingOption, next: StaffingOption) {
-    if (optionKey(next) === optionKey(option)) return;
-    onPatch(withCount(withCount(detail, option, null), next, countOf(option)));
+    if (staffingKey(next) === staffingKey(option)) return;
+    onPatch(withStaffingCount(withStaffingCount(detail, option, null), next, countOf(option)));
   }
 
   /** What a role cell can pick: anything not on this track yet, plus its own. */
   function choicesFor(ownKey: string | null) {
     return options
-      .filter((o) => !isChosen(o) || optionKey(o) === ownKey)
-      .map((o) => ({ label: o.label, group: o.kind === "role" ? "Roles" : "Age, any role" }));
+      .filter((o) => !isChosen(o) || staffingKey(o) === ownKey)
+      .map((o) => ({ label: o.label, group: staffingGroup(o) }));
   }
   const canAdd = options.some((o) => !isChosen(o));
 
@@ -406,7 +367,7 @@ function StaffingTable({
               assignments && option.kind === "role"
                 ? staffedCount(assignments, option.id, detail.track_id)
                 : null;
-            const key = optionKey(option);
+            const key = staffingKey(option);
             return (
               <div key={key} className={table.row}>
                 <span style={{ display: "flex", alignItems: "baseline", gap: "6px", minWidth: 0 }}>
@@ -519,7 +480,7 @@ function StaffingTable({
                   const next = options.find((o) => o.label === label);
                   setAdding(false);
                   if (!next) return;
-                  setJustAdded(optionKey(next));
+                  setJustAdded(staffingKey(next));
                   setCount(next, 1);
                 }}
                 onCancel={() => setAdding(false)}

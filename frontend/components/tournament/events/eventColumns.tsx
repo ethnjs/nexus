@@ -24,7 +24,12 @@ import {
 import { staffedCount } from "@/lib/assignments/staffing";
 import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import type { EventSortField } from "@/lib/eventSort";
-import { toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
+import {
+  AGE_RULES,
+  type TrackStaffing,
+  toTrackDetailInput,
+  withTrackDetail,
+} from "@/lib/eventTrackDetails";
 import { formatOptions } from "@/lib/seasonDefaults";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
@@ -281,19 +286,35 @@ function renderTrackCell(
       );
     }
     case "staffing": {
-      const needs = e.track_details.find((d) => d.track_id === track.id)?.needs ?? [];
+      const detail = e.track_details.find((d) => d.track_id === track.id);
+      const staffing: TrackStaffing = {
+        needs: (detail?.needs ?? []).map((n) => ({ role_id: n.role_id, count: n.count })),
+        over_18_needed: detail?.over_18_needed ?? null,
+        over_21_needed: detail?.over_21_needed ?? null,
+      };
       const rows = ctx.assignmentsFor(e.id);
+      const lines = [
+        ...(detail?.needs ?? []).map((need) => ({
+          key: `role:${need.role_id}`,
+          label: need.role_label,
+          count: need.count,
+          filled: staffedCount(rows, need.role_id, track.id) as number | null,
+        })),
+        // Age flags aren't on assignment rows yet, so an age rule shows its count alone.
+        ...AGE_RULES.filter((rule) => staffing[rule.key] != null).map((rule) => ({
+          key: rule.key,
+          label: rule.label,
+          count: staffing[rule.key] ?? 0,
+          filled: null,
+        })),
+      ];
       const display =
-        needs.length === 0 ? (
+        lines.length === 0 ? (
           noValue("No staffing")
         ) : (
           <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
-            {needs.map((need) => (
-              <StaffingNeedLine
-                key={need.role_id}
-                need={need}
-                filled={staffedCount(rows, need.role_id, track.id)}
-              />
+            {lines.map(({ key, ...line }) => (
+              <StaffingNeedLine key={key} {...line} />
             ))}
           </span>
         );
@@ -302,13 +323,11 @@ function renderTrackCell(
       return (
         <StaffingCell
           display={display}
-          needs={needs}
+          staffing={staffing}
           roles={edit.roles}
           lockReason={lockReason}
           // Joins the track if the event isn't on it yet (withTrackDetail adds it).
-          onSave={(next) =>
-            edit.update(e, { track_details: withTrackDetail(e, track.id, { needs: next }) })
-          }
+          onSave={(next) => edit.update(e, { track_details: withTrackDetail(e, track.id, next) })}
         />
       );
     }

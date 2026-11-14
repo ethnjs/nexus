@@ -180,7 +180,8 @@ export function TrackSection({
           {needs.map((need) => (
             <StaffingNeedLine
               key={need.role_id}
-              need={need}
+              label={need.role_label}
+              count={need.count}
               filled={staffedCount(rowAssignments, need.role_id, track.id)}
             />
           ))}

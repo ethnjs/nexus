@@ -1,7 +1,6 @@
 "use client";
 
 import { ProgressRing } from "@/components/ui/ProgressRing";
-import type { EventStaffingNeedRead } from "@/lib/api";
 
 export function staffingColor(filled: number, count: number): string {
   return filled >= count
@@ -11,29 +10,33 @@ export function staffingColor(filled: number, count: number): string {
       : "var(--color-border-strong)";
 }
 
-/** One role's progress toward one track's need for it. Full role name and a
- *  plain `#/#`, not an abbreviation — the crowding that motivated an
- *  abbreviated line only happens once several tracks' roles share one line,
- *  and this always renders inside its own track's block. Same three-state
- *  colour as the chip warning border: success once filled, warning while
- *  short, muted at zero. */
+/** One need's progress on one track: a role's, or an any-role age rule's.
+ *  Full label and a plain `#/#`, not an abbreviation — the crowding that
+ *  motivated an abbreviated line only happens once several tracks' needs
+ *  share one line, and this always renders inside its own track's block.
+ *  Same three-state colour as the chip warning border: success once filled,
+ *  warning while short, muted at zero. A null `filled` (not known) shows the
+ *  count alone. */
 export function StaffingNeedLine({
-  need,
+  label,
+  count,
   filled,
 }: {
-  need: EventStaffingNeedRead;
-  filled: number;
+  label: string;
+  count: number;
+  filled: number | null;
 }) {
-  const color = staffingColor(filled, need.count);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-      <ProgressRing
-        completed={filled}
-        total={need.count}
-        size={13}
-        strokeWidth={16}
-        color={color}
-      />
+      {filled !== null && (
+        <ProgressRing
+          completed={filled}
+          total={count}
+          size={13}
+          strokeWidth={16}
+          color={staffingColor(filled, count)}
+        />
+      )}
       <span
         style={{
           fontFamily: "var(--font-sans)",
@@ -41,7 +44,7 @@ export function StaffingNeedLine({
           color: "var(--color-text-secondary)",
         }}
       >
-        {need.role_label}
+        {label}
       </span>
       <span
         style={{
@@ -50,7 +53,7 @@ export function StaffingNeedLine({
           color: "var(--color-text-tertiary)",
         }}
       >
-        {filled}/{need.count}
+        {filled === null ? count : `${filled}/${count}`}
       </span>
     </div>
   );

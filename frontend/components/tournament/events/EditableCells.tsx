@@ -29,6 +29,15 @@ import type {
   TournamentShift,
 } from "@/lib/api";
 import { buildingLabel, buildingSubtitle } from "@/lib/buildings";
+import {
+  chosenStaffing,
+  staffingCount,
+  staffingGroup,
+  staffingKey,
+  staffingOptions,
+  type TrackStaffing,
+  withStaffingCount,
+} from "@/lib/eventTrackDetails";
 import { focusAdjacentCell } from "@/lib/gridNav";
 import { useToast } from "@/lib/useToast";
 
@@ -855,37 +864,38 @@ export function LocationCell({
 }
 
 /**
- * One track's staffing needs. At rest it's the normal progress display;
- * clicked, it becomes chips — one per role, × to drop it, the head count in a
- * pill on the chip, and + to add a role (starting at 1). Each change saves the
- * track's whole needs list. Locked, it's the read-only `display`.
+ * One track's staffing: role needs and the any-role 18+ / 21+ rules. At rest
+ * it's the normal progress display; clicked, it becomes chips — one per need,
+ * × to drop it, the head count in a pill on the chip, and + to add one
+ * (starting at 1). Each change saves the track's whole staffing. Locked, it's
+ * the read-only `display`.
  */
 export function StaffingCell({
   display,
-  needs,
+  staffing,
   roles,
   lockReason,
   onSave,
 }: {
   display: ReactNode;
-  needs: { role_id: number; role_label: string; count: number }[];
+  staffing: TrackStaffing;
   /** Every role the tournament offers. */
   roles: Role[];
   lockReason?: string;
-  onSave: (needs: { role_id: number; count: number }[]) => Promise<void>;
+  onSave: (staffing: TrackStaffing) => Promise<void>;
 }) {
   const editor = useCellEditor();
   const [hovered, setHovered] = useState(false);
   const toastError = useErrorToast();
   const [saving, setSaving] = useState(false);
-  // Opening the cell opens its role picker (see ChipsCell for why it presses
-  // the trigger). After a role is added the picker closes and focus goes to
-  // that role's count, since setting it is the next thing to do.
+  // Opening the cell opens its picker (see ChipsCell for why it presses the
+  // trigger). After one is added the picker closes and focus goes to its
+  // count, since setting it is the next thing to do.
   const addRef = useRef<HTMLButtonElement>(null);
-  const [focusRoleId, setFocusRoleId] = useState<number | null>(null);
+  const [focusLabel, setFocusLabel] = useState<string | null>(null);
   useEffect(() => {
     if (editor.editing) addRef.current?.click();
-    else setFocusRoleId(null);
+    else setFocusLabel(null);
   }, [editor.editing]);
 
   if (lockReason) {
@@ -896,7 +906,7 @@ export function StaffingCell({
     );
   }
 
-  async function save(next: { role_id: number; count: number }[]) {
+  async function save(next: TrackStaffing) {
     setSaving(true);
     try {
       await onSave(next);
@@ -907,8 +917,9 @@ export function StaffingCell({
     }
   }
 
-  const current = needs.map((n) => ({ role_id: n.role_id, count: n.count }));
-  const byLabel = (label: string) => needs.find((n) => n.role_label === label);
+  const options = staffingOptions(roles);
+  const chosen = chosenStaffing(staffing, roles);
+  const byLabel = (label: string) => chosen.find((o) => o.label === label);
 
   return (
     <CellGuard align="start" editing={editor.editing}>
@@ -921,30 +932,26 @@ export function StaffingCell({
       >
         {editor.editing ? (
           <ChipInput
-            value={needs.map((n) => n.role_label)}
+            value={chosen.map((o) => o.label)}
             emptyLabel="No staffing"
-            // Only removal reaches here (disableInput): keep the needs whose chip is left.
+            // Only removal reaches here (disableInput): drop the needs whose chip is gone.
             onChange={(labels) =>
               void save(
-                needs
-                  .filter((n) => labels.includes(n.role_label))
-                  .map((n) => ({ role_id: n.role_id, count: n.count })),
+                chosen
+                  .filter((o) => !labels.includes(o.label))
+                  .reduce((next, o) => withStaffingCount(next, o, null), staffing),
               )
             }
             renderChipTrailing={(label) => {
-              const need = byLabel(label);
-              return need ? (
+              const option = byLabel(label);
+              return option ? (
                 <PillInput
-                  value={need.count}
+                  value={staffingCount(staffing, option)}
                   label={`${label} needed`}
                   // Set before the save, so the pill mounts already focused.
-                  autoFocus={need.role_id === focusRoleId}
+                  autoFocus={label === focusLabel}
                   disabled={saving}
-                  onCommit={(count) =>
-                    void save(
-                      current.map((n) => (n.role_id === need.role_id ? { ...n, count } : n)),
-                    )
-                  }
+                  onCommit={(count) => void save(withStaffingCount(staffing, option, count))}
                 />
               ) : null;
             }}
@@ -961,26 +968,27 @@ export function StaffingCell({
                     variant="secondary"
                     size="sm"
                     iconOnly
-                    title="Add role"
+                    title="Add staffing"
                     disabled={saving}
                     style={{ padding: 0, flexShrink: 0 }}
                   >
                     <IconPlus size={14} />
                   </Button>
                 }
-                items={roles}
-                getKey={(r) => r.id}
-                renderLabel={(r) => r.label}
-                isSelected={(r) => needs.some((n) => n.role_id === r.id)}
-                onToggle={async (r) => {
-                  if (needs.some((n) => n.role_id === r.id))
-                    return save(current.filter((n) => n.role_id !== r.id));
-                  setFocusRoleId(r.id);
-                  await save([...current, { role_id: r.id, count: 1 }]);
+                items={options}
+                getKey={staffingKey}
+                renderLabel={(o) => o.label}
+                getGroup={staffingGroup}
+                isSelected={(o) => chosen.some((c) => staffingKey(c) === staffingKey(o))}
+                onToggle={async (o) => {
+                  if (chosen.some((c) => staffingKey(c) === staffingKey(o)))
+                    return save(withStaffingCount(staffing, o, null));
+                  setFocusLabel(o.label);
+                  await save(withStaffingCount(staffing, o, 1));
                   addRef.current?.click(); // closes the picker
                 }}
-                searchable={roles.length > 8}
-                getSearchText={(r) => r.label}
+                searchable={options.length > 8}
+                getSearchText={(o) => o.label}
                 emptyMessage="No roles yet."
                 width={220}
                 align="left"
@@ -989,7 +997,7 @@ export function StaffingCell({
           />
         ) : (
           <RestControl restRef={editor.restRef} onOpen={editor.open} title="Click to edit staffing">
-            {needs.length > 0 ? (
+            {chosen.length > 0 ? (
               display
             ) : (
               // Muted, like the location cell's "No location". The add button
