@@ -8,7 +8,8 @@ import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModa
 import { EventPanelConfigModal } from "@/components/tournament/events/EventPanelConfigModal";
 import {
   type DraftTrackDetail,
-  EventTrackDetails,
+  EventLocations,
+  EventStaffing,
 } from "@/components/tournament/events/EventTrackDetails";
 import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Badge } from "@/components/ui/Badge";
@@ -26,6 +27,8 @@ import { Switch } from "@/components/ui/Switch";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
+  type Assignment,
+  assignmentsApi,
   type CanonicalEvent,
   displayConfigApi,
   type EventFormat,
@@ -244,6 +247,21 @@ export function EventPanel({
   const eventId = event?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
+
+  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  useEffect(() => {
+    if (eventId === null) return;
+    let active = true;
+    assignmentsApi
+      .list(tournamentId, { eventId })
+      .then((rows) => {
+        if (active) setAssignments(rows);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [tournamentId, eventId, refreshKey]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new onSaved per page render must not refetch
   useEffect(() => {
     if (eventId === null) return;
@@ -735,13 +753,25 @@ export function EventPanel({
           </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection title="Location & staffing">
-          <EventTrackDetails
+        <SettingsSection title="Location">
+          <EventLocations
             details={draft.trackDetails}
             hiddenTrackIds={hiddenTrackIds}
             tracks={tracks}
             buildings={buildings}
+            locked={locked}
+            simple={simple}
+            onChange={(trackDetails) => patch({ trackDetails })}
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Staffing">
+          <EventStaffing
+            details={draft.trackDetails}
+            hiddenTrackIds={hiddenTrackIds}
+            tracks={tracks}
             roles={roles}
+            assignments={assignments}
             locked={locked}
             simple={simple}
             onChange={(trackDetails) => patch({ trackDetails })}
@@ -842,8 +872,8 @@ export function EventPanel({
                   {(eligibleShifts.length > 0 || newShiftTracks.length > 0) && (
                     <ChecklistPopover
                       trigger={
-                        <Button type="button" variant="secondary" size="sm" fullWidth>
-                          <IconPlus size={12} /> Add shift
+                        <Button type="button" variant="dashed" size="xs" fullWidth>
+                          <IconPlus size={11} /> Add shift
                         </Button>
                       }
                       items={eligibleShifts}

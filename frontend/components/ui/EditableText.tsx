@@ -1,8 +1,21 @@
 "use client";
 
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { enterChoice, OptionList, stepActive, suggestionRows } from "@/components/ui/OptionList";
+import {
+  enterChoice,
+  enterIndex,
+  type ListOption,
+  OptionList,
+  stepActive,
+  suggestionRows,
+} from "@/components/ui/OptionList";
 import { useToast } from "@/lib/useToast";
+
+export interface EditableChoice {
+  label: string;
+  /** Heads a run of consecutive choices sharing it. */
+  group?: string;
+}
 
 interface EditableTextProps {
   value: string;
@@ -33,6 +46,9 @@ interface EditableTextProps {
   suggestions?: string[];
   /** A second line under a suggestion, searched as well, e.g. a full name. */
   suggestionSubtitle?: (suggestion: string) => string | undefined;
+  /** Pick-only: the value must be one of these. Use EditableSelect, which
+   *  requires it, rather than passing it here. */
+  choices?: EditableChoice[];
   /** A failed save's message goes to a toast instead of under the field — for
    *  table cells, where text under one row overlaps the next. The field still
    *  stays open with a red underline so the value can be fixed in place. */
@@ -73,6 +89,7 @@ export function EditableText({
   allowEmpty = false,
   suggestions,
   suggestionSubtitle,
+  choices,
   errorToast = false,
   skipTab = false,
   onCancel,
@@ -93,9 +110,11 @@ export function EditableText({
   // Combobox mode: which suggestion the arrow keys are on (-1 = none).
   const [highlight, setHighlight] = useState(-1);
   const rows =
-    editing && suggestions
-      ? suggestionRows(suggestions, draft, undefined, suggestionSubtitle)
-      : { names: [], options: [] };
+    editing && choices
+      ? choiceRows(choices, draft === value ? "" : draft, value)
+      : editing && suggestions
+        ? suggestionRows(suggestions, draft, undefined, suggestionSubtitle)
+        : { names: [], options: [] };
   const listOpen = rows.options.length > 0;
 
   // Depends on `editing` too: startEdit's setDraft(value) is a no-op when
@@ -131,7 +150,11 @@ export function EditableText({
 
   async function save(text: string = draft) {
     if (inFlight.current) return;
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    if (choices) {
+      const match = choices.find((c) => c.label.toLowerCase() === trimmed.toLowerCase());
+      trimmed = match?.label ?? value;
+    }
     if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false);
       onCancel?.();
@@ -193,7 +216,11 @@ export function EditableText({
               refocus.current = true;
               // Highlighted row, else the exact/first match for typed text
               // (see enterChoice); empty text saves as empty.
-              const picked = suggestions ? enterChoice(rows.names, highlight, draft) : draft;
+              const picked = choices
+                ? (rows.names[enterIndex(rows.options, highlight)] ?? value)
+                : suggestions
+                  ? enterChoice(rows.names, highlight, draft)
+                  : draft;
               setDraft(picked);
               save(picked);
             }
@@ -210,7 +237,7 @@ export function EditableText({
             ...BOX_STYLE,
             // Wider floor with suggestions: an empty field there is the
             // normal start, and a 20px one hides what is being typed.
-            width: `${Math.max(inputWidth, suggestions ? 80 : 20)}px`,
+            width: `${Math.max(inputWidth, suggestions || choices ? 80 : 20)}px`,
             boxSizing: "content-box",
             color: "var(--color-text-primary)",
             background: "transparent",
@@ -287,6 +314,25 @@ export function EditableText({
   );
 }
 
+/** Every choice until the text is changed, then those containing it. */
+function choiceRows(
+  choices: readonly EditableChoice[],
+  text: string,
+  value: string,
+): { names: string[]; options: ListOption[] } {
+  const needle = text.trim().toLowerCase();
+  const matching = choices.filter((c) => c.label.toLowerCase().includes(needle));
+  return {
+    names: matching.map((c) => c.label),
+    options: matching.map((c) => ({
+      key: c.label,
+      label: c.label,
+      group: c.group,
+      selected: c.label === value,
+    })),
+  };
+}
+
 /**
  * EditableText with suggestions: reads as plain text, and while editing
  * offers matching options under the field (up/down to move, Enter or a click
@@ -294,5 +340,14 @@ export function EditableText({
  * means (e.g. create the building).
  */
 export function EditableCombobox(props: EditableTextProps & { suggestions: string[] }) {
+  return <EditableText {...props} />;
+}
+
+/**
+ * EditableText that picks from a fixed list: reads as plain text, and while
+ * editing lists every choice (grouped), narrowing as
+ * you type. Only a choice saves; anything else reverts.
+ */
+export function EditableSelect(props: EditableTextProps & { choices: EditableChoice[] }) {
   return <EditableText {...props} />;
 }

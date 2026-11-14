@@ -3,6 +3,14 @@
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import type { EventStaffingNeedRead } from "@/lib/api";
 
+export function staffingColor(filled: number, count: number): string {
+  return filled >= count
+    ? "var(--color-success)"
+    : filled > 0
+      ? "var(--color-warning)"
+      : "var(--color-border-strong)";
+}
+
 /** One role's progress toward one track's need for it. Full role name and a
  *  plain `#/#`, not an abbreviation — the crowding that motivated an
  *  abbreviated line only happens once several tracks' roles share one line,
@@ -16,12 +24,7 @@ export function StaffingNeedLine({
   need: EventStaffingNeedRead;
   filled: number;
 }) {
-  const color =
-    filled >= need.count
-      ? "var(--color-success)"
-      : filled > 0
-        ? "var(--color-warning)"
-        : "var(--color-border-strong)";
+  const color = staffingColor(filled, need.count);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
       <ProgressRing

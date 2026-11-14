@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { pillStyle } from "@/components/ui/PillMenu";
 
 interface PillInputProps {
   value: number;
@@ -17,9 +18,9 @@ interface PillInputProps {
 }
 
 /**
- * A tiny number field that sits inside a chip or pill (e.g. a role's head
- * count on a staffing chip): no border or fill of its own, mono digits, and
- * just wide enough for its value — it borrows the chip's look.
+ * A tiny number field that sits inside a chip (e.g. a role's head count on a
+ * staffing chip), drawn as a PillMenu pill so it reads as the chip's one
+ * control, and just wide enough for its value.
  */
 export function PillInput({
   value,
@@ -30,8 +31,8 @@ export function PillInput({
   autoFocus = false,
 }: PillInputProps) {
   const [text, setText] = useState(String(value));
-  // Adopt a new value from outside (a save landing) during render — the same
-  // derived-state pattern CountInput uses.
+  const [hasFocus, setHasFocus] = useState(false);
+  // Adopt a new value from outside (a save landing) during render.
   const [seen, setSeen] = useState(value);
   if (value !== seen) {
     setSeen(value);
@@ -63,7 +64,10 @@ export function PillInput({
       ref={ref}
       disabled={disabled}
       onChange={(e) => setText(e.target.value.replace(/\D/g, ""))}
-      onBlur={commit}
+      onBlur={() => {
+        setHasFocus(false);
+        commit();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -74,19 +78,23 @@ export function PillInput({
           setText(String(value));
         }
       }}
-      onFocus={(e) => e.target.select()}
+      onFocus={(e) => {
+        setHasFocus(true);
+        e.target.select();
+      }}
       style={{
-        width: `${Math.max(text.length, 1) + 1}ch`,
-        padding: "0 2px",
+        ...pillStyle("default", "sm"),
+        // Content-box so `ch` sizes the digits, with the pill's padding outside them.
+        boxSizing: "content-box",
+        width: `${Math.max(text.length, 1)}ch`,
         margin: 0,
-        border: "none",
-        borderBottom: "1px solid var(--color-border-strong)",
         outline: "none",
-        background: "transparent",
-        color: "inherit",
+        background: hasFocus ? "var(--color-accent-subtle)" : "transparent",
+        color: "var(--color-text-primary)",
         fontFamily: "var(--font-mono)",
-        fontSize: "inherit",
+        fontSize: "11px",
         textAlign: "center",
+        cursor: disabled ? "default" : "text",
       }}
     />
   );
