@@ -15,8 +15,7 @@ export function staffingColor(filled: number, count: number): string {
  *  motivated an abbreviated line only happens once several tracks' needs
  *  share one line, and this always renders inside its own track's block.
  *  Same three-state colour as the chip warning border: success once filled,
- *  warning while short, muted at zero. A null `filled` (not known) shows the
- *  count alone. */
+ *  warning while short, muted at zero. */
 export function StaffingNeedLine({
   label,
   count,
@@ -24,19 +23,17 @@ export function StaffingNeedLine({
 }: {
   label: string;
   count: number;
-  filled: number | null;
+  filled: number;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-      {filled !== null && (
-        <ProgressRing
-          completed={filled}
-          total={count}
-          size={13}
-          strokeWidth={16}
-          color={staffingColor(filled, count)}
-        />
-      )}
+      <ProgressRing
+        completed={filled}
+        total={count}
+        size={13}
+        strokeWidth={16}
+        color={staffingColor(filled, count)}
+      />
       <span
         style={{
           fontFamily: "var(--font-sans)",
@@ -53,7 +50,7 @@ export function StaffingNeedLine({
           color: "var(--color-text-tertiary)",
         }}
       >
-        {filled === null ? count : `${filled}/${count}`}
+        {filled}/{count}
       </span>
     </div>
   );

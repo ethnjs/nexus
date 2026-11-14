@@ -21,15 +21,10 @@ import {
   type TournamentEvent,
   type TournamentTrack,
 } from "@/lib/api";
-import { ageStaffedCount, staffedCount } from "@/lib/assignments/staffing";
+import { staffingLines } from "@/lib/assignments/staffing";
 import { eventName, trackLocationLabel } from "@/lib/eventDisplay";
 import type { EventSortField } from "@/lib/eventSort";
-import {
-  AGE_RULES,
-  type TrackStaffing,
-  toTrackDetailInput,
-  withTrackDetail,
-} from "@/lib/eventTrackDetails";
+import { type TrackStaffing, toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
 import { formatOptions } from "@/lib/seasonDefaults";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 
@@ -293,20 +288,7 @@ function renderTrackCell(
         over_21_needed: detail?.over_21_needed ?? null,
       };
       const rows = ctx.assignmentsFor(e.id);
-      const lines = [
-        ...(detail?.needs ?? []).map((need) => ({
-          key: `role:${need.role_id}`,
-          label: need.role_label,
-          count: need.count,
-          filled: staffedCount(rows, need.role_id, track.id) as number | null,
-        })),
-        ...AGE_RULES.filter((rule) => staffing[rule.key] != null).map((rule) => ({
-          key: rule.key,
-          label: rule.label,
-          count: staffing[rule.key] ?? 0,
-          filled: ageStaffedCount(rows, rule.flag, track.id) as number | null,
-        })),
-      ];
+      const lines = staffingLines(detail, rows);
       const display =
         lines.length === 0 ? (
           noValue("No staffing")

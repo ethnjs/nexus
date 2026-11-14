@@ -88,3 +88,25 @@ export function staffingFilled(
     ? staffedCount(rows, option.id, trackId)
     : ageStaffedCount(rows, option.flag, trackId);
 }
+
+/** One track's needs as progress lines: each role, then each age rule. */
+export function staffingLines(
+  detail: EventTrackDetailRead | null | undefined,
+  rows: readonly Assignment[],
+): { key: string; label: string; count: number; filled: number }[] {
+  if (!detail) return [];
+  return [
+    ...(detail.needs ?? []).map((need) => ({
+      key: `role:${need.role_id}`,
+      label: need.role_label,
+      count: need.count,
+      filled: staffedCount(rows, need.role_id, detail.track_id),
+    })),
+    ...AGE_RULES.filter((rule) => detail[rule.key] != null).map((rule) => ({
+      key: rule.key,
+      label: rule.label,
+      count: detail[rule.key] ?? 0,
+      filled: ageStaffedCount(rows, rule.flag, detail.track_id),
+    })),
+  ];
+}
