@@ -32,7 +32,15 @@ import {
   tournamentTracksApi,
 } from "@/lib/api";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
-import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import {
+  chosenStaffing,
+  type StaffingOption,
+  staffingGroup,
+  staffingKey,
+  staffingOptions,
+  toTrackDetailInput,
+  withStaffingCount,
+} from "@/lib/eventTrackDetails";
 import {
   formatOptions,
   NO_FORMAT,
@@ -70,16 +78,16 @@ interface EventResult {
   notes?: MassNote[];
 }
 
-/** A pending staffing change on one track. Keyed by `${trackId}:${roleId}`,
- *  so setting the same role on the same track twice keeps only the last. */
+/** A pending staffing change on one track: a role's need or an age rule.
+ *  Keyed by track and option, so setting the same one twice keeps the last. */
 interface NeedChange {
   trackId: number;
-  roleId: number;
+  option: StaffingOption;
   /** Only on a set. */
   count?: number;
 }
 
-const needKey = (trackId: number, roleId: number) => `${trackId}:${roleId}`;
+const needKey = (change: NeedChange) => `${change.trackId}:${staffingKey(change.option)}`;
 
 // A pending add/remove, shown git-diff style before Save is pressed —
 // undoing just drops it back out of the pending set, nothing hits the
@@ -197,8 +205,6 @@ export function MassEventEditor({
       .catch(() => setRoles([]));
   }, [tournamentId]);
 
-  const roleNames = useMemo(() => new Map(roles.map((r) => [r.id, r.label])), [roles]);
-
   // Every shift currently attached to at least one selected event — the
   // only ones "Remove shift" makes sense for.
   const attachedShifts = (() => {
@@ -241,7 +247,7 @@ export function MassEventEditor({
   // it with — same rule as the event panel's shift badges.
   const showTrackInDiff = addableTracks.length > 1;
   function needLabel(change: NeedChange): string {
-    const role = roleNames.get(change.roleId) ?? "Role";
+    const role = change.option.label;
     const count = change.count !== undefined ? ` × ${change.count}` : "";
     const track = showTrackInDiff ? ` (${trackNames.get(change.trackId) ?? "track"})` : "";
     return `${role}${count}${track}`;
@@ -282,7 +288,7 @@ export function MassEventEditor({
   // Staging the same role on the same track again replaces the earlier
   // change, and a set and a remove for it cancel each other out.
   function setNeed(change: NeedChange) {
-    const key = needKey(change.trackId, change.roleId);
+    const key = needKey(change);
     setNeedsToSet((prev) => new Map(prev).set(key, change));
     setNeedsToRemove((prev) => {
       const next = new Map(prev);
@@ -292,9 +298,9 @@ export function MassEventEditor({
   }
 
   function removeNeed(change: NeedChange) {
-    const key = needKey(change.trackId, change.roleId);
+    const key = needKey(change);
     setNeedsToRemove((prev) =>
-      new Map(prev).set(key, { trackId: change.trackId, roleId: change.roleId }),
+      new Map(prev).set(key, { trackId: change.trackId, option: change.option }),
     );
     setNeedsToSet((prev) => {
       const next = new Map(prev);
@@ -375,26 +381,27 @@ export function MassEventEditor({
             notes.push({ text: `staffing skipped — not on ${trackName}`, tone: "muted" });
             continue;
           }
-          let needs = [...(detail.needs ?? [])];
+          let staffing = detail;
           for (const change of needsToSet.values()) {
             if (change.trackId !== trackId || change.count === undefined) continue;
             // Upsert: the new count wins whatever the event had before.
-            const at = needs.findIndex((n) => n.role_id === change.roleId);
-            if (at >= 0) needs[at] = { ...needs[at], count: change.count };
-            else needs.push({ role_id: change.roleId, count: change.count });
+            staffing = withStaffingCount(staffing, change.option, change.count);
           }
           for (const change of needsToRemove.values()) {
             if (change.trackId !== trackId) continue;
-            if (needs.some((n) => n.role_id === change.roleId)) {
-              needs = needs.filter((n) => n.role_id !== change.roleId);
+            const has = chosenStaffing(staffing, roles).some(
+              (o) => staffingKey(o) === staffingKey(change.option),
+            );
+            if (has) {
+              staffing = withStaffingCount(staffing, change.option, null);
             } else {
               notes.push({
-                text: `no ${roleNames.get(change.roleId) ?? "role"} on ${trackName} to remove`,
+                text: `no ${change.option.label} on ${trackName} to remove`,
                 tone: "danger",
               });
             }
           }
-          details = details.map((d) => (d.track_id === trackId ? { ...d, needs } : d));
+          details = details.map((d) => (d.track_id === trackId ? staffing : d));
           detailsChanged = true;
         }
         if (detailsChanged) patch.track_details = details;
@@ -725,7 +732,7 @@ export function MassEventEditor({
                 width={300}
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
-                    <IconPlus size={12} /> Set role
+                    <IconPlus size={12} /> Set staffing
                   </Button>
                 }
               >
@@ -746,7 +753,7 @@ export function MassEventEditor({
                 width={300}
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
-                    <IconMinus size={12} /> Remove role
+                    <IconMinus size={12} /> Remove staffing
                   </Button>
                 }
               >
@@ -806,7 +813,8 @@ export function MassEventEditor({
                 marginTop: "8px",
               }}
             >
-              Set adds the role or overwrites its count. Events not on the track are skipped.
+              Set adds the role or age rule, or overwrites its count. Events not on the track are
+              skipped.
             </p>
           </div>
         </SettingsSection>
@@ -845,9 +853,11 @@ function NeedForm({
   onCancel: () => void;
 }) {
   const [trackId, setTrackId] = useState<number | null>(null);
-  const [roleId, setRoleId] = useState<number | null>(null);
+  const options = staffingOptions(roles);
+  const [key, setKey] = useState<string | null>(null);
+  const option = options.find((o) => staffingKey(o) === key) ?? null;
   const [count, setCount] = useState("1");
-  const valid = trackId !== null && roleId !== null && (mode === "remove" || Number(count) >= 1);
+  const valid = trackId !== null && option !== null && (mode === "remove" || Number(count) >= 1);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -863,11 +873,16 @@ function NeedForm({
       <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Dropdown
-            label="Role"
-            value={roleId !== null ? String(roleId) : ""}
-            onChange={(v) => setRoleId(Number(v))}
-            options={roles.map((r) => ({ value: String(r.id), label: r.label }))}
-            placeholder="Select a role"
+            label="Role or age"
+            value={key ?? ""}
+            onChange={setKey}
+            options={["Roles", "Age, any role"].map((group) => ({
+              group,
+              options: options
+                .filter((o) => staffingGroup(o) === group)
+                .map((o) => ({ value: staffingKey(o), label: o.label })),
+            }))}
+            placeholder="Select one"
             size="sm"
             fullWidth
           />
@@ -896,7 +911,7 @@ function NeedForm({
             valid &&
             onSubmit({
               trackId: trackId!,
-              roleId: roleId!,
+              option: option!,
               ...(mode === "set" ? { count: Number(count) } : {}),
             })
           }
