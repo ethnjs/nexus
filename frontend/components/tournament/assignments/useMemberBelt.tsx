@@ -378,7 +378,8 @@ export function useMemberBelt({
         </span>
         {belt.length === 0 ? (
           <EmptyState
-            icon={<IconUser size={24} />}
+            card
+            icon={<IconUser size={28} />}
             title={query || filterActive ? "No members match" : "No members yet"}
             description={query || filterActive ? "Try a wider filter." : undefined}
             action={

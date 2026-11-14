@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Card } from "@/components/ui/Card";
 
 interface EmptyStateProps {
   icon?: ReactNode;
@@ -27,6 +28,9 @@ interface EmptyStateProps {
    * border goes to `--color-border-strong` rather than to it.
    */
   active?: boolean;
+  /** Sits in a page card — for an empty state standing in for a page's or
+   *  panel's whole content, so it reads like the cards it replaces. */
+  card?: boolean;
 }
 
 export function EmptyState({
@@ -37,10 +41,11 @@ export function EmptyState({
   size = "md",
   transparent = false,
   active = false,
+  card = false,
 }: EmptyStateProps) {
   const compact = size === "sm";
   const stacked = !compact || !!action;
-  return (
+  const box = (
     <div
       style={{
         display: "flex",
@@ -85,5 +90,12 @@ export function EmptyState({
       )}
       {action && <div style={{ marginTop: compact ? 0 : "4px" }}>{action}</div>}
     </div>
+  );
+  return card ? (
+    <Card radius="lg" style={{ padding: "8px" }}>
+      {box}
+    </Card>
+  ) : (
+    box
   );
 }

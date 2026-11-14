@@ -536,13 +536,12 @@ export default function ShiftsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Shifts" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage events permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage events permission to view this page."
+        />
       </div>
     );
   }
@@ -723,27 +722,26 @@ export default function ShiftsPage() {
       )}
 
       {shifts.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconCalendar size={28} />}
-            title="No shifts yet"
-            description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;. Each one belongs to a competition day."
-            action={
-              canEdit ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={addShift}
-                  disabled={isArchived}
-                  title={archivedReason}
-                >
-                  <IconPlus size={12} /> Add shift
-                </Button>
-              ) : undefined
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconCalendar size={28} />}
+          title="No shifts yet"
+          description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;. Each one belongs to a competition day."
+          action={
+            canEdit ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={addShift}
+                disabled={isArchived}
+                title={archivedReason}
+              >
+                <IconPlus size={12} /> Add shift
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <Card radius="lg" className={table.scroll} style={{ padding: "8px 12px" }}>
           {/* One grid owns the tracks; header and rows are subgrids of it, so

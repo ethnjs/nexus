@@ -225,13 +225,12 @@ export default function InvitesSettingsPage() {
     return (
       <div>
         <SettingsPageHeader page="invites" heading="Invites" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage invites permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage invites permission to view this page."
+        />
       </div>
     );
   }
@@ -284,26 +283,24 @@ export default function InvitesSettingsPage() {
       )}
 
       {isArchived ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconArchive size={28} />}
-            title="Tournament archived"
-            description="Archiving deactivated every invite. Unarchive the tournament to create new ones."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconArchive size={28} />}
+          title="Tournament archived"
+          description="Archiving deactivated every invite. Unarchive the tournament to create new ones."
+        />
       ) : liveInvites.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconInvite size={28} />}
-            title="No invites yet"
-            description="Create an invite to let members or staff join this tournament."
-            action={
-              <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
-                <IconPlus size={14} /> Add invite
-              </Button>
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconInvite size={28} />}
+          title="No invites yet"
+          description="Create an invite to let members or staff join this tournament."
+          action={
+            <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <IconPlus size={14} /> Add invite
+            </Button>
+          }
+        />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>

@@ -219,13 +219,12 @@ export default function AuditLogSettingsPage() {
     return (
       <div>
         <SettingsPageHeader page="audit-log" heading="Audit Log" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage tournament permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage tournament permission to view this page."
+        />
       </div>
     );
   }
@@ -281,16 +280,15 @@ export default function AuditLogSettingsPage() {
       {entries === null ? (
         <LoadingState />
       ) : entries.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            title="No activity yet"
-            description={
-              actionFilter || userFilter
-                ? "No entries match the current filters."
-                : "Actions taken in this tournament will show up here."
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          title="No activity yet"
+          description={
+            actionFilter || userFilter
+              ? "No entries match the current filters."
+              : "Actions taken in this tournament will show up here."
+          }
+        />
       ) : (
         <>
           <Card radius="lg" style={{ padding: "8px 12px" }}>

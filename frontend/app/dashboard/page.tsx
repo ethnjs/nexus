@@ -210,23 +210,22 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : tournaments.length === 0 ? (
-          <Card radius="lg" style={{ padding: "8px" }}>
-            <EmptyState
-              icon={<IconTrophy size={28} />}
-              title="No tournaments yet"
-              description="Join one with an invite, or create your own."
-              action={
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <Button variant="primary" size="sm" onClick={() => setModalView("join")}>
-                    Join with an invite
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setModalView("create")}>
-                    <IconPlus size={12} /> Create tournament
-                  </Button>
-                </div>
-              }
-            />
-          </Card>
+          <EmptyState
+            card
+            icon={<IconTrophy size={28} />}
+            title="No tournaments yet"
+            description="Join one with an invite, or create your own."
+            action={
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Button variant="primary" size="sm" onClick={() => setModalView("join")}>
+                  Join with an invite
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setModalView("create")}>
+                  <IconPlus size={12} /> Create tournament
+                </Button>
+              </div>
+            }
+          />
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

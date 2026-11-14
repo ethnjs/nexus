@@ -116,13 +116,12 @@ export default function RolesSettingsPage() {
     return (
       <div>
         <SettingsPageHeader page="roles" heading="Roles" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage roles permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage roles permission to view this page."
+        />
       </div>
     );
   }
@@ -134,40 +133,39 @@ export default function RolesSettingsPage() {
       <SettingsPageHeader page="roles" heading="Roles" />
 
       {roles.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconUserShield size={28} />}
-            title="No roles yet"
-            description="Start from the default template, or create roles from scratch."
-            action={
-              canManageRoles ? (
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    loading={applying}
-                    onClick={handleApplyTemplate}
-                    disabled={!canCreateRoles}
-                    title={!canCreateRoles ? ARCHIVED_REASON : undefined}
-                  >
-                    Apply default template
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleCreateRole}
-                    disabled={!canCreateRoles}
-                    title={!canCreateRoles ? ARCHIVED_REASON : undefined}
-                  >
-                    Create role
-                  </Button>
-                </div>
-              ) : undefined
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconUserShield size={28} />}
+          title="No roles yet"
+          description="Start from the default template, or create roles from scratch."
+          action={
+            canManageRoles ? (
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  loading={applying}
+                  onClick={handleApplyTemplate}
+                  disabled={!canCreateRoles}
+                  title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                >
+                  Apply default template
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCreateRole}
+                  disabled={!canCreateRoles}
+                  title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                >
+                  Create role
+                </Button>
+              </div>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>

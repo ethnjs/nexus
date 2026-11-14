@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { MemberSections } from "@/components/tournament/members/sections/MemberSections";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -127,17 +126,16 @@ export default function MemberPage() {
   if (error) {
     return (
       <div>
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title={error.status === 403 ? "No access" : "Member not found"}
-            description={
-              error.status === 403
-                ? "You can only view your own member page in this tournament."
-                : "This member may have been removed from the tournament."
-            }
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title={error.status === 403 ? "No access" : "Member not found"}
+          description={
+            error.status === 403
+              ? "You can only view your own member page in this tournament."
+              : "This member may have been removed from the tournament."
+          }
+        />
       </div>
     );
   }

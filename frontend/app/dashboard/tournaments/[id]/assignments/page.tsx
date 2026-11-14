@@ -51,7 +51,6 @@ import {
 import { ExportButton } from "@/components/tournament/exports/ExportButton";
 import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -1576,13 +1575,12 @@ export default function AssignmentsPage() {
     return (
       <div>
         <CollapsibleHeader heading="Assignments" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage members permission to view this page."
-          />
-        </Card>
+        <EmptyState
+          card
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage members permission to view this page."
+        />
       </div>
     );
   }
@@ -1709,25 +1707,24 @@ export default function AssignmentsPage() {
             </div>
 
             {visibleEvents.length === 0 ? (
-              <Card radius="lg" style={{ padding: "8px" }}>
-                <EmptyState
-                  icon={<IconEvents size={28} />}
-                  title="No events match"
-                  description="Try a wider search or filter."
-                  action={
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setEventQuery("");
-                        applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  }
-                />
-              </Card>
+              <EmptyState
+                card
+                icon={<IconEvents size={28} />}
+                title="No events match"
+                description="Try a wider search or filter."
+                action={
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setEventQuery("");
+                      applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                    }}
+                  >
+                    Clear
+                  </Button>
+                }
+              />
             ) : (
               // The whole list is one grid, and each row a subgrid of it, so
               // the name column is exactly as wide as the longest name on
