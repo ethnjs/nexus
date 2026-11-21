@@ -2,7 +2,7 @@
 
 **Last updated:** November 21, 2026
 
-These Terms of Service ("Terms") govern your use of NEXUS, a volunteer management tool available at nexus.socalscioly.org (the "Service"). NEXUS is operated by Southern California Science Olympiad, a California nonprofit public benefit corporation ("we", "us"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy). If you do not agree, do not use the Service.
+These Terms of Service ("Terms") govern your use of NEXUS, a volunteer management tool available at nexus.socalscioly.org (the "Service"). NEXUS is operated by Southern California Science Olympiad, a California nonprofit public benefit corporation and 501(c)(3) tax-exempt organization ("we", "us"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy). If you do not agree, do not use the Service.
 
 NEXUS is not operated or endorsed by Science Olympiad, Inc. "Science Olympiad" is a trademark of its owner.
 
