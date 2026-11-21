@@ -11,6 +11,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ApiError, type JoinPreviewTournament, joinApi, membersApi } from "@/lib/api";
 import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { useAuth } from "@/lib/useAuth";
+import styles from "./JoinPage.module.css";
 
 // Copy varies by which threshold(s) this tournament actually collects — a
 // TD who only cares about 21+ shouldn't see 18+ language.
@@ -73,10 +74,8 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
         {rows.map((row) => (
           <span
             key={row.key}
+            className={styles.factRow}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
               fontFamily: "var(--font-sans)",
               fontSize: "13px",
               color: "var(--color-text-secondary)",
@@ -88,16 +87,16 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
               </span>
             )}
             {row.place && (
-              <>
+              <span className={styles.fact}>
                 <IconLocation />
                 {row.place}
-              </>
+              </span>
             )}
             {row.dates && (
-              <>
+              <span className={styles.fact}>
                 <IconCalendar />
                 {row.dates}
-              </>
+              </span>
             )}
           </span>
         ))}
