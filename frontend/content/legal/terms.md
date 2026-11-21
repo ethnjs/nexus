@@ -2,13 +2,13 @@
 
 **Last updated:** November 7, 2026
 
-These Terms of Service ("Terms") govern your use of NEXUS, a volunteer management tool available at nexus.socalscioly.org (the "Service"). NEXUS is run by its maintainers, listed on the open-source [NEXUS GitHub repository](https://github.com/ethnjs/nexus) ("we", "us"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy). If you do not agree, do not use the Service.
+These Terms of Service ("Terms") govern your use of NEXUS, a volunteer management tool available at nexus.socalscioly.org (the "Service"). NEXUS is operated by Southern California Science Olympiad, a California nonprofit public benefit corporation ("we", "us"). By creating an account or using the Service, you agree to these Terms and to our [Privacy Policy](/privacy). If you do not agree, do not use the Service.
 
-NEXUS is an independent project. It is not operated or endorsed by Science Olympiad, Inc. "Science Olympiad" is a trademark of its owner.
+NEXUS is not operated or endorsed by Science Olympiad, Inc. "Science Olympiad" is a trademark of its owner.
 
 ## 1. Eligibility
 
-You must be at least 13 years old to use NEXUS. If you are between 13 and 17, you may use NEXUS only with the permission of a parent or guardian, who agrees to these Terms on your behalf.
+You must be at least 13 years old to use NEXUS. If you are under 18, your parent or guardian must review and agree to these Terms on your behalf before you use NEXUS. A parent or guardian who allows a minor to use NEXUS agrees to these Terms and is responsible for the minor's use of the Service.
 
 ## 2. Your account
 
@@ -34,9 +34,11 @@ Exports are recorded in the tournament's audit log, including who exported and w
 
 We do not run tournaments and are not responsible for how Organizers conduct their events, their staffing decisions, or their communications with volunteers.
 
-## 4. Forms
+## 4. Organizer content and forms
 
-Forms on NEXUS are created by Organizers, not by us. We do not write, review, or approve their questions, and we are not responsible for a form's content, what it asks for, or how the Organizer uses your answers. If a form seems inappropriate or suspicious, don't fill it out, and report it to us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+Organizers are responsible for the content they create on NEXUS, including forms, tournament descriptions, messages, and links, and for the information they collect. We do not write, review, or approve this content and have no obligation to monitor it, but we may remove content or restrict access when we believe it violates these Terms. We are not responsible for a form's content, what it asks for, or how the Organizer uses your answers. If a form seems inappropriate or suspicious, don't fill it out, and report it to us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+
+Some Organizers also collect information outside NEXUS, for example with other form or spreadsheet tools. We are not responsible for information collected or shared outside the Service. The Service may also link to websites we don't control, and we are not responsible for their content or privacy practices.
 
 **Never enter passwords** (including your NEXUS password), Social Security numbers, other government ID numbers, bank or credit card details, or other sensitive personal information into a form, even if the form asks for it.
 
@@ -48,8 +50,12 @@ You agree not to:
 - harass, threaten, or impersonate others;
 - upload content that is unlawful, defamatory, obscene, or that you do not have the right to share;
 - access accounts, tournaments, or data you are not authorized to access, or try to get around permissions or security measures;
-- disrupt the Service, including by overloading it, introducing malware, or scraping it with automated tools; or
+- probe, scan, or test the Service for vulnerabilities without our written permission;
+- disrupt the Service, including by overloading it, introducing malware, or scraping it with automated tools;
+- collect other users' contact information to build mailing lists, or for any purpose other than running a tournament; or
 - use the Service to send spam or unsolicited messages.
+
+If you find a security problem, please report it to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) and don't access or change other people's information.
 
 ## 6. Your content
 
@@ -59,7 +65,9 @@ For security and compliance purposes, we keep tournament audit log entries after
 
 Deleting your account removes Your Content from NEXUS, but not copies that Organizers exported before then. To have those copies deleted too, email [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). We will forward your request to the Organizers of the tournaments you were part of, who must delete your information under [Section 3](#3-organizers-and-volunteer-information).
 
-## 7. Feedback
+## 7. The NEXUS name and software
+
+The NEXUS source code is published in the [NEXUS GitHub repository](https://github.com/ethnjs/nexus), and your use of the code is governed by the license there. That license does not cover the NEXUS name and logo, or the Service as we operate it, which these Terms govern. Tournament names, logos, and other content belong to their Organizers.
 
 If you send us suggestions or feedback, we may use them without any obligation to you.
 
@@ -81,7 +89,7 @@ THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KI
 
 ## 11. Limitation of liability
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, WE WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATING TO THE SERVICE OR THESE TERMS. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED ONE HUNDRED U.S. DOLLARS (US $100).
+TO THE FULLEST EXTENT PERMITTED BY LAW, WE WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATING TO THE SERVICE OR THESE TERMS. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED THE GREATER OF THE AMOUNT YOU PAID US IN THE 12 MONTHS BEFORE THE CLAIM OR ONE HUNDRED U.S. DOLLARS (US $100).
 
 Nothing in these Terms limits or excludes our liability for fraud, gross negligence, or willful misconduct, or any other liability that cannot be limited under applicable law. Some jurisdictions do not allow certain disclaimers or limitations of liability, so some of the above may not apply to you.
 
@@ -95,12 +103,14 @@ We may update these Terms from time to time. If we make significant changes, we 
 
 ## 14. Notice for California users
 
-Under California Civil Code Section 1789.3, California users are entitled to the following notice. NEXUS is provided by its maintainers, who can be reached at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). The Service is free of charge. To resolve a complaint about the Service or to get more information about using it, contact us at that address. You may also contact the Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs in writing at 1625 North Market Blvd., Suite N 112, Sacramento, CA 95834, or by telephone at (916) 445-1254 or (800) 952-5210.
+Under California Civil Code Section 1789.3, California users are entitled to the following notice. NEXUS is provided by Southern California Science Olympiad, 4321 W. 168th Street, Lawndale, CA 90260, who can be reached at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). The Service is free of charge. To resolve a complaint about the Service or to get more information about using it, contact us at that address. You may also contact the Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs in writing at 1625 North Market Blvd., Suite N 112, Sacramento, CA 95834, or by telephone at (916) 445-1254 or (800) 952-5210.
 
 ## 15. General
 
-These Terms and the Privacy Policy are the entire agreement between you and us about the Service. If any part of these Terms is found unenforceable, the rest remains in effect. Our failure to enforce a provision is not a waiver of it. You may not transfer your rights under these Terms; we may transfer ours in connection with handing the Service over to new maintainers.
+These Terms are governed by the laws of the State of California, without regard to its conflict-of-laws rules. Any dispute relating to the Service or these Terms will be brought in the state or federal courts located in Los Angeles County, California, unless the law where you live requires otherwise.
+
+These Terms and the Privacy Policy are the entire agreement between you and us about the Service. If any part of these Terms is found unenforceable, the rest remains in effect. Our failure to enforce a provision is not a waiver of it. You may not transfer your rights under these Terms; we may transfer ours to an organization that takes over operating the Service.
 
 ## 16. Contact
 
-Questions about these Terms can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+Questions about these Terms can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) or by mail to Southern California Science Olympiad, 4321 W. 168th Street, Lawndale, CA 90260.

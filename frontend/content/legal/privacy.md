@@ -2,22 +2,25 @@
 
 **Last updated:** November 7, 2026
 
-NEXUS is a volunteer management tool for Science Olympiad tournaments. It is run by its maintainers, listed on the open-source [NEXUS GitHub repository](https://github.com/ethnjs/nexus) ("we", "us"), and is available at nexus.socalscioly.org (the "Service"). This policy explains what information we collect, how it is used, who can see it, and the choices you have.
+NEXUS is a volunteer management tool for Science Olympiad tournaments, available at nexus.socalscioly.org (the "Service"). It is operated by Southern California Science Olympiad, a California nonprofit public benefit corporation ("we", "us"). This policy explains what information we collect, how it is used, who can see it, and the choices you have.
 
-NEXUS is an independent project. It is not operated or endorsed by Science Olympiad, Inc.
+NEXUS is not operated or endorsed by Science Olympiad, Inc.
+
+**Our principles:** We don't show ads. We don't sell your information. We collect only what's needed to run Science Olympiad tournaments, and the tournaments you join decide what their forms ask.
 
 ## Who is responsible for your information
 
 There are two kinds of people who handle your information on NEXUS:
 
-- **Us, the maintainers.** We run the Service, store the data, and are responsible for this policy.
-- **Organizers.** Tournament directors and tournament staff ("Organizers") use NEXUS to run their own tournaments. When you join a tournament, its Organizers can see and use your information to staff it. Organizers decide what their forms ask and how they use your answers. If you have questions about how a particular tournament uses your information, contact its Organizers directly.
+- **Us.** We run the Service, store the data, and are responsible for this policy.
+- **Organizers.** Tournament directors and tournament staff ("Organizers") use NEXUS to run their own tournaments. When you join a tournament, its Organizers can see and use your information to staff it. Each tournament's Organizers are responsible for the information they collect and how they use it, including what their forms ask. Some Organizers also collect information outside NEXUS, for example with other form or spreadsheet tools; we are not responsible for information collected or shared outside the Service. If you have questions about how a particular tournament uses your information, contact its Organizers directly.
 
 ## Information we collect
 
 ### Information you give us
 
 - **Account information:** your name, email address, and password. We store your password only as a one-way hash and never see it in plain text. We also record which version of our Terms of Service and Privacy Policy you accepted, and when.
+- **Sign-in codes:** when you sign up or sign in, we email you a one-time code. Until you enter it, we keep the email address you used and, for a new sign-up, the hashed password you chose. Codes expire after a short time.
 - **Profile information:** phone number, date of birth, pronouns, school, major, student status, year and graduation year, employer, T-shirt size, dietary restrictions, and your Science Olympiad competition and volunteering history. Some fields are optional.
 - **Tournament information:** the tournaments you join, your roles, your availability, event preferences, lunch choices, and the shifts and events you are assigned to.
 - **Form responses:** your answers to forms that Organizers create. Organizers choose the questions, so a form may ask for information not listed here. We do not review forms and are not responsible for what they ask. Never enter passwords, Social Security numbers, bank or credit card details, or other sensitive information into a form, even if it asks.
@@ -62,7 +65,7 @@ Some browsers can send a "Do Not Track" or Global Privacy Control signal. NEXUS 
 ## Who can see your information
 
 - **Only you** can see your date of birth and your session information (IP addresses and browsers). They are not shown to Organizers or to NEXUS administrators anywhere in the Service.
-- **Organizers of the tournaments you join** can see the rest of your profile, your responses to their forms, and your assignments. What each Organizer can see depends on the role they hold. Organizers can also export this information (for example, to a spreadsheet) to run their tournament, and each export is recorded in the tournament's audit log.
+- **Organizers of the tournaments you join** can see the rest of your profile, your responses to their forms, and your assignments. What each Organizer can see depends on the role they hold. Organizers can also export this information (for example, to a spreadsheet) to run their tournament, and exports are normally recorded in the tournament's audit log.
 - **Other volunteers** in the same tournament may see limited information such as your name and assignments where needed for coordination.
 - **NEXUS administrators** can view and manage accounts through the Service's admin tools, apart from the information listed above as visible only to you.
 - **Service providers** that host or support NEXUS, under their own privacy and security terms:
@@ -71,7 +74,7 @@ Some browsers can send a "Do Not Track" or Global Privacy Control signal. NEXUS 
   - Resend (sending email)
 - **Legal reasons:** we may disclose information if required by law, or if we believe in good faith it is necessary to protect the rights, property, or safety of our users, the public, or us.
 
-Because we operate the database, the maintainers may access stored data directly when needed to maintain the Service, fix problems, or respond to legal requests. We do not otherwise access it.
+Because we operate the database, the volunteers who maintain NEXUS may access stored data directly when needed to maintain the Service, fix problems, or respond to legal requests. We do not otherwise access it.
 
 Organizers who export your information must follow the rules in our [Terms of Service](/terms#3-organizers-and-volunteer-information). They may use it only to run their tournament, must keep it secure, may share it only with people helping run the tournament, and must delete it when it is no longer needed or when they receive a request to delete your information. Once a copy leaves NEXUS, we cannot technically control it, but we may suspend Organizers who break these rules.
 
@@ -81,15 +84,15 @@ Some tournaments need to know whether volunteers are over 18 or 21. When you joi
 
 ## Children and minors
 
-NEXUS is not intended for children under 13, and we do not knowingly collect information from them. If we learn that a child under 13 has created an account, we will delete it. If you believe a child under 13 has given us information, contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+NEXUS is not directed to children under 13, and we do not knowingly collect information from them. We ask for your date of birth when you set up your account. If it shows that you are under 13, or we otherwise learn that a user is under 13, we delete the account and its information. If you believe a child under 13 has given us information, contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
 
-Users aged 13 to 17 may use NEXUS only with the permission of a parent or guardian.
+Users aged 13 to 17 may use NEXUS only with the permission of a parent or guardian, who agrees to our [Terms of Service](/terms#1-eligibility) on their behalf. When a user under 18 sets up their account, we ask them to confirm this and record when they did. A parent or guardian can ask us to delete their child's information at any time by emailing [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
 
 If you are under 18, you can remove information you have posted on NEXUS by editing your profile, leaving a tournament, or deleting your account, or you can ask us to remove it by emailing [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). Removal does not guarantee that every copy is gone: for example, copies Organizers exported earlier and audit log entries may remain.
 
 ## Keeping and deleting your information
 
-We keep your information for as long as your account exists.
+We keep your information until you delete your account or ask us to delete it. Tournament records, such as tournaments, events, shifts, assignments, and audit logs, are kept after a tournament ends as a history of that tournament. We may also keep information as needed to comply with legal obligations, resolve disputes, and enforce our agreements.
 
 - **Deactivating** your account (in account settings) signs you out and blocks sign-in, but keeps your information. Contact us to reactivate it.
 - **Deleting** your account (in account settings) permanently removes your profile, experience history, sessions, tournament memberships, and form responses. Things you created for others, such as tournaments and forms, remain, but are no longer linked to your account. For security and compliance purposes, tournament audit log entries also remain, and may include your name and email address.
@@ -101,7 +104,7 @@ Deleting your account does not delete copies of your information that Organizers
 ## Your choices
 
 - You can view and edit your profile at any time from your profile and settings pages.
-- You can leave a tournament at any time before it is archived. Leaving removes your membership and your responses to that tournament's forms, and its Organizers can no longer see your information in NEXUS. To have copies they exported earlier deleted, email us and we will forward your request.
+- You can leave a tournament at any time before it is archived. A tournament's owner must transfer ownership before leaving. Leaving removes your membership and your responses to that tournament's forms, and its Organizers can no longer see your information in NEXUS. To have copies they exported earlier deleted, email us and we will forward your request.
 - You can delete your account at any time.
 - You can contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) to ask for a copy of your information or to ask us to correct or delete it.
 
@@ -139,7 +142,7 @@ We will not treat you differently for exercising any of these rights.
 
 ## Security
 
-We take reasonable measures to protect your information, including hashed passwords, encrypted connections, and hashed session and verification tokens. No method of storage or transmission is completely secure, and we cannot guarantee absolute security.
+We take reasonable measures to protect your information, including hashed passwords, encrypted connections, and hashed session and verification tokens. No method of storage or transmission is completely secure, and we cannot guarantee absolute security. If a security breach affects your information, we will notify you as required by law.
 
 ## Where your information is stored
 
@@ -151,4 +154,4 @@ We may update this policy from time to time. If we make significant changes, we 
 
 ## Contact
 
-Questions about this policy can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+Questions about this policy can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) or by mail to Southern California Science Olympiad, 4321 W. 168th Street, Lawndale, CA 90260.
