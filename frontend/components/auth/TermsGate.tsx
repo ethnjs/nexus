@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ParentConsentCheckbox } from "@/components/auth/ParentConsentCheckbox";
 import { TermsAgreement } from "@/components/auth/TermsAgreement";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -8,13 +9,16 @@ import { ApiError, type UserMeSlim, usersApi } from "@/lib/api";
 
 /** Blocks the app until the signed-in user accepts the current Terms and Privacy Policy. */
 export function TermsGate({
+  needsParentConsent,
   onAccepted,
   onSignOut,
 }: {
+  needsParentConsent: boolean;
   onAccepted: (user: UserMeSlim) => void;
   onSignOut: () => void;
 }) {
   const [checked, setChecked] = useState(false);
+  const [parentConsent, setParentConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +26,7 @@ export function TermsGate({
     setSaving(true);
     setError(null);
     try {
-      onAccepted(await usersApi.acceptTerms());
+      onAccepted(await usersApi.acceptTerms(parentConsent));
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Something went wrong :(");
       setSaving(false);
@@ -43,7 +47,7 @@ export function TermsGate({
             type="button"
             variant="primary"
             onClick={accept}
-            disabled={!checked}
+            disabled={!checked || (needsParentConsent && !parentConsent)}
             loading={saving}
           >
             Continue
@@ -61,7 +65,12 @@ export function TermsGate({
       >
         To keep using NEXUS, please review and accept our Terms of Service and Privacy Policy.
       </p>
-      <TermsAgreement checked={checked} onChange={setChecked} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <TermsAgreement checked={checked} onChange={setChecked} />
+        {needsParentConsent && (
+          <ParentConsentCheckbox checked={parentConsent} onChange={setParentConsent} />
+        )}
+      </div>
       {error && (
         <p
           style={{

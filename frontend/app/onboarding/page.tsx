@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { ConfirmDateOfBirthModal } from "@/components/auth/ConfirmDateOfBirthModal";
+import { ParentConsentCheckbox } from "@/components/auth/ParentConsentCheckbox";
 import { Topbar } from "@/components/layout/Topbar";
 import {
   type CompetitionExperienceDraft,
@@ -38,6 +40,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
   ApiError,
+  apiErrorCode,
   type CanonicalEvent,
   canonicalEventsApi,
   type SHIRT_SIZE,
@@ -50,6 +53,7 @@ import {
 import {
   DATE_OF_BIRTH_DISCLAIMER,
   formatPhone,
+  leaveForAgeRestriction,
   safeRedirectPath,
   validateDateOfBirth,
   validatePhone,
@@ -174,6 +178,13 @@ function OnboardingContent() {
   const [volunteerRows, setVolunteerRows] = useState<VolunteerExperienceDraft[]>([]);
   const [hasDietary, setHasDietary] = useState<boolean | null>(null);
 
+  // The date of birth is saved on its own step, so an age check happens before the rest.
+  const [savedDateOfBirth, setSavedDateOfBirth] = useState<string | undefined>(undefined);
+  const [confirmingDateOfBirth, setConfirmingDateOfBirth] = useState<string | null>(null);
+  const [confirmedDateOfBirth, setConfirmedDateOfBirth] = useState<string | null>(null);
+  const [needsParentConsent, setNeedsParentConsent] = useState(false);
+  const [parentConsent, setParentConsent] = useState(false);
+
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [showCompetitionRowErrors, setShowCompetitionRowErrors] = useState(false);
   const [showVolunteerRowErrors, setShowVolunteerRowErrors] = useState(false);
@@ -228,6 +239,7 @@ function OnboardingContent() {
             user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null,
         };
         setOriginal(user);
+        setSavedDateOfBirth(user.date_of_birth ?? undefined);
         setName(answers.name);
         setPhone(answers.phone);
         setProfileData(answers.profile);
@@ -255,6 +267,27 @@ function OnboardingContent() {
         target,
       ),
     );
+  }
+
+  async function saveDateOfBirth(value: string) {
+    try {
+      await usersApi.updateMe({ date_of_birth: value, parent_consent: parentConsent });
+      setSavedDateOfBirth(value);
+      setNeedsParentConsent(false);
+      advance(STATE.PRONOUNS);
+    } catch (error: unknown) {
+      const code = apiErrorCode(error);
+      if (code === "under_minimum_age") {
+        leaveForAgeRestriction(savedDateOfBirth !== undefined);
+      } else if (code === "parent_consent_required") {
+        setNeedsParentConsent(true);
+      } else {
+        setErrors((er) => ({
+          ...er,
+          date_of_birth: error instanceof ApiError ? error.message : "Something went wrong.",
+        }));
+      }
+    }
   }
 
   function validateCompetitionRows(): boolean {
@@ -292,6 +325,9 @@ function OnboardingContent() {
     if (phoneErr) ers.phone = phoneErr;
     const dobErr = validateDateOfBirth(profileData.date_of_birth ?? "");
     if (dobErr) ers.date_of_birth = dobErr;
+    else if (profileData.date_of_birth !== savedDateOfBirth) {
+      ers.date_of_birth = "Select Next to confirm your date of birth.";
+    }
 
     const isStudent =
       profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate";
@@ -321,7 +357,11 @@ function OnboardingContent() {
     setLoading(true);
     setErrors({});
 
-    const { university_name: _university_name, ...restProfileData } = profileData;
+    const {
+      university_name: _university_name,
+      date_of_birth: _date_of_birth,
+      ...restProfileData
+    } = profileData;
 
     const cleaned: Record<string, unknown> = {
       first_name: name.first,
@@ -501,27 +541,52 @@ function OnboardingContent() {
                 }
                 required
                 onNext={() => {
-                  const err = validateDateOfBirth(profileData.date_of_birth ?? "");
+                  const value = profileData.date_of_birth ?? "";
+                  const err = validateDateOfBirth(value);
                   if (err) {
                     setErrors((er) => ({ ...er, date_of_birth: err }));
                     return;
                   }
-                  advance(STATE.PRONOUNS);
+                  if (value === savedDateOfBirth) {
+                    advance(STATE.PRONOUNS);
+                    return;
+                  }
+                  if (needsParentConsent && !parentConsent) {
+                    setErrors((er) => ({ ...er, parent_consent: "Check this box to continue." }));
+                    return;
+                  }
+                  if (value === confirmedDateOfBirth) {
+                    void saveDateOfBirth(value);
+                    return;
+                  }
+                  setConfirmingDateOfBirth(value);
                 }}
                 isActive={state === STATE.DATE_OF_BIRTH}
               >
-                <DatePicker
-                  required
-                  aria-label="Date of birth"
-                  value={profileData.date_of_birth ?? ""}
-                  max={todayLocalDateString()}
-                  onChange={(v) => {
-                    setProfileData((d) => ({ ...d, date_of_birth: v }));
-                    setErrors((er) => ({ ...er, date_of_birth: undefined }));
-                  }}
-                  error={errors.date_of_birth}
-                  fullWidth
-                />
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <DatePicker
+                    required
+                    aria-label="Date of birth"
+                    value={profileData.date_of_birth ?? ""}
+                    max={todayLocalDateString()}
+                    onChange={(v) => {
+                      setProfileData((d) => ({ ...d, date_of_birth: v }));
+                      setErrors((er) => ({ ...er, date_of_birth: undefined }));
+                    }}
+                    error={errors.date_of_birth}
+                    fullWidth
+                  />
+                  {needsParentConsent && (
+                    <ParentConsentCheckbox
+                      checked={parentConsent}
+                      onChange={(checked) => {
+                        setParentConsent(checked);
+                        setErrors((er) => ({ ...er, parent_consent: undefined }));
+                      }}
+                      error={errors.parent_consent}
+                    />
+                  )}
+                </div>
               </ProfileQuestion>
             </ProfileCard>
           )}
@@ -910,6 +975,16 @@ function OnboardingContent() {
             )}
           </div>
         </form>
+        {confirmingDateOfBirth && (
+          <ConfirmDateOfBirthModal
+            value={confirmingDateOfBirth}
+            onConfirm={async () => {
+              setConfirmedDateOfBirth(confirmingDateOfBirth);
+              await saveDateOfBirth(confirmingDateOfBirth);
+            }}
+            onClose={() => setConfirmingDateOfBirth(null)}
+          />
+        )}
       </div>
     </div>
   );

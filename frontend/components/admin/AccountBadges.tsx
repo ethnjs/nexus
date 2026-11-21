@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/Badge";
 import type { ROLE, USER_STATUS } from "@/lib/api";
+import { formatDate } from "@/lib/timeFormat";
 
 /**
  * Colour per account status. Shared so the users table's Status column and
@@ -32,6 +33,7 @@ export function AccountBadges({
     email_verified: boolean;
     terms_version: string | null;
     terms_accepted_at: string | null;
+    age_locked_at?: string | null;
   };
 }) {
   return (
@@ -40,6 +42,9 @@ export function AccountBadges({
         {user.role === "admin" ? "Admin" : "User"}
       </Badge>
       <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
+      {user.age_locked_at && (
+        <Badge variant="declined">Under 13, locked {formatDate(user.age_locked_at)}</Badge>
+      )}
       <Badge variant={user.email_verified ? "confirmed" : "warning"}>
         {user.email_verified ? "Email verified" : "Email unverified"}
       </Badge>

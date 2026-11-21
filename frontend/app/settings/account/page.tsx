@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmDateOfBirthModal } from "@/components/auth/ConfirmDateOfBirthModal";
+import { ParentConsentCheckbox } from "@/components/auth/ParentConsentCheckbox";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 import { DeactivateAccountModal } from "@/components/settings/DeactivateAccountModal";
 import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
@@ -15,10 +17,18 @@ import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ApiError, authApi, type EmailPendingChange, type UserMeFull, usersApi } from "@/lib/api";
+import {
+  ApiError,
+  apiErrorCode,
+  authApi,
+  type EmailPendingChange,
+  type UserMeFull,
+  usersApi,
+} from "@/lib/api";
 import {
   DATE_OF_BIRTH_DISCLAIMER,
   formatPhone,
+  leaveForAgeRestriction,
   validateDateOfBirth,
   validatePhone,
 } from "@/lib/auth";
@@ -53,6 +63,9 @@ export default function AccountSettingsPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [confirmingDateOfBirth, setConfirmingDateOfBirth] = useState(false);
+  const [needsParentConsent, setNeedsParentConsent] = useState(false);
+  const [parentConsent, setParentConsent] = useState(false);
 
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [pendingEmailChange, setPendingEmailChange] = useState<EmailPendingChange | null>(null);
@@ -109,6 +122,8 @@ export default function AccountSettingsPage() {
     setDraft(toDraft(original));
     setErrors({});
     setSaveError(undefined);
+    setNeedsParentConsent(false);
+    setParentConsent(false);
   }
 
   async function handleSave() {
@@ -131,19 +146,49 @@ export default function AccountSettingsPage() {
       return;
     }
 
+    if (needsParentConsent && !parentConsent) {
+      setErrors((e) => ({ ...e, parent_consent: "Check this box to continue." }));
+      setSaving(false);
+      return;
+    }
+
+    if (draft.date_of_birth !== original.date_of_birth && !needsParentConsent) {
+      setConfirmingDateOfBirth(true);
+      setSaving(false);
+      return;
+    }
+
+    await save();
+    setSaving(false);
+  }
+
+  async function save() {
+    if (!original || !draft) return;
+    const dateOfBirthChanged = draft.date_of_birth !== original.date_of_birth;
     try {
       const updated = await usersApi.updateMe({
         first_name: draft.first_name,
         last_name: draft.last_name,
         phone: draft.phone,
-        date_of_birth: draft.date_of_birth,
+        ...(dateOfBirthChanged && {
+          date_of_birth: draft.date_of_birth,
+          parent_consent: parentConsent,
+        }),
       });
       setOriginal(updated);
       setDraft(toDraft(updated));
+      setNeedsParentConsent(false);
     } catch (error: unknown) {
-      setSaveError(error instanceof ApiError ? error.message : "Something went wrong. Try again.");
-    } finally {
-      setSaving(false);
+      const code = apiErrorCode(error);
+      if (code === "under_minimum_age") {
+        leaveForAgeRestriction(original.date_of_birth !== null);
+      } else if (code === "parent_consent_required") {
+        setNeedsParentConsent(true);
+      } else {
+        setSaveError(
+          error instanceof ApiError ? error.message : "Something went wrong. Try again.",
+        );
+      }
     }
   }
 
@@ -305,6 +350,25 @@ export default function AccountSettingsPage() {
             }}
             error={errors.date_of_birth}
           />
+          {needsParentConsent && (
+            <div style={{ marginTop: "12px" }}>
+              <ParentConsentCheckbox
+                checked={parentConsent}
+                onChange={(checked) => {
+                  setParentConsent(checked);
+                  setErrors((er) => ({ ...er, parent_consent: undefined }));
+                }}
+                error={errors.parent_consent}
+              />
+            </div>
+          )}
+          {confirmingDateOfBirth && (
+            <ConfirmDateOfBirthModal
+              value={draft.date_of_birth}
+              onConfirm={save}
+              onClose={() => setConfirmingDateOfBirth(false)}
+            />
+          )}
         </SettingsRow>
       </SettingsSection>
 

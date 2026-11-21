@@ -100,7 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{ user, loading, logout }}>
       {children}
       {user?.needs_terms_acceptance && !TERMS_GATE_EXEMPT_ROUTES.includes(pathname) && (
-        <TermsGate onAccepted={setUser} onSignOut={logout} />
+        <TermsGate
+          needsParentConsent={user.needs_parent_consent}
+          onAccepted={setUser}
+          onSignOut={logout}
+        />
       )}
     </AuthContext.Provider>
   );

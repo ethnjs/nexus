@@ -103,6 +103,19 @@ export const DATE_OF_BIRTH_DISCLAIMER =
   "We only use your birthday to check your age, since some tournaments require volunteers to be 18 or older. " +
   "It's never shown to anyone on NEXUS, including tournament directors — they can only see whether you're 18+, not your actual birthday.";
 
+export function formatDateOfBirth(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** After a date of birth under 13, the account is gone or locked and the session cleared. */
+export function leaveForAgeRestriction(locked: boolean) {
+  window.location.href = locked ? "/account-unavailable?reason=locked" : "/account-unavailable";
+}
+
 export function validateDateOfBirth(value: string): string | null {
   if (!value) return "Cannot be empty.";
 
