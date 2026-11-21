@@ -7,7 +7,7 @@ from app.models.models import User, utcnow
 
 # The "Last updated" date of frontend/content/legal/terms.md and privacy.md.
 # Changing it makes every user accept again; tests/core/test_legal.py keeps it in sync.
-TERMS_VERSION = "2026-11-07"
+TERMS_VERSION = "2026-11-21"
 
 MINIMUM_AGE = 13
 AGE_OF_MAJORITY = 18

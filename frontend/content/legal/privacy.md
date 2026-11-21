@@ -1,6 +1,6 @@
 # NEXUS Privacy Policy
 
-**Last updated:** November 7, 2026
+**Last updated:** November 21, 2026
 
 NEXUS is a volunteer management tool for Science Olympiad tournaments, available at nexus.socalscioly.org (the "Service"). It is operated by Southern California Science Olympiad, a California nonprofit public benefit corporation ("we", "us"). This policy explains what information we collect, how it is used, who can see it, and the choices you have.
 
