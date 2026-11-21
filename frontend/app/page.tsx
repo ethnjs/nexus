@@ -3,20 +3,32 @@
 import { useRouter } from "next/navigation";
 import { GridWarp } from "@/components/home/GridWarp";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import styles from "./page.module.css";
+
+const FEATURES = [
+  { title: "Forms", body: "Build sign-up forms. Answers land in tables, not spreadsheets." },
+  {
+    title: "Events & shifts",
+    body: "Set up tracks, events, buildings and shift times in one place.",
+  },
+  {
+    title: "Assignments board",
+    body: "Place volunteers on events and see where you’re short-staffed.",
+  },
+  {
+    title: "Volunteer profiles",
+    body: "Volunteers fill out one profile and reuse it across tournaments.",
+  },
+];
 
 export default function HomePage() {
   const router = useRouter();
 
   return (
     <main>
-      {/*
-        dvh, not vh (h-screen): on iOS Chrome and Safari 100vh is the *large*
-        viewport — the height the page would have if the URL bar were
-        retracted — so a 100vh hero runs taller than what's actually on screen
-        and pushes the bottom-anchored nav island below the fold. 100dvh
-        tracks the bar, and since the hero is exactly one viewport tall there's
-        nothing to scroll, so the bar never retracts and the value stays put.
-      */}
+      {/* dvh, not vh: on iOS 100vh is the viewport with the URL bar retracted,
+          which pushes the bottom-anchored nav island below the fold. */}
       <section
         className="relative h-dvh flex flex-col items-center justify-center overflow-hidden"
         style={{ background: "var(--color-bg)" }}
@@ -99,6 +111,141 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <section
+        className="flex flex-col items-center px-4"
+        style={{ background: "var(--color-bg)", paddingTop: "112px", paddingBottom: "120px" }}
+      >
+        <div style={{ maxWidth: "560px", textAlign: "center" }}>
+          <h2
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: "clamp(28px, 5vw, 36px)",
+              fontWeight: 400,
+              letterSpacing: "-0.02em",
+              lineHeight: 1.2,
+              color: "var(--color-text-primary)",
+              margin: 0,
+            }}
+          >
+            All your volunteers in one place.
+          </h2>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "16px",
+              lineHeight: 1.6,
+              color: "var(--color-text-secondary)",
+              margin: "16px 0 0",
+            }}
+          >
+            NEXUS replaces the disconnected forms and spreadsheets Science Olympiad tournaments use
+            to recruit, schedule and assign volunteers.
+          </p>
+        </div>
+
+        <div
+          className="grid grid-cols-1 sm:grid-cols-2 w-full"
+          style={{ maxWidth: "720px", gap: "16px", marginTop: "64px" }}
+        >
+          {FEATURES.map((f) => (
+            <Card
+              key={f.title}
+              radius="lg"
+              shadow={false}
+              className={styles.featureCard}
+              style={{ padding: "24px", transition: undefined }}
+            >
+              <h3
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: "20px",
+                  fontWeight: 400,
+                  color: "var(--color-text-primary)",
+                  margin: 0,
+                }}
+              >
+                {f.title}
+              </h3>
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "14px",
+                  lineHeight: 1.6,
+                  color: "var(--color-text-secondary)",
+                  margin: "8px 0 0",
+                }}
+              >
+                {f.body}
+              </p>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <footer
+        className="px-4"
+        style={{ background: "var(--color-bg)", borderTop: "1px solid var(--color-border)" }}
+      >
+        <div
+          className="flex flex-wrap items-center justify-between"
+          style={{
+            maxWidth: "960px",
+            margin: "0 auto",
+            padding: "20px 0",
+            gap: "8px 24px",
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          <div className="flex flex-wrap items-baseline" style={{ gap: "4px 16px" }}>
+            <span
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "16px",
+                letterSpacing: "-0.02em",
+                color: "var(--color-text-primary)",
+              }}
+            >
+              NEXUS
+            </span>
+            <span>
+              <a
+                href="https://socalscioly.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link-subtle"
+              >
+                Southern California Science Olympiad
+              </a>
+              , a California 501(c)(3) non-profit
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center" style={{ gap: "4px 20px" }}>
+            <a href="mailto:support@nexus.socalscioly.org" className="link-subtle">
+              support@nexus.socalscioly.org
+            </a>
+            <a
+              href="https://discord.gg/2f9UWvEeMR"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="link-subtle"
+            >
+              Discord
+            </a>
+            <a
+              href="https://docs.ethanshih.com/docs/nexus"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="link-subtle"
+            >
+              Docs
+            </a>
+            <span style={{ color: "var(--color-text-tertiary)" }}>© 2026</span>
+          </div>
+        </div>
+      </footer>
 
       <style>{`
         @keyframes fade-in {
