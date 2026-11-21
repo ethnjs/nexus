@@ -4,7 +4,25 @@ import { useRouter } from "next/navigation";
 import { GridWarp } from "@/components/home/GridWarp";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { SITE_DESCRIPTION, SITE_URL } from "@/lib/site";
 import styles from "./page.module.css";
+
+// Describes NEXUS to search engines, which can show it as a free web app.
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "NEXUS",
+  url: SITE_URL,
+  description: SITE_DESCRIPTION,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  publisher: {
+    "@type": "Organization",
+    name: "Southern California Science Olympiad",
+    url: "https://socalscioly.org",
+  },
+};
 
 const FEATURES = [
   { title: "Forms", body: "Build sign-up forms. Answers land in tables, not spreadsheets." },
@@ -27,6 +45,11 @@ export default function HomePage() {
 
   return (
     <main>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a constant, not user input
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+      />
       {/* dvh, not vh: on iOS 100vh is the viewport with the URL bar retracted,
           which pushes the bottom-anchored nav island below the fold. */}
       <section
@@ -71,7 +94,7 @@ export default function HomePage() {
               opacity: 0,
             }}
           >
-            Tournament Logistics Dashboard for Science Olympiad
+            Science Olympiad Volunteer Management System
           </p>
         </div>
 
