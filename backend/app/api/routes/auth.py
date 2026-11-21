@@ -80,7 +80,7 @@ CODE_SENDERS = {
 }
 
 
-def _challenge_response(raw_token: str, row: EmailCode) -> CodeChallengeResponse:
+def _challenge_response(raw_token: str, row: EmailCode, sent: bool) -> CodeChallengeResponse:
     now = datetime.now(UTC)
     can_resend_at = row.last_sent_at + RATE_LIMIT_WINDOW
     return CodeChallengeResponse(
@@ -89,6 +89,7 @@ def _challenge_response(raw_token: str, row: EmailCode) -> CodeChallengeResponse
         can_resend_at=can_resend_at,
         expires_in=max(0, int((row.expires_at - now).total_seconds())),
         resend_in=max(0, int((can_resend_at - now).total_seconds())),
+        email_undeliverable=not sent,
     )
 
 
@@ -155,8 +156,8 @@ def login(
         return LoginResponse(code_required=False, user=AdminUserSlimResponse.model_validate(user))
 
     raw_token, code, row = start_challenge(db, "sign_in", user=user, email=user.email)
-    send_in_background(background_tasks, send_sign_in_code_email, user.email, code)
-    return LoginResponse(code_required=True, challenge=_challenge_response(raw_token, row))
+    sent = send_in_background(db, background_tasks, send_sign_in_code_email, user.email, code)
+    return LoginResponse(code_required=True, challenge=_challenge_response(raw_token, row, sent))
 
 
 @router.post(
@@ -225,8 +226,8 @@ def resend_code(
 ):
     """Emails a new code for a challenge. The old code stops working; the expiry doesn't move."""
     code, row = resend_challenge(db, body.challenge_token)
-    send_in_background(background_tasks, CODE_SENDERS[row.purpose], row.email, code)
-    return _challenge_response(body.challenge_token, row)
+    sent = send_in_background(db, background_tasks, CODE_SENDERS[row.purpose], row.email, code)
+    return _challenge_response(body.challenge_token, row, sent)
 
 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
@@ -276,8 +277,8 @@ def register(
     raw_token, code, row = start_challenge(
         db, "sign_up", email=email, hashed_password=hash_password(body.password)
     )
-    send_in_background(background_tasks, send_sign_up_code_email, email, code)
-    return _challenge_response(raw_token, row)
+    sent = send_in_background(db, background_tasks, send_sign_up_code_email, email, code)
+    return _challenge_response(raw_token, row, sent)
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +304,8 @@ def start_step_up(
     raw_token, code, row = start_challenge(
         db, "step_up", user=user, session=session, email=user.email
     )
-    send_in_background(background_tasks, send_step_up_code_email, user.email, code)
-    return _challenge_response(raw_token, row)
+    sent = send_in_background(db, background_tasks, send_step_up_code_email, user.email, code)
+    return _challenge_response(raw_token, row, sent)
 
 
 @router.post(
@@ -386,8 +387,9 @@ def request_email_change(
         db, user.id, "email_change_revert", new_email=user.email
     )
     token = create_verification_token(db, user.id, "email_change", new_email=body.new_email)
-    send_in_background(background_tasks, send_email_change_email, body.new_email, token)
+    send_in_background(db, background_tasks, send_email_change_email, body.new_email, token)
     send_in_background(
+        db,
         background_tasks,
         send_email_change_requested_notice,
         user.email,
@@ -517,7 +519,7 @@ def change_password(
     user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    send_in_background(background_tasks, send_password_changed_notice, user.email)
+    send_in_background(db, background_tasks, send_password_changed_notice, user.email)
     revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
@@ -554,7 +556,7 @@ def request_password_reset(
             if e.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
                 raise
         else:
-            send_in_background(background_tasks, send_password_reset_email, user.email, token)
+            send_in_background(db, background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "If an account exists for this email, a reset link has been sent."}
 
@@ -581,7 +583,7 @@ def confirm_password_reset(
     user.hashed_password = hash_password(body.new_password)
     db.commit()
 
-    send_in_background(background_tasks, send_password_changed_notice, user.email)
+    send_in_background(db, background_tasks, send_password_changed_notice, user.email)
     revoke_all_sessions(db, user.id)
 
     return {"detail": "Password successfully reset"}

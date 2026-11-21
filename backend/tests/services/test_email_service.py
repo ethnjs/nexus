@@ -101,6 +101,38 @@ async def test_send_builds_ses_request(use_settings, ses_factory):
     )
 
 
+async def test_send_uses_configuration_set_when_set(use_settings, ses_factory):
+    use_settings(ses_configuration_set="nexus-events")
+
+    await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    kwargs = ses_factory.return_value.send_email.call_args.kwargs
+    assert kwargs["ConfigurationSetName"] == "nexus-events"
+
+
+@pytest.mark.parametrize("code", [None, "NotFoundException"])
+def test_remove_from_ses_suppression_list(use_settings, ses_factory, code):
+    use_settings()
+    if code:
+        ses_factory.return_value.delete_suppressed_destination.side_effect = _client_error(code)
+
+    email_service.remove_from_ses_suppression_list("v@example.com")
+
+    ses_factory.return_value.delete_suppressed_destination.assert_called_once_with(
+        EmailAddress="v@example.com"
+    )
+
+
+def test_remove_from_ses_suppression_list_raises_other_errors(use_settings, ses_factory):
+    use_settings()
+    ses_factory.return_value.delete_suppressed_destination.side_effect = _client_error(
+        "TooManyRequestsException"
+    )
+
+    with pytest.raises(ClientError):
+        email_service.remove_from_ses_suppression_list("v@example.com")
+
+
 def test_client_uses_standard_retries_in_configured_region():
     client = _real_get_ses_client("key", "secret", "us-west-2", 4)
 

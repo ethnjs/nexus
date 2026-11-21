@@ -14,6 +14,7 @@ import app.core.email_codes as email_codes
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
     EmailCode,
+    EmailSuppression,
     TournamentMembership,
     User,
     UserSession,
@@ -195,6 +196,25 @@ class TestSignInCode:
         assert "access_token" not in res.cookies
         assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS sign-in code")]
         assert client.get("/users/me/").status_code == 401
+
+    def test_bounced_address_gets_no_code(self, client, db, td_user, mock_send_email):
+        db.add(EmailSuppression(email="td@test.com", reason="bounce"))
+        db.commit()
+
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+
+        assert res.status_code == 200
+        assert res.json()["challenge"]["email_undeliverable"] is True
+        mock_send_email.assert_not_called()
+
+    def test_complaint_still_gets_requested_code(self, client, db, td_user, mock_send_email):
+        db.add(EmailSuppression(email="td@test.com", reason="complaint"))
+        db.commit()
+
+        res = client.post("/auth/login/", json={"email": "td@test.com", "password": "tdpass"})
+
+        assert res.json()["challenge"]["email_undeliverable"] is False
+        assert _sent(mock_send_email) == [("td@test.com", "Your NEXUS sign-in code")]
 
     def test_code_signs_in_and_verifies_email(self, client, db, td_user):
         assert not td_user.email_verified

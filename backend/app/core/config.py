@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     email_from_address: str = "NEXUS <noreply@nexus.socalscioly.org>"
     ses_max_send_rate: PositiveFloat = 1.0
     ses_max_attempts: PositiveInt = 4
+    ses_configuration_set: str = ""
+    # /webhooks/ses/ accepts SNS messages only from this topic; blank rejects them all.
+    ses_sns_topic_arn: str = ""
 
     frontend_url: str = "http://localhost:3000/"  # remember to set to actual url in prod
 

@@ -2,9 +2,14 @@
 
 from datetime import timedelta
 
+import pytest
+from botocore.exceptions import ClientError
+
+import app.api.routes.users as users_routes
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
     EmailCode,
+    EmailSuppression,
     Event,
     EventCategory,
     University,
@@ -675,6 +680,85 @@ class TestAdminSignInCode:
 
         assert res.status_code == 200
         assert res.json()["email_verified"] is False
+
+    def test_bounced_user_can_sign_in_with_code(self, client, admin_user, db, mock_send_email):
+        alice = _db_user(db)
+        db.add(EmailSuppression(email=alice.email, reason="bounce"))
+        db.commit()
+        code = self._issue(client, db, alice)
+        mock_send_email.reset_mock()
+
+        res = client.post(
+            "/auth/login/", json={"email": "alice@example.com", "password": "Password@1"}
+        )
+        challenge = res.json()["challenge"]
+
+        assert challenge["email_undeliverable"] is True
+        mock_send_email.assert_not_called()
+        assert _verify(client, challenge["challenge_token"], code).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# DELETE /admin/users/{id}/email-suppression/ — admin only
+# ---------------------------------------------------------------------------
+
+
+class TestClearEmailSuppression:
+    def _suppress(self, db, email, reason="bounce"):
+        db.add(EmailSuppression(email=email, reason=reason, detail="General"))
+        db.commit()
+
+    def test_list_and_detail_show_suppression(self, client, admin_user, db):
+        alice = _db_user(db)
+        self._suppress(db, alice.email)
+        login(client, "admin@test.com", "adminpass")
+
+        listed = next(u for u in client.get("/admin/users/").json() if u["id"] == alice.id)
+        detail = client.get(f"/admin/users/{alice.id}/").json()
+
+        assert listed["email_suppression"]["reason"] == "bounce"
+        assert detail["email_suppression"]["detail"] == "General"
+        assert client.get(f"/admin/users/{admin_user.id}/").json()["email_suppression"] is None
+
+    def test_clears_row_and_ses_entry(self, client, admin_user, db, monkeypatch):
+        removed = []
+        monkeypatch.setattr(users_routes, "remove_from_ses_suppression_list", removed.append)
+        alice = _db_user(db)
+        self._suppress(db, alice.email)
+        login(client, "admin@test.com", "adminpass")
+
+        res = client.delete(f"/admin/users/{alice.id}/email-suppression/")
+
+        assert res.status_code == 204
+        assert removed == ["alice@example.com"]
+        assert db.query(EmailSuppression).count() == 0
+
+    def test_ses_failure_keeps_the_row(self, client, admin_user, db, monkeypatch):
+        def fail(email):
+            raise ClientError({"Error": {"Code": "TooManyRequestsException"}}, "Delete")
+
+        monkeypatch.setattr(users_routes, "remove_from_ses_suppression_list", fail)
+        alice = _db_user(db)
+        self._suppress(db, alice.email)
+        login(client, "admin@test.com", "adminpass")
+
+        res = client.delete(f"/admin/users/{alice.id}/email-suppression/")
+
+        assert res.status_code == 502
+        assert db.query(EmailSuppression).count() == 1
+
+    def test_unsuppressed_user_is_a_no_op(self, client, admin_user, db, monkeypatch):
+        monkeypatch.setattr(users_routes, "remove_from_ses_suppression_list", pytest.fail)
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+
+        assert client.delete(f"/admin/users/{alice.id}/email-suppression/").status_code == 204
+
+    def test_requires_admin(self, client, td_user, db):
+        alice = _db_user(db)
+        login(client, "td@test.com", "tdpass")
+
+        assert client.delete(f"/admin/users/{alice.id}/email-suppression/").status_code == 403
 
 
 # ---------------------------------------------------------------------------

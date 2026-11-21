@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,6 +18,7 @@ from app.core.auth import (
     verify_password,
 )
 from app.core.email_codes import require_recent_code, start_admin_sign_in_code
+from app.core.email_suppression import find_suppression
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -56,7 +58,11 @@ from app.schemas.user import (
     UserMeSlimResponse,
     UserUpdate,
 )
-from app.services.email_service import send_in_background, send_password_reset_email
+from app.services.email_service import (
+    remove_from_ses_suppression_list,
+    send_in_background,
+    send_password_reset_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +80,11 @@ def list_users(
     """Global user list, with each user's affiliation and year level. Admin only."""
     return (
         db.query(User)
-        .options(selectinload(User.university), selectinload(User.memberships))
+        .options(
+            selectinload(User.university),
+            selectinload(User.memberships),
+            selectinload(User.email_suppression),
+        )
         .order_by(User.last_name, User.first_name)
         .all()
     )
@@ -238,6 +248,42 @@ def admin_delete_user(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /admin/users/{user_id}/email-suppression/ — admin only
+# ---------------------------------------------------------------------------
+@router.delete(
+    "/admin/users/{user_id}/email-suppression/",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={502: {"description": "SES couldn't remove the address from its suppression list"}},
+)
+def admin_clear_email_suppression(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Lets email reach a user's address again after a bounce or complaint, once they confirm it
+    works. Also removes the address from the SES account suppression list, which would
+    otherwise keep dropping it. Does nothing if the address isn't suppressed.
+    """
+    user = find_user_by_id(db, user_id)
+    suppression = find_suppression(db, user.email)
+    if suppression is None:
+        return
+
+    try:
+        remove_from_ses_suppression_list(user.email)
+    except ClientError as e:
+        logger.exception("Couldn't remove %s from the SES suppression list", user.email)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "SES couldn't remove the address. Try again."
+        ) from e
+
+    db.delete(suppression)
+    db.commit()
+    logger.warning("Admin %s cleared the email suppression for user %s", admin.id, user.id)
+
+
+# ---------------------------------------------------------------------------
 # POST /admin/users/{user_id}/password-reset/ — admin only
 # ---------------------------------------------------------------------------
 @router.post(
@@ -275,7 +321,7 @@ def admin_send_password_reset(
         )
 
     token = create_verification_token(db, user.id, "password_reset")
-    send_in_background(background_tasks, send_password_reset_email, user.email, token)
+    send_in_background(db, background_tasks, send_password_reset_email, user.email, token)
 
     return {"detail": "Password reset email sent"}
 

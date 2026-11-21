@@ -16,6 +16,7 @@ from app.api.routes import (
     universities,
     user_experience,
     users,
+    webhooks,
 )
 from app.api.routes import chapter as chapter_core
 from app.api.routes import tournament as tournament_core
@@ -166,6 +167,7 @@ app.include_router(chapter_admin.router, prefix="", dependencies=[api_key_depend
 app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(webhooks.router, prefix="")
 
 
 @app.get("/health", tags=["meta"])

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
+import { STATUS_VARIANT, SUPPRESSION_LABEL } from "@/components/admin/AccountBadges";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
 import {
   ADMIN_USERS_FILTER_KEYS,
@@ -165,6 +165,7 @@ function UserRow({
     user.role === "admin" ? "demote" : "promote",
     "email",
     "reset",
+    ...(user.email_suppression ? (["allowEmail"] as const) : []),
     "delete",
   ];
 
@@ -189,16 +190,25 @@ function UserRow({
         <span style={TEXT_CELL} title={user.email}>
           {user.email}
         </span>
-        <span
-          style={{
-            display: "flex",
-            flexShrink: 0,
-            color: user.email_verified ? "var(--color-success)" : "var(--color-warning)",
-          }}
-          title={user.email_verified ? "Email verified" : "Email not verified"}
-        >
-          {user.email_verified ? <IconCheckCircle size={13} /> : <IconXCircle size={13} />}
-        </span>
+        {user.email_suppression ? (
+          <span
+            style={{ display: "flex", flexShrink: 0, color: "var(--color-danger)" }}
+            title={SUPPRESSION_LABEL[user.email_suppression.reason]}
+          >
+            <IconXCircle size={13} />
+          </span>
+        ) : (
+          <span
+            style={{
+              display: "flex",
+              flexShrink: 0,
+              color: user.email_verified ? "var(--color-success)" : "var(--color-warning)",
+            }}
+            title={user.email_verified ? "Email verified" : "Email not verified"}
+          >
+            {user.email_verified ? <IconCheckCircle size={13} /> : <IconXCircle size={13} />}
+          </span>
+        )}
       </span>
 
       <span style={{ ...NUM_CELL, textAlign: "left" }}>
@@ -327,13 +337,14 @@ function UserRow({
   );
 }
 
-type MenuKey = "promote" | "demote" | "email" | "reset" | "delete";
+type MenuKey = "promote" | "demote" | "email" | "reset" | "allowEmail" | "delete";
 
 const MENU_LABELS: Record<MenuKey, string> = {
   promote: "Promote to admin",
   demote: "Demote to user",
   email: "Edit email",
   reset: "Send password reset email",
+  allowEmail: "Allow email again",
   delete: "Delete account",
 };
 
@@ -342,13 +353,23 @@ const MENU_ICONS: Record<MenuKey, typeof IconEdit> = {
   demote: IconUser,
   email: IconEdit,
   reset: IconKey,
+  allowEmail: IconRestore,
   delete: IconTrash,
 };
 
 const SELF_REFUSED = new Set<MenuKey>(["promote", "demote", "delete"]);
 
 type PendingAction = {
-  kind: "lock" | "activate" | "promote" | "demote" | "email" | "reset" | "signInCode" | "delete";
+  kind:
+    | "lock"
+    | "activate"
+    | "promote"
+    | "demote"
+    | "email"
+    | "reset"
+    | "allowEmail"
+    | "signInCode"
+    | "delete";
   user: AdminUserListItem;
 };
 
@@ -819,6 +840,37 @@ export default function AdminUsersPage() {
           onConfirm={() =>
             run(`Password reset sent to ${pending.user.email}`, () =>
               adminUsersApi.sendPasswordReset(pending.user.id),
+            )
+          }
+          onClose={() => setPending(null)}
+        />
+      )}
+
+      {pending?.kind === "allowEmail" && (
+        <ConfirmModal
+          title="Allow email again"
+          variant="primary"
+          confirmLabel="Allow email"
+          description={
+            <>
+              {pending.user.email_suppression?.reason === "complaint"
+                ? "This address marked a NEXUS email as spam, so staff invites to it are skipped."
+                : "Email to this address bounced, so NEXUS stopped sending to it."}{" "}
+              Only allow it again once <strong>{pending.user.email}</strong> is confirmed to work.
+              If it bounces again, it&rsquo;s blocked again.
+            </>
+          }
+          onConfirm={() =>
+            run(`Email allowed for ${pending.user.email}`, () =>
+              adminUsersApi
+                .clearEmailSuppression(pending.user.id)
+                .then(() =>
+                  setUsers((prev) =>
+                    (prev ?? []).map((u) =>
+                      u.id === pending.user.id ? { ...u, email_suppression: null } : u,
+                    ),
+                  ),
+                ),
             )
           }
           onClose={() => setPending(null)}

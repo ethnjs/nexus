@@ -76,6 +76,17 @@ class AdminUserSlimResponse(UserSlimResponse):
     status: USER_STATUS
 
 
+class EmailSuppressionResponse(BaseModel):
+    """SES reported the address as a permanent bounce or a spam complaint. A bounce stops
+    every email to it; a complaint stops only staff invites."""
+
+    reason: Literal["bounce", "complaint"]
+    detail: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class AdminUserListResponse(AdminUserSlimResponse):
     """The admin users table's row: account fields plus what its affiliation,
     year level and tournament filter read."""
@@ -85,6 +96,7 @@ class AdminUserListResponse(AdminUserSlimResponse):
     year_level: int | None = None
     employer: str | None = None
     tournament_ids: list[int] = Field(default=[], validation_alias="memberships")
+    email_suppression: EmailSuppressionResponse | None = None
 
     @field_validator("tournament_ids", mode="before")
     @classmethod
@@ -175,6 +187,7 @@ class AdminUserFullResponse(UserFullResponse, AdminUserSlimResponse):
     # Read off User.tournaments. The admin delete confirmation lists these —
     # they survive the delete but are left without an owner.
     owned_tournaments: list[OwnedTournamentRef] = Field(default=[], validation_alias="tournaments")
+    email_suppression: EmailSuppressionResponse | None = None
 
 
 class UserMeFullResponse(UserFullResponse, UserMeSlimResponse):

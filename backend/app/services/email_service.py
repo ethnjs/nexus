@@ -10,9 +10,12 @@ from typing import Concatenate
 import boto3
 from botocore.client import BaseClient
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from fastapi import BackgroundTasks
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.email_suppression import blocks_email
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +210,16 @@ def _get_ses_client(
     )
 
 
+def _ses_client() -> BaseClient:
+    settings = get_settings()
+    return _get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+
+
 class _SendRateLimiter:
     """Spaces sends `interval` seconds apart to stay under SES's per-second quota.
 
@@ -258,15 +271,16 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
             logger.warning("SES not configured, skipping email to %s: %s", to, subject)
         return
 
-    client = _get_ses_client(
-        settings.aws_access_key_id,
-        settings.aws_secret_access_key,
-        settings.aws_region,
-        settings.ses_max_attempts,
+    # Bounce and complaint events reach /webhooks/ses/ only through the configuration set.
+    configuration_set = (
+        {"ConfigurationSetName": settings.ses_configuration_set}
+        if settings.ses_configuration_set
+        else {}
     )
     await _rate_limiter.wait(1 / settings.ses_max_send_rate)
     await asyncio.to_thread(
-        client.send_email,
+        _ses_client().send_email,
+        **configuration_set,
         FromEmailAddress=settings.email_from_address,
         Destination={"ToAddresses": [to]},
         Content={
@@ -285,14 +299,31 @@ async def _send_email(to: str, email: _Email) -> None:
     await _send(to, email.subject, _render_text(email), _render_html(email))
 
 
+def remove_from_ses_suppression_list(email: str) -> None:
+    """Deletes `email` from the SES account suppression list, if it's there. Blocks on AWS."""
+    settings = get_settings()
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
+        return
+    try:
+        _ses_client().delete_suppressed_destination(EmailAddress=email)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "NotFoundException":
+            raise
+
+
 def send_in_background[**P](
+    db: Session,
     background_tasks: BackgroundTasks,
     send: Callable[Concatenate[str, P], Awaitable[None]],
     to: str,
     *args: P.args,
     **kwargs: P.kwargs,
-) -> None:
-    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is left to see it."""
+) -> bool:
+    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is
+    left to see it. Returns False without sending when the address hard-bounced."""
+    if blocks_email(db, to):
+        logger.warning("Not emailing %s: the address bounced", to)
+        return False
 
     async def send_and_log() -> None:
         try:
@@ -302,6 +333,7 @@ def send_in_background[**P](
             logger.exception("Background email failed: %s to %s", name, to)
 
     background_tasks.add_task(send_and_log)
+    return True
 
 
 # ---------------------------------------------------------------------------

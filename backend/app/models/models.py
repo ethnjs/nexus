@@ -136,6 +136,24 @@ class VerificationToken(Base):
 
 
 # ---------------------------------------------------------------------------
+# EmailSuppression — an address SES reported as a permanent bounce or a spam
+# complaint. Keyed by address, not user: sign-up codes and staff invites go
+# to addresses with no account. A bounce blocks every email to the address,
+# a complaint only the ones the recipient didn't ask for (staff invites).
+# ---------------------------------------------------------------------------
+class EmailSuppression(Base):
+    __tablename__ = "email_suppressions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    reason: Mapped[Literal["bounce", "complaint"]] = mapped_column(String(16))
+    # SES's bounce subtype or complaint feedback type, for admins.
+    detail: Mapped[str | None] = mapped_column(String(64))
+    ses_message_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ---------------------------------------------------------------------------
 # University — canonical lookup table so free-text names ("OSU" vs "Ohio
 # State University") don't fragment. Referenced by both User and Tournament.
 # ---------------------------------------------------------------------------
@@ -375,6 +393,12 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    email_suppression: Mapped["EmailSuppression | None"] = relationship(
+        "EmailSuppression",
+        primaryjoin="foreign(EmailSuppression.email) == User.email",
+        viewonly=True,
+        uselist=False,
     )
 
 

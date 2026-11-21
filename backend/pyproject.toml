@@ -19,6 +19,7 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
     "anyio>=4.15.1",
     "boto3>=1.44.9",
+    "cryptography>=50.0.2",
 ]
 
 [dependency-groups]

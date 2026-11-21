@@ -4,6 +4,8 @@ covered in tests/api/test_join.py, alongside the chapter case."""
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.models.models import JoinCode
 from tests.conftest import grant_role, login
 
@@ -266,6 +268,28 @@ def test_staff_invite_partial_failure_reported(client, td_user, td_tournament, d
         .first()
     )
     assert entry.extra_data["failed"] == ["bad@example.com"]
+
+
+@pytest.mark.parametrize("reason", ["bounce", "complaint"])
+def test_staff_invite_skips_suppressed_address(
+    client, td_user, td_tournament, db, mock_send_email, reason
+):
+    from app.models.models import EmailSuppression
+
+    db.add(EmailSuppression(email="spam@example.com", reason=reason))
+    db.commit()
+    join_code = make_join_code(db, td_tournament.id, td_user.id, code="INVITE03")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["ok@example.com", "Spam@example.com"]},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["sent"] == ["ok@example.com"]
+    assert response.json()["failed"] == ["Spam@example.com"]
+    assert [call.args[0] for call in mock_send_email.call_args_list] == ["ok@example.com"]
 
 
 def test_staff_invite_join_code_not_found(client, td_user, td_tournament):
