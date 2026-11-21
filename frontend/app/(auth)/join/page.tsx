@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { JoinPage } from "@/components/auth/JoinPage";
-import { fetchJoinPreview, joinPreviewFactLines, joinPreviewTitle } from "@/lib/joinPreview";
+import { fetchJoinPreview, joinPreviewTitle } from "@/lib/joinPreview";
 
 export async function generateMetadata({
   searchParams,
@@ -9,15 +9,17 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { code } = await searchParams;
   const preview = code ? await fetchJoinPreview(code) : null;
-  if (!preview) return {};
+  if (!preview) return { robots: { index: false } };
 
   const title = joinPreviewTitle(preview);
-  const description = `You’re invited to join ${title} on NEXUS. ${joinPreviewFactLines(preview).join("; ")}`;
+  const description = `You’re invited to join ${title} on NEXUS.`;
   const query = `?code=${encodeURIComponent(code ?? "")}`;
 
   return {
     title: `Join ${title} · NEXUS`,
     description,
+    // Invite links are private; link previews still work since crawlers can fetch the page.
+    robots: { index: false },
     openGraph: {
       siteName: "NEXUS",
       type: "website",
