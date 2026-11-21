@@ -1,6 +1,6 @@
 """Tests for /admin/users and /users/me endpoints."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.core.legal import TERMS_VERSION
@@ -16,6 +16,11 @@ from app.models.models import (
 from tests.conftest import grant_role, login
 
 VALID_PHONE = "9495551234"
+
+
+def _born_years_ago(years: int) -> date:
+    """A birth date that makes the user exactly `years` old today."""
+    return date(date.today().year - years, 1, 1)
 
 
 def _db_user(db, email="alice@example.com", **kwargs):
@@ -838,6 +843,23 @@ class TestAcceptTerms:
     def test_unauthenticated_forbidden(self, client):
         assert client.post("/users/me/accept-terms/").status_code == 401
 
+    def test_minor_needs_parent_consent(self, client, db, td_user):
+        td_user.date_of_birth = _born_years_ago(16)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.get("/users/me/").json()["needs_parent_consent"] is True
+
+        res = client.post("/users/me/accept-terms/")
+        assert res.status_code == 422
+        assert res.json()["detail"]["code"] == "parent_consent_required"
+
+        res = client.post("/users/me/accept-terms/", json={"parent_consent": True})
+        assert res.status_code == 200
+        assert res.json()["needs_parent_consent"] is False
+        db.refresh(td_user)
+        assert td_user.parent_consent_at is not None
+        assert td_user.terms_version == TERMS_VERSION
+
 
 # ---------------------------------------------------------------------------
 # GET /users/me/?full=true — full shape with experience lists eagerly loaded
@@ -964,6 +986,68 @@ class TestUpdateMe:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.patch("/users/me/", json={"first_name": "X"}).status_code == 401
+
+    def test_first_birth_date_under_13_deletes_account(self, client, db, td_user):
+        user_id = td_user.id
+        login(client, "td@test.com", "tdpass")
+        res = client.patch("/users/me/", json={"date_of_birth": _born_years_ago(12).isoformat()})
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "under_minimum_age"
+        db.expire_all()
+        assert db.get(User, user_id) is None
+        assert client.get("/users/me/").status_code == 401
+
+    def test_changed_birth_date_under_13_locks_account(self, client, db, td_user):
+        td_user.date_of_birth = _born_years_ago(30)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.patch("/users/me/", json={"date_of_birth": _born_years_ago(12).isoformat()})
+        assert res.status_code == 403
+        assert res.json()["detail"]["code"] == "under_minimum_age"
+        db.refresh(td_user)
+        assert td_user.status == "locked"
+        assert td_user.age_locked_at is not None
+        assert client.get("/users/me/").status_code == 401
+
+    def test_reactivating_age_lock_clears_birth_date(self, client, db, td_user, admin_user):
+        td_user.date_of_birth = _born_years_ago(12)
+        td_user.status = "locked"
+        td_user.age_locked_at = td_user.created_at
+        db.commit()
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{td_user.id}/", json={"status": "active"})
+        assert res.status_code == 200
+        assert res.json()["age_locked_at"] is None
+        db.refresh(td_user)
+        assert td_user.date_of_birth is None
+
+    def test_minor_without_parent_consent_rejected(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.patch("/users/me/", json={"date_of_birth": _born_years_ago(16).isoformat()})
+        assert res.status_code == 422
+        assert res.json()["detail"]["code"] == "parent_consent_required"
+        db.refresh(td_user)
+        assert td_user.date_of_birth is None
+
+    def test_minor_with_parent_consent_saved_once(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(
+            "/users/me/",
+            json={"date_of_birth": _born_years_ago(16).isoformat(), "parent_consent": True},
+        )
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.parent_consent_at is not None
+
+        res = client.patch("/users/me/", json={"date_of_birth": _born_years_ago(17).isoformat()})
+        assert res.status_code == 200
+
+    def test_adult_needs_no_parent_consent(self, client, db, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.patch("/users/me/", json={"date_of_birth": _born_years_ago(18).isoformat()})
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.parent_consent_at is None
 
 
 # ---------------------------------------------------------------------------

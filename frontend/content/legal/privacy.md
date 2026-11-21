@@ -6,7 +6,7 @@ NEXUS is a volunteer management tool for Science Olympiad tournaments, available
 
 NEXUS is not operated or endorsed by Science Olympiad, Inc.
 
-**Our principles:** We don't show ads. We don't sell your information. We collect only what's needed to run Science Olympiad tournaments, and the tournaments you join decide what their forms ask.
+**Our principles:** We don't show ads. We don't sell your information. We collect only what's needed to run Science Olympiad tournaments.
 
 ## Who is responsible for your information
 
@@ -84,7 +84,7 @@ Some tournaments need to know whether volunteers are over 18 or 21. When you joi
 
 ## Children and minors
 
-NEXUS is not directed to children under 13, and we do not knowingly collect information from them. We ask for your date of birth when you set up your account. If it shows that you are under 13, or we otherwise learn that a user is under 13, we delete the account and its information. If you believe a child under 13 has given us information, contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
+NEXUS is not directed to children under 13, and we do not knowingly collect information from them. We ask for your date of birth when you set up your account, and if it shows that you are under 13, we delete the account and its information. If you later change your date of birth to one under 13, we lock the account, and unless you contact us within 14 days to correct a mistake, we then delete it. If we otherwise learn that a user is under 13, we delete the account and its information. If you believe a child under 13 has given us information, contact us at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
 
 Users aged 13 to 17 may use NEXUS only with the permission of a parent or guardian, who agrees to our [Terms of Service](/terms#1-eligibility) on their behalf. When a user under 18 sets up their account, we ask them to confirm this and record when they did. A parent or guardian can ask us to delete their child's information at any time by emailing [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org).
 

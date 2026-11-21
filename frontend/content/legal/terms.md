@@ -101,16 +101,12 @@ To the extent permitted by law, you agree to defend and indemnify us against cla
 
 We may update these Terms from time to time. If we make significant changes, we will notify you by email or through the Service before they take effect. If you keep using the Service after changes take effect, you accept the updated Terms.
 
-## 14. Notice for California users
-
-Under California Civil Code Section 1789.3, California users are entitled to the following notice. NEXUS is provided by Southern California Science Olympiad, 4321 W. 168th Street, Lawndale, CA 90260, who can be reached at [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org). The Service is free of charge. To resolve a complaint about the Service or to get more information about using it, contact us at that address. You may also contact the Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs in writing at 1625 North Market Blvd., Suite N 112, Sacramento, CA 95834, or by telephone at (916) 445-1254 or (800) 952-5210.
-
-## 15. General
+## 14. General
 
 These Terms are governed by the laws of the State of California, without regard to its conflict-of-laws rules. Any dispute relating to the Service or these Terms will be brought in the state or federal courts located in Los Angeles County, California, unless the law where you live requires otherwise.
 
 These Terms and the Privacy Policy are the entire agreement between you and us about the Service. If any part of these Terms is found unenforceable, the rest remains in effect. Our failure to enforce a provision is not a waiver of it. You may not transfer your rights under these Terms; we may transfer ours to an organization that takes over operating the Service.
 
-## 16. Contact
+## 15. Contact
 
 Questions about these Terms can be sent to [support@nexus.socalscioly.org](mailto:support@nexus.socalscioly.org) or by mail to Southern California Science Olympiad, 4321 W. 168th Street, Lawndale, CA 90260.

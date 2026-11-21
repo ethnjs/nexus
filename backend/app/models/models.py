@@ -297,6 +297,11 @@ class User(Base):
     # TERMS_VERSION (app/core/legal.py) the user last accepted; null until they first accept.
     terms_version: Mapped[str | None] = mapped_column(String(32))
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When a user under 18 confirmed that a parent or guardian agreed to the terms for them.
+    parent_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the user entered a date of birth under 13, which locks the account until an
+    # admin deletes it, or reactivates it and clears the date of birth after a typo.
+    age_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     role: Mapped[str] = mapped_column(String(32), default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
     # "active", so every non-active status denies access identically — the

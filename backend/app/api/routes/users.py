@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
@@ -17,7 +18,13 @@ from app.core.auth import (
     verify_password,
 )
 from app.core.email_codes import require_recent_code, start_admin_sign_in_code
-from app.core.legal import needs_terms_acceptance, record_terms_acceptance
+from app.core.legal import (
+    is_under_minimum_age,
+    needs_parent_consent,
+    needs_terms_acceptance,
+    record_terms_acceptance,
+    require_parent_consent,
+)
 from app.core.profile_status import (
     compute_missing_profile_fields,
     is_onboarding_complete,
@@ -46,6 +53,7 @@ from app.schemas.user import (
     AdminUserListResponse,
     AdminUserSlimResponse,
     AdminUserUpdate,
+    TermsAcceptanceRequest,
     UserMeFullResponse,
     UserMeSlimResponse,
     UserUpdate,
@@ -127,6 +135,9 @@ def admin_update_user(
     user next signs in with a code sent to it, and codes and links sent to the old one stop
     working.
 
+    Reactivating an account locked for an under-13 date of birth also clears the date, so the
+    user enters it again at onboarding.
+
     Moving a user off status="active" revokes every session they hold. Losing
     access is meant to take effect now, not at their next sign-in — login
     already refuses any non-active status, so leaving live sessions alone
@@ -176,6 +187,10 @@ def admin_update_user(
 
     for field, value in updates.items():
         setattr(user, field, value)
+
+    if updates.get("status") == "active" and user.age_locked_at is not None:
+        user.date_of_birth = None
+        user.age_locked_at = None
 
     if "status" in updates and updates["status"] != "active":
         revoke_all_sessions(db, user.id)
@@ -352,15 +367,27 @@ def _me_slim(user: User, db: Session) -> UserMeSlimResponse:
     response.is_profile_complete = is_profile_complete(user, db=db)
     response.is_onboarding_complete = is_onboarding_complete(user, db=db)
     response.needs_terms_acceptance = needs_terms_acceptance(user)
+    response.needs_parent_consent = needs_parent_consent(user)
     return response
 
 
 # ---------------------------------------------------------------------------
 # POST /users/me/accept-terms/ — accept the current Terms and Privacy Policy
 # ---------------------------------------------------------------------------
-@router.post("/users/me/accept-terms/", response_model=UserMeSlimResponse)
-def accept_terms(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Records that the current user accepts the current Terms of Service and Privacy Policy."""
+@router.post(
+    "/users/me/accept-terms/",
+    response_model=UserMeSlimResponse,
+    responses={422: {"description": "Under 18 without parent_consent (detail.code)"}},
+)
+def accept_terms(
+    body: TermsAcceptanceRequest | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Records that the current user accepts the current Terms of Service and Privacy Policy.
+    A user under 18 who hasn't yet confirmed parent or guardian consent must send
+    parent_consent: true (see needs_parent_consent on GET /users/me/)."""
+    require_parent_consent(user, body is not None and body.parent_consent)
     record_terms_acceptance(user)
     db.commit()
     db.refresh(user)
@@ -370,7 +397,16 @@ def accept_terms(db: Session = Depends(get_db), user: User = Depends(get_current
 # ---------------------------------------------------------------------------
 # PATCH /users/me/ — authenticated user updates their own profile
 # ---------------------------------------------------------------------------
-@router.patch("/users/me/", response_model=UserMeFullResponse)
+@router.patch(
+    "/users/me/",
+    response_model=UserMeFullResponse,
+    responses={
+        403: {
+            "description": "date_of_birth under 13: the account was deleted or locked (detail.code)"
+        },
+        422: {"description": "date_of_birth under 18 without parent_consent (detail.code)"},
+    },
+)
 def update_user_me(
     body: UserUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
@@ -379,14 +415,58 @@ def update_user_me(
     Omitted fields are left unchanged. Explicit null clears a field.
     Email changes must go through the verify-before-apply flow
     (POST /auth/email/request-change/ + GET /auth/email/confirm-change/).
+
+    A date_of_birth under 13 signs the user out with a 403 (detail.code "under_minimum_age").
+    A first date of birth deletes the account; changing an existing one locks the account
+    until an admin deletes or reactivates it, so a typo can be fixed. A date under 18 needs
+    parent_consent: true until the user has confirmed it once (422, detail.code
+    "parent_consent_required").
     """
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True, exclude={"parent_consent"})
+    birth_date = changes.get("date_of_birth")
+    if birth_date is not None and is_under_minimum_age(birth_date):
+        if user.date_of_birth is None:
+            return _delete_under_minimum_age(db, user)
+        return _lock_under_minimum_age(db, user, birth_date)
+
+    for field, value in changes.items():
         setattr(user, field, value)
+    if "date_of_birth" in changes or body.parent_consent:
+        require_parent_consent(user, body.parent_consent)
     db.commit()
     db.refresh(user)
 
     response = UserMeFullResponse.model_validate(user, from_attributes=True)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
+    return response
+
+
+def _delete_under_minimum_age(db: Session, user: User) -> JSONResponse:
+    require_not_last_admin(db, user)
+    db.delete(user)
+    db.commit()
+    return _under_minimum_age_response("We can't create an account for you.")
+
+
+def _lock_under_minimum_age(db: Session, user: User, birth_date: date) -> JSONResponse:
+    require_not_last_admin(db, user)
+    user.date_of_birth = birth_date
+    user.status = "locked"
+    user.age_locked_at = datetime.now(UTC)
+    revoke_all_sessions(db, user.id)
+    db.commit()
+    return _under_minimum_age_response(
+        "Your account has been locked. If you entered your date of birth by mistake, email "
+        "support@nexus.socalscioly.org within 14 days."
+    )
+
+
+def _under_minimum_age_response(message: str) -> JSONResponse:
+    response = JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={"detail": {"code": "under_minimum_age", "message": message}},
+    )
+    clear_auth_cookie(response)
     return response
 
 
