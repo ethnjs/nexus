@@ -1,5 +1,5 @@
 import type { JoinPreviewResponse, JoinPreviewTournament } from "@/lib/api";
-import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
+import { tournamentYear } from "@/lib/tournamentDisplay";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8001";
 const API_KEY = process.env.API_KEY ?? "";
@@ -22,11 +22,4 @@ export async function fetchJoinPreview(code: string): Promise<JoinPreviewTournam
 export function joinPreviewTitle(preview: JoinPreviewTournament): string {
   const year = tournamentYear(preview);
   return year ? `${year} ${preview.name}` : preview.name;
-}
-
-/** Each where-and-when row as one line: "Main Site · UCLA · February 13, 2027". */
-export function joinPreviewFactLines(preview: JoinPreviewTournament): string[] {
-  return tournamentFactRows(preview, "long")
-    .map((row) => [row.name, row.place, row.dates].filter(Boolean).join(" · "))
-    .filter(Boolean);
 }

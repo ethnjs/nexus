@@ -1,0 +1,18 @@
+.factRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .factRow {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

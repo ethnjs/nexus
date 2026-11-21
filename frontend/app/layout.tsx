@@ -3,22 +3,26 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import type { Metadata } from "next";
 import { Gelasio } from "next/font/google";
+import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "@/lib/site";
 import { AuthProvider } from "@/lib/useAuth";
 import { ToastProvider } from "@/lib/useToast";
 import "./globals.css";
 
-const DESCRIPTION = "Tournament Logistics Dashboard for Science Olympiad";
-
 export const metadata: Metadata = {
-  metadataBase: new URL("https://nexus.socalscioly.org"),
-  title: "NEXUS",
-  description: DESCRIPTION,
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   openGraph: {
     siteName: "NEXUS",
     type: "website",
     url: "/",
-    title: "NEXUS",
-    description: DESCRIPTION,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
   icons: {
     icon: [

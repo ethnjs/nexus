@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
 import { OG_COLORS, OG_SIZE, OgFrame, ogFonts } from "@/lib/og";
+import { SITE_TITLE } from "@/lib/site";
 
-export const alt = "NEXUS — Tournament Logistics Dashboard for Science Olympiad";
+export const alt = SITE_TITLE;
 export const size = OG_SIZE;
 export const contentType = "image/png";
 
@@ -27,7 +28,7 @@ export default async function Image() {
           color: OG_COLORS.textSecondary,
         }}
       >
-        Tournament Logistics Dashboard for Science Olympiad
+        Science Olympiad Volunteer Management System
       </div>
     </OgFrame>,
     { ...OG_SIZE, fonts: await ogFonts() },
