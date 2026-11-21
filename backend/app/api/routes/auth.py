@@ -175,10 +175,12 @@ def verify_code(
 ):
     """
     Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here.
-    Sets an httpOnly session cookie on success and marks the email verified. Five wrong guesses
-    at one code end the challenge.
+    Sets an httpOnly session cookie on success and marks the email verified, unless the code
+    came from an admin. Five wrong guesses at one code end the challenge.
     """
-    row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in", "sign_up"))
+    row, via_admin_code = verify_challenge(
+        db, body.challenge_token, body.code, purposes=("sign_in", "sign_up")
+    )
 
     if row.purpose == "sign_up":
         check_if_email_exists(db, row.email)
@@ -193,7 +195,8 @@ def verify_code(
         if found is None:
             raise HTTPException(400, "This code has expired. Start again to get a new one.")
         user = found
-    user.email_verified = True
+    if not via_admin_code:
+        user.email_verified = True
 
     raw_token = create_session(
         db,

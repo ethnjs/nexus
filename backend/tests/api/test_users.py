@@ -667,6 +667,15 @@ class TestAdminSignInCode:
             assert _verify(client, token, first).status_code == 400
         assert _verify(client, token, second).status_code == 200
 
+    def test_code_does_not_verify_the_email(self, client, admin_user, db):
+        alice = _db_user(db, email_verified=False)
+        code = self._issue(client, db, alice)
+
+        res = _verify(client, _start_sign_in(client), code)
+
+        assert res.status_code == 200
+        assert res.json()["email_verified"] is False
+
 
 # ---------------------------------------------------------------------------
 # POST /users/me/deactivate/ — authenticated self-service deactivation

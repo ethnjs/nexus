@@ -170,12 +170,13 @@ def verify_challenge(
     *,
     purposes: tuple[CodePurpose, ...],
     session_id: int | None = None,
-) -> EmailCode:
+) -> tuple[EmailCode, bool]:
     """
     Checks `code` against the challenge and consumes it on success. Each check counts as an
     attempt; the fifth wrong one consumes the challenge. Raises 400 on any failure. A sign_in
     challenge also accepts the user's open admin-issued code. A closed challenge (expired,
-    used, or out of attempts) gets detail.code "code_closed".
+    used, or out of attempts) gets detail.code "code_closed". Returns the challenge and whether
+    an admin-issued code matched, which proves nothing about the mailbox.
     """
     now = datetime.now(UTC)
     token_hash = _hash_token(raw_token)
@@ -203,9 +204,10 @@ def verify_challenge(
         raise _closed_reason(db, token_hash)
 
     matched = secrets.compare_digest(row.code_hash, _code_hash(raw_token, code))
+    via_admin_code = False
     if not matched and row.purpose == "sign_in":
         assert row.user_id is not None
-        matched = _consume_admin_code(db, row.user_id, code, now)
+        matched = via_admin_code = _consume_admin_code(db, row.user_id, code, now)
 
     if matched or row.attempts >= MAX_ATTEMPTS:
         row.consumed_at = now
@@ -215,7 +217,7 @@ def verify_challenge(
         raise _closed(TOO_MANY_ATTEMPTS)
     if not matched:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That code is incorrect.")
-    return row
+    return row, via_admin_code
 
 
 def resend_challenge(db: Session, raw_token: str) -> tuple[str, EmailCode]:
