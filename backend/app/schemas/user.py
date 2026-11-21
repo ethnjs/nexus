@@ -37,6 +37,9 @@ class UserUpdate(BaseModel):
     shirt_size: str | None = None
     dietary_restriction: str | None = None
 
+    # Required with a date_of_birth under 18 until the user has confirmed it once.
+    parent_consent: bool = False
+
     @field_validator("first_name", "last_name", "phone")
     @classmethod
     def reject_null(cls, v):
@@ -74,6 +77,10 @@ class AdminUserSlimResponse(UserSlimResponse):
     email_verified: bool
     role: ROLE
     status: USER_STATUS
+    terms_version: str | None = None
+    terms_accepted_at: datetime | None = None
+    parent_consent_at: datetime | None = None
+    age_locked_at: datetime | None = None
 
 
 class AdminUserListResponse(AdminUserSlimResponse):
@@ -89,6 +96,12 @@ class AdminUserListResponse(AdminUserSlimResponse):
 class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
+    needs_terms_acceptance: bool = False
+    needs_parent_consent: bool = False
+
+
+class TermsAcceptanceRequest(BaseModel):
+    parent_consent: bool = False
 
 
 class UserFullResponse(UserSlimResponse):

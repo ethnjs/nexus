@@ -62,7 +62,7 @@ import { formatPhone } from "@/lib/auth";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
-import { formatDuration } from "@/lib/timeFormat";
+import { formatDate, formatDuration } from "@/lib/timeFormat";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -188,7 +188,12 @@ function UserRow({
       </span>
 
       <span style={{ display: "flex", justifyContent: "center" }}>
-        <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
+        <Badge
+          variant={STATUS_VARIANT[user.status]}
+          title={user.age_locked_at ? `Locked ${formatDate(user.age_locked_at)}` : undefined}
+        >
+          {user.age_locked_at ? "under 13" : user.status}
+        </Badge>
       </span>
 
       <HoverCard

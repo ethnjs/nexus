@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GridWarp } from "@/components/home/GridWarp";
 import { Button } from "@/components/ui/Button";
@@ -265,6 +266,12 @@ export default function HomePage() {
             >
               Docs
             </a>
+            <Link href="/terms" className="link-subtle">
+              Terms
+            </Link>
+            <Link href="/privacy" className="link-subtle">
+              Privacy
+            </Link>
             <span style={{ color: "var(--color-text-tertiary)" }}>© 2026</span>
           </div>
         </div>

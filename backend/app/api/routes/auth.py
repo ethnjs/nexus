@@ -40,6 +40,7 @@ from app.core.email_codes import (
     start_challenge,
     verify_challenge,
 )
+from app.core.legal import record_terms_acceptance
 from app.core.users import check_if_email_exists, create_user, find_user_by_id
 from app.db.session import get_db
 from app.models.models import EmailCode, User, UserSession, VerificationToken
@@ -188,6 +189,7 @@ def verify_code(
             # Another pending sign-up for this email finished between the check and the insert.
             db.rollback()
             raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
+        record_terms_acceptance(user)
     else:
         found = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
         if found is None:
