@@ -1,0 +1,20 @@
+.container {
+  width: 100%;
+}
+
+.container:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.caret {
+  width: 1px;
+  height: 22px;
+  background: var(--color-text-primary);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
