@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { IconExpand } from "@/components/ui/Icons";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { type AdminUserFull, ApiError, adminUsersApi } from "@/lib/api";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 
 // Exported so a caller registering this in the layout slot reserves exactly
 // the width it renders at.
@@ -45,6 +46,8 @@ export function AdminUserPanel({
   const [user, setUser] = useState<AdminUserFull | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedFor, setLoadedFor] = useState(userId);
+  const [focusVersion, setFocusVersion] = useState(0);
+  useRefetchOnFocus(() => setFocusVersion((v) => v + 1));
 
   // Adjust-state-during-render rather than an effect: switching users has to
   // drop the previous profile in the *same* render, or the new person's name
@@ -70,7 +73,7 @@ export function AdminUserPanel({
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, focusVersion]);
 
   return (
     <DockedPanel

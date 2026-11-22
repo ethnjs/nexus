@@ -79,6 +79,7 @@ import { formatDates } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useStepUp } from "@/lib/useStepUp";
 
 // Every track carries a floor *and* an `fr` weight, so the slack on a wide
@@ -378,15 +379,18 @@ export default function AdminUsersPage() {
   } | null>(null);
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+
   useEffect(() => {
     adminUsersApi
       .list()
       .then(setUsers)
       .catch((err: unknown) => {
-        setUsers([]);
+        setUsers((prev) => prev ?? []);
         setLoadError(err instanceof ApiError ? err.message : "Couldn't load users.");
       });
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     usersApi
