@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { CodeInput } from "@/components/ui/CodeInput";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 
 const CODE_LENGTH = 6;
@@ -34,6 +34,7 @@ export function CodeEntry({
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [closedByServer, setClosedByServer] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -42,7 +43,6 @@ export function CodeEntry({
 
   const resendIn = Math.ceil((new Date(challenge.can_resend_at).getTime() - now) / 1000);
   const expiresIn = Math.ceil((new Date(challenge.expires_at).getTime() - now) / 60_000);
-  const digits = code.replace(/\D/g, "");
   // Out of attempts or expired: no code or resend can work, so leave only the way back.
   const closed = closedByServer || expiresIn <= 0;
 
@@ -57,11 +57,9 @@ export function CodeEntry({
     setError(err instanceof ApiError ? err.message : fallback);
   }
 
-  async function handleSubmit(e: React.SyntheticEvent) {
-    e.preventDefault();
-    // Portal events bubble through the React tree, into a form the step-up modal opened over.
-    e.stopPropagation();
-    if (digits.length !== CODE_LENGTH) {
+  async function submit(value: string) {
+    if (submitting) return;
+    if (value.length !== CODE_LENGTH) {
       setError(`Enter the ${CODE_LENGTH}-digit code.`);
       return;
     }
@@ -69,12 +67,21 @@ export function CodeEntry({
     setNotice(undefined);
     setSubmitting(true);
     try {
-      await onSubmit(challenge.challenge_token, digits);
+      await onSubmit(challenge.challenge_token, value);
     } catch (err: unknown) {
       showError(err, "Something went wrong. Try again.");
+      setCode("");
+      inputRef.current?.focus();
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.SyntheticEvent) {
+    e.preventDefault();
+    // Portal events bubble through the React tree, into a form the step-up modal opened over.
+    e.stopPropagation();
+    submit(code);
   }
 
   async function handleResend() {
@@ -112,23 +119,19 @@ export function CodeEntry({
           : "It has expired, so start again for a new one."}
       </p>
 
-      <Input
+      <CodeInput
+        ref={inputRef}
         label="Code"
-        font="mono"
-        charset="numeric"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={CODE_LENGTH}
-        placeholder="123456"
+        length={CODE_LENGTH}
         value={code}
-        onChange={(e) => {
-          setCode(e.target.value);
+        onChange={(value) => {
+          setCode(value);
           setError(undefined);
         }}
+        onComplete={submit}
         error={error}
         locked={closed}
         autoFocus
-        fullWidth
       />
 
       <Button type="submit" loading={submitting} disabled={closed} fullWidth>
