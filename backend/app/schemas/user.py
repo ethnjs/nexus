@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.phone import normalize_phone as _normalize_phone
 from app.schemas.university import UniversityResponse
@@ -77,18 +77,65 @@ class AdminUserSlimResponse(UserSlimResponse):
 
 
 class AdminUserListResponse(AdminUserSlimResponse):
-    """The admin users table's row: account fields plus what its affiliation
-    and year level columns read."""
+    """The admin users table's row: account fields plus what its affiliation,
+    year level and tournament filter read."""
 
     student_status: STUDENT_STATUS | None = None
     university: UniversityResponse | None = None
     year_level: int | None = None
     employer: str | None = None
+    tournament_ids: list[int] = Field(default=[], validation_alias="memberships")
+
+    @field_validator("tournament_ids", mode="before")
+    @classmethod
+    def _tournament_ids(cls, memberships: list[Any]) -> list[int]:
+        return [m.tournament_id for m in memberships]
 
 
 class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
+
+
+class TournamentMembershipAssignment(BaseModel):
+    role: str
+    event: str | None = None
+
+
+class UserTournamentMembershipResponse(BaseModel):
+    """One NEXUS tournament the user joined, with the roles and events they
+    held there. Shown beside self-reported volunteer experience."""
+
+    tournament_id: int
+    tournament_name: str
+    short_name: str | None = None
+    year: int | None = None
+    assignments: list[TournamentMembershipAssignment] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_membership(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        tournament = data.tournament
+        # One role yields a row per track it's held on, so pairs repeat.
+        pairs: dict[tuple[str, str | None], None] = {}
+        for assignment in sorted(data.track_assignments, key=lambda a: a.role.rank):
+            event = assignment.tournament_event
+            pairs[(assignment.role.label, event.display_name if event else None)] = None
+        # A role held on its own and again with an event reads as one row.
+        with_event = {role for role, event in pairs if event is not None}
+        return {
+            "tournament_id": tournament.id,
+            "tournament_name": tournament.name,
+            "short_name": tournament.short_name,
+            "year": tournament.season_year,
+            "assignments": [
+                {"role": role, "event": event}
+                for role, event in pairs
+                if event is not None or role not in with_event
+            ],
+        }
 
 
 class UserFullResponse(UserSlimResponse):
@@ -105,6 +152,9 @@ class UserFullResponse(UserSlimResponse):
 
     competition_experience: list[CompetitionExperienceResponse] = []
     volunteer_experience: list[VolunteerExperienceResponse] = []
+    tournament_memberships: list[UserTournamentMembershipResponse] = Field(
+        default=[], validation_alias=AliasChoices("memberships", "tournament_memberships")
+    )
 
     shirt_size: str | None = None
     dietary_restriction: str | None = None

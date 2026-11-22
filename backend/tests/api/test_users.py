@@ -393,6 +393,78 @@ class TestAdminGetUserOwnedTournaments:
         assert client.get(f"/admin/users/{other_user.id}/").json()["owned_tournaments"] == []
 
 
+class TestUserTournamentMemberships:
+    def test_list_carries_tournament_ids(
+        self, client, admin_user, other_user, td_tournament, other_tournament, db
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "admin@test.com", "adminpass")
+        rows = {u["id"]: u for u in client.get("/admin/users/").json()}
+        assert sorted(rows[other_user.id]["tournament_ids"]) == sorted(
+            [td_tournament.id, other_tournament.id]
+        )
+        assert rows[admin_user.id]["tournament_ids"] == []
+
+    def test_profile_lists_memberships_with_roles(
+        self, client, admin_user, other_user, td_tournament, db
+    ):
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "admin@test.com", "adminpass")
+        memberships = client.get(f"/admin/users/{other_user.id}/").json()["tournament_memberships"]
+        here = next(m for m in memberships if m["tournament_id"] == td_tournament.id)
+        assert here["tournament_name"] == td_tournament.name
+        assert here["assignments"] == [{"role": "Runner", "event": None}]
+
+    def test_own_full_profile_lists_memberships(self, client, td_user, td_tournament):
+        login(client, "td@test.com", "tdpass")
+        memberships = client.get("/users/me/?full=true").json()["tournament_memberships"]
+        assert td_tournament.id in [m["tournament_id"] for m in memberships]
+
+
+class TestMyDisplayConfig:
+    CONFIG = {
+        "admin_users": {
+            "filters": {"status": ["active"], "tournament": ["3", "!4", "none"]},
+            "sorts": [{"field": "joined", "direction": "desc"}],
+        }
+    }
+
+    def test_empty_by_default(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.get("/users/me/display-config/").json() == {}
+
+    def test_admin_saves_and_reads_back(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.put("/users/me/display-config/", json=self.CONFIG).status_code == 200
+        saved = client.get("/users/me/display-config/").json()["admin_users"]
+        assert saved["filters"] == self.CONFIG["admin_users"]["filters"]
+        assert saved["sorts"] == [{"field": "joined", "direction": "desc"}]
+
+    def test_non_admin_cannot_save_admin_surface(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.put("/users/me/display-config/", json=self.CONFIG).status_code == 422
+
+    def test_rejects_unknown_surface(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.put("/users/me/display-config/", json={"nope": {}})
+        assert res.status_code == 422
+
+    def test_rejects_unknown_filter_key(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.put(
+            "/users/me/display-config/", json={"admin_users": {"filters": {"shirt": ["M"]}}}
+        )
+        assert res.status_code == 422
+
+    def test_rejects_unknown_sort_field(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.put(
+            "/users/me/display-config/",
+            json={"admin_users": {"sorts": [{"field": "phone", "direction": "asc"}]}},
+        )
+        assert res.status_code == 422
+
+
 class TestAdminTransferOwnerless:
     def test_admin_can_reown_ownerless_tournament(
         self, client, admin_user, td_user, td_tournament, db

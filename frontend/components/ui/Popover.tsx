@@ -12,6 +12,8 @@ export interface PopoverProps<T> {
   items: T[];
   getKey: (item: T) => string | number;
   renderLabel: (item: T) => ReactNode;
+  /** A second, smaller line under a row's label. */
+  getSubtitle?: (item: T) => ReactNode;
   /** May throw/reject — the popover shows the error inline and stays open. */
   onSelect: (item: T) => void | Promise<void>;
   emptyMessage?: string;
@@ -36,6 +38,9 @@ export interface PopoverProps<T> {
   header?: ReactNode;
   /** Heads a run of consecutive items sharing this text, as Dropdown's option groups do. Items must already be ordered by group. */
   getGroup?: (item: T) => string | undefined;
+  /** Trailing action row below the items, outside the search, as on Dropdown. Closes the panel. */
+  footerLabel?: string;
+  onFooterClick?: () => void;
 }
 
 // Generic click-to-open panel of selectable items, anchored to a trigger —
@@ -50,6 +55,7 @@ export function Popover<T>({
   items,
   getKey,
   renderLabel,
+  getSubtitle,
   onSelect,
   emptyMessage = "Nothing to show",
   width = 180,
@@ -63,6 +69,8 @@ export function Popover<T>({
   getSearchText,
   header,
   getGroup,
+  footerLabel,
+  onFooterClick,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -132,6 +140,7 @@ export function Popover<T>({
     return {
       key: String(getKey(item)),
       label: renderLabel(item),
+      subtitle: getSubtitle?.(item),
       group: getGroup?.(item),
       // Every row waits while one pick is in flight.
       disabled: disabled || busy,
@@ -236,18 +245,64 @@ export function Popover<T>({
               )
             }
             footer={
-              error && (
-                <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "12px",
-                    color: "var(--color-danger)",
-                    padding: "4px 10px 2px",
-                    margin: 0,
-                  }}
-                >
-                  {error}
-                </p>
+              (error || footerLabel) && (
+                <>
+                  {error && (
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "12px",
+                        color: "var(--color-danger)",
+                        padding: "4px 10px 2px",
+                        margin: 0,
+                      }}
+                    >
+                      {error}
+                    </p>
+                  )}
+                  {footerLabel && (
+                    <>
+                      {options.length > 0 && (
+                        <div
+                          style={{
+                            height: "1px",
+                            margin: "4px 0",
+                            background: "var(--color-border)",
+                          }}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onFooterClick?.();
+                          setOpen(false);
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "var(--color-bg)";
+                          setActive(-1);
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "5px 8px",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          background: "transparent",
+                          textAlign: "left",
+                          fontFamily: "var(--font-sans)",
+                          fontSize: "13px",
+                          color: "var(--color-text-primary)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {footerLabel}
+                      </button>
+                    </>
+                  )}
+                </>
               )
             }
           />

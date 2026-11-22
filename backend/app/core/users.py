@@ -1,8 +1,16 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import hash_password
-from app.models.models import User
+from app.core.tournament.display_config import KNOWN_SORT_DIRECTIONS
+from app.models.models import (
+    Tournament,
+    TournamentEvent,
+    TournamentMembership,
+    TournamentTrackAssignment,
+    User,
+)
+from app.schemas.tournament.display_config import DisplayConfigSurface
 
 
 def check_if_email_exists(db: Session, email: str, exclude_user_id: int | None = None):
@@ -66,3 +74,55 @@ def create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+# The surfaces User.display_config holds, each with its filter keys and sort
+# fields. Admin-only surfaces are refused to everyone else on write.
+ADMIN_USERS = "admin_users"
+USER_SURFACES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    ADMIN_USERS: (
+        frozenset({"role", "status", "verified", "affiliation", "year_level", "tournament"}),
+        frozenset({"name", "joined", "affiliation", "year_level", "role", "status"}),
+    ),
+}
+ADMIN_ONLY_SURFACES = frozenset({ADMIN_USERS})
+
+
+def validate_user_display_config(user: User, payload: dict[str, DisplayConfigSurface]) -> None:
+    for surface, config in payload.items():
+        if surface not in USER_SURFACES or (
+            surface in ADMIN_ONLY_SURFACES and user.role != "admin"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unknown surface '{surface}'",
+            )
+        filter_keys, sort_fields = USER_SURFACES[surface]
+        for key in config.filters or {}:
+            if key not in filter_keys:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Unknown filter '{key}'",
+                )
+        for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
+            if rule.field not in sort_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Unknown sort field '{rule.field}'",
+                )
+            if rule.direction not in KNOWN_SORT_DIRECTIONS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Unknown sort direction '{rule.direction}'",
+                )
+
+
+def tournament_membership_loads() -> tuple:
+    """Loader options, relative to a TournamentMembership, for what
+    UserTournamentMembershipResponse reads."""
+    return (
+        selectinload(TournamentMembership.tournament).selectinload(Tournament.tracks),
+        selectinload(TournamentMembership.track_assignments)
+        .joinedload(TournamentTrackAssignment.tournament_event)
+        .joinedload(TournamentEvent.event),
+    )

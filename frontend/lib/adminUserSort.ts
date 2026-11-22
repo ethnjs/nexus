@@ -26,6 +26,10 @@ export const ADMIN_USER_SORT_OPTIONS: SortFieldOption[] = [
   { value: "status", label: "Status", ascLabel: "Active first", descLabel: "Locked first" },
 ];
 
+export function isAdminUserSortField(field: string): field is AdminUserSortField {
+  return ADMIN_USER_SORT_OPTIONS.some((option) => option.value === field);
+}
+
 /** By last name — the order the server sends the list in. */
 export const DEFAULT_ADMIN_USER_SORT: SortRule<AdminUserSortField>[] = [
   { field: "name", direction: "asc" },

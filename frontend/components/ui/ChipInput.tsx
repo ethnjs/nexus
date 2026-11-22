@@ -29,6 +29,8 @@ interface ChipInputProps {
   chipLockReason?: (chip: string) => string | undefined;
   /** Per-chip hover tooltip — for detail that would overcrowd the chip text itself (e.g. a shift's time range when the chip already shows label + day). Return undefined for a chip with nothing extra to show. */
   getChipTooltip?: (chip: string) => string | undefined;
+  /** What a chip shows, when `value` holds keys rather than display text — e.g. ids whose names can repeat. */
+  getChipLabel?: (chip: string) => string;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
   /** The chips' and the field's own typeface — "mono" for values that are data
@@ -153,6 +155,7 @@ export function ChipInput({
   locked,
   disabled,
   chipLockReason,
+  getChipLabel,
   getChipTooltip,
   variant = "primary",
   size = "md",
@@ -307,10 +310,10 @@ export function ChipInput({
             >
               {chipTooltip ? (
                 <Tooltip variant="info" message={chipTooltip} showIcon={false}>
-                  {chip}
+                  {getChipLabel?.(chip) ?? chip}
                 </Tooltip>
               ) : (
-                chip
+                (getChipLabel?.(chip) ?? chip)
               )}
               {trailing}
               {!locked && lockReason && (

@@ -184,6 +184,16 @@ export interface VolunteerExperience {
   notes: VolunteerExperienceNotes | null;
 }
 
+// Matches UserTournamentMembershipResponse — a NEXUS tournament the user
+// joined, with the roles and events they held there.
+export interface UserTournamentMembership {
+  tournament_id: number;
+  tournament_name: string;
+  short_name: string | null;
+  year: number | null;
+  assignments: { role: string; event: string | null }[];
+}
+
 // One entry of a full-list replace; `id` marks an entry that's already saved.
 export interface CompetitionExperienceItem {
   id?: number;
@@ -226,7 +236,9 @@ export interface AdminUserSlim extends UserSlim {
 // GET /admin/users/ — matches AdminUserListResponse: what the users table reads.
 export interface AdminUserListItem
   extends AdminUserSlim,
-    Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {}
+    Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {
+  tournament_ids: number[];
+}
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends AdminUserSlim {
@@ -250,6 +262,7 @@ export interface UserFull extends UserSlim {
 
   competition_experience: CompetitionExperience[];
   volunteer_experience: VolunteerExperience[];
+  tournament_memberships: UserTournamentMembership[];
 
   shirt_size: SHIRT_SIZE | null;
   dietary_restriction: string | null;
@@ -397,6 +410,10 @@ export const usersApi = {
   meFull: () => api.get<UserMeFull>("/users/me/?full=true"),
   // PATCH /users/me/ — matches UserMeFullResponse
   updateMe: (body: Partial<UserUpdate>) => api.patch<UserMeFull>("/users/me/", body),
+  // The caller's config for surfaces outside any tournament (admin_users).
+  getDisplayConfig: () => api.get<DisplayConfig>("/users/me/display-config/"),
+  setDisplayConfig: (config: DisplayConfig) =>
+    api.put<DisplayConfig>("/users/me/display-config/", config),
 
   addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
     api.post<CompetitionExperience>("/users/me/competition-experience/", body),
