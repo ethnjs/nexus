@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { AuthHeading } from "@/components/auth/AuthHeading";
 import { CodeEntry } from "@/components/auth/CodeEntry";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +25,7 @@ function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,6 +63,10 @@ function SignInContent() {
         setChallenge(last);
       } else if (error instanceof ApiError) {
         setErrors({ form: error.message });
+        if (error.status === 401) {
+          setPassword("");
+          passwordRef.current?.focus();
+        }
       } else {
         setErrors({ form: "Something went wrong :(" });
       }
@@ -130,6 +135,7 @@ function SignInContent() {
             password first, and is placed back onto the label row. */}
         <div style={{ position: "relative" }}>
           <Input
+            ref={passwordRef}
             font="sans"
             label="Password"
             type="password"
