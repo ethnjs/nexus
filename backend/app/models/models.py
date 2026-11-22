@@ -323,6 +323,10 @@ class User(Base):
     shirt_size: Mapped[str | None] = mapped_column(String(16))
     dietary_restriction: Mapped[str | None] = mapped_column(String(255))
 
+    # This user's UI config for surfaces outside any tournament, keyed by
+    # surface like TournamentMembership.display_config.
+    display_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

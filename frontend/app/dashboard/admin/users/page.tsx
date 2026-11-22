@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
 import {
   ADMIN_USERS_FILTER_KEYS,
   AdminUsersFilterModal,
   type AdminUsersFilterState,
+  adminUsersFilterFromStored,
   affiliationOptions,
+  type TournamentFilterOption,
   userPassesFilters,
 } from "@/components/admin/AdminUsersFilterModal";
 import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
@@ -18,7 +20,7 @@ import { Card } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
+import { emptyFilterState, filterStateToStored, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconCheckCircle,
@@ -50,19 +52,30 @@ import {
   adminUserSortTiebreak,
   adminUserSortValue,
   DEFAULT_ADMIN_USER_SORT,
+  isAdminUserSortField,
 } from "@/lib/adminUserSort";
 import {
   type AdminSignInCode,
+  type AdminTournament,
   type AdminUserListItem,
   type AdminUserSlim,
   ApiError,
+  adminTournamentsApi,
   adminUsersApi,
+  usersApi,
 } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
-import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
+import {
+  type SortRule,
+  sameSortRules,
+  sortRows,
+  sortRulesFromStored,
+  sortRulesToStored,
+} from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
 import { formatDuration } from "@/lib/timeFormat";
+import { formatDates } from "@/lib/tournamentDisplay";
 import { useActionToast } from "@/lib/useActionToast";
 import { useAuth } from "@/lib/useAuth";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -93,6 +106,8 @@ const COLUMNS = [
 
 const MIN_TABLE_WIDTH = 1230;
 
+const ADMIN_USERS_SURFACE = "admin_users";
+
 const NUM_CELL: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
   fontSize: "12px",
@@ -109,6 +124,20 @@ const TEXT_CELL: React.CSSProperties = {
   whiteSpace: "nowrap",
   minWidth: 0,
 };
+
+function tournamentFilterOptions(tournaments: AdminTournament[]): TournamentFilterOption[] {
+  return [...tournaments]
+    .sort((a, b) => (b.season_year ?? 0) - (a.season_year ?? 0))
+    .map((t) => {
+      const name = t.short_name || t.name;
+      const owner = [t.owner?.first_name, t.owner?.last_name].filter(Boolean).join(" ");
+      return {
+        value: String(t.id),
+        label: t.season_year ? `${t.season_year} ${name}` : name,
+        subtitle: [owner || "No owner", formatDates(t.dates)].filter(Boolean).join(", "),
+      };
+    });
+}
 
 function userName(user: AdminUserSlim): string {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
@@ -334,6 +363,7 @@ export default function AdminUsersPage() {
   );
   const [sortRules, setSortRules] =
     useState<SortRule<AdminUserSortField>[]>(DEFAULT_ADMIN_USER_SORT);
+  const [tournamentOptions, setTournamentOptions] = useState<TournamentFilterOption[]>([]);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
 
@@ -357,6 +387,50 @@ export default function AdminUsersPage() {
         setLoadError(err instanceof ApiError ? err.message : "Couldn't load users.");
       });
   }, []);
+
+  useEffect(() => {
+    usersApi
+      .getDisplayConfig()
+      .then((config) => {
+        const surface = config[ADMIN_USERS_SURFACE];
+        setFilters(adminUsersFilterFromStored(surface?.filters));
+        const sorts = sortRulesFromStored(surface?.sorts, isAdminUserSortField);
+        if (sorts.length > 0) setSortRules(sorts);
+      })
+      .catch(() => {});
+    adminTournamentsApi
+      .list()
+      .then((tournaments) => {
+        setTournamentOptions(tournamentFilterOptions(tournaments));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Re-reads before writing, since a PUT replaces every surface at once. Never
+  // rejects: failing to remember a sort isn't worth interrupting the table.
+  const persistView = useCallback(
+    (patch: { filters?: AdminUsersFilterState; sortRules?: SortRule<AdminUserSortField>[] }) =>
+      usersApi
+        .getDisplayConfig()
+        .then((fresh) => {
+          const surface = { ...{ hidden: [] }, ...fresh[ADMIN_USERS_SURFACE] };
+          if (patch.filters) surface.filters = filterStateToStored(patch.filters);
+          if (patch.sortRules) surface.sorts = sortRulesToStored(patch.sortRules);
+          return usersApi.setDisplayConfig({ ...fresh, [ADMIN_USERS_SURFACE]: surface });
+        })
+        .catch(() => {}),
+    [],
+  );
+
+  function applyFilters(next: AdminUsersFilterState) {
+    setFilters(next);
+    persistView({ filters: next });
+  }
+
+  function applySort(next: SortRule<AdminUserSortField>[]) {
+    setSortRules(next);
+    persistView({ sortRules: next });
+  }
 
   // The slot lives in the layout and would outlive this table otherwise.
   useEffect(() => clearPanel, [clearPanel]);
@@ -453,20 +527,21 @@ export default function AdminUsersPage() {
         <FilterButton
           active={isFilterActive(filters)}
           onOpen={() => setShowFilterModal(true)}
-          onClear={() => setFilters(emptyFilterState(ADMIN_USERS_FILTER_KEYS))}
+          onClear={() => applyFilters(emptyFilterState(ADMIN_USERS_FILTER_KEYS))}
         />
         <SortButton
           active={!sameSortRules(sortRules, DEFAULT_ADMIN_USER_SORT)}
           onOpen={() => setShowSortModal(true)}
-          onReset={() => setSortRules(DEFAULT_ADMIN_USER_SORT)}
+          onReset={() => applySort(DEFAULT_ADMIN_USER_SORT)}
         />
       </div>
 
       {showFilterModal && (
         <AdminUsersFilterModal
           affiliations={affiliationOptions(users ?? [])}
+          tournaments={tournamentOptions}
           filters={filters}
-          onApply={setFilters}
+          onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
         />
       )}
@@ -477,7 +552,7 @@ export default function AdminUsersPage() {
           rules={sortRules}
           defaults={DEFAULT_ADMIN_USER_SORT}
           tiebreakLabel={ADMIN_USER_SORT_TIEBREAK}
-          onApply={(next) => setSortRules(next as SortRule<AdminUserSortField>[])}
+          onApply={(next) => applySort(next as SortRule<AdminUserSortField>[])}
           onClose={() => setShowSortModal(false)}
         />
       )}

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { Pill } from "@/components/ui/PillMenu";
 import { Spinner } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Textarea";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -158,6 +159,10 @@ const spreadsheetHeaderStyle: React.CSSProperties = {
   color: "var(--color-text-tertiary)",
   borderBottom: "1px solid var(--color-border)",
 };
+
+function NexusPill() {
+  return <Pill label="NEXUS" />;
+}
 
 function EmptyExperienceState() {
   return (
@@ -1134,9 +1139,25 @@ function emptyVolunteerDraft(): VolunteerExperienceDraft {
 // -------------------------------------------------------------------------
 // Volunteer experience — unified spreadsheet component (view / view-edit / edit)
 // -------------------------------------------------------------------------
+/** A role the user held at a NEXUS tournament: read-only, from their
+ *  membership rather than anything they typed. */
+export interface VolunteerMembershipRow {
+  key: string;
+  year: string;
+  tournament_name: string;
+  event_name: string;
+  role: string;
+}
+
+type VolunteerEntry =
+  | { membership: VolunteerMembershipRow }
+  | { row: VolunteerExperienceDraft; i: number };
+
 interface VolunteerExperienceSpreadsheetProps {
   mode: ExperienceTableMode;
   rows: VolunteerExperienceDraft[];
+  /** Shown among `rows` outside bulk "edit" mode, everything newest first. */
+  membershipRows?: VolunteerMembershipRow[];
   events: CanonicalEvent[];
 
   onChange?: (rows: VolunteerExperienceDraft[]) => void;
@@ -1150,6 +1171,7 @@ interface VolunteerExperienceSpreadsheetProps {
 export function VolunteerExperienceSpreadsheet({
   mode,
   rows,
+  membershipRows = [],
   events,
   onChange,
   showErrors = false,
@@ -1171,7 +1193,16 @@ export function VolunteerExperienceSpreadsheet({
   const isEditableMode = mode === "view-edit" || mode === "edit";
   const useCards = isMobile;
 
-  if (rows.length === 0 && mode !== "edit") return <EmptyExperienceState />;
+  // Each entered row keeps its index into `rows`, which editing goes by.
+  const entries: VolunteerEntry[] = [
+    ...rows.map((row, i) => ({ row, i })),
+    ...membershipRows.map((membership) => ({ membership })),
+  ];
+  const yearOf = (entry: VolunteerEntry) =>
+    Number("row" in entry ? entry.row.year : entry.membership.year) || 0;
+  const ordered = [...entries].sort((a, b) => yearOf(b) - yearOf(a));
+
+  if (ordered.length === 0 && mode !== "edit") return <EmptyExperienceState />;
 
   function startEdit(i: number) {
     setEditingIndex(i);
@@ -1398,8 +1429,10 @@ export function VolunteerExperienceSpreadsheet({
         {/* Bulk edit: every row is an open editor, as the table's rows are. */}
         {mode === "edit"
           ? rows.map((row, i) => renderEditCard(row, i, `bulk-${i}`, true))
-          : rows.map((row, i) =>
-              editingIndex === i && editDraft ? (
+          : ordered.map((entry) => {
+              if ("membership" in entry) return renderMembershipCard(entry.membership);
+              const { row, i } = entry;
+              return editingIndex === i && editDraft ? (
                 renderEditCard(editDraft, i, `editing-${row.id ?? i}`)
               ) : (
                 <ExperienceCard
@@ -1412,8 +1445,8 @@ export function VolunteerExperienceSpreadsheet({
                   <CardField label="Role" value={row.role} />
                   <CardField label="Notes" value={row.notes_other || "—"} />
                 </ExperienceCard>
-              ),
-            )}
+              );
+            })}
         {mode === "view-edit" &&
           editingIndex === -1 &&
           editDraft &&
@@ -1422,7 +1455,32 @@ export function VolunteerExperienceSpreadsheet({
     );
   }
 
+  function renderMembershipCard(row: VolunteerMembershipRow) {
+    return (
+      <ExperienceCard key={row.key} title={row.tournament_name} controls={<NexusPill />}>
+        <CardField label="Year" value={row.year || "—"} />
+        <CardField label="Event" value={row.event_name || "—"} />
+        <CardField label="Role" value={row.role || "—"} />
+      </ExperienceCard>
+    );
+  }
+
   // ── Desktop table ───────────────────────────────────────────────────────
+
+  function renderMembershipRow(row: VolunteerMembershipRow, isLastRow: boolean) {
+    const cs = cellStyle(isLastRow);
+    return (
+      <tr key={row.key} className="spreadsheet-row-bg-hover">
+        <td style={cs}>{row.year || "—"}</td>
+        <td style={cs}>{row.tournament_name}</td>
+        <td style={cs}>{row.event_name || "—"}</td>
+        <td style={cs}>{row.role || "—"}</td>
+        <td style={cs}>
+          <NexusPill />
+        </td>
+      </tr>
+    );
+  }
 
   function renderReadOnlyRow(row: VolunteerExperienceDraft, i: number, isLastRow: boolean) {
     const showHoverControls = mode === "view-edit" && editingIndex === null;
@@ -1720,9 +1778,13 @@ export function VolunteerExperienceSpreadsheet({
                 ? rows.map((row, i) =>
                     renderEditableRow(row, i, true, i === rows.length - 1 && editingIndex !== -1),
                   )
-                : rows.map((row, i) => {
+                : ordered.map((entry, position) => {
                     const isLastRow =
-                      i === rows.length - 1 && !(mode === "view-edit" && editingIndex === -1);
+                      position === ordered.length - 1 &&
+                      !(mode === "view-edit" && editingIndex === -1);
+                    if ("membership" in entry)
+                      return renderMembershipRow(entry.membership, isLastRow);
+                    const { row, i } = entry;
                     return editingIndex === i
                       ? renderEditableRow(row, i, false, isLastRow)
                       : renderReadOnlyRow(row, i, isLastRow);

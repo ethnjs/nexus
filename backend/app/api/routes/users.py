@@ -22,7 +22,13 @@ from app.core.profile_status import (
     is_onboarding_complete,
     is_profile_complete,
 )
-from app.core.users import check_if_email_exists, find_user_by_id, require_not_last_admin
+from app.core.users import (
+    check_if_email_exists,
+    find_user_by_id,
+    require_not_last_admin,
+    tournament_membership_loads,
+    validate_user_display_config,
+)
 from app.db.session import get_db
 from app.models.models import (
     EmailCode,
@@ -40,6 +46,7 @@ from app.schemas.auth import (
     MessageResponse,
 )
 from app.schemas.session import SessionResponse
+from app.schemas.tournament.display_config import DisplayConfigSurface
 from app.schemas.user import (
     AdminUserFullResponse,
     AdminUserListResponse,
@@ -67,7 +74,7 @@ def list_users(
     """Global user list, with each user's affiliation and year level. Admin only."""
     return (
         db.query(User)
-        .options(selectinload(User.university))
+        .options(selectinload(User.university), selectinload(User.memberships))
         .order_by(User.last_name, User.first_name)
         .all()
     )
@@ -83,7 +90,12 @@ def get_user(
     _: User = Depends(require_admin),
 ):
     """Get any user by ID. Admin only."""
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(selectinload(User.memberships).options(*tournament_membership_loads()))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
@@ -334,6 +346,7 @@ def get_me(
                         UserVolunteerExperience.event
                     )
                 ),
+                selectinload(User.memberships).options(*tournament_membership_loads()),
             )
             .filter(User.id == current_user.id)
             .first()
@@ -488,3 +501,25 @@ def logout_other_sessions(
     """Revokes every session for the user except the one making this request."""
     revoke_all_other_sessions(db, user.id, current_session.id)
     return {"detail": "Logged out of all other sessions"}
+
+
+# ---------------------------------------------------------------------------
+# GET/PUT /users/me/display-config/ — the caller's own UI config for surfaces
+# outside any tournament (the admin users table).
+# ---------------------------------------------------------------------------
+@router.get("/users/me/display-config/", response_model=dict[str, DisplayConfigSurface])
+def get_my_display_config(user: User = Depends(get_current_user)):
+    return user.display_config or {}
+
+
+@router.put("/users/me/display-config/", response_model=dict[str, DisplayConfigSurface])
+def update_my_display_config(
+    payload: dict[str, DisplayConfigSurface],
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Replaces the caller's display config with the surfaces sent."""
+    validate_user_display_config(user, payload)
+    user.display_config = {surface: config.model_dump() for surface, config in payload.items()}
+    db.commit()
+    return user.display_config

@@ -267,7 +267,8 @@ export default function ProfilePage() {
           </ProfileCard>
         )}
 
-        {profile.has_volunteer_experience !== false && (
+        {(profile.has_volunteer_experience !== false ||
+          profile.tournament_memberships.length > 0) && (
           <ProfileCard>
             <VolunteerExperienceSection
               user={profile}

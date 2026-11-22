@@ -138,11 +138,17 @@ GROUPS: dict[str, FieldGroup] = {
                 "has_volunteer_experience",
                 "competition_experience",
                 "volunteer_experience",
+                "tournament_memberships",
                 "shirt_size",
                 "dietary_restriction",
             }
         ),
-        user_relationships=("competition_experience", "volunteer_experience", "university"),
+        user_relationships=(
+            "competition_experience",
+            "volunteer_experience",
+            "university",
+            "memberships",
+        ),
     ),
     # Serialized as `roles`, loaded through `track_assignments`: a member's
     # roles are the distinct roles across those rows rather than a stored list
@@ -300,6 +306,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
     the user row itself, mainly. Routes add those; this only expresses what
     varies with `fields`.
     """
+    from app.core.users import tournament_membership_loads
     from app.models.models import (
         Event,
         TournamentEvent,
@@ -337,6 +344,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
         "volunteer_experience": (
             *Event.load_related_events(selectinload(UserVolunteerExperience.event)),
         ),
+        "memberships": tournament_membership_loads(),
     }
 
     options = []

@@ -1,12 +1,18 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { ChipInput } from "@/components/ui/ChipInput";
 import {
   FilterModal,
   type FilterOption,
   type FilterSectionConfig,
   type FilterState,
   filterAllows,
+  filterStateFromStored,
 } from "@/components/ui/FilterModal";
+import { IconPlus } from "@/components/ui/Icons";
+import { pillStyle } from "@/components/ui/PillMenu";
+import { Popover } from "@/components/ui/Popover";
 import type { AdminUserListItem } from "@/lib/api";
 import {
   userAffiliation,
@@ -20,6 +26,7 @@ export const ADMIN_USERS_FILTER_KEYS = [
   "verified",
   "affiliation",
   "year_level",
+  "tournament",
 ] as const;
 type AdminUsersFilterKey = (typeof ADMIN_USERS_FILTER_KEYS)[number];
 
@@ -56,6 +63,120 @@ export function affiliationOptions(users: AdminUserListItem[]): FilterOption[] {
     .map(([key, label]) => ({ value: key, label }));
 }
 
+export function adminUsersFilterFromStored(
+  stored: Record<string, string[]> | null | undefined,
+): AdminUsersFilterState {
+  return filterStateFromStored(ADMIN_USERS_FILTER_KEYS, stored);
+}
+
+// The tournament filter's values: "3" keeps people in tournament 3, "!3"
+// keeps people not in it, and NO_TOURNAMENT keeps people in none at all.
+const NO_TOURNAMENT = "none";
+const EXCLUDE = "!";
+
+function tournamentFilterAllows(selected: Set<string>, tournamentIds: number[]): boolean {
+  const ids = new Set(tournamentIds.map(String));
+  const included = [...selected].filter((v) => !v.startsWith(EXCLUDE));
+  for (const value of selected) {
+    if (value.startsWith(EXCLUDE) && ids.has(value.slice(EXCLUDE.length))) return false;
+  }
+  if (included.length === 0) return true;
+  return included.some((v) => (v === NO_TOURNAMENT ? ids.size === 0 : ids.has(v)));
+}
+
+/** Chips for the tournaments being filtered on, each with a pill that flips
+ *  it between keeping people in that tournament and keeping people out. */
+/** A tournament in the picker: `subtitle` is its owner and dates, shown
+ *  under the row and in the chip's tooltip. */
+export interface TournamentFilterOption extends FilterOption {
+  subtitle: string;
+}
+
+function TournamentFilterBody({
+  tournaments,
+  selected,
+  onChange,
+}: {
+  tournaments: TournamentFilterOption[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const byId = new Map(tournaments.map((o) => [o.value, o]));
+  const idOf = (value: string) => (value.startsWith(EXCLUDE) ? value.slice(EXCLUDE.length) : value);
+  // Keyed by value, not label: two tournaments can share a name.
+  const chosen = [...selected].filter((v) => v === NO_TOURNAMENT || byId.has(idOf(v)));
+  const unchosen = tournaments.filter((o) => !chosen.some((value) => idOf(value) === o.value));
+
+  function replace(from: string, to: string | null) {
+    const next = new Set(selected);
+    next.delete(from);
+    if (to !== null) next.add(to);
+    onChange(next);
+  }
+
+  return (
+    <ChipInput
+      value={chosen}
+      onChange={(values) => {
+        const removed = chosen.find((value) => !values.includes(value));
+        if (removed) replace(removed, null);
+      }}
+      getChipLabel={(value) =>
+        value === NO_TOURNAMENT ? "No tournaments" : (byId.get(idOf(value))?.label ?? value)
+      }
+      getChipTooltip={(value) => byId.get(idOf(value))?.subtitle}
+      variant="transparent"
+      size="sm"
+      disableInput
+      fullWidth
+      emptyLabel="None"
+      addButtonOnHover
+      renderChipTrailing={(value) => {
+        if (value === NO_TOURNAMENT) return null;
+        const excluded = value.startsWith(EXCLUDE);
+        return (
+          <button
+            type="button"
+            title={excluded ? "Switch to in this tournament" : "Switch to not in this tournament"}
+            onClick={() => replace(value, excluded ? idOf(value) : `${EXCLUDE}${value}`)}
+            style={{ ...pillStyle(excluded ? "danger" : "default", "sm"), cursor: "pointer" }}
+          >
+            {excluded ? "Not in" : "In"}
+          </button>
+        );
+      }}
+      addButton={
+        <Popover
+          trigger={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              title="Filter by tournament"
+              style={{ padding: 0, flexShrink: 0 }}
+            >
+              <IconPlus size={13} />
+            </Button>
+          }
+          items={unchosen}
+          getKey={(option) => option.value}
+          renderLabel={(option) => option.label}
+          getSubtitle={(option) => option.subtitle}
+          getSearchText={(option) => `${option.label} ${option.subtitle}`}
+          searchable
+          onSelect={(option) => replace(option.value, option.value)}
+          footerLabel={selected.has(NO_TOURNAMENT) ? undefined : "No tournaments"}
+          onFooterClick={() => replace(NO_TOURNAMENT, NO_TOURNAMENT)}
+          emptyMessage="All added"
+          width={300}
+          align="left"
+        />
+      }
+    />
+  );
+}
+
 export function userPassesFilters(
   user: AdminUserListItem,
   filters: AdminUsersFilterState,
@@ -70,16 +191,18 @@ export function userPassesFilters(
   const yearLevel = yearLevelFilterValue(user);
   if (filters.year_level.size > 0 && !(yearLevel && filters.year_level.has(yearLevel)))
     return false;
-  return true;
+  return tournamentFilterAllows(filters.tournament, user.tournament_ids);
 }
 
 export function AdminUsersFilterModal({
   affiliations,
+  tournaments,
   filters,
   onApply,
   onClose,
 }: {
   affiliations: FilterOption[];
+  tournaments: TournamentFilterOption[];
   filters: AdminUsersFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: AdminUsersFilterState) => void;
@@ -101,6 +224,14 @@ export function AdminUsersFilterModal({
       title: "Year level",
       options: YEAR_LEVEL_FILTER_OPTIONS,
       control: "buttons",
+    },
+    {
+      key: "tournament",
+      title: "Tournament",
+      control: "custom",
+      render: (selected, onChange) => (
+        <TournamentFilterBody tournaments={tournaments} selected={selected} onChange={onChange} />
+      ),
     },
   ];
   return (
