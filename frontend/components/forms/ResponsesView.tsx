@@ -186,17 +186,16 @@ export function ResponsesView({
             onDelete={() => onDelete(selected)}
           />
         ) : (
-          <Card radius="lg">
-            <EmptyState
-              icon={<IconMembers size={26} />}
-              title={responses.length === 0 ? "No responses yet" : "Select a respondent"}
-              description={
-                responses.length === 0
-                  ? "Responses show up here once members submit the form."
-                  : "Their answers show up here."
-              }
-            />
-          </Card>
+          <EmptyState
+            card
+            icon={<IconMembers size={26} />}
+            title={responses.length === 0 ? "No responses yet" : "Select a respondent"}
+            description={
+              responses.length === 0
+                ? "Responses show up here once members submit the form."
+                : "Their answers show up here."
+            }
+          />
         )}
       </div>
     </div>
