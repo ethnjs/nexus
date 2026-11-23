@@ -31,6 +31,25 @@ class DisplayConfigSort(BaseModel):
     direction: str = "asc"
 
 
+class FilterCondition(BaseModel):
+    """One filter row: a field, an operator and its values, in the vocabulary
+    the legacy `filters` dict used per key. `op` is a plain string so a stored
+    operator later retired still reads back; writes check it against
+    FILTER_OPS."""
+
+    field: str
+    op: str = "any_of"
+    values: list[str] = []
+
+
+class FilterGroup(BaseModel):
+    """Conditions joined by `op` ("and" / "or"). The top-level group may hold
+    groups of conditions, one level deep."""
+
+    op: str = "and"
+    conditions: list[FilterCondition | FilterGroup] = []
+
+
 class DisplayConfigSurface(BaseModel):
     """One UI surface's saved configuration, for one member. Every field is
     optional and every reader falls back to a default, so a surface saved
@@ -67,6 +86,9 @@ class DisplayConfigSurface(BaseModel):
     # mean "no filters" — the client clears by sending {}, so this never has
     # to distinguish them.
     filters: dict[str, list[str]] | None = None
+    # Tables only: the filter builder's conditions, replacing `filters`. A key
+    # in a stored `filters` reads as an "any_of" condition on that field.
+    filter: FilterGroup | None = None
     # Tables only. Absent means the client's own default sort.
     sort: DisplayConfigSort | None = None
     # Surfaces that sort by more than one key, in order of precedence: the

@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import hash_password
+from app.core.filter_conditions import validate_filter
 from app.core.tournament.display_config import KNOWN_SORT_DIRECTIONS
 from app.models.models import (
     Tournament,
@@ -104,6 +105,8 @@ def validate_user_display_config(user: User, payload: dict[str, DisplayConfigSur
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown filter '{key}'",
                 )
+        if config.filter is not None:
+            validate_filter(config.filter, filter_keys)
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
             if rule.field not in sort_fields:
                 raise HTTPException(

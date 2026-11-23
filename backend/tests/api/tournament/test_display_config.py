@@ -3,6 +3,8 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from app.models.models import (
     Form,
     FormField,
@@ -60,6 +62,7 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
             "columns": None,
             "sections": None,
             "filters": None,
+            "filter": None,
             "sort": None,
             "sorts": None,
             "collapsed": None,
@@ -87,6 +90,7 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
             "columns": None,
             "sections": None,
             "filters": None,
+            "filter": None,
             "sort": None,
             "sorts": None,
             "collapsed": None,
@@ -160,6 +164,50 @@ def test_put_display_config_rejects_unknown_filter(client, td_user, td_tournamen
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"members_table": {"filters": {"not_a_filter": ["x"]}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_display_config_saves_filter_conditions(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    group = {
+        "op": "and",
+        "conditions": [
+            {"field": "track", "op": "none_of", "values": ["7:declined"]},
+            {
+                "op": "or",
+                "conditions": [
+                    {"field": "role", "op": "any_of", "values": ["3"]},
+                    {"field": "affiliation", "op": "empty", "values": []},
+                ],
+            },
+        ],
+    }
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filter": group}},
+    )
+    assert response.status_code == 200
+    assert response.json()["members_table"]["filter"] == group
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": "not_a_filter", "op": "any_of", "values": ["x"]},
+        {"field": "role", "op": "contains", "values": ["x"]},
+        {"field": "affiliation", "op": "empty", "values": ["x"]},
+        {"field": "role", "op": "before", "values": ["yesterday"]},
+        {"field": "role", "op": "within_last", "values": ["-3"]},
+        {"op": "or", "conditions": [{"op": "and", "conditions": []}]},
+        {"op": "xor", "conditions": []},
+    ],
+)
+def test_put_display_config_rejects_malformed_filter(client, td_user, td_tournament, condition):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filter": {"op": "and", "conditions": [condition]}}},
     )
     assert response.status_code == 422
 

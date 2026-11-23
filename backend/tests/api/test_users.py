@@ -457,6 +457,25 @@ class TestMyDisplayConfig:
         )
         assert res.status_code == 422
 
+    def test_saves_filter_conditions(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        group = {
+            "op": "or",
+            "conditions": [
+                {"field": "tournament", "op": "none_of", "values": ["4"]},
+                {"field": "affiliation", "op": "empty", "values": []},
+            ],
+        }
+        res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
+        assert res.status_code == 200
+        assert res.json()["admin_users"]["filter"] == group
+
+    def test_rejects_unknown_filter_condition_field(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        group = {"op": "and", "conditions": [{"field": "shirt", "values": ["M"]}]}
+        res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
+        assert res.status_code == 422
+
     def test_rejects_unknown_sort_field(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         res = client.put(
