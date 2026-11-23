@@ -122,12 +122,10 @@ def is_known_surface(surface: str) -> bool:
 # all three are "how this coordinator reads the roster", they're read in the
 # same request the page already makes, and they're written by the same PUT.
 #
-# Filter keys are exactly the roster query params (see list_memberships) —
-# stored under the name the client will send them back as, so persisting is
-# a round trip through one vocabulary rather than a translation. Values are
-# opaque here on purpose: "2:confirmed", a shift id, "__any__" — the filter
-# layer already ignores anything that no longer resolves, so a deleted track
-# in someone's saved filters is inert rather than an error.
+# Filter fields are the roster filter's (see apply_member_filter), so a
+# stored filter is sent back to the roster as it is. Values are opaque here
+# on purpose: the filter layer ignores anything that no longer resolves, so a
+# deleted track in someone's saved filter is inert rather than an error.
 # ---------------------------------------------------------------------------
 KNOWN_FILTER_KEYS = frozenset(
     {
@@ -283,11 +281,9 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 )
 
 # Unlike the roster's, these filters are applied in the client (the events
-# list is one page and every filtered field is already on the row), so the
-# stored values are the *selected* ones the FilterModal deals in rather than
-# query params — an empty list for a key means that key narrows nothing.
-# Opaque here either way: a category that no longer exists is inert, exactly
-# as a deleted track is on the roster.
+# list is one page and every filtered field is already on the row). Values
+# are opaque here either way: a category that no longer exists is inert,
+# exactly as a deleted track is on the roster.
 # Shared with the board (see EVENTS_FILTER_KEYS in EventsFilterModal.tsx):
 # both pages filter with the same predicate, so they store the same keys.
 KNOWN_EVENT_FILTER_KEYS = frozenset(

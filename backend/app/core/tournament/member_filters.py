@@ -6,8 +6,7 @@ availability — which is why it can't live in the browser: the client would
 have to be sent the whole tournament's onboarding data on every page load to
 answer questions about a handful of members.
 
-A filter is a tree of conditions (see apply_member_filter); the legacy query
-params read as one, with different params ANDed and values within one ORed.
+A filter is a tree of conditions (see apply_member_filter).
 
 Each condition is an EXISTS subquery rather than a join, so a member holding
 three of the named roles is returned once, not three times.
@@ -82,21 +81,6 @@ ONBOARDING_COMPLETE = "complete"
 def _university_short_name():
     """What the members table shows for a school: its abbreviation, else its name."""
     return func.coalesce(func.nullif(func.trim(University.abbreviation), ""), University.name)
-
-
-def _split_pairs(values: list[str]) -> list[tuple[str, str]]:
-    """Parses "left:right" filter values, dropping anything malformed.
-
-    Filter values come off a URL, so a bad one is a client bug or a stale
-    bookmark — neither worth failing a roster load over. The alternative
-    (422) would leave a TD staring at an error with no way to clear it.
-    """
-    pairs = []
-    for value in values:
-        left, sep, right = value.partition(":")
-        if sep and left and right:
-            pairs.append((left, right))
-    return pairs
 
 
 def _lunch_clause(category: str, value: str):
@@ -522,28 +506,6 @@ def apply_member_filter(query: Query, tournament, group: FilterGroup) -> Query:
     return query if clause is None else query.filter(clause)
 
 
-def legacy_member_filter(params: dict[str, list[str]]) -> FilterGroup:
-    """The roster's per-key query params as a filter: keys AND, values within
-    one OR, and a paired key's values grouped by their left half."""
-    conditions: list[FilterCondition | FilterGroup] = []
-    for field, values in params.items():
-        if not values:
-            continue
-        if field not in PAIRED_FIELDS:
-            conditions.append(FilterCondition(field=field, values=values))
-            continue
-        by_group: dict[str, list[str]] = {}
-        for left, right in _split_pairs(values):
-            by_group.setdefault(left, []).append(right)
-        rows = [
-            FilterCondition(field=field, group=left, values=rights)
-            for left, rights in by_group.items()
-        ]
-        if rows:
-            conditions.append(FilterGroup(op="or", conditions=list(rows)))
-    return FilterGroup(op="and", conditions=conditions)
-
-
 def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
     """Keeps only members matching the requested age flags.
 
@@ -588,8 +550,7 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
 def filter_onboarding(memberships: list, states: list[str], paths: dict) -> list:
     """Keeps members whose onboarding is in one of `states`: "not_started",
     "in_progress" or "complete", given each member's onboarding_paths.
-    Unknown states are dropped, like any malformed filter value (see
-    _split_pairs).
+    Unknown states are dropped, like any unresolvable filter value.
 
     In Python, like filter_age_flags: a member's path depends on which steps
     their roles qualify them for, so there's no stored progress to query. A
@@ -940,7 +901,7 @@ def apply_member_search(
 ) -> Query:
     """The identity/authority narrowing the role-assignment pickers need.
 
-    Separate from apply_member_filters because it asks a different kind of
+    Separate from apply_member_filter because it asks a different kind of
     question: that one filters on what a member *answered*, this one on who
     they are and how much authority they hold. Both apply to the same roster
     query — a picker is the roster with a name search and a role bound on it,

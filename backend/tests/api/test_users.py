@@ -425,7 +425,13 @@ class TestUserTournamentMemberships:
 class TestMyDisplayConfig:
     CONFIG = {
         "admin_users": {
-            "filters": {"status": ["active"], "tournament": ["3", "!4", "none"]},
+            "filter": {
+                "op": "and",
+                "conditions": [
+                    {"field": "status", "group": None, "op": "any_of", "values": ["active"]},
+                    {"field": "tournament", "group": None, "op": "none_of", "values": ["4"]},
+                ],
+            },
             "sorts": [{"field": "joined", "direction": "desc"}],
         }
     }
@@ -438,7 +444,7 @@ class TestMyDisplayConfig:
         login(client, "admin@test.com", "adminpass")
         assert client.put("/users/me/display-config/", json=self.CONFIG).status_code == 200
         saved = client.get("/users/me/display-config/").json()["admin_users"]
-        assert saved["filters"] == self.CONFIG["admin_users"]["filters"]
+        assert saved["filter"] == self.CONFIG["admin_users"]["filter"]
         assert saved["sorts"] == [{"field": "joined", "direction": "desc"}]
 
     def test_non_admin_cannot_save_admin_surface(self, client, td_user):
@@ -453,7 +459,8 @@ class TestMyDisplayConfig:
     def test_rejects_unknown_filter_key(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         res = client.put(
-            "/users/me/display-config/", json={"admin_users": {"filters": {"shirt": ["M"]}}}
+            "/users/me/display-config/",
+            json={"admin_users": {"filter": {"conditions": [{"field": "shirt", "values": ["M"]}]}}},
         )
         assert res.status_code == 422
 
@@ -469,12 +476,6 @@ class TestMyDisplayConfig:
         res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
         assert res.status_code == 200
         assert res.json()["admin_users"]["filter"] == group
-
-    def test_rejects_unknown_filter_condition_field(self, client, admin_user):
-        login(client, "admin@test.com", "adminpass")
-        group = {"op": "and", "conditions": [{"field": "shirt", "values": ["M"]}]}
-        res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
-        assert res.status_code == 422
 
     def test_rejects_unknown_sort_field(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")

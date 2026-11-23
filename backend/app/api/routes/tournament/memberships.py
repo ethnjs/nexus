@@ -32,7 +32,6 @@ from app.core.tournament.member_filters import (
     apply_member_filter,
     apply_member_search,
     build_filter_options,
-    legacy_member_filter,
 )
 from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.memberships import (
@@ -193,26 +192,6 @@ def list_memberships(
     requested: frozenset[str] | None = Depends(field_selection),
     # The roster filter: a FilterGroup as JSON (see apply_member_filter).
     filter_json: str | None = Query(default=None, alias="filter"),
-    # Legacy per-key filters, read as one more filter ANDed with `filter`.
-    # Repeatable; different keys AND, values within one OR. The paired ones
-    # ("2:confirmed", "protein:Sofritas") keep the two halves together and
-    # take "__any__" on the right for "any status / answered at all".
-    role: list[str] = Query(default=[]),
-    track: list[str] = Query(default=[]),
-    lunch: list[str] = Query(default=[]),
-    event_pref: list[str] = Query(default=[]),
-    competition_event: list[int] = Query(default=[]),
-    volunteer_event: list[int] = Query(default=[]),
-    age: list[str] = Query(default=[]),
-    shift: list[str] = Query(default=[]),
-    # "trackId:assigned|unassigned" — staffed on that track or not.
-    assigned: list[str] = Query(default=[]),
-    # A school's short name or an employer, as the column shows it; and
-    # "1".."5", "graduate", "non_student".
-    affiliation: list[str] = Query(default=[]),
-    year_level: list[str] = Query(default=[]),
-    # "not_started", "in_progress", "complete".
-    onboarding: list[str] = Query(default=[]),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -246,23 +225,6 @@ def list_memberships(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Malformed filter"
             ) from exc
         query = apply_member_filter(query, tournament, member_filter)
-    legacy = legacy_member_filter(
-        {
-            "role": role,
-            "track": track,
-            "lunch": lunch,
-            "event_pref": event_pref,
-            "competition_event": [str(event_id) for event_id in competition_event],
-            "volunteer_event": [str(event_id) for event_id in volunteer_event],
-            "age": age,
-            "shift": shift,
-            "assigned": assigned,
-            "affiliation": affiliation,
-            "year_level": year_level,
-            "onboarding": onboarding,
-        }
-    )
-    query = apply_member_filter(query, tournament, legacy)
     query = apply_member_search(
         query,
         db,

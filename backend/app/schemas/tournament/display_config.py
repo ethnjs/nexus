@@ -80,17 +80,8 @@ class DisplayConfigSurface(BaseModel):
     # missing from a saved list still renders, appended in default order, so
     # adding a new section type never requires a migration.
     sections: list[DisplayConfigSection] | None = None
-    # Tables only: the viewer's committed filters, keyed by whatever that
-    # table's filter vocabulary calls each set. The roster keys by its query
-    # params and stores the values it will send back ({"track":
-    # ["3:confirmed"]}); the client-side ones (events table, assignments
-    # board) store the selected values their FilterModal deals in. Either
-    # way a key's empty list narrows nothing. An empty dict and None both
-    # mean "no filters" — the client clears by sending {}, so this never has
-    # to distinguish them.
-    filters: dict[str, list[str]] | None = None
-    # Tables only: the filter builder's conditions, replacing `filters`. A key
-    # in a stored `filters` reads as an "any_of" condition on that field.
+    # Tables only: the viewer's applied filter. Its fields are the table's
+    # filter vocabulary (see known_filter_keys).
     filter: FilterGroup | None = None
     # Tables only. Absent means the client's own default sort.
     sort: DisplayConfigSort | None = None

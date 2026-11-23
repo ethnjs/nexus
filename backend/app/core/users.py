@@ -102,12 +102,6 @@ def user_surface(user: User, surface: str) -> tuple[frozenset[str], frozenset[st
 def validate_user_display_config(user: User, payload: dict[str, DisplayConfigSurface]) -> None:
     for surface, config in payload.items():
         filter_keys, sort_fields = user_surface(user, surface)
-        for key in config.filters or {}:
-            if key not in filter_keys:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail=f"Unknown filter '{key}'",
-                )
         if config.filter is not None:
             validate_filter(config.filter, filter_keys)
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):

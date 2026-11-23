@@ -142,12 +142,6 @@ def update_display_config(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown column '{column}'",
                 )
-        for key in config.filters or {}:
-            if key not in known_filter_keys(surface):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail=f"Unknown filter '{key}'",
-                )
         if config.filter is not None:
             validate_filter(config.filter, known_filter_keys(surface), roster_check(surface))
         # Both shapes, same vocabulary: `sort` is one key, `sorts` an

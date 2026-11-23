@@ -18,6 +18,16 @@ from app.models.models import (
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
 
+def _cond(field, *values, group=None, op="any_of") -> dict:
+    """One roster filter condition, as the `filter` param takes it."""
+    return {
+        "field": field,
+        "group": None if group is None else str(group),
+        "op": op,
+        "values": [str(value) for value in values],
+    }
+
+
 def get_role_id_by_label(db, tournament_id: int, label: str) -> int:
     return (
         db.query(TournamentRole)
@@ -654,10 +664,13 @@ class TestRosterRoleTracks:
 
 class TestRosterFilters:
     """Filters match against data the roster response doesn't carry, so they
-    run in SQL. Different filters AND; values within one OR."""
+    run in SQL. Conditions AND; values within one condition OR."""
 
-    def _roster(self, client, tournament_id, query=""):
-        res = client.get(f"/tournaments/{tournament_id}/members/{query}")
+    def _roster(self, client, tournament_id, *conditions, q=None):
+        params = {"filter": json.dumps({"op": "and", "conditions": list(conditions)})}
+        if q is not None:
+            params["q"] = q
+        res = client.get(f"/tournaments/{tournament_id}/members/", params=params)
         assert res.status_code == 200, res.json()
         return {r["user"]["email"] for r in res.json()}
 
@@ -673,7 +686,9 @@ class TestRosterFilters:
         login(client, "td@test.com", "tdpass")
         # roles is the distinct TournamentRole list now, not the join rows.
         role_id = volunteer.roles[0].id
-        assert self._roster(client, td_tournament.id, f"?role={role_id}") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, _cond("role", role_id)) == {
+            "alice@example.com"
+        }
 
     def test_role_filter_none_finds_members_without_roles(self, client, db, td_user, td_tournament):
         from tests.conftest import grant_role
@@ -683,8 +698,12 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert "bob@example.com" in self._roster(client, td_tournament.id, "?role=none")
-        assert "alice@example.com" not in self._roster(client, td_tournament.id, "?role=none")
+        assert "bob@example.com" in self._roster(
+            client, td_tournament.id, _cond("role", op="empty")
+        )
+        assert "alice@example.com" not in self._roster(
+            client, td_tournament.id, _cond("role", op="empty")
+        )
 
     def test_role_filter_narrows_to_tracks(self, client, db, td_user, td_tournament):
         """ "roleId:trackId" asks who holds that role that day. A tournament-wide
@@ -717,9 +736,8 @@ class TestRosterFilters:
 
         login(client, "td@test.com", "tdpass")
         everyone = {"alice@example.com", "bob@example.com", "carol@example.com"}
-        assert self._roster(client, td_tournament.id, f"?role={role_id}") == everyone
-        assert self._roster(client, td_tournament.id, f"?role={role_id}:__any__") == everyone
-        assert self._roster(client, td_tournament.id, f"?role={role_id}:{day_one.id}") == {
+        assert self._roster(client, td_tournament.id, _cond("role", role_id)) == everyone
+        assert self._roster(client, td_tournament.id, _cond("role", f"{role_id}:{day_one.id}")) == {
             "alice@example.com",
             "carol@example.com",
         }
@@ -729,7 +747,7 @@ class TestRosterFilters:
             self._roster(
                 client,
                 td_tournament.id,
-                f"?role={role_id}:{day_one.id}&role={role_id}:{writing.id}",
+                _cond("role", f"{role_id}:{day_one.id}", f"{role_id}:{writing.id}"),
             )
             == everyone
         )
@@ -759,10 +777,11 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, f"?track={writing.id}:confirmed") == {
-            "alice@example.com"
-        }
-        assert self._roster(client, td_tournament.id, f"?track={writing.id}:declined") == set()
+        assert self._roster(
+            client, td_tournament.id, _cond("track", "confirmed", group=writing.id)
+        ) == {"alice@example.com"}
+        declined = _cond("track", "declined", group=writing.id)
+        assert self._roster(client, td_tournament.id, declined) == set()
 
     def test_filters_of_different_kinds_and_together(self, client, db, td_user, td_tournament):
         from app.models.models import (
@@ -798,15 +817,20 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        both = f"?track={track.id}:confirmed&lunch=entree:pizza"
-        assert self._roster(client, td_tournament.id, both) == {"alice@example.com"}
+        assert self._roster(
+            client,
+            td_tournament.id,
+            _cond("track", "confirmed", group=track.id),
+            _cond("lunch", "pizza", group="entree"),
+        ) == {"alice@example.com"}
 
-    def test_malformed_pair_is_ignored_not_fatal(self, client, td_user, td_tournament):
-        """A bad value off a stale bookmark shouldn't 422 the roster — that
-        leaves a TD staring at an error with no way to clear it."""
+    def test_unresolvable_group_is_ignored_not_fatal(self, client, td_user, td_tournament):
+        """A stale value shouldn't 422 the roster — that leaves a TD staring at
+        an error with no way to clear it."""
         login(client, "td@test.com", "tdpass")
-        res = client.get(f"/tournaments/{td_tournament.id}/members/?track=nonsense")
-        assert res.status_code == 200
+        assert "td@test.com" in self._roster(
+            client, td_tournament.id, _cond("track", "confirmed", group="nonsense")
+        )
 
     def test_age_filter_respects_consent_and_collection(self, client, db, td_user, td_tournament):
         """A member who never consented must not appear in a 21+ list. Their
@@ -828,7 +852,7 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        emails = self._roster(client, td_tournament.id, "?age=over_21")
+        emails = self._roster(client, td_tournament.id, _cond("age", "over_21"))
         assert "consented@example.com" in emails
         assert "withheld@example.com" not in emails
 
@@ -845,7 +869,7 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?age=over_18") == set()
+        assert self._roster(client, td_tournament.id, _cond("age", "over_18")) == set()
 
     def test_filter_options_lists_what_the_tournament_holds(
         self, client, db, td_user, td_tournament
@@ -1081,18 +1105,21 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?lunch=dietary:__any__") == {
-            "alice@example.com"
-        }
-        assert self._roster(client, td_tournament.id, "?lunch=dietary:__unanswered__") == {
+        assert self._roster(
+            client, td_tournament.id, _cond("lunch", op="not_empty", group="dietary")
+        ) == {"alice@example.com"}
+        assert self._roster(
+            client, td_tournament.id, _cond("lunch", op="empty", group="dietary")
+        ) == {
             "bob@example.com",
             "td@test.com",
         }
         # "none" is an answer; a missing row is not the same as answering none.
-        assert self._roster(client, td_tournament.id, "?lunch=dietary:__none__") == {
-            "alice@example.com"
-        }
-        assert self._roster(client, td_tournament.id, "?lunch=dietary:__not_none__") == set()
+        assert self._roster(
+            client, td_tournament.id, _cond("lunch", "__none__", group="dietary")
+        ) == {"alice@example.com"}
+        not_none = _cond("lunch", "__not_none__", group="dietary")
+        assert self._roster(client, td_tournament.id, not_none) == set()
 
     def test_event_preference_rank_condition(self, client, db, td_user, td_tournament):
         """The rank is checked on the same row as the event: Alice ranked
@@ -1137,9 +1164,10 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        anatomy_pref = f"event_pref={track_id}:{anatomy.id}"
         roster = lambda rank: self._roster(  # noqa: E731
-            client, td_tournament.id, f"?{anatomy_pref}&event_pref={track_id}:rank:{rank}"
+            client,
+            td_tournament.id,
+            _cond("event_pref", anatomy.id, f"rank:{rank}", group=track_id),
         )
         assert roster("le:2") == {"alice@example.com"}
         assert roster("eq:3") == {"bob@example.com"}
@@ -1147,13 +1175,15 @@ class TestRosterFilters:
         # An unranked row fails every comparison.
         assert roster("ge:1") == {"alice@example.com", "bob@example.com"}
         # No events picked: any event at that rank.
-        assert self._roster(client, td_tournament.id, f"?event_pref={track_id}:rank:eq:3") == {
+        assert self._roster(
+            client, td_tournament.id, _cond("event_pref", "rank:eq:3", group=track_id)
+        ) == {
             "alice@example.com",
             "bob@example.com",
         }
         # A malformed condition is ignored, like any bad filter value.
         assert self._roster(
-            client, td_tournament.id, f"?{anatomy_pref}&event_pref={track_id}:rank:near:2"
+            client, td_tournament.id, _cond("event_pref", anatomy.id, "rank:near:2", group=track_id)
         ) == {
             "alice@example.com",
             "bob@example.com",
@@ -1177,9 +1207,9 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, f"?track={track.id}:__any__") == {
-            "alice@example.com"
-        }
+        assert self._roster(
+            client, td_tournament.id, _cond("track", op="not_empty", group=track.id)
+        ) == {"alice@example.com"}
 
     def test_shift_filter_takes_a_track_or_one_shift(self, client, db, td_user, td_tournament):
         """A track-level value resolves to every shift on that track. Was
@@ -1208,12 +1238,12 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, f"?shift={track_id}:{morning.id}") == {
-            "alice@example.com"
-        }
-        assert self._roster(client, td_tournament.id, f"?shift={track_id}:__any__") == {
-            "alice@example.com"
-        }
+        assert self._roster(
+            client, td_tournament.id, _cond("shift", morning.id, group=track_id)
+        ) == {"alice@example.com"}
+        assert self._roster(
+            client, td_tournament.id, _cond("shift", op="not_empty", group=track_id)
+        ) == {"alice@example.com"}
 
     def _profiled_members(self, db, tournament_id):
         """Undergrads at UCLA, a grad student with no school, and non-students
@@ -1259,13 +1289,13 @@ class TestRosterFilters:
         self._profiled_members(db, td_tournament.id)
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?affiliation=ucla") == {
+        assert self._roster(client, td_tournament.id, _cond("affiliation", "ucla")) == {
             "frosh@example.com",
             "super@example.com",
             "staff@example.com",
             "staff2@example.com",
         }
-        assert self._roster(client, td_tournament.id, "?affiliation=UCLA&affiliation=Acme") == {
+        assert self._roster(client, td_tournament.id, _cond("affiliation", "UCLA", "Acme")) == {
             "frosh@example.com",
             "super@example.com",
             "staff@example.com",
@@ -1277,11 +1307,15 @@ class TestRosterFilters:
         self._profiled_members(db, td_tournament.id)
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?year_level=1") == {"frosh@example.com"}
+        assert self._roster(client, td_tournament.id, _cond("year_level", 1)) == {
+            "frosh@example.com"
+        }
         # 5 is "5th Year+", so it takes anything past it.
-        assert self._roster(client, td_tournament.id, "?year_level=5") == {"super@example.com"}
+        assert self._roster(client, td_tournament.id, _cond("year_level", 5)) == {
+            "super@example.com"
+        }
         assert self._roster(
-            client, td_tournament.id, "?year_level=graduate&year_level=non_student"
+            client, td_tournament.id, _cond("year_level", "graduate", "non_student")
         ) == {
             "grad@example.com",
             "staff@example.com",
@@ -1295,10 +1329,11 @@ class TestRosterFilters:
         self._profiled_members(db, td_tournament.id)
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?q=frosh&affiliation=UCLA") == {
+        assert self._roster(client, td_tournament.id, _cond("affiliation", "UCLA"), q="frosh") == {
             "frosh@example.com"
         }
-        assert self._roster(client, td_tournament.id, "?q=frosh&affiliation=Acme") == set()
+        acme = _cond("affiliation", "Acme")
+        assert self._roster(client, td_tournament.id, acme, q="frosh") == set()
 
     def test_affiliation_filter_options(self, client, db, td_user, td_tournament):
         """The school and the employers spelled like it are one option, under
@@ -1333,15 +1368,15 @@ class TestRosterFilters:
 
         login(client, "td@test.com", "tdpass")
         # The TD's path has the same two steps, neither answered.
-        assert self._roster(client, td_tournament.id, "?onboarding=not_started") == {
+        assert self._roster(client, td_tournament.id, _cond("onboarding", "not_started")) == {
             "alice@example.com",
             "td@test.com",
         }
-        assert self._roster(client, td_tournament.id, "?onboarding=in_progress") == {
+        assert self._roster(client, td_tournament.id, _cond("onboarding", "in_progress")) == {
             "bob@example.com"
         }
         assert self._roster(
-            client, td_tournament.id, "?onboarding=in_progress&onboarding=complete"
+            client, td_tournament.id, _cond("onboarding", "in_progress", "complete")
         ) == {"bob@example.com", "carol@example.com"}
         body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         assert body["has_onboarding"] is True
@@ -1353,8 +1388,8 @@ class TestRosterFilters:
         _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?onboarding=not_started") == set()
-        assert self._roster(client, td_tournament.id, "?onboarding=complete") == {
+        assert self._roster(client, td_tournament.id, _cond("onboarding", "not_started")) == set()
+        assert self._roster(client, td_tournament.id, _cond("onboarding", "complete")) == {
             "alice@example.com",
             "td@test.com",
         }
@@ -1365,7 +1400,7 @@ class TestRosterFilters:
         _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
 
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, "?onboarding=completed") == {
+        assert self._roster(client, td_tournament.id, _cond("onboarding", "completed")) == {
             "alice@example.com",
             "td@test.com",
         }
@@ -1576,8 +1611,10 @@ def test_search_params_combine_with_roster_filters(client, td_user, td_tournamen
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/members/?q=an&track={track.id}:confirmed"
-    names = sorted(r["user"]["first_name"] for r in client.get(url).json())
+    confirmed = _cond("track", "confirmed", group=track.id)
+    params = {"q": "an", "filter": json.dumps({"op": "and", "conditions": [confirmed]})}
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/", params=params).json()
+    names = sorted(r["user"]["first_name"] for r in rows)
     assert names == ["Ana"]
 
 

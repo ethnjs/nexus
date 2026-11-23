@@ -6,6 +6,7 @@ rather than in code: the two partial unique indexes, and the composite FK that
 keeps an assignment's membership_id and membership_role_id from disagreeing.
 """
 
+import json
 from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
 
@@ -1418,8 +1419,10 @@ class TestMembershipReads:
         self._assign_other_user(client, db, td_tournament, other_user)
         track_id = self._staffed_track_id(db)
 
+        assigned = {"field": "assigned", "group": str(track_id), "values": ["assigned"]}
         rows = client.get(
-            f"/tournaments/{td_tournament.id}/members/?fields=assignments&assigned={track_id}:assigned"
+            f"/tournaments/{td_tournament.id}/members/",
+            params={"fields": "assignments", "filter": json.dumps({"conditions": [assigned]})},
         ).json()
 
         assert rows[0]["assignments"][0]["event"]["name"] == "Anatomy"
