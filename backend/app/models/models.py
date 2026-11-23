@@ -976,6 +976,44 @@ class TournamentExportPreset(Base):
 
 
 # ---------------------------------------------------------------------------
+# SavedFilter — a named filter one viewer saved on one table. Tournament
+# tables scope it to the tournament (its values are that tournament's ids);
+# site-wide tables like the admin users table leave tournament_id null.
+# ---------------------------------------------------------------------------
+class SavedFilter(Base):
+    __tablename__ = "saved_filters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), index=True
+    )
+    # The table's surface key without a tab suffix, so every tab shares them.
+    surface: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(100))
+    # A FilterGroup, the same shape display_config stores under `filter`.
+    filter: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "tournament_id",
+            "surface",
+            "name",
+            name="uq_saved_filter_name",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
 # JoinCode — shared invite-link mechanism for tournaments and chapters.
 # Exactly one of tournament_id/chapter_id is set (ck_join_code_one_target),
 # so a single /join lookup resolves the right onboarding flow.

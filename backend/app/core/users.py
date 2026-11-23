@@ -89,16 +89,19 @@ USER_SURFACES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 ADMIN_ONLY_SURFACES = frozenset({ADMIN_USERS})
 
 
+def user_surface(user: User, surface: str) -> tuple[frozenset[str], frozenset[str]]:
+    """The surface's filter keys and sort fields; 422 for one `user` can't use."""
+    if surface not in USER_SURFACES or (surface in ADMIN_ONLY_SURFACES and user.role != "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown surface '{surface}'",
+        )
+    return USER_SURFACES[surface]
+
+
 def validate_user_display_config(user: User, payload: dict[str, DisplayConfigSurface]) -> None:
     for surface, config in payload.items():
-        if surface not in USER_SURFACES or (
-            surface in ADMIN_ONLY_SURFACES and user.role != "admin"
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Unknown surface '{surface}'",
-            )
-        filter_keys, sort_fields = USER_SURFACES[surface]
+        filter_keys, sort_fields = user_surface(user, surface)
         for key in config.filters or {}:
             if key not in filter_keys:
                 raise HTTPException(

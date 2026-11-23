@@ -485,6 +485,70 @@ class TestMyDisplayConfig:
         assert res.status_code == 422
 
 
+class TestMySavedFilters:
+    FILTER = {
+        "op": "and",
+        "conditions": [{"field": "tournament", "op": "none_of", "values": ["4"]}],
+    }
+
+    def _create(self, client, name="Not at Regionals"):
+        return client.post(
+            "/users/me/saved-filters/",
+            json={"surface": "admin_users", "name": name, "filter": self.FILTER},
+        )
+
+    def test_admin_creates_lists_renames_and_deletes(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        created = self._create(client)
+        assert created.status_code == 201
+        saved_id = created.json()["id"]
+        assert created.json()["filter"] == self.FILTER
+
+        listed = client.get("/users/me/saved-filters/?surface=admin_users").json()
+        assert [s["name"] for s in listed] == ["Not at Regionals"]
+
+        renamed = client.patch(f"/users/me/saved-filters/{saved_id}/", json={"name": "Renamed"})
+        assert renamed.json()["name"] == "Renamed"
+
+        assert client.delete(f"/users/me/saved-filters/{saved_id}/").status_code == 204
+        assert client.get("/users/me/saved-filters/").json() == []
+
+    def test_duplicate_name_conflicts(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert self._create(client).status_code == 201
+        assert self._create(client).status_code == 409
+
+    def test_non_admin_cannot_save_on_admin_surface(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert self._create(client).status_code == 422
+
+    def test_rejects_unknown_field(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(
+            "/users/me/saved-filters/",
+            json={
+                "surface": "admin_users",
+                "name": "x",
+                "filter": {"op": "and", "conditions": [{"field": "shirt", "values": ["M"]}]},
+            },
+        )
+        assert res.status_code == 422
+
+    def test_tournament_saved_filters_are_not_listed(self, client, td_user, td_tournament):
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/tournaments/{td_tournament.id}/saved-filters/",
+            json={
+                "surface": "events_table",
+                "name": "Division C",
+                "filter": {"op": "and", "conditions": [{"field": "division", "values": ["C"]}]},
+            },
+        )
+        assert res.status_code == 201
+        assert client.get("/users/me/saved-filters/").json() == []
+        assert client.delete(f"/users/me/saved-filters/{res.json()['id']}/").status_code == 404
+
+
 class TestAdminTransferOwnerless:
     def test_admin_can_reown_ownerless_tournament(
         self, client, admin_user, td_user, td_tournament, db
