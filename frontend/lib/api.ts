@@ -191,6 +191,7 @@ export interface UserTournamentMembership {
   tournament_name: string;
   short_name: string | null;
   year: number | null;
+  end_date: string | null;
   assignments: { role: string; event: string | null }[];
 }
 

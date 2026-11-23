@@ -8,6 +8,7 @@ import {
 import { FieldValue } from "@/components/profile/PanelField";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import type { CanonicalEvent, UserTournamentMembership } from "@/lib/api";
+import { todayLocalDateString } from "@/lib/date";
 
 interface VolunteerExperienceSectionUser {
   has_volunteer_experience: boolean | null;
@@ -32,17 +33,20 @@ interface VolunteerExperienceSectionProps {
   onDelete?: (id: number) => Promise<void>;
 }
 
-/** One row per tournament, its roles and events listed together. */
+/** One row per tournament that has ended, its roles and events listed together. */
 export function membershipRows(memberships: UserTournamentMembership[]): VolunteerMembershipRow[] {
   const joined = (values: (string | null)[]) =>
     [...new Set(values.filter((v): v is string => !!v))].join(", ");
-  return memberships.map((m) => ({
-    key: `m-${m.tournament_id}`,
-    year: m.year === null ? "" : String(m.year),
-    tournament_name: m.short_name || m.tournament_name,
-    event_name: joined(m.assignments.map((a) => a.event)),
-    role: joined(m.assignments.map((a) => a.role)),
-  }));
+  const today = todayLocalDateString();
+  return memberships
+    .filter((m) => m.end_date !== null && m.end_date < today)
+    .map((m) => ({
+      key: `m-${m.tournament_id}`,
+      year: m.year === null ? "" : String(m.year),
+      tournament_name: m.short_name || m.tournament_name,
+      event_name: joined(m.assignments.map((a) => a.event)),
+      role: joined(m.assignments.map((a) => a.role)),
+    }));
 }
 
 export function VolunteerExperienceSection({

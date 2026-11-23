@@ -32,7 +32,10 @@ import { ProfileCard } from "@/components/profile/ProfileCard";
 import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
-import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
+import {
+  membershipRows,
+  VolunteerExperienceSection,
+} from "@/components/profile/sections/VolunteerExperienceSection";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 
 export default function ProfilePage() {
@@ -268,7 +271,7 @@ export default function ProfilePage() {
         )}
 
         {(profile.has_volunteer_experience !== false ||
-          profile.tournament_memberships.length > 0) && (
+          membershipRows(profile.tournament_memberships).length > 0) && (
           <ProfileCard>
             <VolunteerExperienceSection
               user={profile}

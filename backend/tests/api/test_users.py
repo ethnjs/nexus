@@ -413,6 +413,7 @@ class TestUserTournamentMemberships:
         memberships = client.get(f"/admin/users/{other_user.id}/").json()["tournament_memberships"]
         here = next(m for m in memberships if m["tournament_id"] == td_tournament.id)
         assert here["tournament_name"] == td_tournament.name
+        assert here["end_date"] == td_tournament.last_day.isoformat()
         assert here["assignments"] == [{"role": "Runner", "event": None}]
 
     def test_own_full_profile_lists_memberships(self, client, td_user, td_tournament):

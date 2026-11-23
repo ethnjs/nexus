@@ -110,6 +110,7 @@ class UserTournamentMembershipResponse(BaseModel):
     tournament_name: str
     short_name: str | None = None
     year: int | None = None
+    end_date: date | None = None
     assignments: list[TournamentMembershipAssignment] = []
 
     @model_validator(mode="before")
@@ -130,6 +131,7 @@ class UserTournamentMembershipResponse(BaseModel):
             "tournament_name": tournament.name,
             "short_name": tournament.short_name,
             "year": tournament.season_year,
+            "end_date": tournament.last_day,
             "assignments": [
                 {"role": role, "event": event}
                 for role, event in pairs
