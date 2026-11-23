@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.filter_conditions import validate_filter
+from app.core.filter_conditions import ConditionCheck, validate_filter
 from app.models.models import SavedFilter
 from app.schemas.saved_filter import SavedFilterCreate, SavedFilterUpdate
 
@@ -71,8 +71,9 @@ def create_saved_filter(
     tournament_id: int | None,
     payload: SavedFilterCreate,
     known_fields: frozenset[str],
+    check: ConditionCheck | None = None,
 ) -> SavedFilter:
-    validate_filter(payload.filter, known_fields)
+    validate_filter(payload.filter, known_fields, check)
     if _name_taken(db, user_id, tournament_id, payload.surface, payload.name):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
     saved = SavedFilter(
@@ -88,7 +89,11 @@ def create_saved_filter(
 
 
 def update_saved_filter(
-    db: Session, saved: SavedFilter, payload: SavedFilterUpdate, known_fields: frozenset[str]
+    db: Session,
+    saved: SavedFilter,
+    payload: SavedFilterUpdate,
+    known_fields: frozenset[str],
+    check: ConditionCheck | None = None,
 ) -> SavedFilter:
     if payload.name is not None:
         if _name_taken(
@@ -102,7 +107,7 @@ def update_saved_filter(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
         saved.name = payload.name
     if payload.filter is not None:
-        validate_filter(payload.filter, known_fields)
+        validate_filter(payload.filter, known_fields, check)
         saved.filter = payload.filter.model_dump()
     _commit(db, saved)
     return saved

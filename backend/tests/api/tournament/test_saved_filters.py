@@ -7,12 +7,12 @@ from tests.conftest import grant_role, login
 FILTER = {
     "op": "and",
     "conditions": [
-        {"field": "track", "op": "none_of", "values": ["7:declined"]},
+        {"field": "track", "group": "7", "op": "none_of", "values": ["declined"]},
         {
             "op": "or",
             "conditions": [
-                {"field": "role", "op": "any_of", "values": ["3"]},
-                {"field": "affiliation", "op": "empty", "values": []},
+                {"field": "role", "group": None, "op": "any_of", "values": ["3"]},
+                {"field": "affiliation", "group": None, "op": "empty", "values": []},
             ],
         },
     ],
@@ -130,7 +130,10 @@ def test_rejects_blank_name(client, td_user, td_tournament):
 def test_patch_renames_and_replaces_filter(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     saved = _create(client, td_tournament.id)
-    new_filter = {"op": "or", "conditions": [{"field": "age", "values": ["over_18"]}]}
+    new_filter = {
+        "op": "or",
+        "conditions": [{"field": "age", "group": None, "op": "any_of", "values": ["over_18"]}],
+    }
     response = client.patch(
         _url(td_tournament.id, saved["id"]), json={"name": "Adults", "filter": new_filter}
     )

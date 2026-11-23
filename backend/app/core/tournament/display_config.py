@@ -7,6 +7,8 @@ same known sets rather than redefining them."""
 
 import re
 
+from app.core.filter_conditions import ConditionCheck
+
 MEMBERS_PANEL = "members_panel"
 MEMBERS_TABLE = "members_table"
 MEMBER_PAGE = "member_page"
@@ -647,6 +649,20 @@ def is_known_column(surface: str, key: str) -> bool:
             FIELD_KEY_NAMESPACE,
         )
     )
+
+
+def uses_roster_filters(surface: str) -> bool:
+    """Whether `surface` filters through the roster route, whose conditions
+    have rules of their own (see roster_condition_problem)."""
+    surface = surface_base(surface)
+    return surface == MEMBERS_TABLE or surface in MEMBER_CARD_SURFACES
+
+
+def roster_check(surface: str) -> ConditionCheck | None:
+    """The roster's per-condition rules for `surface`, if it uses them."""
+    from app.core.tournament.member_filters import roster_condition_problem
+
+    return roster_condition_problem if uses_roster_filters(surface) else None
 
 
 def known_filter_keys(surface: str) -> frozenset[str]:

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import date
 from typing import NoReturn
 
@@ -15,9 +16,16 @@ def _reject(detail: str) -> NoReturn:
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
 
 
-def _validate_condition(condition: FilterCondition, known_fields: frozenset[str]) -> None:
+ConditionCheck = Callable[[FilterCondition], str | None]
+
+
+def _validate_condition(
+    condition: FilterCondition, known_fields: frozenset[str], check: ConditionCheck | None
+) -> None:
     if condition.field not in known_fields:
         _reject(f"Unknown filter '{condition.field}'")
+    if check is not None and (problem := check(condition)):
+        _reject(problem)
     if condition.op not in FILTER_OPS:
         _reject(f"Unknown filter operator '{condition.op}'")
     if condition.op in VALUELESS_OPS and condition.values:
@@ -33,14 +41,17 @@ def _validate_condition(condition: FilterCondition, known_fields: frozenset[str]
             _reject("Filter operator 'within_last' takes one whole number of days")
 
 
-def validate_filter(group: FilterGroup, known_fields: frozenset[str]) -> None:
+def validate_filter(
+    group: FilterGroup, known_fields: frozenset[str], check: ConditionCheck | None = None
+) -> None:
     """Rejects (422) a filter with unknown fields or operators, malformed
-    values, or groups nested more than one level."""
+    values, groups nested more than one level, or a condition `check` (the
+    table's own rules) names a problem with."""
     if group.op not in FILTER_GROUP_OPS:
         _reject(f"Unknown filter group operator '{group.op}'")
     for item in group.conditions:
         if isinstance(item, FilterCondition):
-            _validate_condition(item, known_fields)
+            _validate_condition(item, known_fields, check)
             continue
         if item.op not in FILTER_GROUP_OPS:
             _reject(f"Unknown filter group operator '{item.op}'")
@@ -48,4 +59,4 @@ def validate_filter(group: FilterGroup, known_fields: frozenset[str]) -> None:
             if not isinstance(condition, FilterCondition):
                 _reject("Filter groups nest one level deep")
             else:
-                _validate_condition(condition, known_fields)
+                _validate_condition(condition, known_fields, check)

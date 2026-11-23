@@ -38,6 +38,9 @@ class FilterCondition(BaseModel):
     FILTER_OPS."""
 
     field: str
+    # Paired roster fields only: the track or lunch category the row is about,
+    # the left half of their legacy "left:right" values.
+    group: str | None = None
     op: str = "any_of"
     values: list[str] = []
 

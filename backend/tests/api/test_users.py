@@ -462,8 +462,8 @@ class TestMyDisplayConfig:
         group = {
             "op": "or",
             "conditions": [
-                {"field": "tournament", "op": "none_of", "values": ["4"]},
-                {"field": "affiliation", "op": "empty", "values": []},
+                {"field": "tournament", "group": None, "op": "none_of", "values": ["4"]},
+                {"field": "affiliation", "group": None, "op": "empty", "values": []},
             ],
         }
         res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
@@ -488,7 +488,7 @@ class TestMyDisplayConfig:
 class TestMySavedFilters:
     FILTER = {
         "op": "and",
-        "conditions": [{"field": "tournament", "op": "none_of", "values": ["4"]}],
+        "conditions": [{"field": "tournament", "group": None, "op": "none_of", "values": ["4"]}],
     }
 
     def _create(self, client, name="Not at Regionals"):

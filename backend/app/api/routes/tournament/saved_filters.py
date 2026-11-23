@@ -10,7 +10,7 @@ from app.core.saved_filters import (
     update_saved_filter,
 )
 from app.core.tournament import get_tournament
-from app.core.tournament.display_config import known_filter_keys, surface_base
+from app.core.tournament.display_config import known_filter_keys, roster_check, surface_base
 from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.permissions import (
     MANAGE_EVENTS,
@@ -68,7 +68,9 @@ def create_my_saved_filter(
     get_tournament(tournament_id, db)
     _require_membership(db, tournament_id, current_user)
     keys = _filter_keys(payload.surface)
-    return create_saved_filter(db, current_user.id, tournament_id, payload, keys)
+    return create_saved_filter(
+        db, current_user.id, tournament_id, payload, keys, roster_check(payload.surface)
+    )
 
 
 @router.patch("/{saved_id}/", response_model=SavedFilterRead)
@@ -81,7 +83,9 @@ def update_my_saved_filter(
 ):
     get_tournament(tournament_id, db)
     saved = get_saved_filter_or_404(db, saved_id, current_user.id, tournament_id)
-    return update_saved_filter(db, saved, payload, _filter_keys(saved.surface))
+    return update_saved_filter(
+        db, saved, payload, _filter_keys(saved.surface), roster_check(saved.surface)
+    )
 
 
 @router.delete("/{saved_id}/", status_code=status.HTTP_204_NO_CONTENT)

@@ -173,12 +173,12 @@ def test_put_display_config_saves_filter_conditions(client, td_user, td_tourname
     group = {
         "op": "and",
         "conditions": [
-            {"field": "track", "op": "none_of", "values": ["7:declined"]},
+            {"field": "track", "group": "7", "op": "none_of", "values": ["declined"]},
             {
                 "op": "or",
                 "conditions": [
-                    {"field": "role", "op": "any_of", "values": ["3"]},
-                    {"field": "affiliation", "op": "empty", "values": []},
+                    {"field": "role", "group": None, "op": "any_of", "values": ["3"]},
+                    {"field": "affiliation", "group": None, "op": "empty", "values": []},
                 ],
             },
         ],
@@ -201,6 +201,9 @@ def test_put_display_config_saves_filter_conditions(client, td_user, td_tourname
         {"field": "role", "op": "within_last", "values": ["-3"]},
         {"op": "or", "conditions": [{"op": "and", "conditions": []}]},
         {"op": "xor", "conditions": []},
+        {"field": "track", "values": ["declined"]},
+        {"field": "role", "group": "7", "values": ["3"]},
+        {"field": "assigned", "group": "7", "op": "empty"},
     ],
 )
 def test_put_display_config_rejects_malformed_filter(client, td_user, td_tournament, condition):

@@ -1,5 +1,6 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
 
+import json
 from datetime import UTC, date, datetime, timedelta
 
 from app.core.tournament.display_config import MEMBERS_PANEL
@@ -1415,6 +1416,137 @@ def test_the_search_route_is_gone(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/search/")
     assert response.status_code == 422
+
+
+class TestRosterFilterConditions:
+    """The `filter` param: a tree of conditions, with negation and emptiness."""
+
+    def _roster(self, client, tournament_id, group: dict) -> set[str]:
+        res = client.get(
+            f"/tournaments/{tournament_id}/members/", params={"filter": json.dumps(group)}
+        )
+        assert res.status_code == 200, res.json()
+        return {r["user"]["email"] for r in res.json()} - {"td@test.com"}
+
+    def test_none_of_keeps_members_without_the_value(self, client, db, td_user, td_tournament):
+        from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
+
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        db.add(track)
+        db.flush()
+        alice, bob = (
+            _make_membership(db, td_tournament.id, _db_user_for_filter(db, email).id)
+            for email in ("alice@example.com", "bob@example.com")
+        )
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "carol@example.com").id)
+        db.add_all(
+            [
+                TournamentMembershipTrackStatus(
+                    membership_id=alice.id, track_id=track.id, status="confirmed"
+                ),
+                TournamentMembershipTrackStatus(
+                    membership_id=bob.id, track_id=track.id, status="declined"
+                ),
+            ]
+        )
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        condition = {"field": "track", "group": str(track.id), "values": ["declined"]}
+        assert self._roster(
+            client, td_tournament.id, {"conditions": [{**condition, "op": "none_of"}]}
+        ) == {"alice@example.com", "carol@example.com"}
+        assert self._roster(
+            client,
+            td_tournament.id,
+            {"conditions": [{"field": "track", "group": str(track.id), "op": "empty"}]},
+        ) == {"carol@example.com"}
+
+    def test_lunch_empty_is_unanswered(self, client, db, td_user, td_tournament):
+        from app.models.models import TournamentMembershipLunch
+
+        alice = _make_membership(
+            db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id
+        )
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.add(
+            TournamentMembershipLunch(
+                membership_id=alice.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                category="dietary",
+                value="none",
+                label="none",
+            )
+        )
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        lunch = {"field": "lunch", "group": "dietary"}
+        assert self._roster(
+            client, td_tournament.id, {"conditions": [{**lunch, "op": "empty"}]}
+        ) == {"bob@example.com"}
+        assert self._roster(
+            client, td_tournament.id, {"conditions": [{**lunch, "op": "not_empty"}]}
+        ) == {"alice@example.com"}
+
+    def test_role_empty_finds_members_without_roles(self, client, db, td_user, td_tournament):
+        grant_role(db, td_tournament, _db_user_for_filter(db, "alice@example.com"), "Volunteer")
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(
+            client, td_tournament.id, {"conditions": [{"field": "role", "op": "empty"}]}
+        ) == {"bob@example.com"}
+
+    def test_or_group_mixes_age_with_database_filters(self, client, db, td_user, td_tournament):
+        """Age is worked out in Python, yet still ORs with a role in SQL."""
+        from app.models.models import User as UserModel
+
+        adult = _db_user_for_filter(db, "alice@example.com")
+        db.query(UserModel).filter(UserModel.id == adult.id).one().date_of_birth = date(1980, 1, 1)
+        _make_membership(db, td_tournament.id, adult.id).age_disclosure = "consented"
+        volunteer = grant_role(
+            db, td_tournament, _db_user_for_filter(db, "bob@example.com"), "Volunteer"
+        )
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "carol@example.com").id)
+        td_tournament.collect_is_over_21 = True
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        either = {
+            "op": "and",
+            "conditions": [
+                {
+                    "op": "or",
+                    "conditions": [
+                        {"field": "age", "values": ["over_21"]},
+                        {"field": "role", "values": [str(volunteer.roles[0].id)]},
+                    ],
+                }
+            ],
+        }
+        assert self._roster(client, td_tournament.id, either) == {
+            "alice@example.com",
+            "bob@example.com",
+        }
+        neither = {
+            "conditions": [{**c, "op": "none_of"} for c in either["conditions"][0]["conditions"]]
+        }
+        assert self._roster(client, td_tournament.id, neither) == {"carol@example.com"}
+
+    def test_unknown_condition_is_skipped(self, client, db, td_user, td_tournament):
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        stale = {"conditions": [{"field": "shirt", "values": ["M"]}, {"field": "age", "op": "x"}]}
+        assert self._roster(client, td_tournament.id, stale) == {"alice@example.com"}
+
+    def test_malformed_filter_is_422(self, client, td_user, td_tournament):
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/members/", params={"filter": "{"})
+        assert res.status_code == 422
 
 
 def test_search_params_combine_with_roster_filters(client, td_user, td_tournament, db):

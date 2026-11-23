@@ -17,6 +17,7 @@ from app.core.tournament.display_config import (
     is_known_sort_field,
     is_known_surface,
     known_filter_keys,
+    roster_check,
     section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
@@ -148,7 +149,7 @@ def update_display_config(
                     detail=f"Unknown filter '{key}'",
                 )
         if config.filter is not None:
-            validate_filter(config.filter, known_filter_keys(surface))
+            validate_filter(config.filter, known_filter_keys(surface), roster_check(surface))
         # Both shapes, same vocabulary: `sort` is one key, `sorts` an
         # ordered chain of them. A surface stores whichever suits it.
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):
