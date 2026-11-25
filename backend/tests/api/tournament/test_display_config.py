@@ -210,6 +210,7 @@ def test_put_display_config_saves_filter_conditions(client, td_user, td_tourname
         {"field": "affiliation", "op": "empty", "values": ["x"]},
         {"field": "role", "op": "before", "values": ["yesterday"]},
         {"field": "role", "op": "within_last", "values": ["-3"]},
+        {"field": "role", "op": "within_next", "values": ["soon"]},
         {"op": "or", "conditions": [{"op": "and", "conditions": []}]},
         {"op": "xor", "conditions": []},
         {"field": "track", "values": ["declined"]},

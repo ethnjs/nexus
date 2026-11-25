@@ -32,6 +32,13 @@ function conditionMatches<Row>(
       const to = toLocalDateString(today);
       return values.some((value) => value.slice(0, 10) >= from && value.slice(0, 10) <= to);
     }
+    case "within_next": {
+      const until = new Date(today);
+      until.setDate(until.getDate() + Number(condition.values[0]));
+      const from = toLocalDateString(today);
+      const to = toLocalDateString(until);
+      return values.some((value) => value.slice(0, 10) >= from && value.slice(0, 10) <= to);
+    }
   }
 }
 

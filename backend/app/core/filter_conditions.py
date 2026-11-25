@@ -9,7 +9,8 @@ from app.schemas.tournament.display_config import FilterCondition, FilterGroup
 FILTER_GROUP_OPS = frozenset({"and", "or"})
 VALUELESS_OPS = frozenset({"empty", "not_empty"})
 DATE_OPS = frozenset({"before", "after"})
-FILTER_OPS = frozenset({"any_of", "all_of", "none_of", "within_last"}) | VALUELESS_OPS | DATE_OPS
+DAY_COUNT_OPS = frozenset({"within_last", "within_next"})
+FILTER_OPS = frozenset({"any_of", "all_of", "none_of"}) | VALUELESS_OPS | DATE_OPS | DAY_COUNT_OPS
 
 
 def _reject(detail: str) -> NoReturn:
@@ -36,9 +37,9 @@ def _validate_condition(
             date.fromisoformat(value)
         except ValueError:
             _reject(f"Filter operator '{condition.op}' takes one ISO date")
-    if condition.op == "within_last":
+    if condition.op in DAY_COUNT_OPS:
         if len(condition.values) != 1 or not condition.values[0].isdigit():
-            _reject("Filter operator 'within_last' takes one whole number of days")
+            _reject(f"Filter operator '{condition.op}' takes one whole number of days")
 
 
 def validate_filter(

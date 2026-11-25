@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/Input";
 import { PillTrigger } from "@/components/ui/PillMenu";
 import type { FilterCondition, FilterOp, FilterOptionItem } from "@/lib/api";
 import {
+  DAY_COUNT_OPS,
   type FilterField,
   isConditionComplete,
   newCondition,
@@ -65,7 +66,7 @@ export function LeadCell({
 function valueKind(op: FilterOp): "none" | "date" | "days" | "options" {
   if (VALUELESS_OPS.has(op)) return "none";
   if (op === "before" || op === "after") return "date";
-  if (op === "within_last") return "days";
+  if (DAY_COUNT_OPS.has(op)) return "days";
   return "options";
 }
 
@@ -458,7 +459,20 @@ export function FilterConditionRow({
             />
           </div>
         )}
-        {field && (
+        {/* One operator is nothing to choose: it reads as text ("is"). */}
+        {field && field.ops.length === 1 && (
+          <span
+            style={{
+              flexShrink: 0,
+              padding: "0 4px",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            {opLabel(field, field.ops[0], field.single ? 1 : 2)}
+          </span>
+        )}
+        {field && field.ops.length > 1 && (
           <div style={{ width: "170px", flexShrink: 0 }}>
             <Dropdown
               variant={variant}

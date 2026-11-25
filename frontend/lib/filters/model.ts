@@ -61,11 +61,13 @@ export const OP_LABELS: Record<FilterOp, string> = {
   before: "is before",
   after: "is after",
   within_last: "is within the last",
+  within_next: "is within the next",
 };
 
 const SINGLE_OP_LABELS: Partial<Record<FilterOp, string>> = { any_of: "is", none_of: "is not" };
 
 export const VALUELESS_OPS: ReadonlySet<FilterOp> = new Set(["empty", "not_empty"]);
+export const DAY_COUNT_OPS: ReadonlySet<FilterOp> = new Set(["within_last", "within_next"]);
 
 export function opLabel(field: FilterField<never> | undefined, op: FilterOp, count = 2): string {
   const custom = field?.opLabels?.[op];
@@ -98,7 +100,7 @@ export function isConditionComplete(
   if (!field?.ops.includes(condition.op)) return false;
   if (field.groups && !condition.group) return false;
   if (VALUELESS_OPS.has(condition.op)) return true;
-  if (condition.op === "within_last") return /^\d+$/.test(condition.values[0] ?? "");
+  if (DAY_COUNT_OPS.has(condition.op)) return /^\d+$/.test(condition.values[0] ?? "");
   return condition.values.length > 0;
 }
 
@@ -129,7 +131,7 @@ export function conditionProblem(
     return `Pick ${(field.groupLabel ?? "which one").toLowerCase()}.`;
   }
   if (condition.op === "before" || condition.op === "after") return "Pick a date.";
-  if (condition.op === "within_last") return "Enter a number of days.";
+  if (DAY_COUNT_OPS.has(condition.op)) return "Enter a number of days.";
   return "Pick at least one value.";
 }
 
@@ -226,6 +228,6 @@ export function describeCondition(
   });
   const verb = opLabel(field, condition.op, named.length);
   if (VALUELESS_OPS.has(condition.op)) return `${subject} ${verb}`;
-  if (condition.op === "within_last") return `${subject} ${verb} ${named[0] ?? "…"} days`;
+  if (DAY_COUNT_OPS.has(condition.op)) return `${subject} ${verb} ${named[0] ?? "…"} days`;
   return named.length > 0 ? `${subject} ${verb} ${named.join(", ")}` : `${subject} ${verb} …`;
 }

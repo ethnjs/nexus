@@ -2757,7 +2757,8 @@ export type FilterOp =
   | "not_empty"
   | "before"
   | "after"
-  | "within_last";
+  | "within_last"
+  | "within_next";
 
 export interface FilterCondition {
   field: string;
