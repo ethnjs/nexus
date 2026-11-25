@@ -2,6 +2,9 @@
 
 from datetime import date, timedelta
 
+import pytest
+
+from app.core.tournament.event_fields import ALL_GROUPS
 from app.models.models import SeasonEvent
 from tests.conftest import grant_role, login, primary_track_id
 
@@ -373,6 +376,20 @@ class TestFieldSelection:
             division="C",
             shift_ids=[shift_id],
         )
+
+    @pytest.mark.parametrize("group", sorted(ALL_GROUPS))
+    def test_each_group_alone_reads_nothing_unrequested(
+        self, group, client, td_user, td_tournament
+    ):
+        """Unrequested relationships raise when read, so serializing one
+        outside its group turns a narrowed read into a 500."""
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+        event_id = client.get(f"/tournaments/{td_tournament.id}/events/").json()[0]["id"]
+
+        base = f"/tournaments/{td_tournament.id}/events"
+        for path in ("/", f"/{event_id}/"):
+            assert client.get(f"{base}{path}?fields={group}").status_code == 200
 
     def test_omitting_fields_returns_everything(self, client, td_user, td_tournament):
         login(client, "td@test.com", "tdpass")

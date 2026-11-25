@@ -2,7 +2,10 @@
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from app.core.tournament.display_config import MEMBERS_PANEL
+from app.core.tournament.field_groups import ALL_GROUPS
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
     Form,
@@ -11,6 +14,8 @@ from app.models.models import (
     FormResponse,
     TournamentForm,
     TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipLunch,
     TournamentRole,
     TournamentTrackAssignment,
 )
@@ -283,6 +288,34 @@ def test_profile_lists_this_tournaments_roles_without_the_roles_group(
     )
     assert here["assignments"] == [{"role": "Volunteer", "event": None}]
     assert "roles" not in row
+
+
+@pytest.mark.parametrize("group", sorted(ALL_GROUPS))
+def test_each_group_alone_reads_nothing_unrequested(group, client, td_user, td_tournament, db):
+    """Unrequested relationships raise when read, so a builder or filter that
+    reads one outside its group turns a narrowed read into a 500."""
+    member = _db_user_for_filter(db, "invitee@example.com")
+    m = _join_code_membership(db, td_tournament, member, td_user)
+    grant_role(db, td_tournament, member, "Volunteer")
+    shift = _make_shift(db, td_tournament.id)
+    db.add_all(
+        [
+            TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id),
+            TournamentMembershipLunch(
+                membership_id=m.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                category="protein",
+                value="tofu",
+                label="Tofu",
+            ),
+        ]
+    )
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    base = f"/tournaments/{td_tournament.id}/members"
+    for path in ("/", f"/{m.id}/", "/me/"):
+        assert client.get(f"{base}{path}?fields={group}").status_code == 200
 
 
 def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
