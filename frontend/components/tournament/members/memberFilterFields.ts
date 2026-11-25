@@ -1,4 +1,10 @@
-import type { FilterOptionGroup, FilterOptionItem, MemberFilterOptions } from "@/lib/api";
+import type {
+  FilterCondition,
+  FilterGroup,
+  FilterOptionGroup,
+  FilterOptionItem,
+  MemberFilterOptions,
+} from "@/lib/api";
 import type { FilterField } from "@/lib/filters/model";
 import { YEAR_LEVEL_FILTER_OPTIONS } from "@/lib/personDisplay";
 
@@ -168,4 +174,24 @@ export function memberFilterFields(
     },
   ];
   return fields.filter((field): field is FilterField => field !== false);
+}
+
+/**
+ * A member list's starting filter for one track tab: people who could work
+ * that day and aren't on it yet. On All, the same question for any one day.
+ * A default, not a rule: every row is removable.
+ */
+export function defaultMemberFilterForTab(
+  trackIds: number[],
+  activeTrackId: number | null,
+): FilterGroup {
+  const onTrack = (id: number): FilterCondition[] => [
+    { field: "track", group: String(id), op: "any_of", values: ["interested", "confirmed"] },
+    { field: "assigned", group: String(id), op: "empty", values: [] },
+  ];
+  if (activeTrackId !== null) return { op: "and", conditions: onTrack(activeTrackId) };
+  return {
+    op: "or",
+    conditions: trackIds.map((id) => ({ op: "and", conditions: onTrack(id) })),
+  };
 }
