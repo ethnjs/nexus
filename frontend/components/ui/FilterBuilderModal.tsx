@@ -42,6 +42,7 @@ import { IconEdit, IconGripVertical, IconPlus, IconTrash } from "@/components/ui
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
+import { SplitButton } from "@/components/ui/SplitButton";
 import { ApiError, type FilterCondition, type FilterGroup, type SavedFilter } from "@/lib/api";
 import {
   conditionProblem,
@@ -729,12 +730,34 @@ export function FilterBuilderModal<Row>({
   const problemOf = (row: DraftRow) =>
     conditionProblem(row.condition, byKey.get(row.condition.field));
 
-  function apply() {
+  function hasProblems() {
     const rows = draft.items.flatMap((item) => (isDraftGroup(item) ? item.rows : [item]));
-    if (rows.some((row) => problemOf(row))) {
-      setShowProblems(true);
-      return;
-    }
+    if (!rows.some((row) => problemOf(row))) return false;
+    setShowProblems(true);
+    return true;
+  }
+
+  function apply() {
+    if (hasProblems()) return;
+    onApply(pruned);
+    onClose();
+  }
+
+  // What the Apply button does, picked from its menu: apply, or ask for a
+  // name, save and apply. The loaded filter's own name updates it.
+  const [applyMode, setApplyMode] = useState<"apply" | "save">("apply");
+  const [naming, setNaming] = useState(false);
+
+  // Nothing to save in an empty filter, so that just applies.
+  function startSave() {
+    if (pruned.conditions.length === 0) apply();
+    else if (!hasProblems()) setNaming(true);
+  }
+
+  async function saveAndApply(name: string) {
+    if (!saved) return;
+    if (loaded && loaded.name === name) await saved.update(loaded.id, { filter: pruned });
+    else await saved.create(name, pruned);
     onApply(pruned);
     onClose();
   }
@@ -793,7 +816,8 @@ export function FilterBuilderModal<Row>({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            apply();
+            if (applyMode === "save") startSave();
+            else apply();
           }
         }}
       >
@@ -921,9 +945,44 @@ export function FilterBuilderModal<Row>({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={apply} title="Apply (Ctrl+Enter)">
-            Apply
-          </Button>
+          {saved ? (
+            // Opened only by startSave, once the rows check out; clicks on
+            // the button itself never toggle it.
+            <FormPopover
+              open={naming}
+              onOpenChange={(open) => !open && setNaming(false)}
+              width={280}
+              align="right"
+              trigger={
+                <SplitButton
+                  label={applyMode === "save" ? "Apply & save" : "Apply"}
+                  title={
+                    applyMode === "save" ? "Apply and save (Ctrl+Enter)" : "Apply (Ctrl+Enter)"
+                  }
+                  variant="primary"
+                  size="md"
+                  onClick={applyMode === "save" ? startSave : apply}
+                  options={[
+                    { label: "Apply", action: () => setApplyMode("apply") },
+                    { label: "Apply & save", action: () => setApplyMode("save") },
+                  ]}
+                />
+              }
+            >
+              {() => (
+                <SavedFilterNameForm
+                  initial={loaded?.name ?? ""}
+                  submitLabel="Save"
+                  onSubmit={saveAndApply}
+                  onDone={() => {}}
+                />
+              )}
+            </FormPopover>
+          ) : (
+            <Button type="button" variant="primary" onClick={apply} title="Apply (Ctrl+Enter)">
+              Apply
+            </Button>
+          )}
         </div>
       </div>
     </Modal>
