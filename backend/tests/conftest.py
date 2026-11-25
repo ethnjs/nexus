@@ -30,7 +30,7 @@ os.environ["LOGIN_CODES_REQUIRED"] = "true"
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.api.routes.sheets import get_forms_service, get_sheets_service
@@ -93,11 +93,45 @@ TOURNAMENT_REQUIRED_FIELDS = {
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
 
+_RUN_LOCK_KEY = 0x6E657875
+
+
+@pytest.fixture(scope="session")
+def _schema():
+    name = test_engine.url.database or ""
+    # The schema setup below commits a DROP SCHEMA, so refuse anything but a test database.
+    if not name.endswith("_test"):
+        pytest.exit(f"TEST_DATABASE_URL must name a *_test database, not {name!r}")
+    lock = test_engine.connect()
+    if not lock.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": _RUN_LOCK_KEY}):
+        lock.close()
+        pytest.exit(f"Another test run is using {name}; wait for it to finish")
+    lock.commit()
+    try:
+        # CASCADE also clears tables a killed run on another branch left behind.
+        with test_engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+            Base.metadata.create_all(bind=conn)
+        yield
+        Base.metadata.drop_all(bind=test_engine)
+    finally:
+        # The pool keeps the connection open, which would keep the lock held.
+        lock.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _RUN_LOCK_KEY})
+        lock.close()
+
+
 @pytest.fixture(scope="function")
-def db():
+def db(_schema):
     connection = test_engine.connect()
     transaction = connection.begin()
-    Base.metadata.create_all(bind=connection)
+    # Sequences ignore rollback; resetting them keeps ids starting at 1 in every test.
+    connection.execute(
+        text(
+            "SELECT setval(oid, 1, false) FROM pg_class"
+            " WHERE relkind = 'S' AND relnamespace = 'public'::regnamespace"
+        )
+    )
     # create_savepoint: session.commit()/rollback() operate on a nested SAVEPOINT,
     # not the outer transaction — so a mid-test rollback (e.g. a caught IntegrityError)
     # only undoes that one unit of work, not everything committed earlier in the test.
@@ -107,7 +141,6 @@ def db():
     finally:
         session.close()
         transaction.rollback()
-        Base.metadata.drop_all(bind=connection)
         connection.close()
 
 
