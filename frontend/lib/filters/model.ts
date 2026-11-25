@@ -35,6 +35,9 @@ export interface FilterField<Row = never> {
   /** How values are picked. Defaults to buttons for a handful of options,
    *  chips with a searchable picker for more. */
   control?: "buttons" | "divisions" | "chips";
+  /** Chips only: force the picker's search on, for a list that is long in
+   *  practice even when it starts short. */
+  searchable?: boolean;
   /** Chips only: each picked value can be narrowed to some of these, stored
    *  as "{value}:{scope}" (a role held on Day 1). */
   scopes?: FilterOptionItem[];

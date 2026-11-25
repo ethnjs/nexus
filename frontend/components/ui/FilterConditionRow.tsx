@@ -95,16 +95,23 @@ function ChipValues({
   title,
   options,
   scopes,
+  searchable,
   values,
   onChange,
 }: {
   title: string;
   options: FilterOptionItem[];
   scopes?: FilterOptionItem[];
+  searchable?: boolean;
   values: string[];
   onChange: (values: string[]) => void;
 }) {
   const labelOf = new Map(options.map((option) => [option.value, option.label]));
+  // An option may carry a subtitle (a tournament's owner and dates), to tell
+  // apart two that share a name.
+  const subtitleOf = (option: FilterOptionItem) =>
+    "subtitle" in option && typeof option.subtitle === "string" ? option.subtitle : undefined;
+  const byValue = new Map(options.map((option) => [option.value, option]));
   // Only a scoped value splits: an unscoped one may hold a colon of its own
   // (a lunch answer like "Sides: chips").
   const baseOf = (value: string) => (scopes ? value.split(":")[0] : value);
@@ -121,6 +128,10 @@ function ChipValues({
     <ChipInput
       value={chips}
       getChipLabel={(chip) => labelOf.get(chip) ?? chip}
+      getChipTooltip={(chip) => {
+        const option = byValue.get(chip);
+        return option && subtitleOf(option);
+      }}
       onChange={(kept) => onChange(values.filter((v) => kept.includes(baseOf(v))))}
       variant="transparent"
       size="sm"
@@ -170,8 +181,9 @@ function ChipValues({
           items={options}
           getKey={(option) => option.value}
           renderLabel={(option) => option.label}
-          getSearchText={(option) => option.label}
-          searchable={options.length > SEARCHABLE_ABOVE}
+          getSubtitle={subtitleOf}
+          getSearchText={(option) => `${option.label} ${subtitleOf(option) ?? ""}`}
+          searchable={searchable ?? options.length > SEARCHABLE_ABOVE}
           isSelected={(option) => chips.includes(option.value)}
           onToggle={(option) =>
             onChange(
@@ -354,6 +366,7 @@ export function FilterConditionRow({
           title={field.label}
           options={options}
           scopes={field.scopes}
+          searchable={field.searchable}
           values={picked}
           onChange={withRank}
         />
