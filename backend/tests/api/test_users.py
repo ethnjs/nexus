@@ -67,6 +67,39 @@ class TestAdminListUsers:
         assert row["year_level"] == 2
         assert row["employer"] is None
 
+    def test_list_says_whether_each_profile_is_complete(self, client, admin_user, td_user, db):
+        """Complete means what the dashboard's banner means: pronouns aren't
+        required, and "yes, I have experience" needs at least one entry."""
+        from datetime import date
+
+        from app.models.models import UserVolunteerExperience
+
+        td_user.first_name, td_user.last_name = "Tess", "Director"
+        td_user.phone = "5555550100"
+        td_user.date_of_birth = date(1990, 1, 1)
+        td_user.shirt_size = "M"
+        td_user.dietary_restriction = "None"
+        td_user.student_status = "Non-Student"
+        td_user.employer = "Acme"
+        td_user.has_competition_experience = False
+        td_user.has_volunteer_experience = True
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        rows = {u["id"]: u for u in client.get("/admin/users/").json()}
+        # Says yes to volunteering, but has logged none yet.
+        assert rows[td_user.id]["is_profile_complete"] is False
+        assert rows[admin_user.id]["is_profile_complete"] is False
+
+        db.add(
+            UserVolunteerExperience(
+                user_id=td_user.id, tournament_name="Regionals", year=2024, role="Proctor"
+            )
+        )
+        db.commit()
+        rows = {u["id"]: u for u in client.get("/admin/users/").json()}
+        assert rows[td_user.id]["is_profile_complete"] is True
+
     def test_non_admin_forbidden(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         assert client.get("/admin/users/").status_code == 403
@@ -455,6 +488,18 @@ class TestMyDisplayConfig:
         login(client, "admin@test.com", "adminpass")
         res = client.put("/users/me/display-config/", json={"nope": {}})
         assert res.status_code == 422
+
+    def test_saves_the_profile_filter(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        group = {
+            "op": "and",
+            "conditions": [
+                {"field": "profile", "group": None, "op": "any_of", "values": ["incomplete"]}
+            ],
+        }
+        res = client.put("/users/me/display-config/", json={"admin_users": {"filter": group}})
+        assert res.status_code == 200
+        assert res.json()["admin_users"]["filter"] == group
 
     def test_rejects_unknown_filter_key(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")

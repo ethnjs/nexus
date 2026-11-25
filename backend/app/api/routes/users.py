@@ -79,13 +79,26 @@ def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Global user list, with each user's affiliation and year level. Admin only."""
-    return (
+    """Global user list, with each user's affiliation, year level and whether
+    their profile is complete. Admin only."""
+    users = (
         db.query(User)
-        .options(selectinload(User.university), selectinload(User.memberships))
+        .options(
+            selectinload(User.university),
+            selectinload(User.memberships),
+            # Loaded so the completeness check reads them rather than querying per user.
+            selectinload(User.competition_experience),
+            selectinload(User.volunteer_experience),
+        )
         .order_by(User.last_name, User.first_name)
         .all()
     )
+    responses = []
+    for user in users:
+        response = AdminUserListResponse.model_validate(user)
+        response.is_profile_complete = is_profile_complete(user)
+        responses.append(response)
+    return responses
 
 
 # ---------------------------------------------------------------------------

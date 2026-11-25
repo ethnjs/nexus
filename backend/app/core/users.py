@@ -82,7 +82,9 @@ def create_user(
 ADMIN_USERS = "admin_users"
 USER_SURFACES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     ADMIN_USERS: (
-        frozenset({"role", "status", "verified", "affiliation", "year_level", "tournament"}),
+        frozenset(
+            {"role", "status", "verified", "affiliation", "year_level", "tournament", "profile"}
+        ),
         frozenset({"name", "joined", "affiliation", "year_level", "role", "status"}),
     ),
 }
