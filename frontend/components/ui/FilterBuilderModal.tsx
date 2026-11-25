@@ -761,7 +761,6 @@ export function FilterBuilderModal<Row>({
             the filters it adds to. */}
         <div style={{ marginTop: "16px" }}>
           <Combobox
-            autoFocus
             prefiltered
             blurOnSelect
             font="sans"
