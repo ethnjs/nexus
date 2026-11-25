@@ -133,11 +133,13 @@ def test_remove_from_ses_suppression_list_raises_other_errors(use_settings, ses_
         email_service.remove_from_ses_suppression_list("v@example.com")
 
 
-def test_client_uses_standard_retries_in_configured_region():
+def test_client_uses_configured_region_standard_retries_and_timeouts():
     client = _real_get_ses_client("key", "secret", "us-west-2", 4)
 
     assert client.meta.region_name == "us-west-2"
     assert client.meta.config.retries == {"mode": "standard", "total_max_attempts": 4}
+    assert client.meta.config.connect_timeout == 5
+    assert client.meta.config.read_timeout == 10
     assert _real_get_ses_client("key", "secret", "us-west-2", 4) is client
 
 

@@ -205,8 +205,13 @@ def _get_ses_client(
     )
     return session.client(
         "sesv2",
-        # boto3's default "legacy" mode doesn't retry SES v2's TooManyRequestsException.
-        config=Config(retries={"mode": "standard", "total_max_attempts": max_attempts}),
+        config=Config(
+            # boto3's default "legacy" mode doesn't retry SES v2's TooManyRequestsException.
+            retries={"mode": "standard", "total_max_attempts": max_attempts},
+            # botocore's defaults are 60 s each, per attempt.
+            connect_timeout=5,
+            read_timeout=10,
+        ),
     )
 
 
