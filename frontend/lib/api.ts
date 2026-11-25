@@ -239,6 +239,8 @@ export interface AdminUserListItem
   extends AdminUserSlim,
     Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {
   tournament_ids: number[];
+  // The same test as the dashboard's incomplete-profile banner.
+  is_profile_complete: boolean;
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
@@ -415,6 +417,16 @@ export const usersApi = {
   getDisplayConfig: () => api.get<DisplayConfig>("/users/me/display-config/"),
   setDisplayConfig: (config: DisplayConfig) =>
     api.put<DisplayConfig>("/users/me/display-config/", config),
+  // Named filters on surfaces outside any tournament (admin_users).
+  listSavedFilters: (surface?: string) =>
+    api.get<SavedFilter[]>(
+      `/users/me/saved-filters/${surface ? `?surface=${encodeURIComponent(surface)}` : ""}`,
+    ),
+  createSavedFilter: (body: SavedFilterInput) =>
+    api.post<SavedFilter>("/users/me/saved-filters/", body),
+  updateSavedFilter: (id: number, body: Partial<Omit<SavedFilterInput, "surface">>) =>
+    api.patch<SavedFilter>(`/users/me/saved-filters/${id}/`, body),
+  deleteSavedFilter: (id: number) => api.delete<void>(`/users/me/saved-filters/${id}/`),
 
   addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
     api.post<CompetitionExperience>("/users/me/competition-experience/", body),
@@ -2666,6 +2678,8 @@ export interface DisplayConfigSurface {
   // events table stores the values it excludes client-side. Sets don't
   // survive JSON, so the wire shape is arrays.
   filters?: Record<string, string[]> | null;
+  // Either table: the viewer's applied filter, in that table's fields.
+  filter?: FilterGroup | null;
   // Either table: the viewer's sort. null means the page's own default.
   sort?: DisplayConfigSort | null;
   // Surfaces that sort by more than one key, in precedence order — the first
@@ -2724,6 +2738,60 @@ export interface DisplayConfigSectionCatalogItem {
   label: string;
   fields: DisplayConfigCatalogItem[];
 }
+
+// Matches FilterCondition / FilterGroup. A paired roster field (track status,
+// assignments, availability, lunch, event preferences) names its track or
+// lunch category in `group`; every other field leaves it null.
+export type FilterOp =
+  | "any_of"
+  | "none_of"
+  | "empty"
+  | "not_empty"
+  | "before"
+  | "after"
+  | "within_last";
+
+export interface FilterCondition {
+  field: string;
+  group?: string | null;
+  op: FilterOp;
+  values: string[];
+}
+
+// The top-level group may hold groups of conditions, one level deep.
+export interface FilterGroup {
+  op: "and" | "or";
+  conditions: (FilterCondition | FilterGroup)[];
+}
+
+// Matches SavedFilterRead. `surface` is the bare table key, never a tab.
+export interface SavedFilter {
+  id: number;
+  surface: string;
+  name: string;
+  filter: FilterGroup;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedFilterInput {
+  surface: string;
+  name: string;
+  filter: FilterGroup;
+}
+
+export const savedFiltersApi = {
+  list: (tournamentId: number, surface?: string) =>
+    api.get<SavedFilter[]>(
+      `/tournaments/${tournamentId}/saved-filters/${surface ? `?surface=${encodeURIComponent(surface)}` : ""}`,
+    ),
+  create: (tournamentId: number, body: SavedFilterInput) =>
+    api.post<SavedFilter>(`/tournaments/${tournamentId}/saved-filters/`, body),
+  update: (tournamentId: number, id: number, body: Partial<Omit<SavedFilterInput, "surface">>) =>
+    api.patch<SavedFilter>(`/tournaments/${tournamentId}/saved-filters/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/saved-filters/${id}/`),
+};
 
 export const displayConfigApi = {
   get: (tournamentId: number) =>
