@@ -2,7 +2,10 @@
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from app.core.tournament.display_config import MEMBERS_PANEL
+from app.core.tournament.field_groups import ALL_GROUPS
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
     Form,
@@ -11,6 +14,8 @@ from app.models.models import (
     FormResponse,
     TournamentForm,
     TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipLunch,
     TournamentRole,
     TournamentTrackAssignment,
 )
@@ -265,6 +270,52 @@ def test_onboarding_group_is_null_without_live_steps(client, td_user, td_tournam
     rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
     row = next(r for r in rows if r["user"]["id"] == u["id"])
     assert row["onboarding"] is None
+
+
+def test_profile_lists_this_tournaments_roles_without_the_roles_group(
+    client, td_user, td_tournament, other_user, db
+):
+    """The profile's tournament history includes this tournament, and its
+    roles come from the same rows the roles group reads."""
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=profile").json()
+    row = next(r for r in rows if r["user"]["id"] == other_user.id)
+    here = next(
+        t for t in row["user"]["tournament_memberships"] if t["tournament_id"] == td_tournament.id
+    )
+    assert here["assignments"] == [{"role": "Volunteer", "event": None}]
+    assert "roles" not in row
+
+
+@pytest.mark.parametrize("group", sorted(ALL_GROUPS))
+def test_each_group_alone_reads_nothing_unrequested(group, client, td_user, td_tournament, db):
+    """Unrequested relationships raise when read, so a builder or filter that
+    reads one outside its group turns a narrowed read into a 500."""
+    member = _db_user_for_filter(db, "invitee@example.com")
+    m = _join_code_membership(db, td_tournament, member, td_user)
+    grant_role(db, td_tournament, member, "Volunteer")
+    shift = _make_shift(db, td_tournament.id)
+    db.add_all(
+        [
+            TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id),
+            TournamentMembershipLunch(
+                membership_id=m.id,
+                track_id=primary_track_id(db, td_tournament.id),
+                category="protein",
+                value="tofu",
+                label="Tofu",
+            ),
+        ]
+    )
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    base = f"/tournaments/{td_tournament.id}/members"
+    for path in ("/", f"/{m.id}/", "/me/"):
+        assert client.get(f"{base}{path}?fields={group}").status_code == 200
 
 
 def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
@@ -1709,6 +1760,12 @@ def test_join_code_creator_carries_name_and_roles_only(client, td_user, td_tourn
     assert set(creator) == {"user_id", "membership_id", "first_name", "last_name", "roles"}
     assert creator["user_id"] == td_user.id
     assert [r["label"] for r in creator["roles"]] == ["Tournament Director"]
+
+    # The creator is on the roster too; asking for provenance without the
+    # roles column must not make their roles read as empty.
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=membership").json()
+    listed = next(r for r in rows if r["id"] == m.id)["join_code"]["creator"]
+    assert listed == creator
 
 
 def test_get_membership_does_not_leak_others(client, td_user, other_tournament, db):

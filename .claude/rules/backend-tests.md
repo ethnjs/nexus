@@ -14,7 +14,7 @@ When to run and write tests is under "Tests" in `backend/CLAUDE.md`.
   - `admin_user` is a site admin, so it bypasses permission checks.
   - `td_user` + `td_tournament`: a tournament owned by `td_user`, with `DEFAULT_ROLES` applied and the Tournament Director role held tournament-wide.
   - `other_user` + `other_tournament` are for cross-tenant isolation tests.
-  - `client` and `login(client, email, password)`.
+  - `client` and `login(client, email, password)`. `client` expires the session after every request, as production starts each request with a fresh one, so flush or commit setup before making a request.
   - `event_factory`, `event_category_factory`.
 - Helpers in `tests/conftest.py`:
   - `grant_role(db, tournament, user, "Role Label", track_id=None)` creates a `TournamentTrackAssignment`, tournament-wide unless `track_id` is given.

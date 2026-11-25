@@ -244,7 +244,9 @@ def test_moving_an_event_moves_it_between_zones_with_no_zone_edit(db, td_tournam
         )
         .one()
     )
-    link.rooms = [TournamentRoom(building=steinhaus, name="105")]
+    room = TournamentRoom(building=steinhaus, name="105")
+    db.add(room)
+    link.rooms = [room]
     db.flush()
 
     assert zone_for_event(db, track, anatomy.id) == south.id

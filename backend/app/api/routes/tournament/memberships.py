@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import get_current_user
+from app.core.field_selection import validate_requested
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
     apply_display_config,
@@ -68,6 +69,7 @@ from app.schemas.tournament.membership import (
     MembershipFullResponse,
     MembershipMeResponse,
 )
+from app.schemas.user import UserFullResponse
 
 
 def _no_membership_response(
@@ -92,14 +94,10 @@ def _build_me_response(
     current_user: User,
     requested: frozenset[str] | None = None,
 ) -> JSONResponse:
-    """Shared by GET .../me/ and POST .../me/age-disclosure/ — both return
-    the same shape for the caller's own membership.
-
-    Every builder below is a query, and this route runs on every dashboard
-    page load (MyMembershipProvider wraps the whole tournament section), so
-    `requested` gating them is not a micro-optimisation: the provider reads
-    four identity fields and nothing else, and says so with fields=roles.
-    """
+    """The /members/me response, shared by GET .../me/ and POST
+    .../me/age-disclosure/. Every builder is a query and this runs on every
+    dashboard page load, so `requested` gates all of them, the nested user
+    included."""
     held_permissions = get_user_permissions(current_user, tournament.id, db)
     permissions = sorted(held_permissions)
     is_owner = current_user.id == tournament.owner_id
@@ -108,11 +106,12 @@ def _build_me_response(
         and membership.age_disclosure is None
         and not is_owner
     )
+    exclude = dump_exclude(requested)
     resp = MembershipMeResponse(
         id=membership.id,
         created_at=membership.created_at,
         updated_at=membership.updated_at,
-        user=membership.user,
+        user=validate_requested(UserFullResponse, membership.user, (exclude or {}).get("user")),
         is_owner=is_owner,
         permissions=permissions,
         needs_age_consent=needs_age_consent,
@@ -139,19 +138,16 @@ def _build_me_response(
             else []
         ),
     )
-    data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
+    data = resp.model_dump(mode="json", exclude=exclude)
     return JSONResponse(gate_age_flags(membership, data))
 
 
 def _resolve_join_code_creators(
     db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list
 ):
-    """Overwrites each response's .join_code.creator with a properly resolved
-    PersonRefResponse. Automatic from_attributes validation would otherwise
-    read JoinCode.creator (a plain User relationship), which knows nothing of
-    the creator's membership here and so would never carry their roles —
-    same fix already applied to JoinCodeResponse.creator and
-    AuditLogEntry.actor."""
+    """Sets each response's join_code.creator to a PersonRefResponse:
+    JoinCode.creator is a bare User, which can't carry the creator's roles in
+    this tournament."""
     creator_ids = {m.join_code.created_by for m in memberships if m.join_code is not None}
     if not creator_ids:
         return
@@ -168,27 +164,19 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/members", tags=["tournam
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/members/ — manage_members
 #
-# The one read of many memberships. The members-page roster, the roles
-# editor's member list and its add-members picker are all this route with
-# different query params — searching is not a different kind of read, and the
-# separate /search/ route that used to exist only because the roster returned
-# too much is gone now that `fields` says how much to return.
+# The one read of many memberships: the roster, the roles editor's member list,
+# and its add-members picker are this route with different params. Not
+# paginated; tournaments rarely pass 150 members.
 #
-# Tournaments are small enough (rarely 150+ members) to return the full
-# filtered list rather than paginating.
-#
-# `surface` names which display_config surface to render for — the members
-# table passes "members_table", which both filters hidden items and decides
-# which optional column data to load (age, shirt size, availability, lunch,
-# custom answers). Omitted means no filtering and no enrichment, so a caller
-# with no opinion gets the plain roster, same as the detail route's param.
+# `surface` names the display_config surface to render for: it drops hidden
+# items and, when `fields` is absent, decides which groups to load. Omitted
+# means no filtering, the same as on the detail route.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[MembershipFullResponse])
 def list_memberships(
     tournament_id: int,
     surface: str | None = Query(default=None),
-    # Which field groups to serialize. Omitted means everything; `surface`
-    # fills in for it when absent (see resolve_fields).
+    # Omitted means everything, or what `surface` implies (see resolve_fields).
     requested: frozenset[str] | None = Depends(field_selection),
     # Roster filters. Repeatable; different filters AND, values within one OR.
     # The paired ones ("2:confirmed", "protein:Sofritas", "2027-02-13:47")
@@ -267,13 +255,13 @@ def list_memberships(
     if onboarding:
         paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
         memberships = filter_onboarding(memberships, onboarding, paths)
-    responses = [MembershipFullResponse.model_validate(m) for m in memberships]
+    exclude = dump_exclude(requested)
+    responses = [validate_requested(MembershipFullResponse, m, exclude) for m in memberships]
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, memberships, responses)
     enrich_built_groups(db, tournament, requested, memberships, responses, onboarding_paths=paths)
     # gate_age_flags per row, exactly as the detail route does: asking for the
     # age group must never override a member's withheld consent.
-    exclude = dump_exclude(requested)
     data = [
         apply_display_config(
             config,
@@ -324,8 +312,6 @@ def get_member_summary(
 @router.get("/me/", response_model=MembershipMeResponse)
 def get_my_membership(
     tournament_id: int,
-    # Which field groups to serialize. Omitted means everything; `surface`
-    # fills in for it when absent (see resolve_fields).
     requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -399,32 +385,33 @@ def set_my_age_disclosure(
 # which grants it) you cannot read anyone's row here, including your own.
 # Your own row has its own route — GET .../members/me/ — which returns the
 # same membership data plus what you may do in this tournament.
-#
-# This used to allow self-access and then redact `notes` and the join code
-# creator's roles from an already-built response. Two audiences on one route
-# meant every field added had to be re-reasoned about for the weaker one; a
-# route per audience means the permission check is the whole answer.
 # ---------------------------------------------------------------------------
 @router.get("/{membership_id}/", response_model=MembershipFullResponse)
 def get_membership(
     tournament_id: int,
     membership_id: int,
     surface: str | None = Query(default=None),
-    # Which field groups to serialize. Omitted means everything; `surface`
-    # fills in for it when absent (see resolve_fields).
+    # Omitted means everything, or what `surface` implies (see resolve_fields).
     requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
-    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
-
     config = viewer_display_config(db, tournament_id, current_user.id)
     requested = resolve_fields(requested, config, surface)
+    exclude = dump_exclude(requested)
+    m = get_scoped_or_404(
+        db,
+        TournamentMembership,
+        membership_id,
+        tournament_id,
+        "Membership",
+        joinedload(TournamentMembership.user),
+        *loader_options(requested),
+    )
 
-    resp = MembershipFullResponse.model_validate(m)
-    # Built groups only — the rest came off the ORM. Unlike the roster these
-    # run per membership by definition; there is only one.
+    resp = validate_requested(MembershipFullResponse, m, exclude)
+    # The built groups, which the ORM rows can't supply.
     if wants(requested, CUSTOM):
         resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     if wants(requested, EVENT_PREFS):
@@ -437,7 +424,7 @@ def get_membership(
         _resolve_join_code_creators(db, tournament_id, [m], [resp])
     if wants(requested, ONBOARDING):
         resp.onboarding = onboarding_reads(db, tournament_id, [m])[0]
-    data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
+    data = gate_age_flags(m, resp.model_dump(mode="json", exclude=exclude))
     data = apply_display_config(config, surface, data)
     return JSONResponse(data)
 
