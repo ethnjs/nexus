@@ -4,20 +4,13 @@ import { useParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportButton } from "@/components/tournament/exports/ExportButton";
 import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
-import {
-  MEMBERS_FILTER_KEYS,
-  MembersFilterModal,
-  type MembersFilterState,
-  membersFilterFromStored,
-  membersFilterParams,
-  membersFilterToStored,
-} from "@/components/tournament/members/MembersFilterModal";
 import styles from "@/components/tournament/members/MembersTable.module.css";
 import {
   COLUMN_WIDTHS,
   type MemberColumn,
   resolveColumns,
 } from "@/components/tournament/members/memberColumns";
+import { memberFilterFields } from "@/components/tournament/members/memberFilterFields";
 import { RemoveMemberModal } from "@/components/tournament/members/RemoveMemberModal";
 import { RemoveMembersModal } from "@/components/tournament/members/RemoveMembersModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/members/SelfRemoveRedirectModal";
@@ -34,8 +27,8 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconLock, IconMembers, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -49,13 +42,17 @@ import {
   type DisplayConfigCatalogItem,
   type DisplayConfigSurface,
   displayConfigApi,
+  type FilterGroup,
   type FilterOptionGroup,
+  type MemberFilterOptions,
   type MembershipFull,
   membersApi,
   type Role,
   rolesApi,
 } from "@/lib/api";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
+import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import {
   DEFAULT_MEMBER_SORT,
   isMemberSortField,
@@ -318,9 +315,9 @@ export default function MembersPage() {
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
   // so they arrive in the one GET below and are written back by persistView.
-  const [filters, setFilters] = useState<MembersFilterState>(() =>
-    emptyFilterState(MEMBERS_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
+  const [filterOptions, setFilterOptions] = useState<MemberFilterOptions | null>(null);
+  const savedFilters = useSavedFilters(MEMBERS_TABLE, tournamentId);
   // The whole config as last read, so a write can lay this surface's view
   // state over the other surfaces instead of replacing them.
   const [viewReady, setViewReady] = useState(false);
@@ -415,7 +412,7 @@ export default function MembersPage() {
     membersApi
       .list(tournamentId, {
         surface: MEMBERS_TABLE,
-        filters: membersFilterParams(filters),
+        filter,
       })
       .then((rows) => {
         if (current) setMembers(rows);
@@ -432,7 +429,7 @@ export default function MembersPage() {
     return () => {
       current = false;
     };
-  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters, refreshKey]);
+  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filter, refreshKey]);
 
   // Identity-only (fields: []) since only the length is used.
   useEffect(() => {
@@ -466,7 +463,7 @@ export default function MembersPage() {
       // stomp filters the coordinator changed while that modal was open.
       setViewReady((already) => {
         if (already) return true;
-        setFilters(membersFilterFromStored(surface?.filters));
+        setFilter(surface?.filter ?? emptyFilter());
         // A chain whose every field has since been dropped is no chain.
         const stored = surface?.sorts
           ? sortRulesFromStored(surface.sorts, isMemberSortField)
@@ -489,16 +486,23 @@ export default function MembersPage() {
     [tournamentId],
   );
 
-  const applyFilters = useCallback(
-    (next: MembersFilterState) => {
-      setFilters(next);
-      // Not membersFilterParams: that drops `assigned`, which the roster query
-      // sends as its own bool param — saved state has no such split, and
-      // persisting the query shape lost the Assigned filter on every reload.
-      persistView({ filters: membersFilterToStored(next) });
+  const applyFilter = useCallback(
+    (next: FilterGroup) => {
+      setFilter(next);
+      persistView({ filter: next });
     },
     [persistView],
   );
+
+  const openFilterModal = useCallback(() => {
+    setShowFilterModal(true);
+    if (filterOptions === null) {
+      membersApi
+        .filterOptions(tournamentId)
+        .then(setFilterOptions)
+        .catch(() => setFilterOptions(null));
+    }
+  }, [filterOptions, tournamentId]);
 
   // Clears the legacy `sort` as it writes the chain, so the two never disagree.
   // The roster only carries the data its saved columns and sorts need, so a
@@ -583,6 +587,10 @@ export default function MembersPage() {
   const roleFilterOptions = useMemo(
     () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),
     [allRoles],
+  );
+  const filterFields = useMemo(
+    () => memberFilterFields(filterOptions, roleFilterOptions),
+    [filterOptions, roleFilterOptions],
   );
 
   // Roles only — every caller is a roles PATCH, whose response carries none of
@@ -756,7 +764,8 @@ export default function MembersPage() {
   const removableSelected = selectedMembers.filter(
     (m) => m.user.id !== currentUser?.id && canEditMember(m),
   );
-  const isFiltered = search.trim() !== "" || isFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const isFiltered = search.trim() !== "" || filterCount > 0;
 
   // The default chain isn't shown as a header state — it's the absence of a
   // choice, and clicking replaces it (see cycleSortRule).
@@ -832,9 +841,13 @@ export default function MembersPage() {
             </div>
             <FilterButton
               iconOnly={compactToolbar}
-              active={isFilterActive(filters)}
-              onOpen={() => setShowFilterModal(true)}
-              onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
+              count={filterCount}
+              onOpen={openFilterModal}
+              onClear={() => applyFilter(emptyFilter())}
+              saved={savedFilters}
+              applied={filter}
+              onApplySaved={applyFilter}
+              hotkey
             />
             <DisplayButton
               iconOnly={compactToolbar}
@@ -980,11 +993,13 @@ export default function MembersPage() {
       )}
 
       {showFilterModal && (
-        <MembersFilterModal
-          tournamentId={tournamentId}
-          roleOptions={roleFilterOptions}
-          filters={filters}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter members"
+          fields={filterFields}
+          loading={filterOptions === null}
+          filter={filter}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}
