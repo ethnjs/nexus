@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, status
@@ -24,7 +24,7 @@ def tournament_local_date(tournament: Tournament, moment: datetime):
 
 
 def get_scoped_or_404[T](
-    db: Session, model: type[T], id_: int, tournament_id: int, label: str
+    db: Session, model: type[T], id_: int, tournament_id: int, label: str, *options: Any
 ) -> T:
     """
     Fetch a row by id, scoped to tournament_id via its own tournament_id
@@ -32,7 +32,7 @@ def get_scoped_or_404[T](
     are indistinguishable to the caller, which also prevents cross-tournament
     ID probing. Shared by every {event,join-code,membership,role} lookup.
     """
-    obj = db.get(model, id_)
+    obj = db.get(model, id_, options=options)
     if not obj or getattr(obj, "tournament_id", None) != tournament_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
     return obj

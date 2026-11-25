@@ -2,9 +2,9 @@
 
 The event-side counterpart to app/core/tournament/field_groups.py, keeping
 its three rules: omitting `fields` means everything, an unrequested group is
-absent from the JSON rather than null, and identity (id, tournament_id, the
-event's own name and division) is never a group. A separate registry because
-the groups, their keys and their loaders have nothing in common with the
+absent from the JSON rather than null, and identity (id, tournament_id, and
+the event's own name and division) is never a group. A separate registry because
+the groups, their keys, and their loaders have nothing in common with the
 membership side.
 """
 

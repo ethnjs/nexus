@@ -164,7 +164,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/members", tags=["tournam
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/members/ — manage_members
 #
-# The one read of many memberships: the roster, the roles editor's member list
+# The one read of many memberships: the roster, the roles editor's member list,
 # and its add-members picker are this route with different params. Not
 # paginated; tournaments rarely pass 150 members.
 #
@@ -397,11 +397,18 @@ def get_membership(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
-    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
-
     config = viewer_display_config(db, tournament_id, current_user.id)
     requested = resolve_fields(requested, config, surface)
     exclude = dump_exclude(requested)
+    m = get_scoped_or_404(
+        db,
+        TournamentMembership,
+        membership_id,
+        tournament_id,
+        "Membership",
+        joinedload(TournamentMembership.user),
+        *loader_options(requested),
+    )
 
     resp = validate_requested(MembershipFullResponse, m, exclude)
     # The built groups, which the ORM rows can't supply.

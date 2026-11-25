@@ -377,7 +377,15 @@ def get_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
+    event = get_scoped_or_404(
+        db,
+        TournamentEvent,
+        event_id,
+        tournament_id,
+        "Event",
+        *Event.load_related_events(joinedload(TournamentEvent.event)),
+        *loader_options(requested),
+    )
     return _dump([event], requested)[0]
 
 

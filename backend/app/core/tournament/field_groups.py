@@ -1,6 +1,6 @@
 """Named field groups for the membership read routes' `fields` query param.
 
-The roster, the role pickers, the detail panel and /members/me read the same
+The roster, the role pickers, the detail panel, and /members/me read the same
 membership in very different amounts; a caller names the groups it wants and
 gets exactly those. Three rules the rest of the system depends on:
 
