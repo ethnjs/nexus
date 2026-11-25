@@ -1460,12 +1460,19 @@ def test_manage_events_alone_can_read_and_write_display_config(
 
 def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
+    shift_filter = _filter(
+        _cond("track", "3"),
+        _cond("day", "2026-03-14"),
+        _cond("time", "08:00", "", op="between"),
+        _cond("events", "12", op="all_of"),
+        _cond("events", op="empty"),
+    )
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={
             "shifts_table": {
                 "hidden": [],
-                "filter": _filter(_cond("track", "3"), _cond("events", "none")),
+                "filter": shift_filter,
                 "sorts": [
                     {"field": "start", "direction": "asc"},
                     {"field": "label", "direction": "desc"},
@@ -1475,8 +1482,23 @@ def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournamen
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["shifts_table"]
-    assert saved["filter"] == _filter(_cond("track", "3"), _cond("events", "none"))
+    assert saved["filter"] == shift_filter
     assert saved["sorts"][0] == {"field": "start", "direction": "asc"}
+
+
+@pytest.mark.parametrize(
+    "values",
+    [["08:00"], ["", ""], ["8am", ""], ["24:00", ""], ["08:00", "12:00", "13:00"]],
+)
+def test_shifts_table_rejects_malformed_time_range(client, td_user, td_tournament, values):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "shifts_table": {"hidden": [], "filter": _filter(_cond("time", *values, op="between"))}
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_user, td_tournament):

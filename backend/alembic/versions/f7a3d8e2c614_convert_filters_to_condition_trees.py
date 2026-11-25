@@ -34,6 +34,7 @@ EVENT_SURFACES = {"events_table", "assignments_events", "buildings_events"}
 EVENT_UNSET = "__unset__"
 STAFFING_VALUES = {"full", "short", "empty", "no_needs"}
 DROPPED_EVENT_KEYS = {"shift", "shifts", "building", "placement"}
+SHIFTS_TABLE = "shifts_table"
 EMPTY_FILTER = {"op": "and", "conditions": []}
 
 
@@ -111,6 +112,17 @@ def _event_rows(field: str, values: list[str]) -> list[dict] | None:
     return rows
 
 
+def _shift_rows(field: str, values: list[str]) -> list[dict] | None:
+    """The shifts table's keys: `events` was has / none."""
+    if field != "events":
+        return [_cond(field, values)]
+    if set(values) == {"has"}:
+        return [_cond(field, op_="not_empty")]
+    if set(values) == {"none"}:
+        return [_cond(field, op_="empty")]
+    return None
+
+
 def _tournament_rows(values: list[str]) -> list[dict]:
     """The admin users table's tournament key: "3" in it, "!3" not in it,
     "none" in no tournament. Exclusions AND; the rest OR."""
@@ -128,7 +140,8 @@ def _tournament_rows(values: list[str]) -> list[dict]:
 
 
 def _convert(filters: dict | None, kind: str) -> dict:
-    """kind: "roster", "events", "admin_users" or "plain" (any other table)."""
+    """kind: "roster", "events", "shifts", "admin_users" or "plain" (any other
+    table)."""
     conditions: list[dict] = []
     for field, values in (filters or {}).items():
         if not isinstance(values, list):
@@ -143,6 +156,8 @@ def _convert(filters: dict | None, kind: str) -> dict:
             rows = _roster_rows(field, values)
         elif kind == "events":
             rows = _event_rows(field, values)
+        elif kind == "shifts":
+            rows = _shift_rows(field, values)
         else:
             rows = [_cond(field, values)]
         if not rows:
@@ -173,6 +188,8 @@ def _tournament_kind(surface: str) -> str:
     base = surface.partition(":")[0]
     if base in ROSTER_SURFACES:
         return "roster"
+    if base == SHIFTS_TABLE:
+        return "shifts"
     return "events" if base in EVENT_SURFACES else "plain"
 
 

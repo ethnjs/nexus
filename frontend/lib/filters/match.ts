@@ -32,6 +32,15 @@ function conditionMatches<Row>(
       const to = toLocalDateString(today);
       return values.some((value) => value.slice(0, 10) >= from && value.slice(0, 10) <= to);
     }
+    // Every value inside the range: a shift's start and end both, so it
+    // lies wholly within it. Either end may be open.
+    case "between": {
+      const [from, to] = condition.values;
+      return (
+        values.length > 0 &&
+        values.every((value) => (!from || value >= from) && (!to || value <= to))
+      );
+    }
     case "within_next": {
       const until = new Date(today);
       until.setDate(until.getDate() + Number(condition.values[0]));

@@ -324,9 +324,7 @@ KNOWN_EVENT_SORT_FIELDS = frozenset(
 # no column vocabulary and a saved `columns` list is rejected. Filtered and
 # sorted in the client, like the events table.
 # ---------------------------------------------------------------------------
-# Track narrows to one or more days; events is "has" / "none" — a shift no
-# event uses yet is the thing worth finding.
-KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "events"})
+KNOWN_SHIFT_FILTER_KEYS = frozenset({"track", "day", "time", "events"})
 
 # "date" is the day alone, so a chain can group by day and order within it by
 # something other than start time.

@@ -2758,7 +2758,8 @@ export type FilterOp =
   | "before"
   | "after"
   | "within_last"
-  | "within_next";
+  | "within_next"
+  | "between";
 
 export interface FilterCondition {
   field: string;

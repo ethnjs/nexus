@@ -18,6 +18,7 @@ import { Dropdown, type DropdownItem } from "@/components/ui/Dropdown";
 import { IconPlus, IconX } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { PillTrigger } from "@/components/ui/PillMenu";
+import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
 import type { FilterCondition, FilterOp, FilterOptionItem } from "@/lib/api";
 import {
   DAY_COUNT_OPS,
@@ -95,7 +96,7 @@ function textWidth(text: string, size: number, weight: number): number {
 function valueWidth(condition: FilterCondition, field: FilterField<never>): number {
   const kind = valueKind(condition.op);
   if (kind === "none") return 0;
-  if (kind === "date") return DATE_WIDTH;
+  if (kind === "date" || kind === "time") return DATE_WIDTH;
   if (kind === "days") return 64 + GAP + 30;
   const options =
     (field.groups
@@ -163,8 +164,9 @@ export function rowWidth(
 }
 
 /** What kind of value an operator takes; switching between kinds clears it. */
-function valueKind(op: FilterOp): "none" | "date" | "days" | "options" {
+function valueKind(op: FilterOp): "none" | "date" | "days" | "time" | "options" {
   if (VALUELESS_OPS.has(op)) return "none";
+  if (op === "between") return "time";
   if (op === "before" || op === "after") return "date";
   if (DAY_COUNT_OPS.has(op)) return "days";
   return "options";
@@ -463,6 +465,18 @@ export function FilterConditionRow({
           onChange={(date) => setValues(date ? [date] : [])}
         />
       </div>
+    );
+  } else if (field && kind === "time") {
+    value = (
+      <TimeRangePicker
+        variant={variant}
+        size="sm"
+        openEnds
+        aria-label="Time"
+        start={condition.values[0] ?? ""}
+        end={condition.values[1] ?? ""}
+        onChange={(start, end) => setValues(start || end ? [start, end] : [])}
+      />
     );
   } else if (field && kind === "days") {
     value = (

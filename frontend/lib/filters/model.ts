@@ -6,6 +6,7 @@ import type {
   FilterOptionGroup,
   FilterOptionItem,
 } from "@/lib/api";
+import { formatTimeOfDay } from "@/lib/timeFormat";
 
 /**
  * One field a table can be filtered by.
@@ -20,8 +21,9 @@ export interface FilterField<Row = never> {
   /** Heading the field is listed under in the field picker. */
   section?: string;
   ops: readonly FilterOp[];
-  /** What a value is: picked from `options` (or a group's), or a date. */
-  kind?: "options" | "date";
+  /** What a value is: picked from `options` (or a group's), a date, or a
+   *  time of day ("HH:mm"). */
+  kind?: "options" | "date" | "time";
   options?: FilterOptionItem[];
   /** Paired fields: a row picks one of these first, then its options. */
   groups?: FilterOptionGroup[];
@@ -62,6 +64,7 @@ export const OP_LABELS: Record<FilterOp, string> = {
   after: "is after",
   within_last: "is within the last",
   within_next: "is within the next",
+  between: "is within",
 };
 
 const SINGLE_OP_LABELS: Partial<Record<FilterOp, string>> = { any_of: "is", none_of: "is not" };
@@ -101,6 +104,8 @@ export function isConditionComplete(
   if (field.groups && !condition.group) return false;
   if (VALUELESS_OPS.has(condition.op)) return true;
   if (DAY_COUNT_OPS.has(condition.op)) return /^\d+$/.test(condition.values[0] ?? "");
+  if (condition.op === "between")
+    return condition.values.length === 2 && condition.values.some(Boolean);
   return condition.values.length > 0;
 }
 
@@ -139,6 +144,7 @@ export function conditionProblem(
   }
   if (condition.op === "before" || condition.op === "after") return "Pick a date.";
   if (DAY_COUNT_OPS.has(condition.op)) return "Enter a number of days.";
+  if (condition.op === "between") return "Pick a start or end time.";
   return "Pick at least one value.";
 }
 
@@ -236,5 +242,9 @@ export function describeCondition(
   const verb = opLabel(field, condition.op, named.length);
   if (VALUELESS_OPS.has(condition.op)) return `${subject} ${verb}`;
   if (DAY_COUNT_OPS.has(condition.op)) return `${subject} ${verb} ${named[0] ?? "…"} days`;
+  if (condition.op === "between") {
+    const [from, to] = condition.values;
+    return `${subject} ${verb} ${from ? formatTimeOfDay(from) : "…"}–${to ? formatTimeOfDay(to) : "…"}`;
+  }
   return named.length > 0 ? `${subject} ${verb} ${named.join(", ")}` : `${subject} ${verb} …`;
 }

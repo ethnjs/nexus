@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable
 from datetime import date
 from typing import NoReturn
@@ -10,7 +11,16 @@ FILTER_GROUP_OPS = frozenset({"and", "or"})
 VALUELESS_OPS = frozenset({"empty", "not_empty"})
 DATE_OPS = frozenset({"before", "after"})
 DAY_COUNT_OPS = frozenset({"within_last", "within_next"})
-FILTER_OPS = frozenset({"any_of", "all_of", "none_of"}) | VALUELESS_OPS | DATE_OPS | DAY_COUNT_OPS
+# A time-of-day range, ["HH:mm" or "", "HH:mm" or ""]: either end may be open.
+TIME_RANGE_OPS = frozenset({"between"})
+FILTER_OPS = (
+    frozenset({"any_of", "all_of", "none_of"})
+    | VALUELESS_OPS
+    | DATE_OPS
+    | DAY_COUNT_OPS
+    | TIME_RANGE_OPS
+)
+_TIME_OF_DAY = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 
 
 def _reject(detail: str) -> NoReturn:
@@ -40,6 +50,16 @@ def _validate_condition(
     if condition.op in DAY_COUNT_OPS:
         if len(condition.values) != 1 or not condition.values[0].isdigit():
             _reject(f"Filter operator '{condition.op}' takes one whole number of days")
+    if condition.op in TIME_RANGE_OPS:
+        values = condition.values
+        if (
+            len(values) != 2
+            or not any(values)
+            or not all(v == "" or _TIME_OF_DAY.fullmatch(v) for v in values)
+        ):
+            _reject(
+                f"Filter operator '{condition.op}' takes a start and end time, one may be blank"
+            )
 
 
 def validate_filter(
