@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sqlalchemy import String, case, cast, func, text, true, update
+from sqlalchemy import String, case, cast, func, select, text, true, update
 from sqlalchemy.engine import CursorResult
 
 from app.core.config import get_settings
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from app.core.auth import hash_password
     from app.db.session import SessionLocal
-    from app.models.models import User
+    from app.models.models import AuditLogEntry, User
 
     # "--keep a,b --keep c" and "--keep a --keep b,c" both mean [a, b, c].
     keep = [
@@ -96,10 +96,24 @@ def main(argv: list[str] | None = None) -> int:
         assert isinstance(result, CursorResult)
         print(f"users scrubbed : {result.rowcount}")
 
-        # Prod sessions and pending reset/verify tokens mean nothing here, and
-        # a live reset token would let someone set a password on the copy.
-        db.execute(text("TRUNCATE sessions, verification_tokens"))
-        print("sessions and verification tokens cleared")
+        # The log copies the actor's email; re-copy it from the scrubbed user.
+        # Actors whose account is gone get NULL.
+        result = db.execute(
+            update(AuditLogEntry)
+            .values(
+                actor_email=select(User.email)
+                .where(User.id == AuditLogEntry.actor_id)
+                .scalar_subquery()
+            )
+            .execution_options(synchronize_session=False)
+        )
+        assert isinstance(result, CursorResult)
+        print(f"audit entries  : {result.rowcount}")
+
+        # Prod sessions and pending codes/tokens mean nothing here, and a live
+        # reset token would let someone set a password on the copy.
+        db.execute(text("TRUNCATE sessions, verification_tokens, email_codes"))
+        print("sessions, email codes and verification tokens cleared")
 
         if args.dry_run:
             db.rollback()
