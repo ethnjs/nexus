@@ -74,7 +74,7 @@ Conventions, fixtures and helpers are in `.claude/rules/backend-tests.md`, which
 ### Running
 
 - Command: `cd backend && uv run python -u -m pytest <paths> -q`. Background shells start at the repo root, hence the `cd`. Never pipe through `tail` or `head`: the pipe holds output until pytest exits, so a live run looks dead.
-- While iterating, run the files your change touches, once the change is done rather than after each step. Run the full suite once before you push. Most files take seconds (`test_forms.py`, the largest, about 30); the full suite takes about 4 minutes. CI runs it again with Ruff and ty on every backend PR.
+- While iterating, run the files your change touches, once the change is done rather than after each step. Run the full suite once before you push. Most files take seconds (`test_forms.py`, the largest, about 20); the full suite takes about 2 minutes. CI runs it again with Ruff and ty on every backend PR.
 - Run anything longer than a single test in the background and wait for the completion notification instead of polling. Never report tests as passing before the results arrive.
 - Only one run at a time can use the `nexus_test` database; a second run exits immediately.
 

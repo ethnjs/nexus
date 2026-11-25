@@ -66,7 +66,7 @@ From `backend/`:
 
 ```bash
 uv run pytest tests/api/test_forms.py   # one file
-uv run pytest                           # everything (about 4 minutes)
+uv run pytest                           # everything (about 2 minutes)
 ```
 
 Tests run against `nexus_test`, which one run uses at a time; a second run exits right away. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff, ty and the full suite on every PR that touches `backend/`.

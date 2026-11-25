@@ -12,10 +12,13 @@ os.environ["LOGIN_CODES_REQUIRED"] = "true"
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.api.routes.sheets import get_forms_service, get_sheets_service
+from app.core import auth
 from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
 from app.db.session import Base, get_db
@@ -68,6 +71,12 @@ TOURNAMENT_REQUIRED_FIELDS = {
     ],
 }
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
+
+# Production Argon2 costs about 80 ms per hash or verify, and every sign-in does three.
+# The minimum cost runs the same algorithm and code path.
+auth.pwd_context = PasswordHash(
+    (Argon2Hasher(time_cost=1, memory_cost=8, parallelism=1), auth._LegacyBcryptHasher())
+)
 
 
 _RUN_LOCK_KEY = 0x6E657875
