@@ -27,6 +27,7 @@ import {
   LeadCell,
   type LinePosition,
   linePosition,
+  rowWidth,
 } from "@/components/ui/FilterConditionRow";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { IconEdit, IconGripVertical, IconPlus, IconTrash } from "@/components/ui/Icons";
@@ -69,6 +70,14 @@ interface Draft {
   op: Join;
   items: DraftItem[];
 }
+
+const MIN_WIDTH = 720;
+const MAX_WIDTH = 1440;
+// The modal's own padding, both sides, and a little over: the row widths are
+// worked out, not measured, and a row a pixel short of fitting would wrap.
+const PANEL_PADDING = 56 + 4;
+// A group's grip, lead, box border and padding, left and right of its rows.
+const GROUP_INSET = 14 + 8 + 56 + 8 + 2 + 24;
 
 const ROOT = "root";
 // Prefixes the droppable inside a group, as against the group's own handle.
@@ -555,6 +564,21 @@ export function FilterBuilderModal<Row>({
   const [showProblems, setShowProblems] = useState(false);
 
   const pruned = pruneFilter(fromDraft(draft), byKey);
+
+  // As wide as the widest row needs to sit on one line, within bounds; past
+  // the cap, rows wrap instead. A row in a group sits inside the group's own
+  // grip, lead and box.
+  const widest = Math.max(
+    ...draft.items.flatMap((item) =>
+      isDraftGroup(item)
+        ? item.rows.map(
+            (row) => GROUP_INSET + rowWidth(row.condition, byKey.get(row.condition.field)),
+          )
+        : [rowWidth(item.condition, byKey.get(item.condition.field))],
+    ),
+    0,
+  );
+  const panelWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, widest + PANEL_PADDING));
   const loaded = saved?.items.find((item) => item.id === loadedId);
   const suggestions = useMemo(() => suggestConditions(query, allFields), [query, allFields]);
 
@@ -696,9 +720,13 @@ export function FilterBuilderModal<Row>({
     <Modal
       title={title}
       onClose={onClose}
-      width={1040}
       headerActions={headerActions}
-      contentStyle={{ fontFamily: "var(--font-sans)" }}
+      contentStyle={{
+        fontFamily: "var(--font-sans)",
+        width: `${panelWidth}px`,
+        maxWidth: `min(${MAX_WIDTH}px, 100%)`,
+        transition: "width 200ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+      }}
     >
       <div
         onKeyDown={(e) => {

@@ -62,6 +62,97 @@ export function LeadCell({
   );
 }
 
+// ─── Width ────────────────────────────────────────────────────────────────
+// What a row needs to sit on one line, worked out from what it shows rather
+// than measured off the page: the modal sizes itself from this, and a width
+// read back from a laid-out row would change as the modal resized around it.
+// Mirrors the layout below; text is measured with a canvas.
+
+const GAP = 8;
+const FIELD_WIDTH = 200;
+const PICKER_WIDTH = 170;
+// Chips only: room for a few, so they don't wrap one to a line. Every other
+// value control has a size of its own.
+const CHIPS_MIN_WIDTH = 240;
+const DATE_WIDTH = 170;
+// Grip, lead and remove, and the gaps between them and the controls.
+const ROW_FRAME = 14 + GAP + 56 + GAP + GAP + 28;
+
+let canvas: HTMLCanvasElement | null = null;
+
+function textWidth(text: string, size: number, weight: number): number {
+  canvas ??= document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return text.length * size * 0.6;
+  const family = getComputedStyle(document.documentElement).getPropertyValue("--font-sans");
+  context.font = `${weight} ${size}px ${family || "sans-serif"}`;
+  return context.measureText(text).width;
+}
+
+function valueWidth(condition: FilterCondition, field: FilterField<never>): number {
+  const kind = valueKind(condition.op);
+  if (kind === "none") return 0;
+  if (kind === "date") return DATE_WIDTH;
+  if (kind === "days") return 64 + GAP + 30;
+  const options =
+    (field.groups
+      ? field.groups.find((group) => group.value === condition.group)?.options
+      : field.options) ?? [];
+  const picked = condition.values.filter((v) => !v.startsWith(RANK_PREFIX));
+  const control = field.control ?? (options.length <= BUTTONS_UP_TO ? "buttons" : "chips");
+  let width: number;
+  if (control === "chips") {
+    const labelOf = new Map(options.map((option) => [option.value, option.label]));
+    const chips = [...new Set(field.scopes ? picked.map((v) => v.split(":")[0]) : picked)];
+    width =
+      chips.length === 0
+        ? textWidth("Pick values", 12, 400)
+        : chips.reduce(
+            (sum, chip) =>
+              sum +
+              textWidth(labelOf.get(chip) ?? chip, 12, 500) +
+              35 +
+              6 +
+              (field.scopes ? 90 : 0),
+            0,
+          );
+    width += 28;
+  } else {
+    width = options.reduce((sum, option) => sum + textWidth(option.label, 12, 600) + 30 + GAP, 0);
+  }
+  // The rank: its word, operator and number.
+  if (field.rank) width += GAP + 30 + 6 + 92 + 6 + 52;
+  return width;
+}
+
+function valueMinWidth(condition: FilterCondition, field: FilterField<never> | undefined): number {
+  if (!field || valueKind(condition.op) !== "options") return 0;
+  const options =
+    (field.groups
+      ? field.groups.find((group) => group.value === condition.group)?.options
+      : field.options) ?? [];
+  const control = field.control ?? (options.length <= BUTTONS_UP_TO ? "buttons" : "chips");
+  return control === "chips" ? CHIPS_MIN_WIDTH : 0;
+}
+
+/** The width a row needs to sit on one line. */
+export function rowWidth(
+  condition: FilterCondition,
+  field: FilterField<never> | undefined,
+): number {
+  let width = ROW_FRAME + FIELD_WIDTH;
+  if (!field) return width;
+  if (field.groups && !(field.hideSingleGroup && field.groups.length === 1)) {
+    width += GAP + PICKER_WIDTH;
+  }
+  width +=
+    GAP +
+    (field.ops.length === 1
+      ? textWidth(opLabel(field, field.ops[0], field.single ? 1 : 2), 13, 400) + 8
+      : PICKER_WIDTH);
+  return width + GAP + Math.max(valueMinWidth(condition, field), valueWidth(condition, field));
+}
+
 /** What kind of value an operator takes; switching between kinds clears it. */
 function valueKind(op: FilterOp): "none" | "date" | "days" | "options" {
   if (VALUELESS_OPS.has(op)) return "none";
@@ -327,13 +418,16 @@ export function FilterConditionRow({
     );
   } else if (field && kind === "date") {
     value = (
-      <DatePicker
-        variant={variant}
-        size="sm"
-        aria-label="Date"
-        value={condition.values[0] ?? ""}
-        onChange={(date) => setValues(date ? [date] : [])}
-      />
+      <div style={{ width: `${DATE_WIDTH}px` }}>
+        <DatePicker
+          variant={variant}
+          size="sm"
+          fullWidth
+          aria-label="Date"
+          value={condition.values[0] ?? ""}
+          onChange={(date) => setValues(date ? [date] : [])}
+        />
+      </div>
     );
   } else if (field && kind === "days") {
     value = (
@@ -490,9 +584,9 @@ export function FilterConditionRow({
         <div
           ref={valueRef}
           className={wrapped && value ? styles.subline : undefined}
-          style={{ flex: "1 1 300px", minWidth: "240px" }}
+          style={{ flex: "1 1 auto", minWidth: `${valueMinWidth(condition, field)}px` }}
         >
-          {value}
+          <div className={wrapped && value ? styles.sublineContent : undefined}>{value}</div>
         </div>
         {error && (
           <div

@@ -106,11 +106,19 @@
   border-top: 1px solid var(--color-border-strong);
 }
 
-/* A row's value that wrapped below its field: indented, with an elbow from
-   the field above into it. */
+/* A row's value that wrapped below its field: its contents shift right
+   (.sublineContent), with an elbow from the field above into them. The shift
+   is a relative offset, which moves the contents without resizing the box:
+   if indenting changed how much room the value needs, the indent would
+   decide whether it wraps, and it could flip between the two forever. */
 .subline {
   position: relative;
-  padding-left: 24px;
+}
+
+.sublineContent {
+  position: relative;
+  left: 24px;
+  width: calc(100% - 24px);
 }
 
 .subline::before {
