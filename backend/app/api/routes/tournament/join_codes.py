@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.config import get_settings
+from app.core.email_suppression import blocks_email
 from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code
 from app.core.tournament import (
     get_scoped_or_404,
@@ -244,8 +245,12 @@ def send_staff_invites(
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code={join_code.code}"
-    failed = anyio.from_thread.run(
-        send_staff_invite_emails, payload.emails, tournament_display_name(tournament), join_url
+    suppressed = [e for e in payload.emails if blocks_email(db, e, unsolicited=True)]
+    failed = suppressed + anyio.from_thread.run(
+        send_staff_invite_emails,
+        [e for e in payload.emails if e not in suppressed],
+        tournament_display_name(tournament),
+        join_url,
     )
     sent = [e for e in payload.emails if e not in failed]
 

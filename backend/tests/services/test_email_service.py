@@ -1,15 +1,26 @@
-"""Tests for the real _send, which every other test stubs out. Nothing reaches Resend."""
+"""Tests for the real _send. Nothing reaches AWS.
 
+Retry tests answer a real botocore client's HTTP layer with a before-send handler, because
+botocore's Stubber short-circuits before retries run.
+"""
+
+import asyncio
+import json
 import logging
+import time
+from itertools import pairwise
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import resend
-from resend.exceptions import RateLimitError
+from botocore.awsrequest import AWSResponse
+from botocore.exceptions import ClientError
 
 from app.core.config import Settings
 from app.services import email_service
+
+_real_get_ses_client = email_service._get_ses_client
 
 
 @pytest.fixture(autouse=True)
@@ -18,12 +29,25 @@ def mock_send_email():
     return None
 
 
+@pytest.fixture(autouse=True)
+def fresh_state(monkeypatch):
+    _real_get_ses_client.cache_clear()
+    monkeypatch.setattr(email_service, "_rate_limiter", email_service._SendRateLimiter())
+    yield
+    _real_get_ses_client.cache_clear()
+
+
 @pytest.fixture
 def use_settings(monkeypatch):
     def apply(**overrides: Any) -> Settings:
         values: dict[str, Any] = {
             "app_env": "development",
-            "resend_api_key": "test-key",
+            "aws_access_key_id": "test-access-key",
+            "aws_secret_access_key": "test-secret-key",
+            "aws_region": "us-west-2",
+            "email_from_address": "NEXUS Test <test@nexus.example>",
+            "ses_max_send_rate": 1000,
+            "ses_max_attempts": 4,
             **overrides,
         }
         settings = Settings(_env_file=None, **values)
@@ -34,103 +58,291 @@ def use_settings(monkeypatch):
 
 
 @pytest.fixture
-def resend_send(monkeypatch):
-    mock = AsyncMock()
-    monkeypatch.setattr(resend.Emails, "send_async", mock)
-    return mock
+def ses_factory(monkeypatch):
+    """Replaces the client factory; the fake client is factory.return_value."""
+    factory = MagicMock()
+    factory.return_value.send_email.return_value = {"MessageId": "fake-message-id"}
+    monkeypatch.setattr(email_service, "_get_ses_client", factory)
+    return factory
 
 
-def test_resend_has_async_http_client():
-    # Without the resend[async] extra this is None and every send fails. httpx
-    # once reached production only as a test dependency, so tests passed anyway.
-    assert resend.default_async_http_client is not None
+def _client_error(code: str) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": f"{code} (test)"}}, "SendEmail")
 
 
-async def test_send_with_key_calls_resend(use_settings, resend_send):
-    use_settings()
-
-    await email_service._send("v@example.com", "Subject", "Text", "<p>Html</p>")
-
-    params = resend_send.call_args.args[0]
-    assert params["to"] == "v@example.com"
-    assert params["subject"] == "Subject"
-    assert params["text"] == "Text"
-    assert params["html"] == "<p>Html</p>"
+# ---------------------------------------------------------------------------
+# Sending
+# ---------------------------------------------------------------------------
 
 
-def _rate_limited(error_type: str = "rate_limit_exceeded", headers=None):
-    return RateLimitError(
-        message="Too many requests", error_type=error_type, code=429, headers=headers
+async def test_send_builds_ses_request(use_settings, ses_factory):
+    settings = use_settings()
+
+    await email_service._send(
+        "volunteer@example.com", "Subject line", "plain body", "<p>html body</p>"
+    )
+
+    ses_factory.assert_called_once_with("test-access-key", "test-secret-key", "us-west-2", 4)
+    ses_factory.return_value.send_email.assert_called_once_with(
+        FromEmailAddress=settings.email_from_address,
+        Destination={"ToAddresses": ["volunteer@example.com"]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": "Subject line", "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {
+                        "Data": "plain body",
+                        "Charset": "UTF-8",
+                    },
+                    "Html": {"Data": "<p>html body</p>", "Charset": "UTF-8"},
+                },
+            },
+        },
     )
 
 
+async def test_send_uses_configuration_set_when_set(use_settings, ses_factory):
+    use_settings(ses_configuration_set="nexus-events")
+
+    await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    kwargs = ses_factory.return_value.send_email.call_args.kwargs
+    assert kwargs["ConfigurationSetName"] == "nexus-events"
+
+
+@pytest.mark.parametrize("code", [None, "NotFoundException"])
+def test_remove_from_ses_suppression_list(use_settings, ses_factory, code):
+    use_settings()
+    if code:
+        ses_factory.return_value.delete_suppressed_destination.side_effect = _client_error(code)
+
+    email_service.remove_from_ses_suppression_list("v@example.com")
+
+    ses_factory.return_value.delete_suppressed_destination.assert_called_once_with(
+        EmailAddress="v@example.com"
+    )
+
+
+def test_remove_from_ses_suppression_list_raises_other_errors(use_settings, ses_factory):
+    use_settings()
+    ses_factory.return_value.delete_suppressed_destination.side_effect = _client_error(
+        "TooManyRequestsException"
+    )
+
+    with pytest.raises(ClientError):
+        email_service.remove_from_ses_suppression_list("v@example.com")
+
+
+def test_client_uses_configured_region_standard_retries_and_timeouts():
+    client = _real_get_ses_client("key", "secret", "us-west-2", 4)
+
+    assert client.meta.region_name == "us-west-2"
+    assert client.meta.config.retries == {"mode": "standard", "total_max_attempts": 4}
+    assert client.meta.config.connect_timeout == 5
+    assert client.meta.config.read_timeout == 10
+    assert _real_get_ses_client("key", "secret", "us-west-2", 4) is client
+
+
+async def test_send_failure_propagates(use_settings, ses_factory):
+    use_settings()
+    ses_factory.return_value.send_email.side_effect = _client_error("MessageRejected")
+
+    with pytest.raises(ClientError) as exc_info:
+        await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    assert exc_info.value.response["Error"]["Code"] == "MessageRejected"
+
+
+async def test_staff_invites_report_only_rejected_address(use_settings, ses_factory):
+    use_settings()
+
+    def send_email(**kwargs):
+        if kwargs["Destination"]["ToAddresses"] == ["bad@example.com"]:
+            raise _client_error("MessageRejected")
+        return {"MessageId": "ok"}
+
+    ses_factory.return_value.send_email.side_effect = send_email
+
+    failed = await email_service.send_staff_invite_emails(
+        ["good@example.com", "bad@example.com"],
+        "Test Invitational",
+        "https://nexus.example/join?code=X",
+    )
+
+    assert failed == ["bad@example.com"]
+
+
+# ---------------------------------------------------------------------------
+# Retries — real botocore client, HTTP layer answered locally
+# ---------------------------------------------------------------------------
+
+
+class _Body:
+    def __init__(self, payload: dict):
+        self._data = json.dumps(payload).encode()
+
+    def stream(self, **kwargs):
+        yield self._data
+
+
+def _ok():
+    return (200, {"MessageId": "real-message-id"}, None)
+
+
+def _error(status: int, code: str):
+    return (status, {"message": f"{code} (test)"}, code)
+
+
 @pytest.fixture
-def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(email_service, "_retry_delay", lambda error, attempt: 0)
+def ses_http(use_settings, monkeypatch):
+    """Each HTTP attempt pops a (status, payload, error_type) from .responses; the last repeats.
+
+    Retry backoff sleeps are recorded in .backoffs instead of slept.
+    """
+    settings = use_settings()
+    client = _real_get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+    state = SimpleNamespace(responses=[], attempts=0, backoffs=[])
+    monkeypatch.setattr("botocore.endpoint.time.sleep", state.backoffs.append)
+
+    def answer(request, **kwargs):
+        state.attempts += 1
+        status, payload, error_type = (
+            state.responses.pop(0) if len(state.responses) > 1 else state.responses[0]
+        )
+        headers = {"Content-Type": "application/json"}
+        if error_type:
+            headers["x-amzn-ErrorType"] = error_type
+        return AWSResponse(request.url, status, headers, _Body(payload))
+
+    client.meta.events.register("before-send.sesv2.SendEmail", answer)
+    return state
 
 
-async def test_rate_limited_send_is_retried_until_it_succeeds(
-    use_settings, resend_send, no_retry_delay
-):
+async def test_throttle_is_retried_until_success(ses_http):
+    ses_http.responses[:] = [
+        _error(429, "TooManyRequestsException"),
+        _error(429, "TooManyRequestsException"),
+        _ok(),
+    ]
+
+    await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    assert ses_http.attempts == 3
+    assert len(ses_http.backoffs) == 2
+
+
+async def test_throttling_exception_code_is_retried(ses_http):
+    ses_http.responses[:] = [_error(400, "ThrottlingException"), _ok()]
+
+    await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    assert ses_http.attempts == 2
+
+
+async def test_persistent_throttle_fails_after_max_attempts(ses_http):
+    ses_http.responses[:] = [_error(429, "TooManyRequestsException")]
+
+    with pytest.raises(ClientError) as exc_info:
+        await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    assert exc_info.value.response["Error"]["Code"] == "TooManyRequestsException"
+    assert ses_http.attempts == 4
+
+
+async def test_rejected_message_is_not_retried(ses_http):
+    ses_http.responses[:] = [_error(400, "MessageRejected")]
+
+    with pytest.raises(ClientError) as exc_info:
+        await email_service._send("volunteer@example.com", "s", "t", "h")
+
+    assert exc_info.value.response["Error"]["Code"] == "MessageRejected"
+    assert ses_http.attempts == 1
+
+
+async def test_staff_invite_throttled_then_accepted_is_not_reported_failed(ses_http):
+    ses_http.responses[:] = [_error(429, "TooManyRequestsException"), _ok()]
+
+    failed = await email_service.send_staff_invite_emails(
+        ["volunteer@example.com"], "Test Invitational", "https://nexus.example/join?code=X"
+    )
+
+    assert failed == []
+    assert ses_http.attempts == 2
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting / concurrency
+# ---------------------------------------------------------------------------
+
+
+async def test_concurrent_sends_are_spaced_by_rate_limit(use_settings, ses_factory):
+    use_settings(ses_max_send_rate=10)
+    sent_at = []
+    ses_factory.return_value.send_email.side_effect = lambda **kwargs: sent_at.append(
+        time.perf_counter()
+    )
+
+    await asyncio.gather(
+        *(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5))
+    )
+
+    sent_at.sort()
+    gaps = [later - earlier for earlier, later in pairwise(sent_at)]
+    assert len(gaps) == 4
+    # 0.1s interval, less timer resolution/thread-dispatch jitter
+    assert all(gap >= 0.07 for gap in gaps), gaps
+
+
+async def test_concurrent_sends_do_not_block_event_loop(use_settings, ses_factory):
     use_settings()
-    resend_send.side_effect = [_rate_limited(), _rate_limited(), {"id": "sent"}]
+    ses_factory.return_value.send_email.side_effect = lambda **kwargs: time.sleep(0.3)
 
-    await email_service._send("v@example.com", "s", "t", "h")
+    ticks = 0
+    stop = asyncio.Event()
 
-    assert resend_send.call_count == 3
+    async def heartbeat():
+        nonlocal ticks
+        while not stop.is_set():
+            ticks += 1
+            await asyncio.sleep(0.01)
 
+    beat = asyncio.create_task(heartbeat())
+    started = time.perf_counter()
+    await asyncio.gather(
+        *(email_service._send(f"v{i}@example.com", "s", "t", "h") for i in range(5))
+    )
+    elapsed = time.perf_counter() - started
+    stop.set()
+    await beat
 
-async def test_persistent_rate_limit_fails_after_the_last_attempt(
-    use_settings, resend_send, no_retry_delay
-):
-    use_settings()
-    resend_send.side_effect = _rate_limited()
-
-    with pytest.raises(RateLimitError):
-        await email_service._send("v@example.com", "s", "t", "h")
-
-    assert resend_send.call_count == email_service._RATE_LIMIT_ATTEMPTS
-
-
-async def test_quota_exceeded_is_not_retried(use_settings, resend_send, no_retry_delay):
-    use_settings()
-    resend_send.side_effect = _rate_limited("daily_quota_exceeded")
-
-    with pytest.raises(RateLimitError):
-        await email_service._send("v@example.com", "s", "t", "h")
-
-    assert resend_send.call_count == 1
-
-
-def test_retry_delay_honors_retry_after():
-    delay = email_service._retry_delay(_rate_limited(headers={"Retry-After": "3"}), attempt=1)
-    assert 3 <= delay < 4
-
-
-def test_retry_delay_backs_off_without_retry_after():
-    assert 1 <= email_service._retry_delay(_rate_limited(), attempt=1) < 2
-    assert 4 <= email_service._retry_delay(_rate_limited(), attempt=3) < 5
+    assert elapsed < 0.9, elapsed  # five blocking 0.3s sends run serially would take 1.5s
+    assert ticks >= 5, ticks
 
 
 @pytest.mark.parametrize("app_env", ["development", "preview", "test"])
 async def test_nexus_dev_logged_not_sent_outside_production(
-    use_settings, resend_send, caplog, app_env
+    use_settings, ses_factory, caplog, app_env
 ):
     use_settings(app_env=app_env)
 
     with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
         await email_service._send("User1@Nexus.Dev", "Subject", "Your code: 123456", "<p></p>")
 
-    resend_send.assert_not_called()
+    ses_factory.assert_not_called()
     assert "Your code: 123456" in caplog.text
 
 
-async def test_nexus_dev_sent_in_production(use_settings, resend_send):
+async def test_nexus_dev_sent_in_production(use_settings, ses_factory):
     use_settings(app_env="production")
 
     await email_service._send("user1@nexus.dev", "Subject", "Text", "<p></p>")
 
-    resend_send.assert_called_once()
+    ses_factory.return_value.send_email.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -154,8 +366,13 @@ async def test_code_emails_show_the_code_in_both_versions(monkeypatch, send):
     assert "If the button doesn't work" not in html
 
 
-async def test_unconfigured_in_development_logs_body_and_skips(use_settings, resend_send, caplog):
-    use_settings(resend_api_key="")
+# ---------------------------------------------------------------------------
+# Unconfigured SES
+# ---------------------------------------------------------------------------
+
+
+async def test_unconfigured_in_development_logs_body_and_skips(use_settings, ses_factory, caplog):
+    use_settings(aws_access_key_id="", aws_secret_access_key="")
 
     with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
         await email_service._send(
@@ -165,13 +382,13 @@ async def test_unconfigured_in_development_logs_body_and_skips(use_settings, res
             "<p></p>",
         )
 
-    resend_send.assert_not_called()
+    ses_factory.assert_not_called()
     assert "Verify your email on NEXUS" in caplog.text
     assert "https://nexus.example/verify?token=abc" in caplog.text
 
 
-async def test_unconfigured_in_preview_skips_without_body(use_settings, resend_send, caplog):
-    use_settings(app_env="preview", resend_api_key="")
+async def test_unconfigured_in_preview_skips_without_body(use_settings, ses_factory, caplog):
+    use_settings(app_env="preview", aws_access_key_id="", aws_secret_access_key="")
 
     with caplog.at_level(logging.WARNING, logger="app.services.email_service"):
         await email_service._send(
@@ -181,7 +398,7 @@ async def test_unconfigured_in_preview_skips_without_body(use_settings, resend_s
             "<p></p>",
         )
 
-    resend_send.assert_not_called()
+    ses_factory.assert_not_called()
     assert "Verify your email on NEXUS" in caplog.text
     assert "token=abc" not in caplog.text
 

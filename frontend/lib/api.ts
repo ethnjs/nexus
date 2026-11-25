@@ -234,11 +234,20 @@ export interface AdminUserSlim extends UserSlim {
   status: USER_STATUS;
 }
 
+// Matches EmailSuppressionResponse. SES reported the address: a bounce stops every email to
+// it, a complaint (marked as spam) stops only staff invites.
+export interface EmailSuppression {
+  reason: "bounce" | "complaint";
+  detail: string | null;
+  created_at: string;
+}
+
 // GET /admin/users/ — matches AdminUserListResponse: what the users table reads.
 export interface AdminUserListItem
   extends AdminUserSlim,
     Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {
   tournament_ids: number[];
+  email_suppression: EmailSuppression | null;
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
@@ -281,6 +290,7 @@ export interface OwnedTournamentRef {
 
 export interface AdminUserFull extends UserFull, AdminUserSlim {
   owned_tournaments: OwnedTournamentRef[];
+  email_suppression: EmailSuppression | null;
 }
 
 // GET /users/me/?full=true — matches UserMeFullResponse
@@ -323,10 +333,12 @@ export interface EmailPendingChange {
 // Matches CodeChallengeResponse: a code was emailed; send it back with challenge_token.
 // expires_at and can_resend_at are rebuilt on this browser's clock as the response arrives
 // (see onLocalClock), so countdowns can compare them with Date.now().
+// email_undeliverable: the address bounced, so no code was sent.
 export interface CodeChallenge {
   challenge_token: string;
   expires_at: string;
   can_resend_at: string;
+  email_undeliverable: boolean;
 }
 
 interface SecondsLeft {
@@ -489,6 +501,7 @@ export const adminUsersApi = {
   sendPasswordReset: (id: number) => api.post<void>(`/admin/users/${id}/password-reset/`, {}),
   createSignInCode: (id: number) =>
     api.post<AdminSignInCode>(`/admin/users/${id}/sign-in-code/`, {}),
+  clearEmailSuppression: (id: number) => api.delete<void>(`/admin/users/${id}/email-suppression/`),
 };
 
 // -------------------------------------------------------------------------

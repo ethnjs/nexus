@@ -19,7 +19,8 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 
-type ProfileUser = Omit<AdminUserFull, "owned_tournaments">;
+type ProfileUser = Omit<AdminUserFull, "owned_tournaments" | "email_suppression"> &
+  Partial<Pick<AdminUserFull, "email_suppression">>;
 
 import { AccountBadges } from "@/components/admin/AccountBadges";
 import { Topbar } from "@/components/layout/Topbar";

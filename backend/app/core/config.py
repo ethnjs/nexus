@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import PositiveFloat, PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +23,16 @@ class Settings(BaseSettings):
 
     api_key: str = ""  # For direct API access / Swagger only
 
-    resend_api_key: str = ""  # set in .env file for dev or env vars in prod, never commit here
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "us-west-2"
+    email_from_address: str = "NEXUS <noreply@nexus.socalscioly.org>"
+    ses_max_send_rate: PositiveFloat = 1.0
+    ses_max_attempts: PositiveInt = 4
+    ses_configuration_set: str = ""
+    # /webhooks/ses/ accepts SNS messages only from this topic; blank rejects them all.
+    ses_sns_topic_arn: str = ""
+
     frontend_url: str = "http://localhost:3000/"  # remember to set to actual url in prod
 
     # Emergency switch for email outages: false skips sign-in and step-up codes.
@@ -31,9 +40,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_email_in_production(self) -> Self:
-        # Emails send in the background, so a missing key would otherwise only show in logs.
-        if self.app_env == "production" and not self.resend_api_key:
-            raise ValueError("RESEND_API_KEY must be set in production")
+        # Emails send in the background, so missing keys would otherwise only show in logs.
+        if self.app_env == "production" and not (
+            self.aws_access_key_id and self.aws_secret_access_key
+        ):
+            raise ValueError(
+                "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set in production"
+            )
         return self
 
 

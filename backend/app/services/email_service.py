@@ -1,16 +1,21 @@
 import asyncio
 import logging
-import random
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from html import escape
 from typing import Concatenate
 
-import resend
+import boto3
+from botocore.client import BaseClient
+from botocore.config import Config
+from botocore.exceptions import ClientError
 from fastapi import BackgroundTasks
-from resend.exceptions import RateLimitError
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.email_suppression import blocks_email
 
 logger = logging.getLogger(__name__)
 
@@ -186,22 +191,59 @@ def _cta_url(path: str, token: str | None = None) -> str:
 # Sending
 # ---------------------------------------------------------------------------
 
-# Resend's limit is per second and shared by the whole team, so a staff invite
-# batch or concurrent workers can briefly exceed it.
-_RATE_LIMIT_ATTEMPTS = 4
 
-
-def _retry_delay(error: RateLimitError, attempt: int) -> float:
-    """Seconds before the next attempt: Resend's retry-after when it sends one,
-    else exponential backoff. Jittered so a rejected batch doesn't retry in lockstep."""
-    retry_after = next(
-        (value for key, value in error.headers.items() if key.lower() == "retry-after"), None
+@lru_cache
+def _get_ses_client(
+    access_key_id: str, secret_access_key: str, region: str, max_attempts: int
+) -> BaseClient:
+    # A dedicated Session because the default one isn't thread-safe; the client is,
+    # and it's shared across asyncio.to_thread workers.
+    session = boto3.session.Session(
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
     )
-    try:
-        base = float(retry_after) if retry_after is not None else 2 ** (attempt - 1)
-    except ValueError:
-        base = 2 ** (attempt - 1)
-    return min(base, 10) + random.uniform(0, 1)
+    return session.client(
+        "sesv2",
+        config=Config(
+            # boto3's default "legacy" mode doesn't retry SES v2's TooManyRequestsException.
+            retries={"mode": "standard", "total_max_attempts": max_attempts},
+            # botocore's defaults are 60 s each, per attempt.
+            connect_timeout=5,
+            read_timeout=10,
+        ),
+    )
+
+
+def _ses_client() -> BaseClient:
+    settings = get_settings()
+    return _get_ses_client(
+        settings.aws_access_key_id,
+        settings.aws_secret_access_key,
+        settings.aws_region,
+        settings.ses_max_attempts,
+    )
+
+
+class _SendRateLimiter:
+    """Spaces sends `interval` seconds apart to stay under SES's per-second quota.
+
+    Pacing is per process: with N uvicorn workers or replicas, set SES_MAX_SEND_RATE to quota / N.
+    """
+
+    def __init__(self) -> None:
+        self._next_slot = 0.0
+
+    async def wait(self, interval: float) -> None:
+        # No lock needed: nothing is awaited between reading and advancing _next_slot.
+        now = time.monotonic()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+
+
+_rate_limiter = _SendRateLimiter()
 
 
 def _log_email(reason: str, to: str, subject: str, text: str) -> None:
@@ -216,8 +258,8 @@ def _log_email(reason: str, to: str, subject: str, text: str) -> None:
 
 
 async def _send(to: str, subject: str, text: str, html: str) -> None:
-    """Sends through Resend, retrying rate-limited attempts. Outside production, mail to
-    @nexus.dev is logged in full instead. Without an API key (never the case in production,
+    """Sends through SES, which retries throttled attempts. Outside production, mail to
+    @nexus.dev is logged in full instead. Without AWS keys (never the case in production,
     which Settings refuses to start) it logs instead of sending."""
     settings = get_settings()
 
@@ -226,47 +268,67 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
         _log_email("@nexus.dev outside production", to, subject, text)
         return
 
-    if not settings.resend_api_key:
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
         if settings.app_env == "development":
-            _log_email("RESEND_API_KEY not set", to, subject, text)
+            _log_email("SES not configured", to, subject, text)
         else:
             # Preview logs are shared, so the body (with its tokens) stays out of them.
-            logger.warning("RESEND_API_KEY not set, skipping email to %s: %s", to, subject)
+            logger.warning("SES not configured, skipping email to %s: %s", to, subject)
         return
 
-    resend.api_key = settings.resend_api_key
-
-    params: resend.Emails.SendParams = {
-        "from": "NEXUS <verify@nexus.socalscioly.org>",
-        "to": to,
-        "subject": subject,
-        "text": text,
-        "html": html,
-    }
-
-    for attempt in range(1, _RATE_LIMIT_ATTEMPTS + 1):
-        try:
-            await resend.Emails.send_async(params)
-            return
-        except RateLimitError as e:
-            # Quota errors share the 429 status but won't clear within seconds.
-            if e.error_type != "rate_limit_exceeded" or attempt == _RATE_LIMIT_ATTEMPTS:
-                raise
-            await asyncio.sleep(_retry_delay(e, attempt))
+    # Bounce and complaint events reach /webhooks/ses/ only through the configuration set.
+    configuration_set = (
+        {"ConfigurationSetName": settings.ses_configuration_set}
+        if settings.ses_configuration_set
+        else {}
+    )
+    await _rate_limiter.wait(1 / settings.ses_max_send_rate)
+    await asyncio.to_thread(
+        _ses_client().send_email,
+        **configuration_set,
+        FromEmailAddress=settings.email_from_address,
+        Destination={"ToAddresses": [to]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": text, "Charset": "UTF-8"},
+                    "Html": {"Data": html, "Charset": "UTF-8"},
+                },
+            },
+        },
+    )
 
 
 async def _send_email(to: str, email: _Email) -> None:
     await _send(to, email.subject, _render_text(email), _render_html(email))
 
 
+def remove_from_ses_suppression_list(email: str) -> None:
+    """Deletes `email` from the SES account suppression list, if it's there. Blocks on AWS."""
+    settings = get_settings()
+    if not (settings.aws_access_key_id and settings.aws_secret_access_key):
+        return
+    try:
+        _ses_client().delete_suppressed_destination(EmailAddress=email)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "NotFoundException":
+            raise
+
+
 def send_in_background[**P](
+    db: Session,
     background_tasks: BackgroundTasks,
     send: Callable[Concatenate[str, P], Awaitable[None]],
     to: str,
     *args: P.args,
     **kwargs: P.kwargs,
-) -> None:
-    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is left to see it."""
+) -> bool:
+    """Runs `send(to, ...)` after the response goes out, logging any failure, since no caller is
+    left to see it. Returns False without sending when the address hard-bounced."""
+    if blocks_email(db, to):
+        logger.warning("Not emailing %s: the address bounced", to)
+        return False
 
     async def send_and_log() -> None:
         try:
@@ -276,6 +338,7 @@ def send_in_background[**P](
             logger.exception("Background email failed: %s to %s", name, to)
 
     background_tasks.add_task(send_and_log)
+    return True
 
 
 # ---------------------------------------------------------------------------

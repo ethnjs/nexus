@@ -97,6 +97,8 @@ class CodeChallengeResponse(BaseModel):
     """
     A code was emailed. Send it back with challenge_token to finish. expires_in and resend_in
     are seconds from this response, for clients whose clock may not match the server's.
+    email_undeliverable is true when the address bounced, so no code was sent; a sign-in can
+    still finish with a one-time code from an admin.
     """
 
     challenge_token: str
@@ -104,6 +106,7 @@ class CodeChallengeResponse(BaseModel):
     can_resend_at: datetime
     expires_in: int
     resend_in: int
+    email_undeliverable: bool = False
 
 
 class LoginResponse(BaseModel):

@@ -1,6 +1,6 @@
 # Previewing emails
 
-`scripts/render_emails.py` renders every email NEXUS sends, as the recipient would see it, without sending anything. Use it to check a template or copy change, or to show sample emails to someone outside the team.
+`scripts/render_emails.py` renders every email NEXUS sends, as the recipient would see it, without sending anything. Use it to check a template or copy change, or to show sample emails to someone outside the team, such as AWS when requesting SES production access.
 
 ```bash
 cd backend

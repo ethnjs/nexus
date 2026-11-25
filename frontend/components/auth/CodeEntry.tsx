@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { CodeInput } from "@/components/ui/CodeInput";
 import { ApiError, authApi, type CodeChallenge } from "@/lib/api";
 
 const CODE_LENGTH = 6;
+const SUPPORT_EMAIL = "support@nexus.socalscioly.org";
 
 interface CodeEntryProps {
   challenge: CodeChallenge;
@@ -105,19 +107,27 @@ export function CodeEntry({
       noValidate
       style={{ display: "flex", flexDirection: "column", gap: "16px" }}
     >
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "14px",
-          color: "var(--color-text-secondary)",
-          margin: 0,
-        }}
-      >
-        We emailed a {CODE_LENGTH}-digit code to <strong>{email}</strong>.{" "}
-        {expiresIn > 0
-          ? `It expires in ${expiresIn} minute${expiresIn === 1 ? "" : "s"}.`
-          : "It has expired, so start again for a new one."}
-      </p>
+      {challenge.email_undeliverable ? (
+        // The address bounced, so no code was sent. Support can issue a one-time sign-in code.
+        <Banner
+          variant="warning"
+          message={`Email to ${email} has bounced, so we couldn't send a code. Contact ${SUPPORT_EMAIL} for help.`}
+        />
+      ) : (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "14px",
+            color: "var(--color-text-secondary)",
+            margin: 0,
+          }}
+        >
+          We emailed a {CODE_LENGTH}-digit code to <strong>{email}</strong>.{" "}
+          {expiresIn > 0
+            ? `It expires in ${expiresIn} minute${expiresIn === 1 ? "" : "s"}.`
+            : "It has expired, so start again for a new one."}
+        </p>
+      )}
 
       <CodeInput
         ref={inputRef}
@@ -138,7 +148,7 @@ export function CodeEntry({
         {submitLabel}
       </Button>
 
-      {!closed && (
+      {!closed && !challenge.email_undeliverable && (
         <div
           style={{
             display: "flex",

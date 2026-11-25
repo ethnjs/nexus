@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/Badge";
-import type { ROLE, USER_STATUS } from "@/lib/api";
+import type { EmailSuppression, ROLE, USER_STATUS } from "@/lib/api";
 
 /**
  * Colour per account status. Shared so the users table's Status column and
@@ -14,6 +14,11 @@ export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "remo
     locked: "declined",
   };
 
+export const SUPPRESSION_LABEL: Record<EmailSuppression["reason"], string> = {
+  bounce: "Email bouncing",
+  complaint: "Marked as spam",
+};
+
 /**
  * Role, status and email verification as one strip — the account state an
  * admin needs beside a name. Rendered into ProfileHeader's `badges` slot by
@@ -26,7 +31,12 @@ export const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "remo
 export function AccountBadges({
   user,
 }: {
-  user: { role: ROLE; status: USER_STATUS; email_verified: boolean };
+  user: {
+    role: ROLE;
+    status: USER_STATUS;
+    email_verified: boolean;
+    email_suppression?: EmailSuppression | null;
+  };
 }) {
   return (
     <>
@@ -37,6 +47,9 @@ export function AccountBadges({
       <Badge variant={user.email_verified ? "confirmed" : "warning"}>
         {user.email_verified ? "Email verified" : "Email unverified"}
       </Badge>
+      {user.email_suppression && (
+        <Badge variant="declined">{SUPPRESSION_LABEL[user.email_suppression.reason]}</Badge>
+      )}
     </>
   );
 }
