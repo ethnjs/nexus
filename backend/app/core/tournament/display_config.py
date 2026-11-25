@@ -1088,7 +1088,7 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     narrow; anything else abstains rather than guessing.
     """
     # Not driven by saved config, unlike the three below: the card's face is
-    # fixed by the issue, so there is nothing per-viewer to read.
+    # fixed, so there is nothing per-viewer to read.
     if surface and surface_base(surface) in MEMBER_CARD_SURFACES:
         return _ASSIGNMENT_CARD_GROUPS
 
@@ -1116,15 +1116,18 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
                     groups.add(group)
         return frozenset(groups)
 
-    # Panel and member page: every section renders unless hidden, and a
-    # custom section holds custom answers.
-    hidden = set(saved.get("hidden") or [])
+    # Panel and member page: the sections the client renders, which must match
+    # its resolveSections + orderedSections (frontend/lib/panelSections.ts). A
+    # section is turned off by its own `hidden` flag, and a built-in missing
+    # from a saved list still renders, appended.
     sections = saved.get("sections")
-    section_ids = (
-        [s.get("id") for s in sections if isinstance(s, dict)]
-        if isinstance(sections, list)
-        else list(DEFAULT_SECTION_ORDER) + [DEFAULT_CUSTOM_SECTION_ID]
-    )
+    if isinstance(sections, list):
+        saved_sections = [s for s in sections if isinstance(s, dict)]
+        listed = {s.get("id") for s in saved_sections}
+        section_ids = [s.get("id") for s in saved_sections if not s.get("hidden")]
+        section_ids += [sid for sid in DEFAULT_SECTION_ORDER if sid not in listed]
+    else:
+        section_ids = [*DEFAULT_SECTION_ORDER, DEFAULT_CUSTOM_SECTION_ID]
 
     # Contact is the panel's header, not one of its sections — the same way
     # roles is the table's row identity rather than a column. No section maps
@@ -1132,7 +1135,7 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     # rendering an email and phone the payload never carried.
     groups: set[str] = {"contact"}
     for section_id in section_ids:
-        if not section_id or section_id in hidden:
+        if not section_id:
             continue
         if section_id.startswith(CUSTOM_SECTION_PREFIX):
             groups.add("custom")
