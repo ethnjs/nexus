@@ -4,19 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AddTournamentModal } from "@/components/tournament/AddTournamentModal";
 import { TournamentCard } from "@/components/tournament/TournamentCard";
-import {
-  seasonsOf,
-  TOURNAMENTS_FILTER_KEYS,
-  TournamentsFilterModal,
-  type TournamentsFilterState,
-  tournamentPassesFilters,
-} from "@/components/tournament/TournamentsFilterModal";
+import { seasonsOf, tournamentFilterFields } from "@/components/tournament/tournamentFilterFields";
 import { Banner, type BannerProps } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconPlus, IconSearch, IconTrophy } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
@@ -24,11 +18,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import {
+  type FilterGroup,
   type Tournament,
   type TournamentSummary,
   tournamentsApi,
   type UserMeSlim,
 } from "@/lib/api";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import {
   DEFAULT_TOURNAMENT_SORT,
@@ -64,13 +61,16 @@ export default function DashboardPage() {
   // Not saved anywhere: the dashboard isn't one tournament's, so there's no
   // display config to keep them in, and each visit starts from everything.
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<TournamentsFilterState>(() =>
-    emptyFilterState(TOURNAMENTS_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
   const [sortRules, setSortRules] =
     useState<SortRule<TournamentSortField>[]>(DEFAULT_TOURNAMENT_SORT);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
+
+  // The page splits active from archived itself, so no Status field.
+  const filterFields = useMemo(() => tournamentFilterFields(seasonsOf(tournaments)), [tournaments]);
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
+  const filterCount = countActiveConditions(filter);
 
   const visibleTournaments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,10 +79,10 @@ export default function DashboardPage() {
         (!q ||
           t.name.toLowerCase().includes(q) ||
           (t.short_name ?? "").toLowerCase().includes(q)) &&
-        tournamentPassesFilters(t, filters),
+        matchesFilter(t, filter, filterFieldMap),
     );
     return sortRows(list, sortRules, tournamentSortValue, tournamentSortTiebreak);
-  }, [tournaments, search, filters, sortRules]);
+  }, [tournaments, search, filter, filterFieldMap, sortRules]);
 
   // Upcoming above archived: the archived ones have run, and a soonest-first
   // sort would otherwise put them at the top. Each section counts against its
@@ -244,9 +244,10 @@ export default function DashboardPage() {
                 />
               </div>
               <FilterButton
-                active={isFilterActive(filters)}
+                count={filterCount}
                 onOpen={() => setShowFilterModal(true)}
-                onClear={() => setFilters(emptyFilterState(TOURNAMENTS_FILTER_KEYS))}
+                onClear={() => setFilter(emptyFilter())}
+                hotkey
               />
               <SortButton
                 active={!sameSortRules(sortRules, DEFAULT_TOURNAMENT_SORT)}
@@ -305,10 +306,11 @@ export default function DashboardPage() {
       </div>
 
       {showFilterModal && (
-        <TournamentsFilterModal
-          seasons={seasonsOf(tournaments)}
-          filters={filters}
-          onApply={setFilters}
+        <FilterBuilderModal
+          title="Filter tournaments"
+          fields={filterFields}
+          filter={filter}
+          onApply={setFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}
