@@ -33,29 +33,15 @@ import { EventRow } from "@/components/tournament/assignments/EventRow";
 import { TrackSettingsModal } from "@/components/tournament/assignments/TrackSettingsModal";
 import { useMemberBelt } from "@/components/tournament/assignments/useMemberBelt";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
-import {
-  EVENT_FILTER_UNSET,
-  EVENT_TYPE_OPTIONS,
-  EVENTS_FILTER_KEYS,
-  EventsFilterModal,
-  type EventsFilterState,
-  eventBuildingOptions,
-  eventCategoryOptions,
-  eventPassesFilters,
-  eventShiftOptions,
-  eventsFilterFromStored,
-  eventsFilterToStored,
-  eventTrackOptions,
-  isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
+import { eventFilterFields } from "@/components/tournament/events/eventFilterFields";
 import { ExportButton } from "@/components/tournament/exports/ExportButton";
 import { MEMBER_PANEL_WIDTH, MemberPanel } from "@/components/tournament/members/MemberPanel";
 import { Button } from "@/components/ui/Button";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState } from "@/components/ui/FilterModal";
 import { IconEvents, IconLock, IconSearch, IconSettings } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -76,6 +62,7 @@ import {
   canonicalEventsApi,
   type DisplayConfig,
   displayConfigApi,
+  type FilterGroup,
   type MembershipFull,
   membersApi,
   type Role,
@@ -115,6 +102,9 @@ import {
   eventSortValue,
   isEventSortField,
 } from "@/lib/eventSort";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { byName } from "@/lib/memberSort";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import {
@@ -284,9 +274,9 @@ export default function AssignmentsPage() {
   );
 
   const [eventQuery, setEventQuery] = useState("");
-  const [eventFilters, setEventFilters] = useState<EventsFilterState>(
-    emptyFilterState(EVENTS_FILTER_KEYS),
-  );
+  const [eventFilter, setEventFilter] = useState<FilterGroup>(emptyFilter);
+  // Named filters are shared by every tab; the applied one is per tab.
+  const savedEventFilters = useSavedFilters(ASSIGNMENTS_EVENTS_SURFACE, tournamentId);
   const [eventSort, setEventSort] = useState<SortRule<EventSortField>[]>(DEFAULT_EVENT_SORT);
   const [showEventFilterModal, setShowEventFilterModal] = useState(false);
   const [showEventSortModal, setShowEventSortModal] = useState(false);
@@ -363,7 +353,7 @@ export default function AssignmentsPage() {
   ) {
     setAppliedFrom(appliedInputs);
     const events = savedConfig[eventsSurface];
-    setEventFilters(eventsFilterFromStored(events?.filters));
+    setEventFilter(events?.filter ?? emptyFilter());
     // Absent means "never saved", which is the default chain — an empty
     // *array* is a real state (somebody removed every rule) and stays empty.
     setEventSort(
@@ -394,10 +384,10 @@ export default function AssignmentsPage() {
     persistSurface(ASSIGNMENTS_BOARD_SURFACE, { assign_role_ids: roleIds });
   }
 
-  const applyEventFilters = useCallback(
-    (next: EventsFilterState) => {
-      setEventFilters(next);
-      persistSurface(eventsSurface, { filters: eventsFilterToStored(next) });
+  const applyEventFilter = useCallback(
+    (next: FilterGroup) => {
+      setEventFilter(next);
+      persistSurface(eventsSurface, { filter: next });
     },
     [persistSurface, eventsSurface],
   );
@@ -554,23 +544,21 @@ export default function AssignmentsPage() {
 
   const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows]);
 
-  const eventFilterActive = isEventsFilterActive(eventFilters);
+  const eventFilterCount = countActiveConditions(eventFilter);
   const eventSortActive = !sameSortRules(eventSort, DEFAULT_EVENT_SORT);
 
-  const divisionOptions = useMemo(() => {
-    const options = [...new Set((boardEvents ?? []).map((e) => e.division))]
-      .filter((d) => d !== null)
-      .map((d) => ({ value: d, label: `Division ${d}` }));
-    // Offered only when something actually has no division — otherwise it is
-    // a row that can only ever match nothing.
-    return (boardEvents ?? []).some((e) => e.division === null)
-      ? [...options, { value: EVENT_FILTER_UNSET, label: "No division" }]
-      : options;
-  }, [boardEvents]);
-  const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents]);
-  const trackOptions = useMemo(() => eventTrackOptions(boardEvents ?? []), [boardEvents]);
-  const buildingOptions = useMemo(() => eventBuildingOptions(boardEvents ?? []), [boardEvents]);
-  const shiftOptions = useMemo(() => eventShiftOptions(boardEvents ?? []), [boardEvents]);
+  // On a track tab, only that track counts, so shift and location need no
+  // track picked and there's no Track field: the tab is the track.
+  const eventFields = useMemo(
+    () =>
+      eventFilterFields(boardEvents ?? [], {
+        showsTrack,
+        assignmentsFor: (id) => byEvent.get(id) ?? [],
+        withTracks: activeTrackId === null,
+      }),
+    [boardEvents, showsTrack, byEvent, activeTrackId],
+  );
+  const eventFieldMap = useMemo(() => fieldMap(eventFields), [eventFields]);
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase();
@@ -584,13 +572,7 @@ export default function AssignmentsPage() {
         )
       )
         return false;
-      return eventPassesFilters(event, eventFilters, {
-        assignmentsFor: (id) => byEvent.get(id) ?? [],
-        showsTrack,
-        // A track tab narrows to its own track; the All tab honours whatever
-        // the saved filter says.
-        trackOverride: activeTrackId === null ? undefined : new Set([String(activeTrackId)]),
-      });
+      return matchesFilter(event, eventFilter, eventFieldMap);
     });
     // Sorted after filtering, not before: the staffing key costs a pass over
     // each event's assignments, and there is no reason to pay it for rows the
@@ -601,7 +583,7 @@ export default function AssignmentsPage() {
       (event, field) => eventSortValue(event, field, (id) => byEvent.get(id) ?? [], showsTrack),
       eventSortTiebreak,
     );
-  }, [activeTrackId, boardEvents, byEvent, eventFilters, eventQuery, eventSort, showsTrack]);
+  }, [boardEvents, byEvent, eventFilter, eventFieldMap, eventQuery, eventSort, showsTrack]);
 
   const {
     belt,
@@ -1642,9 +1624,13 @@ export default function AssignmentsPage() {
                 fullWidth
               />
               <FilterButton
-                active={eventFilterActive}
+                count={eventFilterCount}
                 onOpen={() => setShowEventFilterModal(true)}
-                onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+                onClear={() => applyEventFilter(emptyFilter())}
+                saved={savedEventFilters}
+                applied={eventFilter}
+                onApplySaved={applyEventFilter}
+                hotkey
                 iconOnly={compactToolbar}
               />
               <SortButton
@@ -1718,7 +1704,7 @@ export default function AssignmentsPage() {
                     variant="secondary"
                     onClick={() => {
                       setEventQuery("");
-                      applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS));
+                      applyEventFilter(emptyFilter());
                     }}
                   >
                     Clear
@@ -1767,16 +1753,12 @@ export default function AssignmentsPage() {
         </div>
 
         {showEventFilterModal && (
-          <EventsFilterModal
-            divisionOptions={divisionOptions}
-            typeOptions={EVENT_TYPE_OPTIONS}
-            categoryOptions={categoryOptions}
-            // The tab already picked a track; only the All tab offers the choice.
-            trackOptions={activeTrackId === null ? trackOptions : undefined}
-            buildingOptions={buildingOptions}
-            shiftOptions={shiftOptions}
-            filters={eventFilters}
-            onApply={applyEventFilters}
+          <FilterBuilderModal
+            title="Filter events"
+            fields={eventFields}
+            filter={eventFilter}
+            saved={savedEventFilters}
+            onApply={applyEventFilter}
             onClose={() => setShowEventFilterModal(false)}
           />
         )}
