@@ -1,21 +1,3 @@
-"""
-Shared pytest fixtures.
-
-Uses a dedicated Postgres database ("nexus_test", on the same Docker Postgres
-container as dev) for all tests — real Postgres semantics (savepoints, FK
-enforcement) so behavior matches prod, with a separate DB so a rollback bug
-can never touch real dev data. Each test runs inside an outer transaction
-that's rolled back at teardown, so no cleanup is needed between tests.
-The Google Sheets and Forms services are mocked so tests never hit the real API.
-
-Fixture hierarchy:
-  admin_user       — role="admin", bypasses all permission checks
-  td_user          — role="user", has tournament_director membership in td_tournament
-  other_user       — role="user", has tournament_director membership in other_tournament
-  td_tournament    — tournament owned by td_user, DEFAULT_ROLES populated
-  other_tournament — tournament owned by other_user
-"""
-
 import os
 import re
 from datetime import date, timedelta
@@ -30,10 +12,13 @@ os.environ["LOGIN_CODES_REQUIRED"] = "true"
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.api.routes.sheets import get_forms_service, get_sheets_service
+from app.core import auth
 from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
 from app.db.session import Base, get_db
@@ -62,19 +47,14 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"
 )
 
-# TournamentCreate rejects a past start_date, so any hardcoded date literal is a
-# time bomb that takes the whole suite down once it rolls by. Anchor to next
-# year instead — May of year+1 is always ahead of today, whatever today is.
+# Tournament creation rejects past dates, so a hardcoded date would break the suite once it passes.
 FUTURE_YEAR = date.today().year + 1
 
 
 def future_date(month: int, day: int) -> str:
-    """ISO date string in FUTURE_YEAR, for tournament create payloads."""
     return f"{FUTURE_YEAR}-{month:02d}-{day:02d}"
 
 
-# When/where/what-division live on tracks now, so a create payload carries at
-# least one primary track instead of the flat fields it used to.
 TOURNAMENT_REQUIRED_FIELDS = {
     "state": "Southern California",
     "level": "invitational",
@@ -92,22 +72,60 @@ TOURNAMENT_REQUIRED_FIELDS = {
 }
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
+# Production Argon2 costs about 80 ms per hash or verify, and every sign-in does three.
+# The minimum cost runs the same algorithm and code path.
+auth.pwd_context = PasswordHash(
+    (Argon2Hasher(time_cost=1, memory_cost=8, parallelism=1), auth._LegacyBcryptHasher())
+)
+
+
+_RUN_LOCK_KEY = 0x6E657875
+
+
+@pytest.fixture(scope="session")
+def _schema():
+    name = test_engine.url.database or ""
+    # The schema setup below commits a DROP SCHEMA, so refuse anything but a test database.
+    if not name.endswith("_test"):
+        pytest.exit(f"TEST_DATABASE_URL must name a *_test database, not {name!r}")
+    lock = test_engine.connect()
+    if not lock.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": _RUN_LOCK_KEY}):
+        lock.close()
+        pytest.exit(f"Another test run is using {name}; wait for it to finish")
+    lock.commit()
+    try:
+        # CASCADE also clears tables a killed run on another branch left behind.
+        with test_engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+            Base.metadata.create_all(bind=conn)
+        yield
+        Base.metadata.drop_all(bind=test_engine)
+    finally:
+        # The pool keeps the connection open, which would keep the lock held.
+        lock.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _RUN_LOCK_KEY})
+        lock.close()
+
 
 @pytest.fixture(scope="function")
-def db():
+def db(_schema):
     connection = test_engine.connect()
     transaction = connection.begin()
-    Base.metadata.create_all(bind=connection)
-    # create_savepoint: session.commit()/rollback() operate on a nested SAVEPOINT,
-    # not the outer transaction — so a mid-test rollback (e.g. a caught IntegrityError)
-    # only undoes that one unit of work, not everything committed earlier in the test.
+    # Sequences ignore rollback; resetting them keeps ids starting at 1 in every test.
+    connection.execute(
+        text(
+            "SELECT setval(oid, 1, false) FROM pg_class"
+            " WHERE relkind = 'S' AND relnamespace = 'public'::regnamespace"
+        )
+    )
+    # commit() and rollback() act on a savepoint, so a caught IntegrityError undoes only its own
+    # unit of work while the outer transaction still rolls back everything at teardown.
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:
         session.close()
         transaction.rollback()
-        Base.metadata.drop_all(bind=connection)
         connection.close()
 
 
@@ -170,15 +188,8 @@ def other_user(db):
 
 
 def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
-    """
-    Create a tournament owned by `owner`, populate DEFAULT_ROLES, and give
-    `owner` a confirmed membership holding the tournament_director role.
-
-    POST /tournaments/ itself no longer auto-seeds roles (new tournaments
-    start with zero) — this fixture seeds them directly so the rest of the
-    test suite (grant_role and friends) has roles to assign without every
-    test doing it itself.
-    """
+    """Seeds DEFAULT_ROLES, which tournament creation doesn't, and gives `owner` the
+    Tournament Director role tournament-wide."""
     tournament = Tournament(
         name=name,
         owner_id=owner.id,
@@ -189,8 +200,6 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     db.add(tournament)
     db.flush()
 
-    # The tournament's dates, venue and divisions are derived from this — a
-    # tournament without a primary track has no schedule at all.
     db.add(
         TournamentTrack(
             tournament_id=tournament.id,
@@ -216,8 +225,6 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     )
     db.add(membership)
     db.flush()
-    # Tournament-wide: the director role carries permissions, and since #83
-    # those are the roles that aren't about a particular day.
     db.add(
         TournamentTrackAssignment(
             membership_id=membership.id,
@@ -232,10 +239,7 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
 
 
 def primary_track_id(db: Session, tournament_id: int) -> int:
-    """The tournament's primary track — where its dates live, and the only
-    kind of track a shift may belong to. Every tournament has exactly one
-    unless a test made more, so tests that just need *a* track for a shift
-    can reach for this instead of building their own."""
+    """The tournament's primary track, the only kind a shift may belong to."""
     return (
         db.query(TournamentTrack.id)
         .filter(
@@ -250,9 +254,7 @@ def primary_track_id(db: Session, tournament_id: int) -> int:
 
 
 def set_display_config(db, tournament, user, config: dict) -> None:
-    """Write one viewer's display config. It lives on their membership row,
-    not the tournament — every surface renders per viewer now, so a test
-    has to say *whose* config it is setting."""
+    """Display config is per viewer, stored on that user's membership."""
     membership = (
         db.query(TournamentMembership).filter_by(tournament_id=tournament.id, user_id=user.id).one()
     )
@@ -267,20 +269,8 @@ def grant_role(
     role_label: str,
     track_id: int | None = None,
 ) -> TournamentMembership:
-    """
-    Give `user` a membership in `tournament` holding the role identified by
-    `role_label`, tournament-wide unless `track_id` names a track.
-
-    Tournament-wide by default so every test written before roles gained a
-    track (#83) keeps the permissions it had: a role held anywhere grants its
-    permissions across the tournament either way, and a default track would
-    have made each caller pick one for no reason.
-
-    `role_label` (must already exist on the tournament — DEFAULT_ROLES covers
-    every label used across the test suite, alongside any custom roles a
-    test creates directly). Reuses an existing membership if one is already
-    there instead of erroring on the unique constraint.
-    """
+    """Gives `user` the existing role `role_label`, tournament-wide unless `track_id` is
+    given, reusing their membership if they have one."""
     membership = (
         db.query(TournamentMembership)
         .filter(
@@ -390,13 +380,7 @@ def mock_forms_service() -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def mock_send_email(monkeypatch):
-    """
-    Stubs the actual Resend call so no test run consumes real email quota.
-    Patched at _send() — the one low-level function every sender (signup
-    verify, email change, password reset, account setup, etc.) funnels
-    through — so new senders are covered automatically without needing
-    their own mock.
-    """
+    """Patches `_send`, which every email sender goes through, so tests never send real email."""
     mock = AsyncMock()
     monkeypatch.setattr("app.services.email_service._send", mock)
     return mock
@@ -431,9 +415,9 @@ def emailed_code() -> str:
     """The code in the last email sent through the autouse email mock."""
     from app.services import email_service
 
-    text = email_service._send.call_args.args[2]  # ty: ignore[unresolved-attribute]
-    match = re.search(r"Your code: (\d{6})", text)
-    assert match is not None, text
+    body = email_service._send.call_args.args[2]  # ty: ignore[unresolved-attribute]
+    match = re.search(r"Your code: (\d{6})", body)
+    assert match is not None, body
     return match.group(1)
 
 

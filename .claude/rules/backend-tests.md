@@ -5,9 +5,9 @@ paths:
 
 # Backend tests
 
-How and when to run tests is under "Running tests" in root CLAUDE.md.
+When to run and write tests is under "Tests" in `backend/CLAUDE.md`.
 
-- Tests use real Postgres (`TEST_DATABASE_URL`, default `nexus_test`). The schema comes from `Base.metadata.create_all`, not migrations.
+- Tests use real Postgres (`TEST_DATABASE_URL`, default `nexus_test`). The schema is built once per run from `Base.metadata.create_all`, not migrations.
 - Each test runs inside a transaction that's rolled back at teardown (the `db` fixture), so no cleanup is needed.
 - The layout mirrors `app/`: `tests/api/` follows `app/api/routes/`, `tests/core/` follows `app/core/`, and `tests/services/` follows `app/services/`. Put a new test next to its siblings.
 - Fixtures in `tests/conftest.py`:
